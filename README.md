@@ -53,4 +53,29 @@ If you prefer to install manually, you can run the GitHub install command from C
   ghcr.io/softerfish/seekandwatch:latest
 
   Access via http://<YOUR_SERVER_IP>:5000
+  
+### How to force an update:
 
+You can run these commands in your terminal.
+
+1. Download the new "box" from GitHub:
+
+docker pull ghcr.io/softerfish/seekandwatch:latest
+
+2. Stop the currently running app:
+
+docker stop seekandwatch
+
+3. Delete the old container: (Don't worry, your database and settings are safe in the /mnt/user/appdata/ folder).
+
+docker rm seekandwatch
+
+4. Start the new one:
+
+docker run -d \
+  --name=seekandwatch \
+  -p 5000:5000 \
+  -v /path/to/config/you/have/it/installed/at:/config \
+  -e TZ=America/New_York \
+  --restart unless-stopped \
+  ghcr.io/softerfish/seekandwatch:latest

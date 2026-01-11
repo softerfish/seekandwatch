@@ -15,7 +15,7 @@ from models import db, User, Settings, Blocklist
 # ==================================================================================
 
 # --- UPDATE CHECK CONFIGURATION ---
-VERSION = "1.0.1"
+VERSION = "1.0.0"
 GITHUB_RAW_URL = "https://raw.githubusercontent.com/softerfish/seekandwatch/main/app.py"
 # ----------------------------------
 
@@ -42,6 +42,12 @@ TMDB_GENRES = {
 def load_user(user_id):
     return User.query.get(int(user_id))
 
+# --- NEW: Inject Version into all templates ---
+@app.context_processor
+def inject_version():
+    return dict(app_version=VERSION)
+# ----------------------------------------------
+
 def normalize_title(title):
     if not title: return ""
     return re.sub(r'[^a-z0-9]', '', str(title).lower())
@@ -66,7 +72,6 @@ def check_for_updates():
     try:
         response = requests.get(GITHUB_RAW_URL, timeout=2)
         if response.status_code == 200:
-            # Look for VERSION = "x.x.x" in the raw text
             match = re.search(r'VERSION\s*=\s*"([\d\.]+)"', response.text)
             if match:
                 remote_version = match.group(1)
@@ -93,9 +98,7 @@ def dashboard():
         except Exception as e:
             print(f"Dashboard Plex Error: {e}", flush=True)
 
-    # Check for update
     new_version = check_for_updates()
-
     return render_template('dashboard.html', recent_media=recent_media, new_version=new_version)
 
 @app.route('/settings', methods=['GET', 'POST'])
@@ -124,7 +127,6 @@ def settings():
     if user_settings.plex_url and user_settings.plex_token:
         try:
             p = PlexServer(user_settings.plex_url, user_settings.plex_token)
-            # Fetch users safely
             account = p.myPlexAccount()
             plex_users = sorted([u.title for u in account.users()] + ([account.username] if account.username else []))
         except: pass
@@ -171,7 +173,6 @@ def review_history():
     media_type = request.form.get('media_type', 'movie')
     manual = request.form.get('manual_query')
     
-    # 1. Safe Integer Parsing
     try:
         raw_limit = request.form.get('history_limit')
         history_limit = int(raw_limit) if raw_limit else 20
@@ -181,7 +182,6 @@ def review_history():
     review_list = []
     providers = []
     
-    # TMDB Provider Logic
     try:
         reg = s.tmdb_region or 'US'
         p_url = f"https://api.themoviedb.org/3/watch/providers/{media_type}?api_key={s.tmdb_key}&watch_region={reg}"
@@ -208,7 +208,6 @@ def review_history():
             for x in h:
                 if len(review_list) >= history_limit: break
                 
-                # --- FIX START: ROBUST USER CHECKING ---
                 user_name = None
                 try:
                     if hasattr(x, 'user') and x.user:
@@ -216,13 +215,11 @@ def review_history():
                     elif hasattr(x, 'userName'):
                          user_name = x.userName
                 except Exception:
-                    pass # If we can't identify the user, we just ignore the filter and include the item
+                    pass 
                 
                 if user_name and ignored and any(ign.strip() == user_name for ign in ignored if ign.strip()):
                     continue
-                # --- FIX END ---
                 
-                # Media Type Filter
                 target_type = 'episode' if media_type == 'tv' else 'movie'
                 if x.type != target_type: continue
                 
@@ -230,7 +227,6 @@ def review_history():
                 if t in seen: continue
                 seen.add(t)
                 
-                # Fetch Poster
                 poster_path = None
                 try:
                     q_type = 'tv' if media_type == 'tv' else 'movie'
@@ -408,7 +404,4 @@ with app.app_context():
     db.create_all()
 
 if __name__ == '__main__':
-    # Try to find a 'PORT' environment variable, otherwise default to 5000
-    port = int(os.environ.get('PORT', 5000))
-
-    app.run(debug=True, host='0.0.0.0', port=port)
+    app.run(debug=True, host='0.0.0.0', port=5000)
