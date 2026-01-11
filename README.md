@@ -49,7 +49,7 @@ If you prefer to install manually, you can run the GitHub install command from C
 
 ### GitHub Container Registry
 
-docker run -d --name=seekandwatch \
+  docker run -d --name=seekandwatch \
   -p 5000:5000 \
   -v /path/to/config:/config \
   -e TZ=America/New_York \
