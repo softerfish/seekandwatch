@@ -15,7 +15,7 @@ from models import db, User, Settings, Blocklist
 # ==================================================================================
 
 # --- UPDATE CHECK CONFIGURATION ---
-VERSION = "1.0.1"
+VERSION = "1.0.2"
 GITHUB_RAW_URL = "https://raw.githubusercontent.com/softerfish/seekandwatch/main/app.py"
 # ----------------------------------
 
@@ -95,27 +95,32 @@ def dashboard():
             for item in plex.library.recentlyAdded()[:10]:
                 thumb = f"{current_user.settings.plex_url}{item.thumb}?X-Plex-Token={current_user.settings.plex_token}" if item.thumb else ""
                 
-                # === UPDATED LOGIC: Aggressive Year Finding ===
+                # === FINAL FIX: The "Nuclear Option" for Missing Years ===
                 year = None
                 
-                # 1. Try direct year attribute
+                # 1. Check direct year
                 if hasattr(item, 'year') and item.year:
                     year = item.year
                 
-                # 2. Try Parent/Grandparent year (inherited from Show)
+                # 2. Check cached parent/grandparent attributes
                 if not year:
                     if hasattr(item, 'parentYear') and item.parentYear:
                         year = item.parentYear
                     elif hasattr(item, 'grandparentYear') and item.grandparentYear:
                         year = item.grandparentYear
                 
-                # 3. Fallback: Parse 'originallyAvailableAt' (Air Date)
-                if not year and hasattr(item, 'originallyAvailableAt') and item.originallyAvailableAt:
-                    # Format is usually YYYY-MM-DD or datetime object
+                # 3. FORCE FETCH: If it's a Season/Episode and still no year, ask Plex for the Show details
+                # This is slightly slower but guarantees we get the Show's year (e.g. 2015 for Code Black)
+                if not year and item.type in ['season', 'episode']:
                     try:
-                        date_str = str(item.originallyAvailableAt)
-                        if len(date_str) >= 4:
-                            year = date_str[:4]
+                        # item.show() forces a fetch of the parent show metadata
+                        year = item.show().year
+                    except: pass
+                
+                # 4. Fallback to Air Date if absolutely everything else failed
+                if not year and hasattr(item, 'originallyAvailableAt') and item.originallyAvailableAt:
+                    try:
+                        year = str(item.originallyAvailableAt)[:4]
                     except: pass
 
                 final_year = str(year) if year else ""
