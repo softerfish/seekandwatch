@@ -15,7 +15,7 @@ from models import db, User, Settings, Blocklist
 # ==================================================================================
 
 # --- UPDATE CHECK CONFIGURATION ---
-VERSION = "1.0.2"
+VERSION = "1.0.0"
 GITHUB_RAW_URL = "https://raw.githubusercontent.com/softerfish/seekandwatch/main/app.py"
 # ----------------------------------
 
@@ -436,4 +436,5 @@ with app.app_context():
     db.create_all()
 
 if __name__ == '__main__':
+
     app.run(debug=True, host='0.0.0.0', port=5000)
