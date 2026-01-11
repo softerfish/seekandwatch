@@ -95,14 +95,29 @@ def dashboard():
             for item in plex.library.recentlyAdded()[:10]:
                 thumb = f"{current_user.settings.plex_url}{item.thumb}?X-Plex-Token={current_user.settings.plex_token}" if item.thumb else ""
                 
-                # === FIX: Handle missing years (e.g. Seasons showing "None") ===
-                year = item.year
+                # === UPDATED LOGIC: Aggressive Year Finding ===
+                year = None
+                
+                # 1. Try direct year attribute
+                if hasattr(item, 'year') and item.year:
+                    year = item.year
+                
+                # 2. Try Parent/Grandparent year (inherited from Show)
                 if not year:
                     if hasattr(item, 'parentYear') and item.parentYear:
                         year = item.parentYear
                     elif hasattr(item, 'grandparentYear') and item.grandparentYear:
                         year = item.grandparentYear
                 
+                # 3. Fallback: Parse 'originallyAvailableAt' (Air Date)
+                if not year and hasattr(item, 'originallyAvailableAt') and item.originallyAvailableAt:
+                    # Format is usually YYYY-MM-DD or datetime object
+                    try:
+                        date_str = str(item.originallyAvailableAt)
+                        if len(date_str) >= 4:
+                            year = date_str[:4]
+                    except: pass
+
                 final_year = str(year) if year else ""
                 # ===============================================================
 
