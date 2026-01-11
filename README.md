@@ -41,17 +41,16 @@ It solves the "What do we watch?" problem by combining deep taste analysis with 
 
 Or
 
-Option 2: Manual Docker Command
-
-If you prefer to install manually, you can run the GitHub install command from Command Line in Unraid.
-
-
+Option 2: Manual Docker Command for UnRaid
+If you prefer to install manually, you can run the GitHub install command from Command Line in Unraid (the > in the header) and access via http://<YOUR_UNRAID_IP>:5000 after install has finished.
 
 ### GitHub Container Registry
-
   docker run -d --name=seekandwatch \
   -p 5000:5000 \
   -v /path/to/config:/config \
   -e TZ=America/New_York \
   --restart unless-stopped \
   ghcr.io/softerfish/seekandwatch:latest
+
+  Access via http://<YOUR_SERVER_IP>:5000
+
