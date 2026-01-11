@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="login-wrapper">
+    <div class="card" style="width: 100%; max-width: 400px; text-align: center;">
+        <h2 style="margin-bottom: 30px; font-size: 2em;">
+            {% if is_register %}Register{% else %}Login{% endif %}
+        </h2>
+        
+        <form method="POST">
+            <div style="margin-bottom: 20px; text-align: left;">
+                <label style="display: block; margin-bottom: 5px; font-weight: bold;">Username</label>
+                <input type="text" name="username" style="width: 100%;" required autofocus>
+            </div>
+            
+            <div style="margin-bottom: 30px; text-align: left;">
+                <label style="display: block; margin-bottom: 5px; font-weight: bold;">Password</label>
+                <input type="password" name="password" style="width: 100%;" required>
+            </div>
+            
+            <button type="submit" style="width: 100%; padding: 15px; font-size: 1.1em; background: var(--accent-color); color: white; font-weight: bold;">
+                {% if is_register %}Create Account{% else %}Sign In{% endif %}
+            </button>
+        </form>
+        
+        <div style="margin-top: 20px; font-size: 0.9em;">
+            {% if is_register %}
+            Already have an account? <a href="{{ url_for('login') }}" style="color: var(--accent-color);">Login here</a>
+            {% else %}
+            Need an account? <a href="{{ url_for('register') }}" style="color: var(--accent-color);">Register here</a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

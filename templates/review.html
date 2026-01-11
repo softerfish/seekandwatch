@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% block content %}
+<form id="generateForm" action="{{ url_for('generate') }}" method="POST">
+    <input type="hidden" name="media_type" value="{{ media_type }}">
+    
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h2 style="font-weight: 800;">Step 2: Curate & Filter</h2>
+        <button type="submit" name="lucky_mode" value="true" 
+                style="background: linear-gradient(45deg, #FFD700, #FFA500); color: black; padding: 10px 25px; font-weight: bold; border-radius: 30px; border: none; cursor: pointer; box-shadow: 0 4px 15px rgba(255, 215, 0, 0.3);">
+            🎲 I'm Feeling Lucky
+        </button>
+    </div>
+
+    <div class="card" style="background: rgba(255,255,255,0.03); border: 1px solid #333;">
+        <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 25px;">
+            <div style="flex: 1; min-width: 250px;">
+                <label style="display: block; margin-bottom: 8px; font-weight: 600;">Genre Filter</label>
+                <select name="genre_filter" style="width: 100%; padding: 12px; border-radius: 8px; background: #222; color: white; border: 1px solid #444;">
+                    <option value="">All Genres</option>
+                    {% for g in genres %}
+                    <option value="{{ g.id }}">{{ g.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div style="flex: 1; min-width: 250px;">
+                <label style="display: block; margin-bottom: 8px; font-weight: 600;">Min. Rating: <span id="rating-val" style="color: var(--accent-color);">0</span>/10</label>
+                <input type="range" name="min_rating" min="0" max="9" step="0.5" value="0" style="width: 100%; accent-color: var(--accent-color);" oninput="document.getElementById('rating-val').innerText = this.value">
+            </div>
+        </div>
+
+        <div style="border-top: 1px solid #333; padding-top: 20px;">
+            <label style="display: block; margin-bottom: 15px; font-weight: 600;">📺 Available on Streaming</label>
+            <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                {% for p in providers %}
+                <div class="provider-check">
+                    <input type="checkbox" name="provider_filter" value="{{ p.provider_id }}" id="prov-{{ p.provider_id }}">
+                    <label for="prov-{{ p.provider_id }}" title="{{ p.provider_name }}">
+                        <img src="https://image.tmdb.org/t/p/original{{ p.logo_path }}" alt="{{ p.provider_name }}">
+                    </label>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <p style="color: #888; margin: 25px 0 15px 0;">Select the titles you want to influence your recommendations:</p>
+    
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 20px;">
+        {% for movie in movies %}
+        <div class="selection-card">
+            <div class="poster-container">
+                {% if movie.thumb %}
+                    <img src="{{ movie.thumb }}" class="poster-img">
+                {% elif movie.poster_path %}
+                    <img src="https://image.tmdb.org/t/p/w300{{ movie.poster_path }}" class="poster-img">
+                {% else %}
+                    <div class="no-poster">
+                        <span style="font-size: 3em;">🎬</span>
+                        <span style="font-size: 0.8em; margin-top: 10px; opacity: 0.6;">No Poster Available</span>
+                    </div>
+                {% endif %}
+                
+                <div class="selection-overlay">
+                    <input type="checkbox" name="selected_movies" value="{{ movie.title }}" checked class="custom-check">
+                </div>
+            </div>
+            <div class="selection-info">
+                <div class="selection-title">{{ movie.title }}</div>
+                <div class="selection-year">{{ movie.year }}</div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <button type="submit" style="width: 100%; padding: 20px; font-size: 1.2em; margin-top: 40px; margin-bottom: 40px; background: var(--accent-color); color: black; font-weight: 800; border-radius: 12px; border: none; cursor: pointer; box-shadow: 0 10px 30px rgba(0,0,0,0.3);">
+        Generate Recommendations 🚀
+    </button>
+</form>
+
+<div id="loadingOverlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 9999; flex-direction: column; justify-content: center; align-items: center;">
+    <div class="spinner"></div>
+    <h2 style="color: white; margin-top: 25px;">Analysing your taste...</h2>
+</div>
+
+<style>
+    .selection-card {
+        background: #1e1e1e;
+        border-radius: 12px;
+        overflow: hidden;
+        border: 1px solid #333;
+        transition: transform 0.2s;
+    }
+    .poster-container {
+        position: relative;
+        aspect-ratio: 2/3;
+        background: #111;
+    }
+    .poster-img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    .no-poster {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: #555;
+        padding: 20px;
+        text-align: center;
+    }
+    .selection-overlay {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        z-index: 2;
+    }
+    .custom-check {
+        width: 25px;
+        height: 25px;
+        cursor: pointer;
+        accent-color: var(--accent-color);
+    }
+    .selection-info {
+        padding: 12px;
+    }
+    .selection-title {
+        font-weight: bold;
+        font-size: 0.9em;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .selection-year {
+        font-size: 0.8em;
+        color: #777;
+        margin-top: 4px;
+    }
+    .provider-check input { display: none; }
+    .provider-check label { 
+        cursor: pointer; 
+        border: 2px solid transparent; 
+        border-radius: 10px; 
+        overflow: hidden; 
+        display: block;
+        opacity: 0.4;
+        transition: 0.2s;
+    }
+    .provider-check img { width: 50px; height: 50px; display: block; }
+    .provider-check input:checked + label { border-color: var(--accent-color); opacity: 1; transform: scale(1.1); }
+    
+    .spinner {
+        width: 60px;
+        height: 60px;
+        border: 6px solid rgba(255,255,255,0.1);
+        border-radius: 50%;
+        border-top-color: var(--accent-color);
+        animation: spin 1s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+
+<script>
+    const form = document.getElementById('generateForm');
+    const overlay = document.getElementById('loadingOverlay');
+    form.addEventListener('submit', () => overlay.style.display = 'flex');
+</script>
+{% endblock %}

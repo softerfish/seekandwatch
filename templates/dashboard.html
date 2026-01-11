@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="text-align: center; padding-top: 20px;">
+
+    {% if recent_media %}
+    <div style="text-align: left; margin-bottom: 40px;">
+        <h3 style="margin-bottom: 15px; color: var(--accent-color); display: flex; align-items: center; gap: 10px;">
+            <span>🚀</span> Recently Added to Server
+        </h3>
+        <div class="scroller" style="display: flex; gap: 15px; overflow-x: auto; padding-bottom: 15px; scrollbar-width: thin;">
+            {% for item in recent_media %}
+            <div style="min-width: 140px; width: 140px; position: relative;">
+                <div style="aspect-ratio: 2/3; background: #222; border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color);">
+                    {% if item.thumb %}
+                    <img src="{{ item.thumb }}" style="width: 100%; height: 100%; object-fit: cover;">
+                    {% else %}
+                    <div style="height: 100%; display: flex; align-items: center; justify-content: center; color: #555;">No Image</div>
+                    {% endif %}
+                </div>
+                <div style="font-size: 0.85em; margin-top: 5px; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                    {{ item.title }}
+                </div>
+                <div style="font-size: 0.75em; color: #777;">{{ item.year }}</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="card" style="max-width: 700px; margin: 0 auto 30px auto; padding: 25px; border-top: 4px solid var(--accent-color); text-align: left;">
+        <h3 style="margin-top: 0; color: var(--accent-color); text-align: center;">🎬 Smart Discovery</h3>
+        
+        <div style="background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; margin-bottom: 20px; font-size: 0.9em; line-height: 1.5; color: #bbb; border: 1px solid #333;">
+            <strong style="color: white; display: block; margin-bottom: 5px;">💡 How it works:</strong>
+            <ul style="margin: 0; padding-left: 20px;">
+                <li><strong>Scanning:</strong> We analyze your last <b>500 Plex history entries</b> to identify your recent tastes.</li>
+                <li><strong>Curation:</strong> You can set how many unique titles to pull below to act as "seeds" for the calculation.</li>
+                <li><strong>Filtering:</strong> Admin accounts can <b>ignore specific profiles</b> in <a href="{{ url_for('settings') }}" style="color: var(--accent-color); text-decoration: none; font-weight: bold;">Settings</a> to keep recommendations focused.</li>
+            </ul>
+        </div>
+
+        <div style="margin-bottom: 20px; text-align: center;">
+            <label style="color: #888; font-size: 0.9em;">Number of titles to pull from history:</label>
+            <input type="number" id="history-limit" value="20" min="1" max="100" 
+                   style="width: 70px; padding: 10px; margin-left: 10px; border-radius: 8px; background: #111; border: 1px solid #444; color: white; text-align: center;">
+        </div>
+
+        <div style="display: flex; gap: 15px;">
+            <button onclick="scanHistory('movie')" style="flex: 1; padding: 15px; background: #e5a00d; color: white; border: none; font-weight: bold; border-radius: 8px; cursor: pointer;">Scan Movies</button>
+            <button onclick="scanHistory('tv')" style="flex: 1; padding: 15px; background: #01d277; color: white; border: none; font-weight: bold; border-radius: 8px; cursor: pointer;">Scan TV Shows</button>
+        </div>
+    </div>
+
+    <div style="margin: 20px 0; color: #555;">— OR SEARCH BY TITLE —</div>
+    
+    <div style="max-width: 600px; margin: 0 auto; position: relative;">
+        <input type="text" id="main-search" placeholder="Type a title (e.g. Inception)..." 
+               style="width: 100%; padding: 20px; font-size: 1.2em; border-radius: 50px; border: 2px solid var(--border-color); background: var(--card-bg); color: var(--text-color); box-shadow: 0 5px 15px rgba(0,0,0,0.2); outline: none;">
+        <div id="search-results" style="display:none; position: absolute; top: 70px; left: 0; right: 0; background: var(--card-bg); border-radius: 10px; border: 1px solid var(--border-color); z-index: 100; box-shadow: 0 10px 30px rgba(0,0,0,0.5); overflow: hidden; text-align: left;"></div>
+    </div>
+
+</div>
+
+<script>
+    // NEW: Handle the scan with the custom limit
+    function scanHistory(type) {
+        const limit = document.getElementById('history-limit').value;
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = "{{ url_for('review_history') }}";
+        
+        const typeInput = document.createElement('input');
+        typeInput.type = 'hidden';
+        typeInput.name = 'media_type';
+        typeInput.value = type;
+        
+        const limitInput = document.createElement('input');
+        limitInput.type = 'hidden';
+        limitInput.name = 'history_limit';
+        limitInput.value = limit;
+        
+        form.appendChild(typeInput);
+        form.appendChild(limitInput);
+        document.body.appendChild(form);
+        form.submit();
+    }
+
+    const searchInput = document.getElementById('main-search');
+    const resultsDiv = document.getElementById('search-results');
+    let debounceTimer;
+
+    searchInput.addEventListener('input', function() {
+        clearTimeout(debounceTimer);
+        const query = this.value.trim();
+        if (query.length < 2) { resultsDiv.style.display = 'none'; return; }
+        debounceTimer = setTimeout(() => {
+            fetch(`/tmdb_search_proxy?query=${encodeURIComponent(query)}&type=movie`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.results && data.results.length > 0) {
+                        let html = '';
+                        data.results.forEach(item => {
+                            html += `<div onclick="selectItem('${item.title.replace(/'/g, "\\'")}')" style="padding: 15px; border-bottom: 1px solid var(--border-color); cursor: pointer; display: flex; align-items: center; gap: 10px;">
+                                <img src="https://image.tmdb.org/t/p/w92${item.poster}" style="width: 40px; border-radius: 4px;" onerror="this.style.display='none'">
+                                <div><div style="font-weight: bold; color: var(--text-color);">${item.title}</div><div style="font-size: 0.8em; color: #888;">${item.year}</div></div></div>`;
+                        });
+                        resultsDiv.innerHTML = html; resultsDiv.style.display = 'block';
+                    } else { resultsDiv.style.display = 'none'; }
+                });
+        }, 300);
+    });
+
+    function selectItem(title) {
+        const form = document.createElement('form'); form.method = 'POST'; form.action = "{{ url_for('review_history') }}";
+        const input = document.createElement('input'); input.type = 'hidden'; input.name = 'manual_query'; input.value = title;
+        const typeInput = document.createElement('input'); typeInput.type = 'hidden'; typeInput.name = 'media_type'; typeInput.value = 'movie';
+        form.appendChild(input); form.appendChild(typeInput); document.body.appendChild(form); form.submit();
+    }
+    document.addEventListener('click', function(e) { if (!searchInput.contains(e.target) && !resultsDiv.contains(e.target)) { resultsDiv.style.display = 'none'; } });
+</script>
+
+<style>
+.scroller::-webkit-scrollbar { height: 8px; }
+.scroller::-webkit-scrollbar-track { background: #222; border-radius: 4px; }
+.scroller::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
+.scroller::-webkit-scrollbar-thumb:hover { background: var(--accent-color); }
+</style>
+{% endblock %}

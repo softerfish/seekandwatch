@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block content %}
+<div style="max-width: 800px; margin: 0 auto; text-align: center;">
+    <h2>⚙️ Settings</h2>
+</div>
+
+<form method="POST" style="max-width: 600px; margin: 0 auto;">
+    
+    <div class="card" style="border-top: 4px solid #e5a00d;">
+        <h3>Plex Connection</h3>
+        
+        <details style="margin-bottom: 20px; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 5px; text-align: left;">
+            <summary style="cursor: pointer; color: var(--accent-color); font-weight: bold;">❓ How to find your URL & Token</summary>
+            <ol style="margin-top: 10px; padding-left: 20px; font-size: 0.9em; color: #ccc; line-height: 1.6;">
+                <li><b>URL:</b> This is your server's local IP address. 
+                    <br><i>Example:</i> <code>http://192.168.1.50:32400</code>
+                </li>
+                <li><b>Token:</b>
+                    <ul>
+                        <li>Open Plex Web and click on any Movie or Episode.</li>
+                        <li>Click the 3 dots (⋮) &rarr; <b>Get Info</b> &rarr; <b>View XML</b>.</li>
+                        <li>Look at the URL bar of the new tab. The token is at the very end: <code>X-Plex-Token=xyz...</code></li>
+                    </ul>
+                </li>
+            </ol>
+        </details>
+
+        <label><b>Plex URL</b></label>
+        <p style="font-size: 0.8em; color: #888; margin-bottom: 5px;">
+            Enter your internal IP. <span style="color: #2ecc71;">Note: No trailing slash needed (we will auto-remove it if you paste one).</span>
+        </p>
+        <input type="text" name="plex_url" value="{{ settings.plex_url or '' }}" placeholder="http://192.168.1.50:32400" style="width: 100%;">
+        
+        <label style="margin-top: 15px; display: block;"><b>Plex Token</b></label>
+        <input type="text" name="plex_token" value="{{ settings.plex_token or '' }}" style="width: 100%;">
+        
+        {% if plex_users %}
+        <div style="margin-top: 20px; background: var(--input-bg); padding: 15px; border-radius: 5px;">
+            <b style="color: #e5a00d; display: block; margin-bottom: 10px;">🛡️ Profiles to Ignore:</b>
+            <p style="font-size: 0.8em; color: #888; margin-bottom: 10px;">Check the profiles whose history you do NOT want to see.</p>
+            {% for plex_user in plex_users %}
+            <div style="margin-top: 5px; text-align: left;">
+                <input type="checkbox" name="ignored_plex_users" value="{{ plex_user }}" id="user-{{ loop.index }}" 
+                       {% if plex_user in current_ignored %}checked{% endif %}>
+                <label for="user-{{ loop.index }}" style="margin-left: 5px; cursor: pointer;">{{ plex_user }}</label>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="card" style="border-top: 4px solid #01d277;">
+        <h3>TMDB Configuration</h3>
+        
+        <details style="margin-bottom: 20px; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 5px; text-align: left;">
+            <summary style="cursor: pointer; color: #01d277; font-weight: bold;">❓ How to get a free API Key</summary>
+            <ol style="margin-top: 10px; padding-left: 20px; font-size: 0.9em; color: #ccc; line-height: 1.6;">
+                <li>Login or Sign up at <a href="https://www.themoviedb.org/" target="_blank" style="color:#01d277;">TheMovieDB.org</a>.</li>
+                <li>Click your avatar &rarr; <b>Settings</b> &rarr; <b>API</b>.</li>
+                <li>Click <b>Create</b> and select <b>"Developer"</b>.</li>
+                <li>Accept terms. Fill out the form (use "Personal Project" / "N/A" for URL).</li>
+                <li>Copy the <b>"API Key (v3 auth)"</b>.</li>
+            </ol>
+        </details>
+        
+        <label><b>API Key (v3 Auth)</b></label>
+        <input type="text" name="tmdb_key" value="{{ settings.tmdb_key or '' }}" style="width: 100%;">
+        
+        <label style="margin-top: 15px; display: block;"><b>Streaming Regions</b></label>
+        <p style="font-size: 0.8em; color: #888;">Comma separated (e.g. US, CA, GB). We will show providers for ALL selected regions.</p>
+        <input type="text" name="tmdb_region" value="{{ settings.tmdb_region or 'US' }}" style="width: 100%;" placeholder="US, CA">
+
+        <details style="margin-top: 10px; font-size: 0.9em; color: #aaa; text-align: left;">
+            <summary style="cursor: pointer;">See common country codes</summary>
+            <ul style="margin-top: 5px; list-style: none; padding-left: 10px;">
+                <li>🇺🇸 <b>US</b> - United States</li>
+                <li>🇨🇦 <b>CA</b> - Canada</li>
+                <li>🇬🇧 <b>GB</b> - United Kingdom</li>
+                <li>🇦🇺 <b>AU</b> - Australia</li>
+                <li>🇩🇪 <b>DE</b> - Germany</li>
+                <li>🇫🇷 <b>FR</b> - France</li>
+                <li>🇮🇳 <b>IN</b> - India</li>
+                <li>🇯🇵 <b>JP</b> - Japan</li>
+            </ul>
+        </details>
+    </div>
+
+    <div class="card" style="border-top: 4px solid #5c6bc0;">
+        <h3>Overseerr</h3>
+        
+        <label><b>Overseerr URL</b></label>
+        <p style="font-size: 0.8em; color: #888; margin-bottom: 5px;">Example: <code style="background:#333; padding:2px;">http://192.168.1.50:5055</code></p>
+        <input type="text" name="overseerr_url" value="{{ settings.overseerr_url or '' }}" style="width: 100%;">
+        
+        <label style="margin-top: 15px; display: block;">API Key</label>
+        <p style="font-size: 0.8em; color: #888; margin-bottom: 5px;">Found in <b>Settings</b> &rarr; <b>General</b> (at the top).</p>
+        <input type="text" name="overseerr_api_key" value="{{ settings.overseerr_api_key or '' }}" style="width: 100%;">
+    </div>
+	
+<div class="card" style="border-top: 4px solid #e5a00d;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <h3 style="margin: 0;">Tautulli Integration</h3>
+            <span style="font-size: 1.5em;">📊</span>
+        </div>
+
+        <label style="font-weight: 600; display: block; margin-bottom: 5px;">Tautulli URL</label>
+        <p style="font-size: 0.85em; color: #888; margin-top: 0; margin-bottom: 8px;">
+            The internal IP address of your Tautulli server. <br>
+            <span style="color: #e74c3c;">⚠️ Do not use 'localhost'</span>. Use your Unraid IP (e.g., <code>http://192.168.1.50:8181</code>).
+        </p>
+        <input type="text" name="tautulli_url" value="{{ settings.tautulli_url or '' }}" placeholder="http://192.168.1.50:8181" style="width: 100%; margin-bottom: 20px;">
+        
+        <label style="font-weight: 600; display: block; margin-bottom: 5px;">API Key</label>
+        
+        <details style="margin-bottom: 10px; background: #252525; border-radius: 6px; border: 1px solid #333;">
+            <summary style="padding: 10px; cursor: pointer; font-size: 0.9em; color: var(--accent-color); font-weight: 600; outline: none;">
+                ❓ Where do I find my API Key?
+            </summary>
+            <div style="padding: 15px; border-top: 1px solid #333; font-size: 0.9em; color: #ccc; line-height: 1.6;">
+                <ol style="margin: 0; padding-left: 20px;">
+                    <li>Open your <strong>Tautulli</strong> dashboard.</li>
+                    <li>Click the <strong>Settings</strong> (Gear Icon) in the top right.</li>
+                    <li>Scroll down the sidebar and click on <strong>Web Interface</strong>.</li>
+                    <li>Scroll all the way to the bottom of the page.</li>
+                    <li>Look for the <strong>API Key</strong> section. Copy that long string.</li>
+                </ol>
+            </div>
+        </details>
+
+        <input type="text" name="tautulli_api_key" value="{{ settings.tautulli_api_key or '' }}" placeholder="e.g. 8f4a9c2b..." style="width: 100%;">
+    </div>
+	
+    <button type="submit" style="width: 100%; padding: 15px; margin-top: 10px; background: var(--accent-color); color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer;">Save Settings 💾</button>
+</form>
+{% endblock %}

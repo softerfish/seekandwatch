@@ -1,0 +1,244 @@
+{% extends "base.html" %}
+{% block content %}
+<div style="max-width: 1200px; margin: 0 auto; padding-bottom: 80px;">
+    <h2>🎯 Recommended for You</h2>
+
+    <div class="grid" id="resultsGrid"></div>
+    
+    <div style="text-align: center; margin-top: 40px;">
+        <button id="loadMoreBtn" onclick="loadMore()" style="background: var(--card-bg); border: 1px solid var(--border-color); color: var(--text-color); padding: 15px 40px; font-size: 1.1em; border-radius: 30px; cursor: pointer; transition: transform 0.2s;">
+            Load More Results ⬇️
+        </button>
+    </div>
+</div>
+
+<div id="actionBar" style="position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--card-bg); padding: 15px 30px; border-radius: 50px; box-shadow: 0 10px 30px rgba(0,0,0,0.8); display: none; align-items: center; gap: 20px; z-index: 100; border: 1px solid var(--border-color);">
+    <span style="font-weight: bold; color: var(--text-color);"><span id="selCount">0</span> items selected</span>
+    <button onclick="requestBatch()" style="background: #2ecc71; color: white; padding: 10px 20px; border-radius: 20px; font-weight: bold; border: none; cursor: pointer;">Request All ✅</button>
+</div>
+
+<div id="trailerModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 1000; justify-content: center; align-items: center;">
+    <div style="position: relative; width: 80%; max-width: 900px; aspect-ratio: 16/9; background: black;">
+        <button onclick="closeTrailer()" style="position: absolute; top: -40px; right: 0; background: none; color: white; font-size: 2em; cursor: pointer; border: none;">&times;</button>
+        <iframe id="trailerFrame" width="100%" height="100%" frameborder="0" allowfullscreen></iframe>
+    </div>
+</div>
+
+<script>
+let currentPage = 1;
+
+// Load first page immediately on load
+document.addEventListener('DOMContentLoaded', () => loadMore());
+
+/**
+ * Fetches the next page of recommendations from the server
+ */
+function loadMore() {
+    const btn = document.getElementById('loadMoreBtn');
+    btn.innerText = "Loading...";
+    btn.disabled = true;
+    
+    fetch(`/load_more_recs?page=${currentPage}`)
+        .then(res => res.json())
+        .then(data => {
+            if(data.length === 0) {
+                btn.innerText = "No more results";
+                // Keep disabled
+                return;
+            }
+            renderCards(data);
+            currentPage++;
+            btn.innerText = "Load More Results ⬇️";
+            btn.disabled = false;
+        })
+        .catch(e => {
+            console.error(e);
+            btn.innerText = "Error loading results";
+        });
+}
+
+/**
+ * Generates HTML for movie cards and appends them to the grid
+ */
+function renderCards(movies) {
+    const grid = document.getElementById('resultsGrid');
+    
+    movies.forEach(movie => {
+        const div = document.createElement('div');
+        div.className = 'movie-card';
+        div.id = `card-${movie.tmdb_id}`;
+        
+        div.innerHTML = `
+            <div style="position: relative;">
+                <img src="https://image.tmdb.org/t/p/w500${movie.poster_path}" alt="${movie.title}" style="width: 100%; display: block; border-bottom: 1px solid var(--border-color);">
+                <div style="position: absolute; top: 10px; left: 10px; z-index: 10;">
+                    <input type="checkbox" class="multi-select-box" value="${movie.tmdb_id}" data-type="${movie.media_type}" onchange="updateBatchUI()" style="width: 25px; height: 25px; cursor: pointer;">
+                </div>
+            </div>
+            
+            <div style="padding: 15px;">
+                <h3 style="margin: 0; font-size: 1.1em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                    ${movie.title} <span style="font-weight: normal; color: #888;">(${movie.date})</span>
+                </h3>
+                
+                <div style="color: var(--accent-color); font-weight: bold; font-size: 0.9em; margin-bottom: 10px;">
+                    ⭐ ${movie.rating.toFixed(1)}/10
+                </div>
+                
+                <div id="meta-${movie.tmdb_id}" style="min-height: 45px; margin-bottom: 10px; font-size: 0.85em; color: #aaa;">
+                    Loading info...
+                </div>
+
+                <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                    <button onclick="openTrailer('${movie.title.replace(/'/g, "\\'")}', '${movie.media_type}')" style="flex:1; background:var(--input-bg); color:var(--text-color); padding:8px; border: 1px solid var(--border-color); border-radius: 5px; cursor: pointer;">📺 Trailer</button>
+                    <a href="https://www.themoviedb.org/${movie.media_type}/${movie.tmdb_id}" target="_blank" style="flex:1; background:var(--input-bg); color:var(--text-color); text-align:center; padding:8px; text-decoration:none; border-radius:5px; border: 1px solid var(--border-color);">🔍 Info</a>
+                </div>
+                
+                <p style="font-size: 0.85em; color: #888; line-height: 1.4; height: 4.2em; overflow: hidden; margin-bottom: 15px;">
+                    ${movie.overview}
+                </p>
+                
+                <div style="display: flex; gap: 8px;">
+                    <button class="req-btn" onclick="requestSingle(this, '${movie.media_type}', '${movie.tmdb_id}')" style="flex: 2; background: #2ecc71; color: white; padding: 10px; border: none; border-radius: 5px; font-weight: bold; cursor: pointer;">Request</button>
+                    <button onclick="blockItem('${movie.title.replace(/'/g, "\\'")}', '${movie.media_type}', '${movie.tmdb_id}')" style="flex: 1; background: #e74c3c; color: white; border: none; border-radius: 5px; cursor: pointer;">🚫</button>
+                </div>
+            </div>
+        `;
+        grid.appendChild(div);
+        
+        // Asynchronously fetch extra data (Cast + Streaming)
+        fetchMetadata(movie.media_type, movie.tmdb_id);
+    });
+}
+
+/**
+ * Fetches Cast and Streaming Provider info for a specific card
+ */
+function fetchMetadata(type, id) {
+    fetch(`/get_metadata/${type}/${id}`)
+        .then(res => res.json())
+        .then(data => {
+            const container = document.getElementById(`meta-${id}`);
+            let html = '';
+            
+            // 1. Cast
+            if(data.cast && data.cast.length > 0) {
+                html += `<div style="margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                            🎭 ${data.cast.join(', ')}
+                         </div>`;
+            }
+            
+            // 2. Providers
+            if(data.providers && data.providers.length > 0) {
+                html += '<div style="display:flex; gap:6px; align-items:center;">📺 ';
+                data.providers.forEach(p => {
+                    html += `<img src="https://image.tmdb.org/t/p/original${p.logo}" title="${p.name}" style="width:24px; height:24px; border-radius:4px;">`;
+                });
+                html += '</div>';
+            } else {
+                html += '<div style="color: #666; font-style: italic;">Not streaming currently</div>';
+            }
+            
+            container.innerHTML = html;
+        })
+        .catch(() => {
+            document.getElementById(`meta-${id}`).innerHTML = '';
+        });
+}
+
+// --- BATCH REQUEST UI ---
+function updateBatchUI() {
+    const count = document.querySelectorAll('.multi-select-box:checked').length;
+    document.getElementById('selCount').innerText = count;
+    document.getElementById('actionBar').style.display = count > 0 ? 'flex' : 'none';
+}
+
+function requestBatch() {
+    const selected = [];
+    document.querySelectorAll('.multi-select-box:checked').forEach(cb => {
+        selected.push({ tmdb_id: cb.value, media_type: cb.dataset.type });
+    });
+    
+    const btn = document.querySelector('#actionBar button');
+    btn.innerText = "Processing...";
+    btn.disabled = true;
+    
+    fetch('/request_media', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ items: selected })
+    }).then(res => res.json()).then(data => {
+        alert(`Successfully requested ${data.count} items!`);
+        window.location.reload();
+    });
+}
+
+// --- SINGLE REQUEST ---
+function requestSingle(btn, type, id) {
+    btn.disabled = true; btn.innerText = "⌛";
+    fetch('/request_media', { method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ media_type: type, tmdb_id: id })
+    }).then(res => res.json()).then(data => {
+        if(data.status === 'success') { 
+            btn.innerText = "✅"; 
+            btn.style.background = "#27ae60"; 
+        } else { 
+            alert("Error: " + data.message); 
+            btn.disabled = false; 
+            btn.innerText = "Request"; 
+        }
+    });
+}
+
+// --- MODAL LOGIC ---
+function openTrailer(title, type) {
+    const modal = document.getElementById('trailerModal');
+    const iframe = document.getElementById('trailerFrame');
+    // Sanitize title for URL
+    const query = encodeURIComponent(title + " " + type + " trailer");
+    iframe.src = `https://www.youtube.com/embed?listType=search&list=${query}`;
+    modal.style.display = 'flex';
+}
+
+function closeTrailer() {
+    document.getElementById('trailerModal').style.display = 'none';
+    document.getElementById('trailerFrame').src = "";
+}
+
+function blockItem(title, type, id) {
+    if(!confirm(`Hide "${title}" from future results?`)) return;
+    
+    fetch('/block_movie', { method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ title: title, media_type: type })
+    }).then(res => { 
+        if(res.ok) {
+            const card = document.getElementById(`card-${id}`);
+            card.style.transition = 'all 0.5s';
+            card.style.opacity = '0';
+            card.style.transform = 'scale(0.8)';
+            setTimeout(() => card.remove(), 500);
+        }
+    });
+}
+</script>
+
+<style>
+.grid { 
+    display: grid; 
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); 
+    gap: 25px; 
+}
+.movie-card { 
+    background: var(--card-bg); 
+    border-radius: 12px; 
+    border: 1px solid var(--border-color); 
+    transition: transform 0.2s, box-shadow 0.2s; 
+    overflow: hidden; 
+}
+.movie-card:hover { 
+    transform: translateY(-5px); 
+    border-color: var(--accent-color); 
+    box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+}
+</style>
+{% endblock %}
