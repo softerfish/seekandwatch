@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>SeekAndWatch</Name>
+  <Repository>your_dockerhub_username/seekandwatch</Repository>
+  <Registry>https://hub.docker.com/r/your_dockerhub_username/seekandwatch</Registry>
+  <Network>bridge</Network>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/your_github_username/seekandwatch/issues</Support>
+  <Project>https://github.com/your_github_username/seekandwatch</Project>
+  <Overview>
+    SeekAndWatch is a smart discovery engine for your media server.
+    It scans your Plex history (or takes manual search inputs) and generates tailored recommendations using TMDB data. 
+    Features: Manual Search, Blocklists, Genre Filtering, Trailers, and one-click Requests via Overseerr.
+  </Overview>
+  <Category>MediaApp:Other Tools:Utilities</Category>
+  <WebUI>http://[IP]:[PORT:5000]</WebUI>
+  <Icon>https://raw.githubusercontent.com/plexinc/plex-media-player/master/resources/images/icon-512.png</Icon>
+  
+  <Config Name="Web Port" Target="5000" Default="5000" Mode="tcp" Description="The Web UI Port" Type="Port" Display="always" Required="true" Mask="false">5000</Config>
+  
+  <Config Name="App Data" Target="/config" Default="/mnt/user/appdata/seekandwatch" Mode="rw" Description="Stores the database and settings" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/seekandwatch</Config>
+  
+  <Config Name="PUID" Target="PUID" Default="99" Description="Container User ID" Type="Variable" Display="advanced" Required="false" Mask="false">99</Config>
+  <Config Name="PGID" Target="PGID" Default="100" Description="Container Group ID" Type="Variable" Display="advanced" Required="false" Mask="false">100</Config>
+</Container>
