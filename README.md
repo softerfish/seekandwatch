@@ -16,7 +16,7 @@ It solves the "What do we watch?" problem by combining deep taste analysis with 
 
 📊 Tautulli Power-Ups: Embeds your server stats directly in the dashboard. Visualize trends, top users, and play counts without switching apps.
 
-⚡ Actionable Recommendations: Don't just find a movie—request it. Fully integrated with Overseerr & Jellyseerr for instant one-click downloads.
+⚡ Actionable Recommendations: Don't just find a movie —> request it. Fully integrated with Overseerr & Jellyseerr for instant one-click downloads.
 
 🕵️‍♂️ Advanced Filtering: Filter recommendations by what's actually available on your streaming services (Netflix, Disney+, etc.), specific genres, or minimum ratings.
 
