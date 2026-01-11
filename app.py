@@ -14,6 +14,11 @@ from models import db, User, Settings, Blocklist
 # 1. APPLICATION CONFIGURATION
 # ==================================================================================
 
+# --- UPDATE CHECK CONFIGURATION ---
+VERSION = "1.0.0"
+GITHUB_RAW_URL = "https://raw.githubusercontent.com/softerfish/seekandwatch/main/app.py"
+# ----------------------------------
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'debug_secret_key_123'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////config/site.db'
@@ -57,6 +62,20 @@ def send_overseerr_request(settings, media_type, tmdb_id, user_id):
         return resp.status_code in [200, 201, 409]
     except: return False
 
+def check_for_updates():
+    try:
+        response = requests.get(GITHUB_RAW_URL, timeout=2)
+        if response.status_code == 200:
+            # Look for VERSION = "x.x.x" in the raw text
+            match = re.search(r'VERSION\s*=\s*"([\d\.]+)"', response.text)
+            if match:
+                remote_version = match.group(1)
+                if remote_version != VERSION:
+                    return remote_version
+    except:
+        pass 
+    return None
+
 # ==================================================================================
 # 3. ROUTES
 # ==================================================================================
@@ -74,7 +93,10 @@ def dashboard():
         except Exception as e:
             print(f"Dashboard Plex Error: {e}", flush=True)
 
-    return render_template('dashboard.html', recent_media=recent_media)
+    # Check for update
+    new_version = check_for_updates()
+
+    return render_template('dashboard.html', recent_media=recent_media, new_version=new_version)
 
 @app.route('/settings', methods=['GET', 'POST'])
 @login_required
