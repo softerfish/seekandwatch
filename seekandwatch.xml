@@ -1,13 +1,13 @@
 <?xml version="1.0"?>
 <Container version="2">
   <Name>SeekAndWatch</Name>
-  <Repository>your_dockerhub_username/seekandwatch</Repository>
-  <Registry>https://hub.docker.com/r/your_dockerhub_username/seekandwatch</Registry>
+  <Repository>softerfish/seekandwatch</Repository>
+  <Registry>https://hub.docker.com/r/softerfish/seekandwatch</Registry>
   <Network>bridge</Network>
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
-  <Support>https://github.com/your_github_username/seekandwatch/issues</Support>
-  <Project>https://github.com/your_github_username/seekandwatch</Project>
+  <Support>https://github.com/softerfish/seekandwatch/issues</Support>
+  <Project>https://github.com/softerfish/seekandwatch</Project>
   <Overview>
     SeekAndWatch is a smart discovery engine for your media server.
     It scans your Plex history (or takes manual search inputs) and generates tailored recommendations using TMDB data. 
