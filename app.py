@@ -15,7 +15,7 @@ from models import db, User, Settings, Blocklist
 # ==================================================================================
 
 # --- UPDATE CHECK CONFIGURATION ---
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 GITHUB_RAW_URL = "https://raw.githubusercontent.com/softerfish/seekandwatch/main/app.py"
 # ----------------------------------
 
@@ -94,7 +94,19 @@ def dashboard():
             plex = PlexServer(current_user.settings.plex_url, current_user.settings.plex_token)
             for item in plex.library.recentlyAdded()[:10]:
                 thumb = f"{current_user.settings.plex_url}{item.thumb}?X-Plex-Token={current_user.settings.plex_token}" if item.thumb else ""
-                recent_media.append({'title': item.title, 'type': item.type, 'year': item.year, 'thumb': thumb})
+                
+                # === FIX: Handle missing years (e.g. Seasons showing "None") ===
+                year = item.year
+                if not year:
+                    if hasattr(item, 'parentYear') and item.parentYear:
+                        year = item.parentYear
+                    elif hasattr(item, 'grandparentYear') and item.grandparentYear:
+                        year = item.grandparentYear
+                
+                final_year = str(year) if year else ""
+                # ===============================================================
+
+                recent_media.append({'title': item.title, 'type': item.type, 'year': final_year, 'thumb': thumb})
         except Exception as e:
             print(f"Dashboard Plex Error: {e}", flush=True)
 
