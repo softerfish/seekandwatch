@@ -10,7 +10,7 @@ SeekAndWatch is a powerful, self-hosted discovery and analytics dashboard. It do
 
 It solves the "What do we watch?" problem by combining deep taste analysis with powerful filtering (streaming services, genres, ratings) and one-click requesting.
 
-✨ Why use this?
+## ✨ Why use this?
 - 🧠 Deep Context Awareness: Scans your last 500 Plex history items (movies or TV) to build a real-time taste profile.
 - 📊 Tautulli Power-Ups: Embeds your server stats directly in the dashboard. Visualize trends, top users, and play counts without switching apps.
 - ⚡ Actionable Recommendations: Don't just find a movie —> request it. Fully integrated with Overseerr & Jellyseerr for instant one-click downloads.
