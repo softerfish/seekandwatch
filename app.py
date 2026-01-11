@@ -15,7 +15,7 @@ from models import db, User, Settings, Blocklist
 # ==================================================================================
 
 # --- UPDATE CHECK CONFIGURATION ---
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 GITHUB_RAW_URL = "https://raw.githubusercontent.com/softerfish/seekandwatch/main/app.py"
 # ----------------------------------
 
@@ -410,4 +410,5 @@ with app.app_context():
 if __name__ == '__main__':
     # Try to find a 'PORT' environment variable, otherwise default to 5000
     port = int(os.environ.get('PORT', 5000))
+
     app.run(debug=True, host='0.0.0.0', port=port)
