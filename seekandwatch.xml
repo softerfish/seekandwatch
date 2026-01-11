@@ -2,7 +2,8 @@
 <Container version="2">
   <Name>SeekAndWatch</Name>
   <Repository>softerfish/seekandwatch:latest</Repository>
-  <Registry>https://hub.docker.com/r/softerfish/seekandwatch</Registry>
+  <Repository>ghcr.io/softerfish/seekandwatch:latest</Repository>
+  <Registry>https://ghcr.io/softerfish/seekandwatch</Registry>
   <Network>bridge</Network>
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
@@ -23,4 +24,4 @@
   
   <Config Name="PUID" Target="PUID" Default="99" Description="Container User ID" Type="Variable" Display="advanced" Required="false" Mask="false">99</Config>
   <Config Name="PGID" Target="PGID" Default="100" Description="Container Group ID" Type="Variable" Display="advanced" Required="false" Mask="false">100</Config>
-</Container>
+</Container></Container>
