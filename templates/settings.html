@@ -1,5 +1,34 @@
 {% extends "base.html" %}
 {% block content %}
+
+<style>
+    .input-wrapper {
+        position: relative;
+        width: 100%;
+        display: flex;
+        align-items: center;
+    }
+    .input-wrapper input {
+        width: 100%;
+        padding-right: 45px; /* Make room for the button */
+    }
+    .toggle-btn {
+        position: absolute;
+        right: 5px;
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        font-size: 1.2em;
+        opacity: 0.6;
+        padding: 5px;
+        z-index: 10;
+    }
+    .toggle-btn:hover {
+        opacity: 1;
+        color: var(--accent-color);
+    }
+</style>
+
 <div style="max-width: 800px; margin: 0 auto; text-align: center;">
     <h2>⚙️ Settings</h2>
 </div>
@@ -32,7 +61,10 @@
         <input type="text" name="plex_url" value="{{ settings.plex_url or '' }}" placeholder="http://192.168.1.50:32400" style="width: 100%;">
         
         <label style="margin-top: 15px; display: block;"><b>Plex Token</b></label>
-        <input type="text" name="plex_token" value="{{ settings.plex_token or '' }}" style="width: 100%;">
+        <div class="input-wrapper">
+            <input type="password" id="plex_token" name="plex_token" value="{{ settings.plex_token or '' }}">
+            <button type="button" class="toggle-btn" onclick="togglePassword('plex_token', this)">👁️</button>
+        </div>
         
         {% if plex_users %}
         <div style="margin-top: 20px; background: var(--input-bg); padding: 15px; border-radius: 5px;">
@@ -64,7 +96,10 @@
         </details>
         
         <label><b>API Key (v3 Auth)</b></label>
-        <input type="text" name="tmdb_key" value="{{ settings.tmdb_key or '' }}" style="width: 100%;">
+        <div class="input-wrapper">
+            <input type="password" id="tmdb_key" name="tmdb_key" value="{{ settings.tmdb_key or '' }}">
+            <button type="button" class="toggle-btn" onclick="togglePassword('tmdb_key', this)">👁️</button>
+        </div>
         
         <label style="margin-top: 15px; display: block;"><b>Streaming Regions</b></label>
         <p style="font-size: 0.8em; color: #888;">Comma separated (e.g. US, CA, GB). We will show providers for ALL selected regions.</p>
@@ -94,10 +129,13 @@
         
         <label style="margin-top: 15px; display: block;">API Key</label>
         <p style="font-size: 0.8em; color: #888; margin-bottom: 5px;">Found in <b>Settings</b> &rarr; <b>General</b> (at the top).</p>
-        <input type="text" name="overseerr_api_key" value="{{ settings.overseerr_api_key or '' }}" style="width: 100%;">
+        <div class="input-wrapper">
+            <input type="password" id="overseerr_api_key" name="overseerr_api_key" value="{{ settings.overseerr_api_key or '' }}">
+            <button type="button" class="toggle-btn" onclick="togglePassword('overseerr_api_key', this)">👁️</button>
+        </div>
     </div>
-	
-<div class="card" style="border-top: 4px solid #e5a00d;">
+    
+    <div class="card" style="border-top: 4px solid #e5a00d;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
             <h3 style="margin: 0;">Tautulli Integration</h3>
             <span style="font-size: 1.5em;">📊</span>
@@ -127,9 +165,25 @@
             </div>
         </details>
 
-        <input type="text" name="tautulli_api_key" value="{{ settings.tautulli_api_key or '' }}" placeholder="e.g. 8f4a9c2b..." style="width: 100%;">
+        <div class="input-wrapper">
+            <input type="password" id="tautulli_api_key" name="tautulli_api_key" value="{{ settings.tautulli_api_key or '' }}" placeholder="e.g. 8f4a9c2b...">
+            <button type="button" class="toggle-btn" onclick="togglePassword('tautulli_api_key', this)">👁️</button>
+        </div>
     </div>
-	
+    
     <button type="submit" style="width: 100%; padding: 15px; margin-top: 10px; background: var(--accent-color); color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer;">Save Settings 💾</button>
 </form>
+
+<script>
+    function togglePassword(inputId, btn) {
+        const input = document.getElementById(inputId);
+        if (input.type === "password") {
+            input.type = "text";
+            btn.innerText = "🔒"; // Change icon to lock when visible
+        } else {
+            input.type = "password";
+            btn.innerText = "👁️"; // Change icon to eye when hidden
+        }
+    }
+</script>
 {% endblock %}
