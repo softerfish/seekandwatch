@@ -1,6 +1,12 @@
 {% extends "base.html" %}
 
 {% block content %}
+{% if new_version %}
+<div style="background: linear-gradient(45deg, #e5a00d, #f1c40f); color: black; padding: 15px; margin-bottom: 30px; border-radius: 8px; text-align: center; font-weight: bold; box-shadow: 0 4px 15px rgba(229, 160, 13, 0.3); border: 1px solid #d48e00;">
+    🚀 Update Available! Version {{ new_version }} is released.
+    <a href="https://github.com/softerfish/seekandwatch" target="_blank" style="color: black; text-decoration: underline; margin-left: 10px;">View on GitHub</a>
+</div>
+{% endif %}
 <div style="text-align: center; padding-top: 20px;">
 
     {% if recent_media %}
