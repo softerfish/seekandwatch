@@ -35,14 +35,11 @@ def get_stable_secret_key():
         return os.environ.get('SECRET_KEY')
     
     # 2. Generate a stable key from the container's hostname
-    # In Docker, hostname is the container ID (e.g., 'a1b2c3d4e5f6')
-    # This is identical for all workers and persists until container destruction.
     try:
         container_id = socket.gethostname()
         secret_src = f"{container_id}-seekandwatch-secure-salt"
         return hashlib.sha256(secret_src.encode()).hexdigest()
     except Exception:
-        # Absolute fallback if system calls fail
         return 'fallback-static-key-ensure-login-works'
 
 class Config:
@@ -440,11 +437,19 @@ def playlists():
 def manage_blocklist():
     return render_template('blocklist.html', blocks=Blocklist.query.filter_by(user_id=current_user.id).all())
 
+# --- STATS ROUTE (UPDATED) ---
 @app.route('/stats')
 @login_required
 def stats():
     s = current_user.settings
-    has_tautulli = bool(s.tautulli_url and s.tautulli_api_key)
+    
+    # Check if Tautulli details are missing
+    if not s.tautulli_url or not s.tautulli_api_key:
+        flash("⚠️ Access Denied: Please configure Tautulli details in Settings first.", "error")
+        return redirect(url_for('settings'))
+    
+    # If present, allow access
+    has_tautulli = True
     return render_template('stats.html', has_tautulli=has_tautulli, tautulli_active=has_tautulli)
 
 @app.route('/register', methods=['GET', 'POST'])
