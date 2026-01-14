@@ -6,31 +6,6 @@ import random
 import json
 import datetime
 import threading
-import sqlalchemy
-from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
-from werkzeug.security import generate_password_hash, check_password_hash
-from flask_login import LoginManager, login_user, login_required, logout_user, current_user
-from flask_apscheduler import APScheduler
-from plexapi.server import PlexServer
-from models import db, User, Settings, Blocklist, CollectionSchedule, SystemLog, TmdbAlias
-from presets import PLAYLIST_PRESETS
-from utils import normalize_title, is_duplicate, check_for_updates, fetch_omdb_ratings, send_overseerr_request, handle_lucky_mode, run_collection_logic, create_backup, prune_backups, refresh_plex_cache, CACHE_FILE, is_system_locked, get_lock_status, write_log, sync_remote_aliases
-
-# ==================================================================================
-# 1. APPLICATION CONFIGURATION
-# ==================================================================================
-
-VERSION = "1.0.0"
-GITHUB_RAW_URL = "https://raw.githubusercontent.com/softerfish/seekandwatch/main/app.py"
-
-import time
-import os
-import re
-import requests
-import random
-import json
-import datetime
-import threading
 import socket
 import hashlib
 import sqlalchemy
@@ -47,8 +22,8 @@ from utils import normalize_title, is_duplicate, check_for_updates, fetch_omdb_r
 # 1. APPLICATION CONFIGURATION
 # ==================================================================================
 
-VERSION = "1.0.1"
-GITHUB_RAW_URL = "https://gitlab.com/catchthis/seekandwatch/-/raw/main/app.py"
+VERSION = "1.0.0"
+GITHUB_RAW_URL = "https://raw.githubusercontent.com/softerfish/seekandwatch/main/app.py"
 
 def get_stable_secret_key():
     """
