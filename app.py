@@ -22,7 +22,7 @@ from utils import normalize_title, is_duplicate, check_for_updates, fetch_omdb_r
 # 1. APPLICATION CONFIGURATION
 # ==================================================================================
 
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 GITHUB_RAW_URL = "https://raw.githubusercontent.com/softerfish/seekandwatch/main/app.py"
 
 def get_stable_secret_key():
