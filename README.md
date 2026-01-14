@@ -1,5 +1,5 @@
 # 🚀 SeekAndWatch
-![Version](https://img.shields.io/badge/version-1.0.0-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) ![License](https://img.shields.io/badge/License-MIT-green.svg)
+![Version](https://img.shields.io/badge/version-1.0.1-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
 ⭐ **Show Your Support By Clicking The Star!**
 If SeekAndWatch has been helpful to you in any way, please consider giving this repository a star. Your gesture will greatly support our efforts and help others discover the project.
@@ -10,7 +10,7 @@ If SeekAndWatch has been helpful to you in any way, please consider giving this 
 
 ### Your Media Server's Command Center.
 
-SeekAndWatch is a powerful, self-hosted discovery and analytics dashboard that turns your passive library into an active experience. It doesn't just guess what you want to watch—it analyzes your actual Plex history, visualizes your habits with Tautulli, and lets you fill the gaps via Overseerr.
+SeekAndWatch is a powerful, self-hosted discovery and analytics dashboard that turns your passive library into an active experience. It doesn't just guess what you want to watch. It analyzes your actual Plex history, visualizes your habits with Tautulli, and lets you fill the gaps via Overseerr.
 
 It solves the "What do we watch?" problem by combining deep taste analysis with powerful filtering, automated collection management, and instant requesting.
 
