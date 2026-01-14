@@ -51,7 +51,17 @@
             </div>
         </div>
     </div>
-    {% else %}
+	{% else %}
+    <div style="text-align: center; padding: 50px; background: #222; border-radius: 10px; border: 1px solid #444; margin-top: 20px;">
+        <div style="font-size: 3em; margin-bottom: 20px;">🔌</div>
+        <h3 style="color: #fff;">Tautulli is Not Connected</h3>
+        <p style="color: #aaa; max-width: 500px; margin: 0 auto 20px auto;">
+            Connect your Tautulli server to view watch statistics, user trends, and library usage data directly in this dashboard.
+        </p>
+        <a href="{{ url_for('settings') }}">
+            <button class="btn-primary" style="padding: 12px 25px; font-size: 1em;">Go to Settings & Configure</button>
+        </a>
+    </div>
     {% endif %}
 
 </div>
