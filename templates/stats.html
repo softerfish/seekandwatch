@@ -4,7 +4,12 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <div class="container" style="max-width: 1200px; margin-top: 30px; text-align: center;">
-
+    <h2 style="display: flex; align-items: center; justify-content: center; gap: 15px;">
+        Tautulli Server Statistics
+        {% if tautulli_active %}
+            <span class="status-badge pulse-live" title="Live connection to Tautulli confirmed">📊</span>
+        {% endif %}
+    </h2>
     <h1 class="mb-4" style="font-weight: 800; font-size: 2.5em;">📊 Watch Statistics</h1>
 
     {% if has_tautulli %}

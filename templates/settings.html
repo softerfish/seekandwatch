@@ -1,189 +1,451 @@
 {% extends "base.html" %}
 {% block content %}
 
-<style>
-    .input-wrapper {
-        position: relative;
-        width: 100%;
-        display: flex;
-        align-items: center;
-    }
-    .input-wrapper input {
-        width: 100%;
-        padding-right: 45px; /* Make room for the button */
-    }
-    .toggle-btn {
-        position: absolute;
-        right: 5px;
-        background: transparent;
-        border: none;
-        cursor: pointer;
-        font-size: 1.2em;
-        opacity: 0.6;
-        padding: 5px;
-        z-index: 10;
-    }
-    .toggle-btn:hover {
-        opacity: 1;
-        color: var(--accent-color);
-    }
-</style>
+<div class="settings-container">
+    <div class="settings-header">
+        <h2>⚙️ System Configuration</h2>
+        <p class="text-muted">Manage connections to Plex, Metadata APIs, Overseerr, Tautulli, Backups, and Logs.</p>
+    </div>
 
-<div style="max-width: 800px; margin: 0 auto; text-align: center;">
-    <h2>⚙️ Settings</h2>
+    <div id="message-container"></div>
+
+    <form id="settings-form" action="{{ url_for('settings') }}" method="POST" autocomplete="off">
+        
+        <div class="card setting-card border-orange">
+            <h3>Plex Integration</h3>
+            
+            <details class="help-box">
+                <summary>❓ How to find your URL & Token</summary>
+                <ol>
+                    <li><b>URL:</b> Your server's local IP (e.g. <code>http://192.168.1.50:32400</code>).</li>
+                    <li><b>Token:</b> Open any media XML in Plex Web. Look for <code>X-Plex-Token=...</code> in the URL.</li>
+                </ol>
+            </details>
+
+            <div class="input-group">
+                <label class="input-label">Plex Local URL <span style="color: var(--error);">*Required</span></label>
+                <p class="helper-text">Do not use 'localhost'. Use your Unraid IP.</p>
+                <input type="text" id="plex_url" name="plex_url" value="{{ settings.plex_url or '' }}" 
+                       placeholder="http://192.168.1.50:32400" 
+                       autocomplete="off">
+            </div>
+
+            <div class="input-group">
+                <label class="input-label">Plex Token</label>
+                <div class="password-wrapper">
+                    <input type="password" id="plex_token" name="plex_token" value="{{ settings.plex_token or '' }}" 
+                           autocomplete="new-password">
+                    <button type="button" class="toggle-pass" onclick="toggleVisibility('plex_token', this)">👁️</button>
+                </div>
+            </div>
+
+            {% if plex_users %}
+            <div class="info-panel">
+                <label class="ignore-label">🛡️ Ignore History From:</label>
+                <div class="ignore-grid">
+                    {% for user in plex_users %}
+                    <label class="ignore-check-label">
+                        <input type="checkbox" name="ignored_plex_users" value="{{ user }}" {% if user in current_ignored %}checked{% endif %}>
+                        {{ user }}
+                    </label>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="card setting-card border-green">
+            <h3>Metadata APIs</h3>
+            
+            <details class="help-box">
+                <summary>❓ How to get a TMDB API Key</summary>
+                <ol>
+                    <li>Create a free account at <a href="https://www.themoviedb.org/signup" target="_blank" style="color:var(--accent-color);">themoviedb.org</a>.</li>
+                    <li>Go to <b>Settings</b> > <b>API</b> in your profile.</li>
+                    <li>Click <b>Create</b> and choose "Developer".</li>
+                    <li>Accept the terms and fill in the application form (URL can be "N/A").</li>
+                    <li>Copy the <b>"API Key (v3 auth)"</b>.</li>
+                </ol>
+            </details>
+
+            <div class="input-group">
+                <label class="input-label">TMDB API Key (v3) <span style="color: var(--error);">*Required</span></label>
+                <div class="password-wrapper">
+                    <input type="password" id="tmdb_key" name="tmdb_key" value="{{ settings.tmdb_key or '' }}" 
+                           autocomplete="new-password">
+                    <button type="button" class="toggle-pass" onclick="toggleVisibility('tmdb_key', this)">👁️</button>
+                </div>
+            </div>
+
+            <details class="help-box">
+                <summary>❓ How to get an OMDB Key & Limits</summary>
+                <ol>
+                    <li>Go to <a href="https://www.omdbapi.com/apikey.aspx" target="_blank" style="color:var(--accent-color);">omdbapi.com/apikey.aspx</a>.</li>
+                    <li>Select <b>FREE</b> (1,000 daily limit).</li>
+                    <li>Enter your email and name, then click Submit.</li>
+                    <li>Check your email to activate the key.</li>
+                </ol>
+                <div style="margin-top:10px; font-size:0.9em; color:#aaa;">
+                    <b>Limits:</b> The free key allows <b>1,000 requests per day</b>. This is usually enough for personal use unless you are scanning a massive library all at once.
+                </div>
+            </details>
+
+            <div class="input-group highlight-box green-dashed">
+                <label class="input-label">🍅 OMDB API Key (Critics Scores)</label>
+                <p class="helper-text">Required to filter by Rotten Tomatoes scores.</p>
+                <div class="password-wrapper">
+                    <input type="password" id="omdb_key" name="omdb_key" value="{{ settings.omdb_key or '' }}" 
+                           placeholder="xxxxxx" autocomplete="new-password">
+                    <button type="button" class="toggle-pass" onclick="toggleVisibility('omdb_key', this)">👁️</button>
+                </div>
+            </div>
+
+            <details class="help-box">
+                <summary>❓ What is this & How many can I add?</summary>
+                <ul style="padding-left: 20px; list-style-type: disc;">
+                    <li><b>Function:</b> This tells the app which country's streaming availability to check (e.g. Netflix US vs UK).</li>
+                    <li><b>Default:</b> If you leave this empty, it defaults to <b>US</b>. It does <b>not</b> check all countries.</li>
+                    <li><b>Recommendation:</b> You can add multiple codes (separated by commas), but we recommend sticking to <b>1–3 countries</b> (e.g., <code>US, CA</code>). Adding too many will significantly slow down the search results.</li>
+                </ul>
+            </details>
+
+            <div class="input-group">
+                <label class="input-label">Streaming Regions</label>
+                <p class="helper-text">Comma separated ISO codes (e.g. <code>US, CA, GB</code>).</p>
+                <input type="text" id="tmdb_region" name="tmdb_region" value="{{ settings.tmdb_region or 'US' }}" 
+                       placeholder="US, CA" autocomplete="off">
+            </div>
+        </div>
+
+        <div class="card setting-card border-purple">
+            <h3>Overseerr & Tautulli</h3>
+            
+            <div class="input-group">
+                <label class="input-label">Overseerr URL</label>
+                <input type="text" id="overseerr_url" name="overseerr_url" value="{{ settings.overseerr_url or '' }}" 
+                       placeholder="http://192.168.1.50:5055" autocomplete="off">
+            </div>
+            
+            <div class="input-group">
+                <label class="input-label">Overseerr API Key</label>
+                <div class="password-wrapper">
+                    <input type="password" id="overseerr_api_key" name="overseerr_api_key" value="{{ settings.overseerr_api_key or '' }}" 
+                           autocomplete="new-password">
+                    <button type="button" class="toggle-pass" onclick="toggleVisibility('overseerr_api_key', this)">👁️</button>
+                </div>
+            </div>
+
+            <hr style="border: 0; border-top: 1px solid #333; margin: 20px 0;">
+
+            <div class="input-group">
+                <label class="input-label">Tautulli URL</label>
+                <input type="text" id="tautulli_url" name="tautulli_url" value="{{ settings.tautulli_url or '' }}" 
+                       placeholder="http://192.168.1.50:8181" autocomplete="off">
+            </div>
+            
+            <div class="input-group">
+                <label class="input-label">Tautulli API Key</label>
+                <div class="password-wrapper">
+                    <input type="password" id="tautulli_api_key" name="tautulli_api_key" value="{{ settings.tautulli_api_key or '' }}" 
+                           autocomplete="new-password">
+                    <button type="button" class="toggle-pass" onclick="toggleVisibility('tautulli_api_key', this)">👁️</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card setting-card border-blue">
+            <h3>🖥️ System Maintenance</h3>
+            <p class="text-muted" style="margin-bottom:20px;">
+                Configure automatic backups, logs, and metadata matching.
+            </p>
+
+            <div class="flex-row-wrap">
+                <div class="input-group flex-item">
+                    <label class="input-label">Backup Interval (Days)</label>
+                    <p class="helper-text">How often to create a backup.</p>
+                    <input type="number" id="backup_interval" name="backup_interval" value="{{ settings.backup_interval or 2 }}" min="1">
+                </div>
+                <div class="input-group flex-item">
+                    <label class="input-label">Retention (Days)</label>
+                    <p class="helper-text">Delete backups older than X days.</p>
+                    <input type="number" id="backup_retention" name="backup_retention" value="{{ settings.backup_retention or 7 }}" min="1">
+                </div>
+            </div>
+
+            <hr style="border-color: #333; margin: 20px 0;">
+
+            <div class="input-group">
+                <label class="input-label">📜 Max Log Size (MB)</label>
+                <div style="display: flex; align-items: center; gap: 15px;">
+                    <input type="number" id="max_log_size" name="max_log_size" value="{{ settings.max_log_size }}" min="0" max="100" style="width: 100px;">
+                    <span style="font-size: 0.85em; color: #aaa;">(0 = Unlimited)</span>
+                </div>
+                
+                <div style="margin-top: 10px; background: rgba(231, 76, 60, 0.1); border-left: 3px solid #e74c3c; padding: 10px;">
+                    <small style="color: #ccc;">
+                        <b>Warning:</b> Setting this to 0 (Off) is allowed but <b>not recommended</b>. 
+                        If you experience a glitch, these logs are critical for troubleshooting. 
+                        The default of <b>5MB</b> is plenty for most users.
+                    </small>
+                </div>
+            </div>
+
+            <hr style="border-color: #333; margin: 20px 0;">
+
+            <div class="card mb-4 shadow-sm" style="border: 1px solid #444; background: #222;">
+                <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center" style="padding: 10px 15px; border-bottom: 1px solid #444;">
+                    <h4 class="mb-0" style="font-size: 1em; display:flex; align-items:center;">
+                        <span style="font-size:1.2em; margin-right:8px;">🌍</span> Community Alias Database
+                    </h4>
+                    <span class="badge bg-primary rounded-pill" id="aliasCountBadge" style="background:#007bff; color:white; padding:4px 10px; border-radius:15px; font-size:0.8em;">
+                        {{ alias_count }} Entries
+                    </span>
+                </div>
+                <div class="card-body" style="padding: 15px;">
+                    <div class="row align-items-center">
+                        <div class="col-md-8">
+                            <p class="card-text text-muted mb-2" style="color:#aaa; font-size:0.9em; margin-top:0;">
+                                <strong>What is this?</strong> This feature downloads a community-curated list of alternative titles to help SeekAndWatch match your requests correctly (e.g., matching "Zootropolis" to "Zootopia").
+                            </p>
+                            <p class="card-text text-muted mb-3" style="color:#777; font-size:0.85em;">
+                                <small>
+                                    <i class="fas fa-lock me-1"></i>
+                                    <strong>Privacy Note:</strong> This is a 100% one-way download. 
+                                    No data about your library, requests, or server is ever sent to SeekAndWatch.
+                                </small>
+                            </p>
+                        </div>
+                        <div class="col-md-4 text-end" style="text-align:right; margin-top:10px;">
+                            <button type="button" id="forceSyncBtn" class="btn btn-outline-primary" onclick="syncAliases()" style="background:transparent; border:1px solid #007bff; color:#007bff; padding:5px 15px; cursor:pointer; border-radius:4px;">
+                                Force Sync Now
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="margin-top:20px; border-top:1px solid #333; padding-top:20px;">
+                <div class="backup-controls">
+                    <h4 style="margin:0;">Existing Backups</h4>
+                    <button type="button" onclick="createBackup()" class="btn-blue">+ Backup Now</button>
+                </div>
+                
+                <div id="backup-list" class="backup-list">
+                    <div style="text-align:center; color:#777;">Loading...</div>
+                </div>
+            </div>
+        </div>
+
+        <button type="submit" class="btn-save">Save Configuration 💾</button>
+    </form>
+
+    <div class="card danger-zone">
+        <h3 style="color: var(--error); display: flex; align-items: center; gap: 10px; margin-top: 0;">
+            ⚠️ Danger Zone
+        </h3>
+        <p style="color: #ccc; margin-bottom: 20px;">
+            Once you delete your profile, there is no going back. Your settings, watch history, and API keys will be permanently removed.
+        </p>
+        
+        <form action="{{ url_for('delete_profile') }}" method="POST" onsubmit="return confirm('🚨 ARE YOU SURE?\n\nThis action cannot be undone. Your account and all settings will be permanently deleted.');">
+            <button type="submit" class="btn-danger">
+                🗑️ Delete My Account
+            </button>
+        </form>
+    </div>
 </div>
 
-<form method="POST" style="max-width: 600px; margin: 0 auto;">
-    
-    <div class="card" style="border-top: 4px solid #e5a00d;">
-        <h3>Plex Connection</h3>
-        
-        <details style="margin-bottom: 20px; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 5px; text-align: left;">
-            <summary style="cursor: pointer; color: var(--accent-color); font-weight: bold;">❓ How to find your URL & Token</summary>
-            <ol style="margin-top: 10px; padding-left: 20px; font-size: 0.9em; color: #ccc; line-height: 1.6;">
-                <li><b>URL:</b> This is your server's local IP address. 
-                    <br><i>Example:</i> <code>http://192.168.1.50:32400</code>
-                </li>
-                <li><b>Token:</b>
-                    <ul>
-                        <li>Open Plex Web and click on any Movie or Episode.</li>
-                        <li>Click the 3 dots (⋮) &rarr; <b>Get Info</b> &rarr; <b>View XML</b>.</li>
-                        <li>Look at the URL bar of the new tab. The token is at the very end: <code>X-Plex-Token=xyz...</code></li>
-                    </ul>
-                </li>
-            </ol>
-        </details>
-
-        <label><b>Plex URL</b></label>
-        <p style="font-size: 0.8em; color: #888; margin-bottom: 5px;">
-            Enter your internal IP. <span style="color: #2ecc71;">Note: No trailing slash needed (we will auto-remove it if you paste one).</span>
-        </p>
-        <input type="text" name="plex_url" value="{{ settings.plex_url or '' }}" placeholder="http://192.168.1.50:32400" style="width: 100%;">
-        
-        <label style="margin-top: 15px; display: block;"><b>Plex Token</b></label>
-        <div class="input-wrapper">
-            <input type="password" id="plex_token" name="plex_token" value="{{ settings.plex_token or '' }}">
-            <button type="button" class="toggle-btn" onclick="togglePassword('plex_token', this)">👁️</button>
-        </div>
-        
-        {% if plex_users %}
-        <div style="margin-top: 20px; background: var(--input-bg); padding: 15px; border-radius: 5px;">
-            <b style="color: #e5a00d; display: block; margin-bottom: 10px;">🛡️ Profiles to Ignore:</b>
-            <p style="font-size: 0.8em; color: #888; margin-bottom: 10px;">Check the profiles whose history you do NOT want to see.</p>
-            {% for plex_user in plex_users %}
-            <div style="margin-top: 5px; text-align: left;">
-                <input type="checkbox" name="ignored_plex_users" value="{{ plex_user }}" id="user-{{ loop.index }}" 
-                       {% if plex_user in current_ignored %}checked{% endif %}>
-                <label for="user-{{ loop.index }}" style="margin-left: 5px; cursor: pointer;">{{ plex_user }}</label>
-            </div>
-            {% endfor %}
-        </div>
-        {% endif %}
+<div id="settingsModal" class="custom-modal-overlay">
+    <div class="custom-modal-box">
+        <div class="modal-icon" id="modalIcon">✅</div>
+        <h3 class="modal-title" id="modalTitle">Settings Saved</h3>
+        <p class="modal-message" id="modalMessage">Configuration updated successfully.</p>
+        <button id="modalBtn" class="modal-btn">OK</button>
     </div>
-
-    <div class="card" style="border-top: 4px solid #01d277;">
-        <h3>TMDB Configuration</h3>
-        
-        <details style="margin-bottom: 20px; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 5px; text-align: left;">
-            <summary style="cursor: pointer; color: #01d277; font-weight: bold;">❓ How to get a free API Key</summary>
-            <ol style="margin-top: 10px; padding-left: 20px; font-size: 0.9em; color: #ccc; line-height: 1.6;">
-                <li>Login or Sign up at <a href="https://www.themoviedb.org/" target="_blank" style="color:#01d277;">TheMovieDB.org</a>.</li>
-                <li>Click your avatar &rarr; <b>Settings</b> &rarr; <b>API</b>.</li>
-                <li>Click <b>Create</b> and select <b>"Developer"</b>.</li>
-                <li>Accept terms. Fill out the form (use "Personal Project" / "N/A" for URL).</li>
-                <li>Copy the <b>"API Key (v3 auth)"</b>.</li>
-            </ol>
-        </details>
-        
-        <label><b>API Key (v3 Auth)</b></label>
-        <div class="input-wrapper">
-            <input type="password" id="tmdb_key" name="tmdb_key" value="{{ settings.tmdb_key or '' }}">
-            <button type="button" class="toggle-btn" onclick="togglePassword('tmdb_key', this)">👁️</button>
-        </div>
-        
-        <label style="margin-top: 15px; display: block;"><b>Streaming Regions</b></label>
-        <p style="font-size: 0.8em; color: #888;">Comma separated (e.g. US, CA, GB). We will show providers for ALL selected regions.</p>
-        <input type="text" name="tmdb_region" value="{{ settings.tmdb_region or 'US' }}" style="width: 100%;" placeholder="US, CA">
-
-        <details style="margin-top: 10px; font-size: 0.9em; color: #aaa; text-align: left;">
-            <summary style="cursor: pointer;">See common country codes</summary>
-            <ul style="margin-top: 5px; list-style: none; padding-left: 10px;">
-                <li>🇺🇸 <b>US</b> - United States</li>
-                <li>🇨🇦 <b>CA</b> - Canada</li>
-                <li>🇬🇧 <b>GB</b> - United Kingdom</li>
-                <li>🇦🇺 <b>AU</b> - Australia</li>
-                <li>🇩🇪 <b>DE</b> - Germany</li>
-                <li>🇫🇷 <b>FR</b> - France</li>
-                <li>🇮🇳 <b>IN</b> - India</li>
-                <li>🇯🇵 <b>JP</b> - Japan</li>
-            </ul>
-        </details>
-    </div>
-
-    <div class="card" style="border-top: 4px solid #5c6bc0;">
-        <h3>Overseerr</h3>
-        
-        <label><b>Overseerr URL</b></label>
-        <p style="font-size: 0.8em; color: #888; margin-bottom: 5px;">Example: <code style="background:#333; padding:2px;">http://192.168.1.50:5055</code></p>
-        <input type="text" name="overseerr_url" value="{{ settings.overseerr_url or '' }}" style="width: 100%;">
-        
-        <label style="margin-top: 15px; display: block;">API Key</label>
-        <p style="font-size: 0.8em; color: #888; margin-bottom: 5px;">Found in <b>Settings</b> &rarr; <b>General</b> (at the top).</p>
-        <div class="input-wrapper">
-            <input type="password" id="overseerr_api_key" name="overseerr_api_key" value="{{ settings.overseerr_api_key or '' }}">
-            <button type="button" class="toggle-btn" onclick="togglePassword('overseerr_api_key', this)">👁️</button>
-        </div>
-    </div>
-    
-    <div class="card" style="border-top: 4px solid #e5a00d;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-            <h3 style="margin: 0;">Tautulli Integration</h3>
-            <span style="font-size: 1.5em;">📊</span>
-        </div>
-
-        <label style="font-weight: 600; display: block; margin-bottom: 5px;">Tautulli URL</label>
-        <p style="font-size: 0.85em; color: #888; margin-top: 0; margin-bottom: 8px;">
-            The internal IP address of your Tautulli server. <br>
-            <span style="color: #e74c3c;">⚠️ Do not use 'localhost'</span>. Use your Unraid IP (e.g., <code>http://192.168.1.50:8181</code>).
-        </p>
-        <input type="text" name="tautulli_url" value="{{ settings.tautulli_url or '' }}" placeholder="http://192.168.1.50:8181" style="width: 100%; margin-bottom: 20px;">
-        
-        <label style="font-weight: 600; display: block; margin-bottom: 5px;">API Key</label>
-        
-        <details style="margin-bottom: 10px; background: #252525; border-radius: 6px; border: 1px solid #333;">
-            <summary style="padding: 10px; cursor: pointer; font-size: 0.9em; color: var(--accent-color); font-weight: 600; outline: none;">
-                ❓ Where do I find my API Key?
-            </summary>
-            <div style="padding: 15px; border-top: 1px solid #333; font-size: 0.9em; color: #ccc; line-height: 1.6;">
-                <ol style="margin: 0; padding-left: 20px;">
-                    <li>Open your <strong>Tautulli</strong> dashboard.</li>
-                    <li>Click the <strong>Settings</strong> (Gear Icon) in the top right.</li>
-                    <li>Scroll down the sidebar and click on <strong>Web Interface</strong>.</li>
-                    <li>Scroll all the way to the bottom of the page.</li>
-                    <li>Look for the <strong>API Key</strong> section. Copy that long string.</li>
-                </ol>
-            </div>
-        </details>
-
-        <div class="input-wrapper">
-            <input type="password" id="tautulli_api_key" name="tautulli_api_key" value="{{ settings.tautulli_api_key or '' }}" placeholder="e.g. 8f4a9c2b...">
-            <button type="button" class="toggle-btn" onclick="togglePassword('tautulli_api_key', this)">👁️</button>
-        </div>
-    </div>
-    
-    <button type="submit" style="width: 100%; padding: 15px; margin-top: 10px; background: var(--accent-color); color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer;">Save Settings 💾</button>
-</form>
+</div>
 
 <script>
-    function togglePassword(inputId, btn) {
-        const input = document.getElementById(inputId);
-        if (input.type === "password") {
-            input.type = "text";
-            btn.innerText = "🔒"; // Change icon to lock when visible
-        } else {
-            input.type = "password";
-            btn.innerText = "👁️"; // Change icon to eye when hidden
-        }
+// 1. Password Visibility Toggle
+function toggleVisibility(id, btn) {
+    const el = document.getElementById(id);
+    if (el.type === "password") {
+        el.type = "text";
+        btn.innerText = "🔒";
+    } else {
+        el.type = "password";
+        btn.innerText = "👁️";
     }
+}
+
+// 2. HELPER: Show the Modal
+function showModal(icon, title, message, isSuccess) {
+    const modal = document.getElementById('settingsModal');
+    document.getElementById('modalIcon').innerText = icon;
+    document.getElementById('modalTitle').innerText = title;
+    document.getElementById('modalMessage').innerText = message;
+    
+    // Configure the OK button
+    const btn = document.getElementById('modalBtn');
+    btn.onclick = function() {
+        modal.style.display = 'none';
+        // Only reload page on success (to refresh settings)
+        if (isSuccess) {
+            location.reload();
+        }
+    };
+    
+    // Show it
+    modal.style.display = 'flex';
+}
+
+// 3. The Final Save Logic (UPDATED)
+document.addEventListener('submit', function(e) {
+    if (e.target && e.target.id === 'settings-form') {
+        e.preventDefault(); 
+        
+        const btn = e.target.querySelector('.btn-save');
+        const originalText = btn.innerText;
+        
+        btn.innerText = "Saving... ⏳";
+        btn.disabled = true;
+
+        fetch(e.target.action, {
+            method: 'POST',
+            body: new FormData(e.target),
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(response => response.json())
+        .then(data => {
+            btn.innerText = originalText;
+            btn.disabled = false;
+            
+            if (data.status === 'success') {
+                // Show Success Popup
+                showModal('✅', 'Success!', data.message, true);
+            } else {
+                // Show Error Popup
+                showModal('❌', 'Error', data.message, false);
+            }
+        })
+        .catch(error => {
+            btn.innerText = originalText;
+            btn.disabled = false;
+            // Fallback error
+            showModal('❌', 'System Error', "Could not connect to server.", false);
+        });
+    }
+});
+
+// 4. BACKUP LOGIC
+function loadBackups() {
+    fetch('/api/backups')
+    .then(r => r.json())
+    .then(data => {
+        const div = document.getElementById('backup-list');
+        if(data.length === 0) {
+            div.innerHTML = '<div style="text-align:center; color:#777;">No backups found.</div>';
+            return;
+        }
+        let html = '<table style="width:100%; border-collapse:collapse; font-size:0.9em;">';
+        data.forEach(b => {
+            html += `
+            <tr style="border-bottom:1px solid #333;">
+                <td style="padding:8px;">${b.date}</td>
+                <td style="padding:8px; color:#aaa;">${b.size}</td>
+                <td style="padding:8px; text-align:right;">
+                    <a href="/api/backup/download/${b.filename}" style="text-decoration:none; margin-right:10px;">⬇️</a>
+                    <span onclick="restoreBackup('${b.filename}')" style="cursor:pointer; margin-right:10px;" title="Restore">♻️</span>
+                    <span onclick="deleteBackup('${b.filename}')" style="cursor:pointer; color:#e74c3c;" title="Delete">🗑️</span>
+                </td>
+            </tr>`;
+        });
+        html += '</table>';
+        div.innerHTML = html;
+    });
+}
+
+function createBackup() {
+    const btn = document.querySelector('button[onclick="createBackup()"]');
+    const oldText = btn.innerText;
+    btn.innerText = "Backing up...";
+    btn.disabled = true;
+    
+    fetch('/api/backup/create', {method: 'POST'})
+    .then(r => r.json())
+    .then(data => {
+        btn.innerText = oldText;
+        btn.disabled = false;
+        if(data.status === 'success') {
+            loadBackups();
+            showModal('📦', 'Backup Created', "Your backup was created successfully.", false);
+        } else {
+            showModal('❌', 'Backup Failed', data.message, false);
+        }
+    });
+}
+
+function deleteBackup(filename) {
+    if(!confirm("Are you sure you want to delete this backup?")) return;
+    fetch('/api/backup/delete/' + filename, {method: 'DELETE'})
+    .then(r => r.json())
+    .then(() => loadBackups());
+}
+
+function restoreBackup(filename) {
+    if(!confirm("⚠️ WARNING: This will overwrite your current database with the backup.\n\nThe app may need to be restarted manually if it locks up.\n\nContinue?")) return;
+    
+    fetch('/api/backup/restore/' + filename, {method: 'POST'})
+    .then(r => r.json())
+    .then(data => {
+        if(data.status === 'success') {
+            showModal('♻️', 'Restored!', data.message, true);
+        } else {
+            showModal('❌', 'Restore Failed', data.message, false);
+        }
+    });
+}
+
+// 5. ALIAS SYNC LOGIC
+function syncAliases() {
+    const btn = document.getElementById('forceSyncBtn');
+    const badge = document.getElementById('aliasCountBadge');
+    const originalText = btn.innerText;
+    
+    btn.disabled = true;
+    btn.innerText = "Syncing...";
+
+    fetch('/api/sync_aliases', { method: 'POST' })
+    .then(r => r.json())
+    .then(data => {
+        if(data.status === 'success') {
+            if(badge && data.count) {
+                badge.innerText = data.count + " Entries";
+            }
+            btn.innerText = "Synced! ✅";
+            btn.style.color = "#2ecc71";
+            btn.style.borderColor = "#2ecc71";
+            // Optional: Show success modal here too?
+            // showModal('🌍', 'Sync Complete', data.message, false);
+        } else {
+            alert("Error: " + data.message);
+            btn.innerText = originalText;
+        }
+        
+        setTimeout(() => {
+            btn.disabled = false;
+            btn.innerText = originalText;
+            btn.style.color = "#007bff";
+            btn.style.borderColor = "#007bff";
+        }, 3000);
+    })
+    .catch(err => {
+        console.error(err);
+        btn.innerText = "Error";
+        btn.disabled = false;
+    });
+}
+
+document.addEventListener('DOMContentLoaded', loadBackups);
 </script>
+
 {% endblock %}

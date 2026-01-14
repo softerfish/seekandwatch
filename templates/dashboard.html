@@ -2,94 +2,123 @@
 
 {% block content %}
 {% if new_version %}
-<div style="background: linear-gradient(45deg, #e5a00d, #f1c40f); color: black; padding: 15px; margin-bottom: 30px; border-radius: 8px; text-align: center; font-weight: bold; box-shadow: 0 4px 15px rgba(229, 160, 13, 0.3); border: 1px solid #d48e00;">
+<div class="update-banner">
     🚀 Update Available! Version {{ new_version }} is released.
     <a href="https://github.com/softerfish/seekandwatch" target="_blank" style="color: black; text-decoration: underline; margin-left: 10px;">View on GitHub</a>
 </div>
 {% endif %}
+
 <div style="text-align: center; padding-top: 20px;">
 
     {% if recent_media %}
     <div style="text-align: left; margin-bottom: 40px;">
-        <h3 style="margin-bottom: 15px; color: var(--accent-color); display: flex; align-items: center; gap: 10px;">
+        <div class="section-title">
             <span>🚀</span> Recently Added to Server
-        </h3>
-        <div class="scroller" style="display: flex; gap: 15px; overflow-x: auto; padding-bottom: 15px; scrollbar-width: thin;">
+        </div>
+        <div class="scroller">
             {% for item in recent_media %}
-            <div style="min-width: 140px; width: 140px; position: relative;">
-                <div style="aspect-ratio: 2/3; background: #222; border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color);">
+            <div class="media-item">
+                <div class="media-poster">
                     {% if item.thumb %}
-                    <img src="{{ item.thumb }}" style="width: 100%; height: 100%; object-fit: cover;">
+                    <img src="{{ item.thumb }}">
                     {% else %}
                     <div style="height: 100%; display: flex; align-items: center; justify-content: center; color: #555;">No Image</div>
                     {% endif %}
                 </div>
-                <div style="font-size: 0.85em; margin-top: 5px; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                    {{ item.title }}
-                </div>
-                <div style="font-size: 0.75em; color: #777;">{{ item.year }}</div>
+                
+                <div class="media-title" title="{{ item.title }}">{{ item.title }}</div>
+                
+                {% if item.sub_title %}
+                <div class="media-sub">{{ item.sub_title }}</div>
+                {% endif %}
+
+                <div class="media-year">{{ item.year }}</div>
             </div>
             {% endfor %}
         </div>
     </div>
     {% endif %}
 
-    <div class="card" style="max-width: 700px; margin: 0 auto 30px auto; padding: 25px; border-top: 4px solid var(--accent-color); text-align: left;">
+    <div class="card discovery-card">
         <h3 style="margin-top: 0; color: var(--accent-color); text-align: center;">🎬 Smart Discovery</h3>
         
-        <div style="background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; margin-bottom: 20px; font-size: 0.9em; line-height: 1.5; color: #bbb; border: 1px solid #333;">
+        <div class="info-box">
             <strong style="color: white; display: block; margin-bottom: 5px;">💡 How it works:</strong>
             <ul style="margin: 0; padding-left: 20px;">
-                <li><strong>Scanning:</strong> We analyze your last <b>500 Plex history entries</b> to identify your recent tastes.</li>
-                <li><strong>Curation:</strong> You can set how many unique titles to pull below to act as "seeds" for the calculation.</li>
-                <li><strong>Filtering:</strong> Admin accounts can <b>ignore specific profiles</b> in <a href="{{ url_for('settings') }}" style="color: var(--accent-color); text-decoration: none; font-weight: bold;">Settings</a> to keep recommendations focused.</li>
+                <li><strong>Scanning:</strong> We analyze your last <b>500 Plex history entries</b>.</li>
+                <li><strong>Curation:</strong> You can set how many unique titles to pull below.</li>
+                <li><strong>Filtering:</strong> Ignored profiles are skipped.</li>
+                <li><strong>Variety:</strong> Results change every time because we shuffle your history and randomize the discovery path to keep recommendations fresh.</li>
             </ul>
         </div>
 
         <div style="margin-bottom: 20px; text-align: center;">
             <label style="color: #888; font-size: 0.9em;">Number of titles to pull from history:</label>
-            <input type="number" id="history-limit" value="20" min="1" max="100" 
-                   style="width: 70px; padding: 10px; margin-left: 10px; border-radius: 8px; background: #111; border: 1px solid #444; color: white; text-align: center;">
+            <div style="display: flex; align-items: center; justify-content: center; margin-top: 5px;">
+                <input type="number" id="history-limit" value="20" min="1" max="100" 
+                       style="width: 70px; padding: 10px; border-radius: 8px; background: #111; border: 1px solid #444; color: white; text-align: center;">
+            </div>
+            <p style="font-size: 0.8em; color: #e74c3c; margin-top: 8px; margin-bottom: 0;">
+                ⚠️ <b>Tip:</b> Keep this under 30 for fast results. High numbers (50+) will significantly slow down the scan.
+            </p>
         </div>
 
-        <div style="display: flex; gap: 15px;">
-            <button onclick="scanHistory('movie')" style="flex: 1; padding: 15px; background: #e5a00d; color: white; border: none; font-weight: bold; border-radius: 8px; cursor: pointer;">Scan Movies</button>
-            <button onclick="scanHistory('tv')" style="flex: 1; padding: 15px; background: #01d277; color: white; border: none; font-weight: bold; border-radius: 8px; cursor: pointer;">Scan TV Shows</button>
+       {% if has_omdb %}
+        <div style="margin-bottom: 20px; text-align: center;">
+            <label style="cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: rgba(255,255,255,0.05); padding: 8px 15px; border-radius: 20px; border: 1px solid #333; transition: 0.2s;">
+                <input type="checkbox" name="critic_filter" id="critic-filter" onchange="toggleCritic()" style="width: 16px; height: 16px; accent-color: #ff6347;">
+                <span style="color: #ddd;">🍅 Certified Fresh</span>
+                <input type="number" name="critic_threshold" id="critic-input" value="70" min="0" max="100" 
+                       onclick="event.stopPropagation();"
+                       style="width: 45px; padding: 2px 4px; border-radius: 4px; border: 1px solid #555; background: #222; color: #fff; font-size: 0.9em; display: none;">
+                <span id="critic-percent" style="color: #ddd; display: none;">%</span>
+            </label>
         </div>
+        <script>
+        function toggleCritic() {
+            const isChecked = document.getElementById('critic-filter').checked;
+            document.getElementById('critic-input').style.display = isChecked ? 'inline-block' : 'none';
+            document.getElementById('critic-percent').style.display = isChecked ? 'inline' : 'none';
+        }
+        </script>
+        {% endif %}
+        
+        <div class="scan-btn-group">
+            <button onclick="scanHistory('movie')" class="btn btn-scan movie">Scan Movies</button>
+            <button onclick="scanHistory('tv')" class="btn btn-scan tv">Scan TV Shows</button>
+        </div>
+
+        <form action="{{ url_for('generate') }}" method="POST">
+            <input type="hidden" name="lucky_mode" value="true">
+            <button type="submit" class="btn btn-lucky">
+                🍀 I'm Feeling Lucky
+            </button>
+        </form>
     </div>
 
     <div style="margin: 20px 0; color: #555;">— OR SEARCH BY TITLE —</div>
     
     <div style="max-width: 600px; margin: 0 auto; position: relative;">
-        <input type="text" id="main-search" placeholder="Type a title (e.g. Inception)..." 
-               style="width: 100%; padding: 20px; font-size: 1.2em; border-radius: 50px; border: 2px solid var(--border-color); background: var(--card-bg); color: var(--text-color); box-shadow: 0 5px 15px rgba(0,0,0,0.2); outline: none;">
-        <div id="search-results" style="display:none; position: absolute; top: 70px; left: 0; right: 0; background: var(--card-bg); border-radius: 10px; border: 1px solid var(--border-color); z-index: 100; box-shadow: 0 10px 30px rgba(0,0,0,0.5); overflow: hidden; text-align: left;"></div>
+        <input type="text" id="main-search" placeholder="Type a title (e.g. Inception)..." class="main-search">
+        <div id="search-results"></div>
     </div>
-
 </div>
 
 <script>
-    // NEW: Handle the scan with the custom limit
     function scanHistory(type) {
         const limit = document.getElementById('history-limit').value;
-        const form = document.createElement('form');
-        form.method = 'POST';
-        form.action = "{{ url_for('review_history') }}";
+        const form = document.createElement('form'); form.method = 'POST'; form.action = "{{ url_for('review_history') }}";
         
-        const typeInput = document.createElement('input');
-        typeInput.type = 'hidden';
-        typeInput.name = 'media_type';
-        typeInput.value = type;
+        const typeInput = document.createElement('input'); typeInput.type = 'hidden'; typeInput.name = 'media_type'; typeInput.value = type;
+        const limitInput = document.createElement('input'); limitInput.type = 'hidden'; limitInput.name = 'history_limit'; limitInput.value = limit;
         
-        const limitInput = document.createElement('input');
-        limitInput.type = 'hidden';
-        limitInput.name = 'history_limit';
-        limitInput.value = limit;
+        const criticFilter = document.getElementById('critic-filter');
+        if (criticFilter && criticFilter.checked) {
+            const cfInput = document.createElement('input'); cfInput.type = 'hidden'; cfInput.name = 'critic_filter'; cfInput.value = 'on'; form.appendChild(cfInput);
+            const threshInput = document.createElement('input'); threshInput.type = 'hidden'; threshInput.name = 'critic_threshold'; threshInput.value = document.getElementById('critic-input').value; form.appendChild(threshInput);
+        }
         
-        form.appendChild(typeInput);
-        form.appendChild(limitInput);
-        document.body.appendChild(form);
-        form.submit();
+        form.appendChild(typeInput); form.appendChild(limitInput); document.body.appendChild(form); form.submit();
     }
 
     const searchInput = document.getElementById('main-search');
@@ -107,7 +136,7 @@
                     if (data.results && data.results.length > 0) {
                         let html = '';
                         data.results.forEach(item => {
-                            html += `<div onclick="selectItem('${item.title.replace(/'/g, "\\'")}')" style="padding: 15px; border-bottom: 1px solid var(--border-color); cursor: pointer; display: flex; align-items: center; gap: 10px;">
+                            html += `<div class="search-result-item" onclick="selectItem('${item.title.replace(/'/g, "\\'")}')">
                                 <img src="https://image.tmdb.org/t/p/w92${item.poster}" style="width: 40px; border-radius: 4px;" onerror="this.style.display='none'">
                                 <div><div style="font-weight: bold; color: var(--text-color);">${item.title}</div><div style="font-size: 0.8em; color: #888;">${item.year}</div></div></div>`;
                         });
@@ -125,11 +154,4 @@
     }
     document.addEventListener('click', function(e) { if (!searchInput.contains(e.target) && !resultsDiv.contains(e.target)) { resultsDiv.style.display = 'none'; } });
 </script>
-
-<style>
-.scroller::-webkit-scrollbar { height: 8px; }
-.scroller::-webkit-scrollbar-track { background: #222; border-radius: 4px; }
-.scroller::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
-.scroller::-webkit-scrollbar-thumb:hover { background: var(--accent-color); }
-</style>
 {% endblock %}

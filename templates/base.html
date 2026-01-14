@@ -5,113 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SeekAndWatch</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --bg-color: #121212;
-            --card-bg: #1e1e1e;
-            --text-color: #e0e0e0;
-            --accent-color: #e5a00d;
-            --border-color: #333;
-            --input-bg: #333;
-        }
-        [data-theme="light"] {
-            --bg-color: #f4f4f9;
-            --card-bg: #ffffff;
-            --text-color: #333333;
-            --accent-color: #d48e00;
-            --border-color: #ddd;
-            --input-bg: #f0f0f0;
-        }
-
-        body { 
-            font-family: 'Inter', sans-serif; 
-            background-color: var(--bg-color); 
-            color: var(--text-color); 
-            margin: 0; 
-            padding: 0;
-            transition: background 0.3s, color 0.3s;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
-        
-        .container { 
-            max-width: 1200px; 
-            margin: 0 auto; 
-            padding: 20px; 
-            width: 100%;
-            box-sizing: border-box;
-            flex: 1;
-        }
-        
-        .nav { 
-            display: flex; 
-            justify-content: space-between; 
-            align-items: center; 
-            margin-bottom: 40px; 
-            padding: 20px 0; 
-            border-bottom: 1px solid var(--border-color); 
-        }
-        
-        .nav-logo { 
-            font-size: 1.5em; 
-            font-weight: bold; 
-            color: var(--accent-color); 
-            text-decoration: none;
-            cursor: pointer;
-        }
-        .nav-logo:hover { opacity: 0.8; }
-        
-        .nav-links a { 
-            color: var(--text-color); 
-            text-decoration: none; 
-            margin-left: 20px; 
-            font-weight: 600; 
-            transition: color 0.2s;
-        }
-        .nav-links a:hover { color: var(--accent-color); }
-        
-        .flash { 
-            padding: 15px; 
-            margin-bottom: 20px; 
-            border-radius: 5px; 
-            text-align: center; 
-            font-weight: bold; 
-        }
-        .flash.success { background: rgba(46, 204, 113, 0.2); border: 1px solid #2ecc71; color: #2ecc71; }
-        .flash.error { background: rgba(231, 76, 60, 0.2); border: 1px solid #e74c3c; color: #e74c3c; }
-        
-        .card { 
-            background: var(--card-bg); 
-            padding: 30px; 
-            border-radius: 12px; 
-            margin-bottom: 20px; 
-            border: 1px solid var(--border-color); 
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1); 
-        }
-        
-        button { cursor: pointer; border: none; border-radius: 5px; transition: opacity 0.2s; }
-        button:hover { opacity: 0.9; }
-        
-        input[type="text"], input[type="password"], input[type="number"] { 
-            padding: 12px; 
-            border-radius: 6px; 
-            border: 1px solid var(--border-color); 
-            background: var(--input-bg); 
-            color: var(--text-color); 
-            box-sizing: border-box; 
-            font-size: 1em;
-        }
-        
-        .theme-switch { background: none; font-size: 1.5em; padding: 0; margin-left: 20px; }
-
-        .login-wrapper {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 60vh;
-        }
-    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
     <div class="container">
@@ -119,10 +13,13 @@
             <a href="{{ url_for('dashboard') }}" class="nav-logo">SeekAndWatch</a>
             <div class="nav-links">
                 {% if current_user.is_authenticated %}
-                <a href="{{ url_for('dashboard') }}">Home</a>
-                <a href="{{ url_for('stats_page') }}">Tautulli Stats</a> <a href="{{ url_for('manage_blocklist') }}">Blocklist</a>
-                <a href="{{ url_for('settings') }}">Settings</a>
-                <a href="{{ url_for('logout') }}">Logout</a>
+                <a href="{{ url_for('dashboard') }}">🏠 Home</a>
+                <a href="{{ url_for('stats') }}">📊 Tautulli Stats</a>
+                <a href="{{ url_for('playlists') }}">📂 Plex Collections</a>
+                <a href="{{ url_for('manage_blocklist') }}">🚫 Blocklist</a>
+				<a href="{{ url_for('settings') }}" class="nav-link">⚙️ Settings</a>
+				<a href="{{ url_for('logs') }}" class="nav-link">📜 Logs</a>
+                <a href="{{ url_for('logout') }}">🚪 Logout</a>
                 <button class="theme-switch" onclick="toggleTheme()" title="Switch Theme">🌗</button>
                 {% endif %}
             </div>

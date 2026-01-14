@@ -1,7 +1,4 @@
-<div class="movie-card" id="block-{{ block.id }}" style="display: flex; justify-content: space-between; align-items: center; text-align: left;">
+<div class="block-item-row" id="block-{{ block.id }}">
     <span style="font-size: 1.1em;">{{ block.title }}</span>
-    <button onclick="unblock({{ block.id }})" 
-            style="background: transparent; border: 1px solid #e74c3c; color: #e74c3c; padding: 5px 10px;">
-        Unblock
-    </button>
+    <button onclick="unblock({{ block.id }})" class="btn-delete">Unblock</button>
 </div>
