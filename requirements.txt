@@ -5,3 +5,4 @@ plexapi
 requests
 gunicorn
 werkzeug
+Flask-APScheduler

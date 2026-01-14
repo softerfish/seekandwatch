@@ -2,17 +2,17 @@
 <Container version="2">
   <Name>SeekAndWatch</Name>
   <Repository>ghcr.io/softerfish/seekandwatch:latest</Repository>
-  <Registry>https://ghcr.io/softerfish/seekandwatch</Registry>
+  <Registry>https://github.com/softerfish/seekandwatch</Registry>
   <Network>bridge</Network>
   <MyIP/>
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
-  <Support>https://github.com/softerfish/seekandwatch/issues</Support>
+  <Support>https://www.reddit.com/r/SeekAndWatch/</Support>
   <Project>https://github.com/softerfish/seekandwatch</Project>
-  <Overview>SeekAndWatch is a smart discovery engine for your media server. It scans your Plex history (or takes manual search inputs) and generates tailored recommendations using TMDB data. Features include Manual Search, Blocklists, Genre Filtering, Trailers, and one-click Requests via Overseerr.</Overview>
+  <Overview>SeekAndWatch is a smart discovery engine for your media server that scans your Plex history and generates tailored recommendations using TMDB and/or OMDB data. Features include one-click Requests via Overseerr, Tatulli integration, Manual Search, Blocklists, Genre Filtering, Trailers.</Overview>
   <Category>MediaApp:Other Tools:Utilities</Category>
   <WebUI>http://[IP]:[PORT:5000]</WebUI>
-  <Icon>https://raw.githubusercontent.com/softerfish/seekandwatch/main/icon.png</Icon>
+  <Icon>https://raw.githubusercontent.com/softerfish/seekandwatch/main/icon.jpg</Icon>
   
   <Config Name="Web Port" Target="5000" Default="5000" Mode="tcp" Description="The Web UI Port" Type="Port" Display="always" Required="true" Mask="false">5000</Config>
   
