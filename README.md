@@ -92,7 +92,7 @@ If you prefer to install manually, you can run the GitHub install command from t
 docker run -d \
   --name=seekandwatch \
   -p 5000:5000 \
-  -v /mnt/user/appdata/seekandwatch:/config \
+  -v /path/to/config:/config \
   -e TZ=America/New_York \
   --restart unless-stopped \
   ghcr.io/softerfish/seekandwatch:latest
@@ -120,10 +120,11 @@ docker rm seekandwatch
 docker run -d \
   --name=seekandwatch \
   -p 5000:5000 \
-  -v /mnt/user/appdata/seekandwatch:/config \
+  -v /path/to/config:/config \
   -e TZ=America/New_York \
   --restart unless-stopped \
   ghcr.io/softerfish/seekandwatch:latest
 ```
  Access via http://<YOUR_SERVER_IP>:5000
   
+
