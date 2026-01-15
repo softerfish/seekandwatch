@@ -1,34 +1,112 @@
 {% extends "base.html" %}
+
 {% block content %}
 <div class="login-wrapper">
-    <div class="card login-card">
-        <h2 style="margin-bottom: 30px; font-size: 2em;">
-            {% if is_register %}Register{% else %}Login{% endif %}
-        </h2>
+    <div class="login-card">
         
-        <form method="POST">
-            <div style="margin-bottom: 20px; text-align: left;">
-                <label style="display: block; margin-bottom: 5px; font-weight: bold;">Username</label>
-                <input type="text" name="username" required autofocus>
-            </div>
-            
-            <div style="margin-bottom: 30px; text-align: left;">
-                <label style="display: block; margin-bottom: 5px; font-weight: bold;">Password</label>
-                <input type="password" name="password" required>
-            </div>
-            
-            <button type="submit" class="btn login-btn">
-                {% if is_register %}Create Account{% else %}Sign In{% endif %}
+        <div class="auth-toggle">
+            <button type="button" class="toggle-btn active" id="tab-login" onclick="setMode('login')">
+                Log In
             </button>
-        </form>
+            <button type="button" class="toggle-btn" id="tab-register" onclick="setMode('register')">
+                Register
+            </button>
+        </div>
         
-        <div style="margin-top: 20px; font-size: 0.9em;">
-            {% if is_register %}
-            Already have an account? <a href="{{ url_for('login') }}" style="color: var(--accent-color);">Login here</a>
-            {% else %}
-            Need an account? <a href="{{ url_for('register') }}" style="color: var(--accent-color);">Register here</a>
-            {% endif %}
+        <div class="auth-body">
+            <form id="auth-form" method="POST" action="{{ url_for('login') }}" onsubmit="return validateForm()">
+                
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" name="username" id="username" required placeholder="Enter username..." autocomplete="username">
+                </div>
+                
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" name="password" id="password" required placeholder="••••••••" autocomplete="current-password">
+                </div>
+
+                <div class="form-group hidden-field" id="confirm-container">
+                    <label>Confirm Password</label>
+                    <input type="password" id="confirm_password" placeholder="••••••••" autocomplete="new-password">
+                </div>
+                
+                <button type="submit" class="login-btn" id="submit-btn">
+                    Sign In
+                </button>
+            </form>
+
+            <div class="auth-footer" id="auth-footer-text">
+                Welcome back to SeekAndWatch
+            </div>
         </div>
     </div>
 </div>
+
+<script>
+    // State Management
+    let currentMode = 'login'; 
+
+    // Handle incoming server state (e.g. if user clicked a Register link elsewhere)
+    {% if is_register %}
+    document.addEventListener('DOMContentLoaded', () => setMode('register'));
+    {% endif %}
+
+    function setMode(mode) {
+        currentMode = mode;
+        const form = document.getElementById('auth-form');
+        const submitBtn = document.getElementById('submit-btn');
+        const confirmBox = document.getElementById('confirm-container');
+        const confirmInput = document.getElementById('confirm_password');
+        const footer = document.getElementById('auth-footer-text');
+        
+        // Buttons
+        const tabLogin = document.getElementById('tab-login');
+        const tabRegister = document.getElementById('tab-register');
+
+        if (mode === 'login') {
+            // Visuals
+            tabLogin.classList.add('active');
+            tabRegister.classList.remove('active');
+            
+            // Logic
+            form.action = "{{ url_for('login') }}";
+            submitBtn.innerText = "Sign In";
+            footer.innerText = "Welcome back to SeekAndWatch";
+            
+            // Hide Confirm Password
+            confirmBox.classList.remove('visible-field');
+            confirmBox.classList.add('hidden-field');
+            confirmInput.required = false;
+            
+        } else {
+            // Visuals
+            tabRegister.classList.add('active');
+            tabLogin.classList.remove('active');
+            
+            // Logic
+            form.action = "{{ url_for('register') }}";
+            submitBtn.innerText = "Create Account";
+            footer.innerText = "Your watch history, reimagined.";
+            
+            // Show Confirm Password
+            confirmBox.classList.remove('hidden-field');
+            confirmBox.classList.add('visible-field');
+            confirmInput.required = true;
+        }
+    }
+
+    function validateForm() {
+        if (currentMode === 'register') {
+            const p1 = document.getElementById('password').value;
+            const p2 = document.getElementById('confirm_password').value;
+            
+            if (p1 !== p2) {
+                alert("⚠️ Passwords do not match!");
+                return false; // Stop submission
+            }
+        }
+        return true; // Allow submission
+    }
+</script>
 {% endblock %}
