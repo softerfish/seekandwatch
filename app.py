@@ -22,7 +22,7 @@ from utils import normalize_title, is_duplicate, check_for_updates, fetch_omdb_r
 # 1. APPLICATION CONFIGURATION
 # ==================================================================================
 
-VERSION = "1.0.1"
+VERSION = "1.0.2"
 GITHUB_RAW_URL = "https://raw.githubusercontent.com/softerfish/seekandwatch/main/app.py"
 
 def get_stable_secret_key():
@@ -226,6 +226,78 @@ def clear_logs():
 # 3. ROUTES
 # ==================================================================================
 
+# --- TEST CONNECTION ---
+@app.route('/test_connection', methods=['POST'])
+@login_required
+def test_connection():
+    data = request.json
+    service = data.get('service')
+    
+    try:
+        # 1. PLEX TEST
+        if service == 'plex':
+            url = (data.get('url') or '').rstrip('/')
+            token = data.get('token')
+            if not url or not token: 
+                return jsonify({'status': 'error', 'message': 'Missing URL or Token'})
+            try:
+                server = PlexServer(url, token)
+                return jsonify({'status': 'success', 'message': f"Connected: {server.friendlyName} (v{server.version})"})
+            except Exception as e:
+                return jsonify({'status': 'error', 'message': f"Connection failed: {str(e)}"})
+
+        # 2. TMDB TEST
+        elif service == 'tmdb':
+            key = data.get('api_key')
+            if not key: return jsonify({'status': 'error', 'message': 'Missing API Key'})
+            resp = requests.get(f"https://api.themoviedb.org/3/configuration?api_key={key}", timeout=5)
+            if resp.status_code == 200: 
+                return jsonify({'status': 'success', 'message': 'TMDB Key is valid!'})
+            return jsonify({'status': 'error', 'message': 'Invalid API Key'})
+
+        # 3. OMDB TEST
+        elif service == 'omdb':
+            key = data.get('api_key')
+            if not key: return jsonify({'status': 'error', 'message': 'Missing API Key'})
+            # Search for a known movie (The Shawshank Redemption) to test auth
+            resp = requests.get(f"http://www.omdbapi.com/?apikey={key}&i=tt0111161", timeout=5)
+            data = resp.json()
+            if data.get('Response') == 'True': 
+                return jsonify({'status': 'success', 'message': 'OMDB Key is valid!'})
+            return jsonify({'status': 'error', 'message': data.get('Error', 'Invalid Key')})
+
+        # 4. OVERSEERR TEST
+        elif service == 'overseerr':
+            url = (data.get('url') or '').rstrip('/')
+            key = data.get('api_key')
+            if not url or not key: return jsonify({'status': 'error', 'message': 'Missing URL or Key'})
+            try:
+                resp = requests.get(f"{url}/api/v1/auth/me", headers={'X-Api-Key': key}, timeout=5)
+                if resp.status_code == 200: 
+                    user = resp.json()
+                    return jsonify({'status': 'success', 'message': f"Connected as {user.get('email', 'User')}"})
+                return jsonify({'status': 'error', 'message': f"Error {resp.status_code}: Verify credentials"})
+            except Exception as e:
+                return jsonify({'status': 'error', 'message': str(e)})
+
+        # 5. TAUTULLI TEST
+        elif service == 'tautulli':
+            url = (data.get('url') or '').rstrip('/')
+            key = data.get('api_key')
+            if not url or not key: return jsonify({'status': 'error', 'message': 'Missing URL or Key'})
+            try:
+                resp = requests.get(f"{url}/api/v2?apikey={key}&cmd=get_server_info", timeout=5)
+                if resp.status_code == 200 and resp.json().get('response', {}).get('result') == 'success':
+                    return jsonify({'status': 'success', 'message': 'Tautulli Connected Successfully!'})
+                return jsonify({'status': 'error', 'message': 'Invalid Response from Tautulli'})
+            except Exception as e:
+                return jsonify({'status': 'error', 'message': str(e)})
+
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': f"System Error: {str(e)}"})
+
+    return jsonify({'status': 'error', 'message': 'Unknown Service Requested'})
+
 @app.route('/')
 @login_required
 def dashboard():
@@ -323,6 +395,23 @@ def settings():
     alias_count = TmdbAlias.query.count()
     return render_template('settings.html', settings=user_settings, plex_users=plex_users, current_ignored=current_ignored, alias_count=alias_count)
 
+# --- Silent Auto-Save Endpoint ---
+@app.route('/update_ignore_list', methods=['POST'])
+@login_required
+def update_ignore_list():
+    try:
+        data = request.json
+        # Expecting a list like ['Guest', 'Troyy37']
+        new_list = data.get('ignored_users', [])
+        
+        # Save to database
+        current_user.settings.ignored_users = ",".join(new_list)
+        db.session.commit()
+        
+        return jsonify({'status': 'success', 'message': 'Saved'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 @app.route('/review_history', methods=['POST'])
 @login_required
 def review_history():
@@ -333,6 +422,8 @@ def review_history():
     history_limit = int(request.form.get('history_limit', 20))
     review_list = []
     providers = []
+
+    # 1. Fetch Providers
     try:
         raw_reg = s.tmdb_region or 'US'
         regions = [r.strip().upper() for r in raw_reg.split(',')]
@@ -347,6 +438,7 @@ def review_history():
         providers = sorted(all_providers.values(), key=lambda x: x.get('display_priority', 999))[:40] 
     except Exception as e: print(f"Provider Fetch Error: {e}")
 
+    # 2. Manual Mode
     if manual:
         ep = 'search/tv' if media_type == 'tv' else 'search/movie'
         try:
@@ -355,38 +447,108 @@ def review_history():
                 d = i.get('first_air_date') if media_type == 'tv' else i.get('release_date')
                 review_list.append({'title': i.get('name') if media_type == 'tv' else i.get('title'), 'year': (d or '')[:4], 'poster_path': i.get('poster_path'), 'id': i['id']})
         except Exception as e: flash(f"Error searching TMDB: {e}", "error")
+    
+    # 3. History Scan (STRICT ALLOWLIST)
     else:
         try:
             plex = PlexServer(s.plex_url, s.plex_token)
-            h = plex.history(maxresults=500)
+            
+            # --- STEP A: CALCULATE "SAFE" IDs ---
+            # Instead of looking for who to BLOCK, we look for who to KEEP.
+            
+            raw_ignored = (s.ignored_users or "").split(",")
+            ignored_names = [u.strip().lower() for u in raw_ignored if u.strip()]
+            
+            allowed_ids = set()
+            print(f"--- BUILDING ALLOWLIST (Default Deny) ---", flush=True)
+
+            # 1. Check ADMIN (You)
+            # By default, we assume ID '1' is the Admin. We check if you blocked yourself.
+            try:
+                my_account = plex.myPlexAccount()
+                admin_aliases = [
+                    str(my_account.username).lower(), 
+                    str(my_account.email).lower(), 
+                    str(my_account.title).lower()
+                ]
+                
+                # If the Admin (You) is NOT in the ignore list, add your IDs
+                if not any(alias in ignored_names for alias in admin_aliases):
+                    allowed_ids.add('1')              # Local Admin ID
+                    allowed_ids.add(str(my_account.id)) # Cloud Admin ID
+                    print(f" -> ALLOWED: Admin (ID: 1 & {my_account.id})", flush=True)
+                
+                # 2. Check FRIENDS
+                for user in my_account.users():
+                    u_aliases = [
+                        str(user.title).lower(), 
+                        str(user.username).lower(), 
+                        str(user.email).lower()
+                    ]
+                    # If friend is NOT ignored, Add them.
+                    if not any(a in ignored_names for a in u_aliases):
+                        allowed_ids.add(str(user.id))
+                        print(f" -> ALLOWED: {user.title} (ID: {user.id})", flush=True)
+            except Exception as e:
+                print(f"WARN: Could not fetch user list: {e}")
+                # Fallback: Always allow ID 1 if fetch fails
+                allowed_ids.add('1')
+
+            print(f"Final Allowed IDs: {allowed_ids}", flush=True)
+
+            # --- STEP B: SCAN HISTORY ---
+            h = plex.history(maxresults=5000)
             seen = set()
-            ignored = (s.ignored_users or "").split(",")
+            count = 0
+            
+            target_type = 'episode' if media_type == 'tv' else 'movie'
+            
             for x in h:
-                if len(review_list) >= history_limit: break
-                user_name = None
-                try:
-                    if hasattr(x, 'user') and x.user: user_name = getattr(x.user, 'title', None) or getattr(x.user, 'username', None) or str(x.user)
-                    elif hasattr(x, 'userName'): user_name = x.userName
-                except Exception: pass 
-                if user_name and ignored and any(ign.strip() == user_name for ign in ignored if ign.strip()): continue
-                target_type = 'episode' if media_type == 'tv' else 'movie'
+                if count >= history_limit: break
+                
+                # 1. Get ID (Force String)
+                raw_id = getattr(x, 'accountID', None)
+                user_id = str(raw_id) if raw_id is not None else ""
+                
+                # 2. THE CHECK: Is this user on the Guest List?
+                # If they are NOT in 'allowed_ids', they are blocked. Period.
+                if user_id not in allowed_ids:
+                    # Guest (ID 519544053) will fall here and be skipped
+                    continue
+
+                # 3. Type Filter
                 if x.type != target_type: continue
+                
+                # 4. Deduplication
                 t = x.grandparentTitle if media_type == 'tv' else x.title
                 if t in seen: continue
                 seen.add(t)
+                
+                # Match Found!
+                if count < 5:
+                    print(f"MATCH: '{x.title}' | ID: {user_id}", flush=True)
+
+                # --- TMDB Fetch ---
                 poster_path = None
                 try:
                     q_type = 'tv' if media_type == 'tv' else 'movie'
                     tmdb_res = requests.get(f"https://api.themoviedb.org/3/search/{q_type}?query={t}&api_key={s.tmdb_key}").json()
                     if tmdb_res.get('results'): poster_path = tmdb_res['results'][0].get('poster_path')
                 except: pass
-                review_list.append({'title': t, 'year': getattr(x, 'year', ''), 'poster_path': poster_path})
-            if not review_list: flash("No history found matching your criteria.", "error")
+                
+                y = getattr(x, 'year', '')
+                review_list.append({'title': t, 'year': str(y), 'poster_path': poster_path})
+                count += 1
+            
+            if not review_list: 
+                flash("No history found for the allowed users.", "error")
+            
         except Exception as e:
             print(f"Plex Error: {e}")
             flash(f"Could not connect to Plex: {str(e)}", "error")
-    return render_template('review.html', movies=review_list, media_type=media_type, genres=TMDB_GENRES[media_type], providers=providers)
 
+    return render_template('review.html', movies=review_list, media_type=media_type, genres=TMDB_GENRES[media_type], providers=providers)
+    
 @app.route('/generate', methods=['POST'])
 @login_required
 def generate():
@@ -544,5 +706,8 @@ with app.app_context():
 from api import *
 
 if __name__ == '__main__':
-    # 👇 UPDATED: Disable debug mode for production safety
+    with app.app_context():
+        # db.drop_all()  # I ONLY USE FOR TESTING
+        db.create_all()  
     app.run(debug=False, host='0.0.0.0', port=5000)
+    
