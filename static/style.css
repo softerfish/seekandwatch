@@ -169,15 +169,124 @@ select option { background-color: #333; color: white; }
 .search-result-item:hover { background: rgba(255,255,255,0.05); }
 
 /* =========================================
-   5. LOGIN STYLES
+   5. LOGIN & AUTH STYLES
    ========================================= */
 .login-wrapper {
-    display: flex; justify-content: center; align-items: center; min-height: 60vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 70vh;
 }
-.login-card { width: 100%; max-width: 400px; text-align: center; }
-.login-btn { 
-    width: 100%; padding: 15px; font-size: 1.1em; 
-    background: var(--accent-color); color: white; border: none; 
+
+.login-card {
+    width: 100%;
+    max-width: 400px;
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    overflow: hidden;
+    padding: 0;
+    text-align: left;
+}
+
+.auth-toggle {
+    display: flex;
+    border-bottom: 1px solid #333;
+    background: #111;
+}
+
+.toggle-btn {
+    flex: 1;
+    padding: 20px;
+    border: none;
+    background: transparent;
+    color: #777;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 1em;
+    outline: none;
+    text-align: center;
+}
+
+.toggle-btn:hover {
+    color: #aaa;
+    background: #161616;
+}
+
+.toggle-btn.active {
+    color: white;
+    background: #1a1a1a;
+    border-bottom: 3px solid var(--accent-color);
+}
+
+.auth-body {
+    padding: 30px;
+}
+
+.auth-body .form-group {
+    margin-bottom: 20px;
+    text-align: left;
+}
+
+.auth-body label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 0.9em;
+    color: #ccc;
+    font-weight: 600;
+}
+
+.auth-body input {
+    width: 100%;
+    padding: 12px;
+    background: #252525;
+    border: 1px solid #444;
+    border-radius: 6px;
+    color: white;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.auth-body input:focus {
+    border-color: var(--accent-color);
+}
+
+.login-btn {
+    width: 100%;
+    padding: 12px;
+    margin-top: 10px;
+    background: var(--accent-color);
+    color: black;
+    font-weight: 800;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.login-btn:hover { opacity: 0.9; }
+
+/* Animated Hidden Field (Confirm Password) */
+.hidden-field {
+    display: none;
+    opacity: 0;
+    transform: translateY(-10px);
+}
+
+.visible-field {
+    display: block;
+    opacity: 1;
+    transform: translateY(0);
+    transition: all 0.3s ease;
+}
+
+.auth-footer {
+    margin-top: 20px;
+    text-align: center;
+    font-size: 0.85em;
+    color: #666;
 }
 
 /* =========================================
@@ -349,6 +458,31 @@ details.help-box li { margin-bottom: 8px; }
 .toggle-pass {
     position: absolute; right: 10px; background: none; border: none; 
     color: #888; cursor: pointer; font-size: 1.2em;
+}
+
+.test-wrapper {
+    display: flex;
+    gap: 10px;
+}
+.btn-test {
+    background: #333;
+    color: #fff;
+    border: 1px solid #555;
+    padding: 0 15px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: all 0.2s;
+}
+.btn-test:hover {
+    background: var(--accent-color);
+    color: black;
+    border-color: var(--accent-color);
+}
+/* ------------------ */
+
+.btn-save {
+    width: 100%; padding: 15px; background: var(--accent-color);
 }
 
 .btn-save {
@@ -607,6 +741,24 @@ input[type=range]::-webkit-slider-thumb:hover {
 
 .builder-card .btn-secondary:hover {
     background: rgba(229, 160, 13, 0.2);
+}
+
+/* 4. Firefox Support (Add this to style.css) */
+input[type=range]::-moz-range-track {
+    width: 100%;
+    height: 6px;
+    cursor: pointer;
+    background: #444;
+    border-radius: 3px;
+}
+
+input[type=range]::-moz-range-thumb {
+    height: 20px;
+    width: 20px;
+    border: none;
+    border-radius: 50%;
+    background: var(--accent-color);
+    cursor: pointer;
 }
 
 /* =========================================
