@@ -90,6 +90,7 @@ docker stop seekandwatch
 docker rm seekandwatch
 
 # 3. Start it back up
+```bash
 docker run -d \
   --name=seekandwatch \
   -p 5000:5000 \
@@ -97,6 +98,7 @@ docker run -d \
   -e TZ=America/New_York \
   --restart unless-stopped \
   ghcr.io/softerfish/seekandwatch:latest
+```  
   
 ### Changelog
 1.0.2
