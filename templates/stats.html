@@ -107,13 +107,14 @@ async function loadTautulli() {
             panel.rows.forEach((row, index) => {
                 const smartData = getSmartData(panel.stat_id, row);
                 rows += `
-                <div style="display:flex; justify-content:space-between; padding: 8px 0; border-bottom: 1px solid #333; font-size: 0.95em;">
-                    <div style="display:flex; gap: 10px; align-items: center; max-width: 70%;">
-                        <span style="color: #555; font-size: 0.8em; width: 20px;">${index + 1}</span>
-                        <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${smartData.label}">${smartData.label}</span>
-                    </div>
-                    <span style="color: var(--accent-color); font-weight:bold; font-size: 0.9em;">${smartData.value}</span>
-                </div>`;
+            <div style="display:flex; justify-content:space-between; padding: 8px 0; border-bottom: 1px solid #333; font-size: 0.95em;">
+                <div style="display:flex; gap: 10px; align-items: center; max-width: 70%;">
+                    <span style="color: #999; font-size: 0.8em; width: 20px;">${index + 1}</span>
+                    
+                    <span style="color: #eee; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${smartData.label}">${smartData.label}</span>
+                </div>
+                <span style="color: var(--accent-color); font-weight:bold; font-size: 0.9em;">${smartData.value}</span>
+            </div>`;
             });
 
             grid.innerHTML += `

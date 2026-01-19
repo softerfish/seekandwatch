@@ -1,6 +1,41 @@
 {% extends "base.html" %}
 
 {% block content %}
+
+<style>
+    /* High-contrast, forced-on-top loader */
+    #nuclear-loader {
+        display: none; /* Hidden by default */
+        position: fixed; 
+        top: 0; 
+        left: 0; 
+        width: 100vw; 
+        height: 100vh;
+        background: rgba(0,0,0,0.96) !important;
+        z-index: 2147483647 !important; /* Max possible Z-Index */
+        flex-direction: column; 
+        justify-content: center; 
+        align-items: center; 
+        text-align: center;
+        backdrop-filter: blur(5px);
+    }
+    .nuclear-spinner {
+        width: 70px; height: 70px;
+        border: 6px solid rgba(255,255,255,0.1); 
+        border-radius: 50%;
+        border-top-color: #e5a00d; 
+        animation: nuke-spin 1s linear infinite; 
+        margin-bottom: 25px;
+    }
+    @keyframes nuke-spin { to { transform: rotate(360deg); } }
+</style>
+
+<div id="nuclear-loader">
+    <div class="nuclear-spinner"></div>
+    <h2 style="color: white; font-weight: 800; margin: 0; font-size: 2em;">Running Scan...</h2>
+    <p style="color: #ccc; margin-top: 10px; font-size: 1.1em;">Analyzing your library history.</p>
+</div>
+
 {% if new_version %}
 <div class="update-banner">
     🚀 Update Available! Version {{ new_version }} is released.
@@ -10,34 +45,15 @@
 
 <div style="text-align: center; padding-top: 20px;">
 
-    {% if recent_media %}
-    <div style="text-align: left; margin-bottom: 40px;">
-        <div class="section-title">
-            <span>🚀</span> Recently Added to Server
-        </div>
-        <div class="scroller">
-            {% for item in recent_media %}
-            <div class="media-item">
-                <div class="media-poster">
-                    {% if item.thumb %}
-                    <img src="{{ item.thumb }}">
-                    {% else %}
-                    <div style="height: 100%; display: flex; align-items: center; justify-content: center; color: #555;">No Image</div>
-                    {% endif %}
-                </div>
-                
-                <div class="media-title" title="{{ item.title }}">{{ item.title }}</div>
-                
-                {% if item.sub_title %}
-                <div class="media-sub">{{ item.sub_title }}</div>
-                {% endif %}
-
-                <div class="media-year">{{ item.year }}</div>
-            </div>
-            {% endfor %}
-        </div>
+    <div style="max-width: 800px; margin: 0 auto 30px auto; background: rgba(243, 156, 18, 0.1); border-left: 4px solid #f39c12; padding: 15px; text-align: left; border-radius: 4px;">
+        <strong style="color: #f39c12; display: block; margin-bottom: 5px;">⚠️ Important Setup Requirement:</strong> 
+        <span style="color: #ccc; font-size: 0.95em; line-height: 1.5; display: block;">
+            To prevent duplicates and ensure accurate recommendations, you <b>must</b> enable 
+            <b>Sync Engine</b> & <b>Background Alias Discovery</b> in 
+            <a href="{{ url_for('settings') }}" style="text-decoration: underline; color: white; font-weight: bold;">Settings</a> 
+            and allow them to complete a full cycle.
+        </span>
     </div>
-    {% endif %}
 
     <div class="card discovery-card">
         <h3 style="margin-top: 0; color: var(--accent-color); text-align: center;">🎬 Smart Discovery</h3>
@@ -45,54 +61,62 @@
         <div class="info-box">
             <strong style="color: white; display: block; margin-bottom: 5px;">💡 How it works:</strong>
             <ul style="margin: 0; padding-left: 20px;">
-                <li><strong>Scanning:</strong> We analyze your last <b>500 Plex history entries</b>.</li>
-                <li><strong>Curation:</strong> You can set how many unique titles to pull below.</li>
+                <li><strong>Scanning:</strong> We analyze your last <b>5000 Plex history entries</b>.</li>
+                <li><strong>Curation:</strong> You can set how many unique titles to pull from history.</li>
                 <li><strong>Filtering:</strong> Ignored profiles are skipped.</li>
                 <li><strong>Variety:</strong> Results change every time because we shuffle your history and randomize the discovery path to keep recommendations fresh.</li>
+                <li><strong>🍀 Lucky Mode:</strong> Instantly picks a random favorite from your history and finds a top-rated match.</li>
             </ul>
         </div>
 
-        <div style="margin-bottom: 20px; text-align: center;">
-            <label style="color: #888; font-size: 0.9em;">Number of titles to pull from history:</label>
-            <div style="display: flex; align-items: center; justify-content: center; margin-top: 5px;">
-                <input type="number" id="history-limit" value="20" min="1" max="100" 
-                       style="width: 70px; padding: 10px; border-radius: 8px; background: #111; border: 1px solid #444; color: white; text-align: center;">
+        <form id="mainScanForm" action="{{ url_for('review_history') }}" method="POST">
+            
+            <input type="hidden" id="mediaTypeInput" name="media_type" value="movie">
+
+            <div style="margin-bottom: 20px; text-align: center;">
+                <label style="color: #888; font-size: 0.9em;">Number of titles to pull from history:</label>
+                <div style="display: flex; align-items: center; justify-content: center; margin-top: 5px;">
+                    <input type="number" name="history_limit" value="20" min="1" max="100" class="history-limit-input">
+                </div>
+                <p style="font-size: 0.8em; color: #e74c3c; margin-top: 8px; margin-bottom: 0;">
+                    ⚠️ <b>Tip:</b> Keep this under 30 for fast results. High numbers (50+) will significantly slow down the scan.
+                </p>
             </div>
-            <p style="font-size: 0.8em; color: #e74c3c; margin-top: 8px; margin-bottom: 0;">
-                ⚠️ <b>Tip:</b> Keep this under 30 for fast results. High numbers (50+) will significantly slow down the scan.
-            </p>
-        </div>
 
-       {% if has_omdb %}
-        <div style="margin-bottom: 20px; text-align: center;">
-            <label style="cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: rgba(255,255,255,0.05); padding: 8px 15px; border-radius: 20px; border: 1px solid #333; transition: 0.2s;">
-                <input type="checkbox" name="critic_filter" id="critic-filter" onchange="toggleCritic()" style="width: 16px; height: 16px; accent-color: #ff6347;">
-                <span style="color: #ddd;">🍅 Certified Fresh</span>
-                <input type="number" name="critic_threshold" id="critic-input" value="70" min="0" max="100" 
-                       onclick="event.stopPropagation();"
-                       style="width: 45px; padding: 2px 4px; border-radius: 4px; border: 1px solid #555; background: #222; color: #fff; font-size: 0.9em; display: none;">
-                <span id="critic-percent" style="color: #ddd; display: none;">%</span>
-            </label>
-        </div>
-        <script>
-        function toggleCritic() {
-            const isChecked = document.getElementById('critic-filter').checked;
-            document.getElementById('critic-input').style.display = isChecked ? 'inline-block' : 'none';
-            document.getElementById('critic-percent').style.display = isChecked ? 'inline' : 'none';
-        }
-        </script>
-        {% endif %}
-        
-        <div class="scan-btn-group">
-            <button onclick="scanHistory('movie')" class="btn btn-scan movie">Scan Movies</button>
-            <button onclick="scanHistory('tv')" class="btn btn-scan tv">Scan TV Shows</button>
-        </div>
+           {% if has_omdb %}
+            <div style="margin-bottom: 20px; text-align: center;">
+                <label class="critic-label">
+                    <input type="checkbox" name="critic_filter" id="critic-filter" onchange="toggleCritic()" style="width: 16px; height: 16px; accent-color: #ff6347;">
+                    <span style="color: #ddd;">🍅 Certified Fresh</span>
+                    <input type="number" name="critic_threshold" id="critic-input" value="70" min="0" max="100" 
+                           onclick="event.stopPropagation();" class="critic-input">
+                    <span id="critic-percent" style="color: #ddd; display: none;">%</span>
+                </label>
+            </div>
+            <script>
+            function toggleCritic() {
+                const isChecked = document.getElementById('critic-filter').checked;
+                document.getElementById('critic-input').style.display = isChecked ? 'inline-block' : 'none';
+                document.getElementById('critic-percent').style.display = isChecked ? 'inline' : 'none';
+            }
+            </script>
+            {% endif %}
+            
+            <div class="scan-btn-group">
+                <a href="javascript:void(0)" class="btn btn-scan movie" onclick="nuclearSubmit('movie')" style="text-align: center; text-decoration: none;">
+                    Scan Movies
+                </a>
+                <a href="javascript:void(0)" class="btn btn-scan tv" onclick="nuclearSubmit('tv')" style="text-align: center; text-decoration: none;">
+                    Scan TV Shows
+                </a>
+            </div>
+        </form>
 
-        <form action="{{ url_for('generate') }}" method="POST">
+        <form id="luckyForm" action="{{ url_for('generate') }}" method="POST">
             <input type="hidden" name="lucky_mode" value="true">
-            <button type="submit" class="btn btn-lucky">
+            <a href="javascript:void(0)" class="btn btn-lucky" onclick="nuclearLucky()" style="text-align: center; text-decoration: none;">
                 🍀 I'm Feeling Lucky
-            </button>
+            </a>
         </form>
     </div>
 
@@ -105,22 +129,31 @@
 </div>
 
 <script>
-    function scanHistory(type) {
-        const limit = document.getElementById('history-limit').value;
-        const form = document.createElement('form'); form.method = 'POST'; form.action = "{{ url_for('review_history') }}";
-        
-        const typeInput = document.createElement('input'); typeInput.type = 'hidden'; typeInput.name = 'media_type'; typeInput.value = type;
-        const limitInput = document.createElement('input'); limitInput.type = 'hidden'; limitInput.name = 'history_limit'; limitInput.value = limit;
-        
-        const criticFilter = document.getElementById('critic-filter');
-        if (criticFilter && criticFilter.checked) {
-            const cfInput = document.createElement('input'); cfInput.type = 'hidden'; cfInput.name = 'critic_filter'; cfInput.value = 'on'; form.appendChild(cfInput);
-            const threshInput = document.createElement('input'); threshInput.type = 'hidden'; threshInput.name = 'critic_threshold'; threshInput.value = document.getElementById('critic-input').value; form.appendChild(threshInput);
+    document.addEventListener("DOMContentLoaded", function() {
+        // Move loader to body to avoid clipping
+        const loader = document.getElementById('nuclear-loader');
+        if (loader && document.body) {
+            document.body.appendChild(loader);
         }
-        
-        form.appendChild(typeInput); form.appendChild(limitInput); document.body.appendChild(form); form.submit();
+    });
+
+    function nuclearSubmit(type) {
+        document.getElementById('nuclear-loader').style.display = 'flex';
+        const input = document.getElementById('mediaTypeInput');
+        if (input) input.value = type;
+        setTimeout(function() {
+            document.getElementById('mainScanForm').submit();
+        }, 50);
     }
 
+    function nuclearLucky() {
+        document.getElementById('nuclear-loader').style.display = 'flex';
+        setTimeout(function() {
+            document.getElementById('luckyForm').submit();
+        }, 50);
+    }
+
+    // --- Search Logic ---
     const searchInput = document.getElementById('main-search');
     const resultsDiv = document.getElementById('search-results');
     let debounceTimer;
@@ -136,7 +169,8 @@
                     if (data.results && data.results.length > 0) {
                         let html = '';
                         data.results.forEach(item => {
-                            html += `<div class="search-result-item" onclick="selectItem('${item.title.replace(/'/g, "\\'")}')">
+                            const safeTitle = item.title.replace(/'/g, "\\'");
+                            html += `<div class="search-result-item" onclick="selectItem('${safeTitle}')">
                                 <img src="https://image.tmdb.org/t/p/w92${item.poster}" style="width: 40px; border-radius: 4px;" onerror="this.style.display='none'">
                                 <div><div style="font-weight: bold; color: var(--text-color);">${item.title}</div><div style="font-size: 0.8em; color: #888;">${item.year}</div></div></div>`;
                         });
@@ -147,11 +181,29 @@
     });
 
     function selectItem(title) {
-        const form = document.createElement('form'); form.method = 'POST'; form.action = "{{ url_for('review_history') }}";
-        const input = document.createElement('input'); input.type = 'hidden'; input.name = 'manual_query'; input.value = title;
-        const typeInput = document.createElement('input'); typeInput.type = 'hidden'; typeInput.name = 'media_type'; typeInput.value = 'movie';
-        form.appendChild(input); form.appendChild(typeInput); document.body.appendChild(form); form.submit();
+        document.getElementById('nuclear-loader').style.display = 'flex';
+        
+        const form = document.createElement('form'); 
+        form.method = 'POST'; 
+        form.action = "{{ url_for('review_history') }}";
+        
+        const input = document.createElement('input'); 
+        input.type = 'hidden'; input.name = 'manual_query'; input.value = title;
+        
+        const typeInput = document.createElement('input'); 
+        typeInput.type = 'hidden'; typeInput.name = 'media_type'; typeInput.value = 'movie';
+        
+        form.appendChild(input); 
+        form.appendChild(typeInput); 
+        document.body.appendChild(form); 
+        
+        setTimeout(() => form.submit(), 50);
     }
-    document.addEventListener('click', function(e) { if (!searchInput.contains(e.target) && !resultsDiv.contains(e.target)) { resultsDiv.style.display = 'none'; } });
+    
+    document.addEventListener('click', function(e) { 
+        if (!searchInput.contains(e.target) && !resultsDiv.contains(e.target)) { 
+            resultsDiv.style.display = 'none'; 
+        } 
+    });
 </script>
 {% endblock %}

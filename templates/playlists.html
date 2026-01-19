@@ -1,90 +1,48 @@
 {% extends "base.html" %}
 {% block content %}
 
+<style>
+    /* Info Icon & Tooltip CSS */
+    .tooltip-container { position: relative; display: inline-block; cursor: help; margin-left: 5px; }
+    .info-icon { font-size: 0.9em; opacity: 0.7; }
+    .tooltip-text {
+        visibility: hidden; width: 200px; background-color: #222; color: #fff; text-align: left;
+        border-radius: 6px; padding: 10px; position: absolute; z-index: 100;
+        bottom: 125%; left: 50%; margin-left: -100px; opacity: 0; transition: opacity 0.3s;
+        font-size: 0.8em; box-shadow: 0 4px 15px rgba(0,0,0,0.8); border: 1px solid #444;
+        line-height: 1.4;
+    }
+    .tooltip-container:hover .tooltip-text { visibility: visible; opacity: 1; }
+    
+    /* Control Row Styling */
+    .control-row {
+        display: flex; justify-content: space-between; align-items: center; 
+        margin-bottom: 8px; font-size: 0.85em; color: #ccc;
+    }
+    .control-select {
+        background: #333; border: 1px solid #555; color: white; 
+        padding: 4px; border-radius: 4px; font-size: 0.9em; width: 110px;
+    }
+    .control-select:disabled {
+        background: #222; color: #777; border-color: #333; cursor: not-allowed;
+    }
+    .locked-badge {
+        font-size: 0.85em; color: var(--accent-color); font-weight: bold; display: flex; align-items: center; gap: 4px;
+    }
+</style>
+
 <div class="playlist-header">
     <h2>✨ Plex Collections</h2>
     <p class="media-sub">Curated lists, imported text, and custom builders.</p>
 
-    <div class="card" style="border-left: 4px solid var(--info); text-align: left; margin-bottom: 20px;">
-        <h3 style="margin-top: 0; display:flex; align-items:center; gap:10px;">
-            ⚙️ Sync Engine Settings
-        </h3>
-        
-        <div style="color: #ccc; font-size: 0.9em; line-height: 1.6; margin-bottom: 20px;">
-            <p style="margin-top: 0;">
-                <b>How it works:</b> To make collection creation <i>instant</i> and prevent crashing your Plex server, 
-                SeekAndWatch downloads a lightweight index of your library to a local file (Cache).
-                When you click "Sync Now", we read this local file instead of querying Plex 1,000 times.
-            </p>
-
-            <div style="background: rgba(255, 255, 255, 0.05); padding: 10px; border-radius: 5px; border-left: 3px solid #f39c12;">
-                <strong>⚠️ Important Notes:</strong>
-                <ul style="margin: 5px 0 0 0; padding-left: 20px;">
-                    <li style="margin-bottom: 5px;">
-                        <b>New Media:</b> If you just added a movie to Plex, it won't appear in collections until the cache updates. Click <b>"Force Refresh Now"</b> to include it immediately.
-                    </li>
-                    <li>
-                        <b>Large Libraries:</b> If you have 5000+ items, the cache refresh may take <b>1-5 minutes</b>.
-                    </li>
-                </ul>
-            </div>
-        </div>
-
-        <div style="display: flex; gap: 20px; align-items: flex-end; flex-wrap: wrap;">
-            <div style="flex: 1; min-width: 200px;">
-                <label style="font-weight: bold; display: block; margin-bottom: 8px;">🔄 Auto-Refresh Cache</label>
-                <div style="display: flex; gap: 10px;">
-                    <select id="cache-interval" style="padding: 10px; border-radius: 5px; background: #111; color: white; border: 1px solid #444; flex: 1;">
-                        <option value="12" {% if settings.cache_interval == 12 %}selected{% endif %}>Every 12 Hours (Fastest)</option>
-                        <option value="24" {% if not settings.cache_interval or settings.cache_interval == 24 %}selected{% endif %}>Every 24 Hours (Standard)</option>
-                        <option value="48" {% if settings.cache_interval == 48 %}selected{% endif %}>Every 48 Hours</option>
-                        <option value="168" {% if settings.cache_interval == 168 %}selected{% endif %}>Weekly (Low CPU)</option>
-                    </select>
-                    <button onclick="saveCacheSetting()" class="btn-preview" style="background: var(--accent-color); color: black; font-weight: bold;">Save</button>
-                </div>
-            </div>
-
-            <div style="flex: 1; min-width: 200px; text-align: right;">
-                <div style="font-size: 0.85em; color: #888; margin-bottom: 15px;">
-                    Last Refreshed: <span id="last-updated" style="color: var(--text-color); font-weight: bold;">{{ cache_age }}</span>
-                </div>
-                <button onclick="forceRefresh()" id="btn-force" class="btn-secondary" style="font-size: 0.9em; padding: 10px 15px;">
-                    🔄 Force Refresh Now
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <div class="card mb-4 shadow-sm" style="border: 1px solid #444; background: #222; text-align: left; margin-bottom: 30px;">
-        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center" style="padding: 10px 15px; border-bottom: 1px solid #444; display: flex; justify-content: space-between;">
-            <h4 class="mb-0" style="font-size: 1em; display:flex; align-items:center; margin: 0;">
-                <span style="font-size:1.2em; margin-right:8px;">🌍</span> Community Alias Database
-            </h4>
-            <span class="badge bg-primary rounded-pill" id="aliasCountBadge" style="background:#007bff; color:white; padding:4px 10px; border-radius:15px; font-size:0.8em;">
-                {{ alias_count }} Entries
-            </span>
-        </div>
-        <div class="card-body" style="padding: 15px;">
-            <div class="row align-items-center" style="display: flex; gap: 20px;">
-                <div class="col-md-8" style="flex: 1;">
-                    <p class="card-text text-muted mb-2" style="color:#aaa; font-size:0.9em; margin-top:0;">
-                        <strong>What is this?</strong> A community-curated list of alternative titles to help SeekAndWatch match your requests correctly (e.g., matching "Zootropolis" to "Zootopia").
-                    </p>
-                    <p class="card-text text-muted mb-3" style="color:#777; font-size:0.85em; margin-bottom: 0;">
-                        <small>
-                            <i class="fas fa-lock me-1"></i>
-                            <strong>Privacy Note:</strong> This is a 100% one-way download. 
-                            No data about your library is sent to SeekAndWatch.
-                        </small>
-                    </p>
-                </div>
-                <div class="col-md-4 text-end" style="text-align:right;">
-                    <button type="button" id="forceSyncBtn" class="btn btn-outline-primary" onclick="syncAliases()" style="background:transparent; border:1px solid #007bff; color:#007bff; padding:5px 15px; cursor:pointer; border-radius:4px;">
-                        Force Sync Now
-                    </button>
-                </div>
-            </div>
-        </div>
+    <div style="max-width: 800px; margin: 0 auto 20px auto; background: rgba(243, 156, 18, 0.1); border-left: 4px solid #f39c12; padding: 15px; text-align: left; border-radius: 4px;">
+        <strong style="color: #f39c12; display: block; margin-bottom: 5px;">⚠️ Important Setup Requirement:</strong> 
+        <span style="color: #ccc; font-size: 0.95em; line-height: 1.5; display: block;">
+            To ensure accurate collections and remove duplicates, you <b>must</b> enable 
+            <b>Sync Engine</b> & <b>Background Alias Discovery</b> in 
+            <a href="{{ url_for('settings') }}" style="text-decoration: underline; color: white; font-weight: bold;">Settings</a> 
+            and allow them to complete a full cycle.
+        </span>
     </div>
 
     <div class="stats-bar">
@@ -110,8 +68,7 @@
     <div class="import-content wide">
         <span onclick="document.getElementById('preview-modal').style.display='none'" class="close-btn">&times;</span>
         <h2 id="preview-title" style="margin-top:0;">👀 Collection Preview</h2>
-        <div id="preview-grid" class="preview-grid">
-            </div>
+        <div id="preview-grid" class="preview-grid"></div>
     </div>
 </div>
 
@@ -161,20 +118,42 @@
             <h3 class="playlist-title">{{ playlist.title }}</h3>
             <p class="playlist-desc">{{ playlist.description }}</p>
         </div>
+        
         <div class="playlist-controls">
             {% if 'Imported' not in playlist.description %}
-            <div class="schedule-row">
-                <label style="font-size: 0.8em; color: #aaa;">Auto-Update:</label>
-                <select onchange="saveSchedule('{{ key }}', this.value)" class="schedule-select">
+            
+            <div class="control-row">
+                <label>Auto-Update:</label>
+                <select id="freq-{{ key }}" onchange="saveSettings('{{ key }}')" class="control-select">
                     <option value="manual" {% if schedules.get(key) == 'manual' %}selected{% endif %}>Off</option>
                     <option value="daily" {% if schedules.get(key) == 'daily' %}selected{% endif %}>Daily</option>
                     <option value="weekly" {% if schedules.get(key) == 'weekly' %}selected{% endif %}>Weekly</option>
                 </select>
             </div>
-            <div class="sync-row">
+
+            <div class="control-row">
+                <label style="display:flex; align-items:center;">
+                    Sync Mode:
+                    <div class="tooltip-container">
+                        <span class="info-icon">ℹ️</span>
+                        <div class="tooltip-text">
+                            <strong>Sync (Strict):</strong> Adds new items AND removes old ones.<br><br>
+                            <strong>Append:</strong> Only adds new items. Never removes. Best for growing lists.
+                        </div>
+                    </div>
+                </label>
+                {% set saved_mode = playlist.get('sync_mode', 'append') %}
+                <select id="sync-{{ key }}" onchange="saveSettings('{{ key }}')" class="control-select">
+                    <option value="append" {% if saved_mode == 'append' %}selected{% endif %}>Append (Grow)</option>
+                    <option value="sync" {% if saved_mode == 'sync' %}selected{% endif %}>Sync (Strict)</option>
+                </select>
+            </div>
+
+            <div class="sync-row" style="margin-top: 10px;">
                 <button onclick="previewCollection('{{ key }}', '{{ playlist.title|replace("'", "\\'") }}')" class="btn-preview" title="Preview Contents">👀</button>
                 <button onclick="createCollection('{{ key }}')" id="btn-{{ key }}" class="btn-sync">Sync Now 🪄</button>
             </div>
+            
             {% else %}
             <div class="static-badge">Static Import</div>
             <button disabled class="btn-synced-disabled">Synced ✅</button>
@@ -185,7 +164,7 @@
 </div>
 {% endif %}
 
-{% set categories = ['Regional Trending', 'International & World', 'Decades', 'Themes & Vibes', 'Franchises', 'Awards & Acclaim', 'Studios & Networks', 'Genre (Movies)', 'Genre (TV)', 'Content Ratings'] %}
+{% set categories = ['Regional Trending', 'International & World', 'Decades', 'Themes & Vibes', 'Awards & Acclaim', 'Studios & Networks', 'Genre (Movies)', 'Genre (TV)', 'Content Ratings'] %}
 
 {% for cat in categories %}
 <div class="category-header playlist-section" data-cat="{{ cat }}">
@@ -200,16 +179,46 @@
             <h3 class="playlist-title">{{ playlist.title }}</h3>
             <p class="playlist-desc">{{ playlist.description }}</p>
         </div>
+        
         <div class="playlist-controls">
-            <div class="schedule-row">
-                <label style="font-size: 0.8em; color: #aaa;">Auto-Update:</label>
-                <select onchange="saveSchedule('{{ key }}', this.value)" class="schedule-select">
+            <div class="control-row">
+                <label>Auto-Update:</label>
+                <select id="freq-{{ key }}" onchange="saveSettings('{{ key }}')" class="control-select">
                     <option value="manual" {% if schedules.get(key) == 'manual' %}selected{% endif %}>Off</option>
                     <option value="daily" {% if schedules.get(key) == 'daily' %}selected{% endif %}>Daily</option>
                     <option value="weekly" {% if schedules.get(key) == 'weekly' %}selected{% endif %}>Weekly</option>
                 </select>
             </div>
-            <div class="sync-row">
+
+            <div class="control-row">
+                <label style="display:flex; align-items:center;">
+                    Sync Mode:
+                    {% if 'Trending' not in playlist.title %}
+                    <div class="tooltip-container">
+                        <span class="info-icon">ℹ️</span>
+                        <div class="tooltip-text">
+                            <strong>Sync (Strict):</strong> Adds new items AND removes items not on the list.<br><br>
+                            <strong>Append:</strong> Only adds. Never removes.
+                        </div>
+                    </div>
+                    {% endif %}
+                </label>
+
+                {% if 'Trending' in playlist.title or 'Trending' in playlist.category %}
+                    <div class="locked-badge">
+                        🔒 Strict Sync
+                        <input type="hidden" id="sync-{{ key }}" value="sync">
+                    </div>
+                {% else %}
+                    {% set saved_mode = playlist.get('sync_mode', 'append') %}
+                    <select id="sync-{{ key }}" onchange="saveSettings('{{ key }}')" class="control-select">
+                        <option value="append" {% if saved_mode == 'append' %}selected{% endif %}>Append (Grow)</option>
+                        <option value="sync" {% if saved_mode == 'sync' %}selected{% endif %}>Sync (Strict)</option>
+                    </select>
+                {% endif %}
+            </div>
+
+            <div class="sync-row" style="margin-top: 10px;">
                 <button onclick="previewCollection('{{ key }}', '{{ playlist.title|replace("'", "\\'") }}')" class="btn-preview" title="Preview Contents">👀</button>
                 <button onclick="createCollection('{{ key }}')" id="btn-{{ key }}" class="btn-sync">Run Now 🪄</button>
             </div>
@@ -221,85 +230,33 @@
 {% endfor %}
 
 <script>
-// --- CACHE MANAGEMENT ---
-function saveCacheSetting() {
-    const val = document.getElementById('cache-interval').value;
-    fetch('/save_cache_settings', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({interval: val})
-    }).then(r => r.json()).then(d => alert(d.message));
-}
-
-function forceRefresh() {
-    const btn = document.getElementById('btn-force');
-    btn.disabled = true; 
-    btn.innerText = "Refreshing... ⏳";
-    
-    fetch('/force_cache_refresh', {method: 'POST'})
-    .then(r => r.json())
-    .then(data => {
-        if(data.status === 'success') {
-            alert(data.message);
-        } else {
-            alert("Error: " + data.message);
-            btn.disabled = false;
-            btn.innerText = "🔄 Force Refresh Now";
-        }
-    });
-}
-
 // --- POLLING FOR LOCKOUT ---
 setInterval(checkCacheStatus, 2000); 
 
 function checkCacheStatus() {
-    fetch('/get_cache_status')
-    .then(r => r.json())
-    .then(data => {
-        // SELECT ALL ACTION BUTTONS
+    fetch('/get_cache_status').then(r => r.json()).then(data => {
         const btns = document.querySelectorAll('.btn-sync');
-        const forceBtn = document.getElementById('btn-force');
         const importBtn = document.getElementById('btn-import-open');
         const builderBtn = document.getElementById('btn-builder-nav');
-        const modalCreateBtn = document.getElementById('create-import-btn');
-        const txt = document.getElementById('last-updated');
         
         if(data.running) {
-            // LOCKOUT MODE
             btns.forEach(b => {
-                b.disabled = true;
-                b.innerText = "System Busy ⏳";
-                b.style.opacity = "0.5";
-                b.style.cursor = "not-allowed";
+                b.disabled = true; b.innerText = "System Busy ⏳"; 
+                b.style.opacity = "0.5"; b.style.cursor = "not-allowed";
             });
-            
-            // Lock Nav Buttons
             if(importBtn) { importBtn.disabled = true; importBtn.style.opacity = "0.5"; }
             if(builderBtn) { builderBtn.disabled = true; builderBtn.style.opacity = "0.5"; }
-            if(modalCreateBtn) { modalCreateBtn.disabled = true; }
-
-            forceBtn.disabled = true;
-            forceBtn.innerText = `Refreshing (${data.progress}) ⏳`;
         } else {
-            // IDLE MODE
             btns.forEach(b => {
                 if(b.disabled && b.innerText.includes("System Busy")) {
-                    b.disabled = false;
-                    b.innerText = "Sync Now 🪄"; // Or "Run Now"
-                    b.style.opacity = "1";
-                    b.style.cursor = "pointer";
+                    b.innerText = "Run Now 🪄"; // Default text, might need logic to restore 'Sync Now' for custom
+                    if(b.id.startsWith("btn-custom")) b.innerText = "Sync Now 🪄"; // Rough guess
+                    b.disabled = false; b.innerText = "Run Now 🪄"; 
+                    b.style.opacity = "1"; b.style.cursor = "pointer";
                 }
             });
-            
-            // Unlock Nav Buttons
             if(importBtn) { importBtn.disabled = false; importBtn.style.opacity = "1"; }
             if(builderBtn) { builderBtn.disabled = false; builderBtn.style.opacity = "1"; }
-            if(modalCreateBtn) { modalCreateBtn.disabled = false; }
-
-            if(forceBtn.innerText.includes("Refreshing")) {
-                forceBtn.disabled = false;
-                forceBtn.innerText = "🔄 Force Refresh Now";
-                txt.innerText = "Just Now"; 
-            }
         }
     });
 }
@@ -309,35 +266,19 @@ function filterType(type) {
     document.getElementById('btn-movie').classList.remove('active');
     document.getElementById('btn-tv').classList.remove('active');
     document.getElementById('btn-' + type).classList.add('active');
-
-    // 1. Filter Individual Cards
     const cards = document.querySelectorAll('.playlist-card');
     cards.forEach(card => {
-        if (card.dataset.type === type) {
-            card.style.display = 'flex';
-        } else {
-            card.style.display = 'none';
-        }
+        card.style.display = (card.dataset.type === type) ? 'flex' : 'none';
     });
-
-    // 2. Hide Empty Categories
     const grids = document.querySelectorAll('.playlist-grid');
     grids.forEach(grid => {
         let hasVisible = false;
         const children = grid.querySelectorAll('.playlist-card');
-        children.forEach(c => {
-            if(c.style.display !== 'none') hasVisible = true;
-        });
-        
+        children.forEach(c => { if(c.style.display !== 'none') hasVisible = true; });
         const header = grid.previousElementSibling;
         if(header && header.classList.contains('category-header')) {
-            if(hasVisible) {
-                header.style.display = 'flex';
-                grid.style.display = 'grid';
-            } else {
-                header.style.display = 'none';
-                grid.style.display = 'none';
-            }
+            header.style.display = hasVisible ? 'flex' : 'none';
+            grid.style.display = hasVisible ? 'grid' : 'none';
         }
     });
 }
@@ -359,10 +300,7 @@ function previewCollection(key, title) {
                 const opacity = item.owned ? '1' : '0.6';
                 const status = item.owned ? '✅ Owned' : 'missing';
                 const poster = item.poster_path ? 'https://image.tmdb.org/t/p/w200' + item.poster_path : 'https://via.placeholder.com/200x300?text=No+Poster';
-                
-                // Using new classes from style.css
-                html += `
-                <div class="preview-item" style="opacity: ${opacity};">
+                html += `<div class="preview-item" style="opacity: ${opacity};">
                     <img src="${poster}" class="preview-poster">
                     <div class="preview-title">${item.title}</div>
                     <div class="preview-meta">${item.year} • ${status}</div>
@@ -395,32 +333,28 @@ function createCollection(key) {
     });
 }
 
-// SAVE SCHEDULE
-function saveSchedule(key, freq) {
-    fetch('/save_schedule', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({key: key, frequency: freq})
+// --- NEW: SAVE SETTINGS (Handles Frequency AND Sync Mode) ---
+function saveSettings(key) {
+    const freqEl = document.getElementById('freq-' + key);
+    const syncEl = document.getElementById('sync-' + key);
+    
+    const freq = freqEl ? freqEl.value : 'manual';
+    // If sync element is hidden (Trending locked), default to 'sync'
+    const sync = syncEl ? syncEl.value : 'sync';
+
+    fetch('/schedule_collection', { // Note: ensure route is /schedule_collection in app.py
+        method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: `preset_key=${key}&frequency=${freq}&sync_mode=${sync}`
     });
 }
 
 // --- IMPORT MODAL LOGIC ---
 let matchedKeys = [];
-
-function openImportModal() { 
-    document.getElementById('import-modal').style.display = 'block'; 
-    document.body.style.overflow = 'hidden';
-    fetchLibraries();
-}
-
-function closeImportModal() { 
-    document.getElementById('import-modal').style.display = 'none'; 
-    document.body.style.overflow = 'auto';
-}
+function openImportModal() { document.getElementById('import-modal').style.display = 'block'; document.body.style.overflow = 'hidden'; fetchLibraries(); }
+function closeImportModal() { document.getElementById('import-modal').style.display = 'none'; document.body.style.overflow = 'auto'; }
 
 function fetchLibraries() {
-    fetch('/get_plex_libraries')
-    .then(r => r.json())
-    .then(data => {
+    fetch('/get_plex_libraries').then(r => r.json()).then(data => {
         const select = document.getElementById('import-library');
         if(data.status === 'success') {
             let html = '';
@@ -429,9 +363,7 @@ function fetchLibraries() {
                 html += `<option value="${lib.title}">${icon} ${lib.title}</option>`;
             });
             select.innerHTML = html;
-        } else {
-            select.innerHTML = '<option disabled>Error fetching libraries</option>';
-        }
+        } else { select.innerHTML = '<option disabled>Error fetching libraries</option>'; }
     });
 }
 
@@ -439,43 +371,29 @@ function analyzeList() {
     const text = document.getElementById('import-text').value;
     const library = document.getElementById('import-library').value;
     const btn = document.getElementById('analyze-btn');
-    
     if(!text.trim()) { alert("Paste some titles first!"); return; }
     if(!library) { alert("Select a library!"); return; }
     
-    btn.innerText = "Analyzing... ⏳";
-    btn.disabled = true;
+    btn.innerText = "Analyzing... ⏳"; btn.disabled = true;
     
     fetch('/match_bulk_titles', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({titles: text, target_library: library})
-    })
-    .then(res => res.json())
-    .then(data => {
-        btn.innerText = "🔍 Analyze & Match";
-        btn.disabled = false;
-        
+    }).then(res => res.json()).then(data => {
+        btn.innerText = "🔍 Analyze & Match"; btn.disabled = false;
         if(data.status === 'success') {
             const resDiv = document.getElementById('import-results');
             resDiv.style.display = 'block';
             let html = '<table class="result-table">';
             matchedKeys = [];
-            
             data.results.forEach(r => {
                 const statusClass = r.found ? 'status-found' : 'status-missing';
                 const statusText = r.found ? '✅ Found' : '❌ Missing';
                 if(r.found) matchedKeys.push(r.key);
-                
-                // Using new classes
-                html += `<tr class="result-row">
-                    <td class="result-cell query">${r.query}</td>
-                    <td class="result-cell">${r.title}</td>
-                    <td class="result-cell ${statusClass}">${statusText}</td>
-                </tr>`;
+                html += `<tr class="result-row"><td class="result-cell query">${r.query}</td><td class="result-cell">${r.title}</td><td class="result-cell ${statusClass}">${statusText}</td></tr>`;
             });
             html += '</table>';
             resDiv.innerHTML = html;
-            
             if(matchedKeys.length > 0) {
                 document.getElementById('create-import-btn').style.display = 'block';
                 document.getElementById('create-import-btn').innerText = `✅ Create Collection (${matchedKeys.length} items)`;
@@ -487,64 +405,15 @@ function analyzeList() {
 function createImportedCollection() {
     const title = document.getElementById('import-title').value;
     const library = document.getElementById('import-library').value;
-    
     if(!title) { alert("Please name your collection!"); return; }
     
     fetch('/create_bulk_collection', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({collection_title: title, rating_keys: matchedKeys, target_library: library})
-    })
-    .then(res => res.json())
-    .then(data => {
-        if(data.status === 'success') {
-            alert(data.message);
-            closeImportModal();
-            location.reload(); 
-        } else {
-            alert(data.message);
-        }
-    });
-}
-
-// ALIAS SYNC (NEW)
-function syncAliases() {
-    const btn = document.getElementById('forceSyncBtn');
-    const badge = document.getElementById('aliasCountBadge');
-    const originalText = btn.innerText;
-    
-    btn.disabled = true;
-    btn.innerText = "Syncing...";
-
-    fetch('/api/sync_aliases', { method: 'POST' })
-    .then(r => r.json())
-    .then(data => {
-        if(data.status === 'success') {
-            // Update Badge Logic
-            if(badge && data.count) {
-                badge.innerText = data.count + " Entries";
-            }
-            
-            btn.innerText = "Synced! ✅";
-            btn.style.color = "#2ecc71";
-            btn.style.borderColor = "#2ecc71";
-        } else {
-            alert("Error: " + data.message);
-            btn.innerText = originalText;
-        }
-        
-        setTimeout(() => {
-            btn.disabled = false;
-            btn.innerText = originalText;
-            btn.style.color = "#007bff";
-            btn.style.borderColor = "#007bff";
-        }, 3000);
-    })
-    .catch(err => {
-        console.error(err);
-        btn.innerText = "Error";
-        btn.disabled = false;
+    }).then(res => res.json()).then(data => {
+        if(data.status === 'success') { alert(data.message); closeImportModal(); location.reload(); } 
+        else { alert(data.message); }
     });
 }
 </script>
-
 {% endblock %}

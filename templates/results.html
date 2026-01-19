@@ -1,29 +1,71 @@
 {% extends "base.html" %}
+
 {% block content %}
 
 <div class="results-header">
     <a href="{{ url_for('dashboard') }}" class="back-link">← Back to Dashboard</a>
-    
-    <button id="spin-btn" onclick="spinTheWheel()" title="Can't decide? Pick a winner!">
-        🎲 Spin the Wheel
-    </button>
+    <h2 style="margin:0;">✨ Top Picks For You</h2>
+    <button class="btn btn-primary" onclick="spinWheel()">🎡 Spin Wheel</button>
 </div>
 
-<div id="loading" class="loading-container">
-    <div class="loader"></div>
-    <h2>🤖 Crunching the numbers...</h2>
-    <p class="helper-text">Analyzing genres, directors, and deep-cut connections.</p>
-</div>
+<div class="results-container">
+    
+    <div class="filter-sidebar">
+        <h3 style="margin-top:0; border-bottom:1px solid #444; padding-bottom:10px;">Refine Results</h3>
+        
+        <div class="filter-group">
+            <label class="filter-label">Genre</label>
+            <select id="filter-genre" class="filter-input" onchange="updateFilters()">
+                <option value="all">All Genres</option>
+                {% for g in genres %}
+                <option value="{{ g.id }}" {% if current_genre|string == g.id|string %}selected{% endif %}>{{ g.name }}</option>
+                {% endfor %}
+            </select>
+            <p class="helper-text" style="font-size:0.8em; margin-top:5px;">⚠️ Changing genre fetches NEW results.</p>
+        </div>
 
-<div id="results-container" style="display: none;">
-    <h2 class="results-title">
-        {% if lucky_mode %}🍀 Lucky Picks{% else %}✨ Top Picks For You{% endif %}
-    </h2>
-    
-    <div id="results-grid"></div>
-    
-    <div class="load-more-wrapper">
-        <button onclick="loadMore(this)" class="load-more-btn">Load More Results</button>
+        <div class="filter-group">
+            <label class="filter-label">Released After (Year)</label>
+            <input type="number" id="filter-year" class="filter-input" placeholder="e.g. 1990" 
+                   value="{{ min_year if min_year > 0 else '' }}" 
+                   onkeyup="filterVisibleCards()">
+        </div>
+
+        <div class="filter-group">
+            <label class="filter-label">Min. Rating: <span id="rating-val">{{ min_rating }}</span>/10</label>
+            <input type="range" id="filter-rating" min="0" max="10" step="0.5" 
+                   value="{{ min_rating }}" style="width:100%;" 
+                   oninput="document.getElementById('rating-val').innerText=this.value; filterVisibleCards();">
+        </div>
+
+		<div class="filter-group" style="position:relative;">
+            <label class="filter-label" title="Search specific TMDB tags (e.g. 'zombies', 'time travel').">
+                TMDB Keywords <span style="font-size: 0.8em; color: #888; font-weight: normal;">(Not Genres)</span>
+            </label>
+            <div style="font-size: 0.7em; color: #aaa; margin-top: -5px; margin-bottom: 5px;">
+                <i>Searches tags & description only.</i>
+            </div>
+            <input type="text" id="keyword-search" class="filter-input" placeholder="Filter tags..." autocomplete="off">
+            <div id="keyword-results" class="keyword-dropdown"></div>
+            <div id="selected-keywords" class="tag-container"></div>
+        </div>
+		
+        <button class="btn btn-lucky" style="width:100%; margin-top:10px;" onclick="updateFilters()">
+            🔄 Update Results
+        </button>
+    </div>
+
+    <div class="results-main">
+        <div id="loading" class="loading-container">
+            <div class="loader"></div>
+            <h2>Crunching the numbers...</h2>
+        </div>
+
+        <div id="results-grid" class="results-grid" style="display:none;"></div>
+        
+        <div class="load-more-wrapper">
+            <button onclick="loadMore(this)" class="load-more-btn">Load More Results</button>
+        </div>
     </div>
 </div>
 
@@ -34,224 +76,332 @@
     </div>
 </div>
 
-<div id="trailer-modal" class="trailer-modal-overlay" onclick="closeTrailer()">
-    <div class="trailer-modal-content" onclick="event.stopPropagation()">
-        <div class="close-trailer" onclick="closeTrailer()">&times;</div>
-        <iframe id="yt-player" width="100%" height="100%" src="" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+<div id="trailer-modal" class="modal" style="z-index: 1100;">
+    <div class="modal-content" style="background:black; width:90%; max-width:900px; aspect-ratio:16/9; display:flex; flex-direction:column;">
+        <span class="close-modal" onclick="closeTrailer()" style="color:white; z-index:20;">&times;</span>
+        <div id="trailer-body" style="flex:1; width:100%; height:100%;"></div>
     </div>
 </div>
 
 <script>
 let page = 1;
 const useCriticFilter = "{{ use_critic_filter|lower }}"; 
-// 👇 Capture Lucky Mode data sent from Python
-const serverMovies = {{ movies|tojson|safe if movies else 'null' }};
+const serverMovies = {{ movies|tojson|safe if movies else '[]' }};
 
-function init() {
-    // If we have Lucky Mode movies, render them immediately
-    if (serverMovies && serverMovies.length > 0) {
-        document.getElementById('loading').style.display = 'none';
-        document.getElementById('results-container').style.display = 'block';
-        const grid = document.getElementById('results-grid');
-        
-        serverMovies.forEach(item => {
-            grid.appendChild(createCard(item));
-        });
-        
-        // Hide load more button in lucky mode as it's a one-off batch
-        document.querySelector('.load-more-wrapper').style.display = 'none';
-    } else {
-        // Otherwise, load from API normally
-        loadMore(null);
-    }
+// --- SMART TAGS ---
+let selectedKeywords = [];
+const initialTags = "{{ session.get('keywords', '') }}";
+if (initialTags) {
+    const parts = initialTags.split('|');
+    parts.forEach(p => { if(p && p.trim() !== '') selectedKeywords.push({ id: p, name: p }); });
 }
 
-// --- SHARED CARD CREATOR ---
-function createCard(item) {
-    // Normalize data (Lucky mode uses slightly different keys than API)
-    const id = item.tmdb_id || item.id;
-    const title = item.title || item.name;
-    const date = item.date || item.year || 'N/A';
-    const rating = item.rating || item.vote_average || 0;
-    const mediaType = item.media_type || 'movie'; 
-    const posterPath = item.poster_path;
-    const overview = item.overview || "No description available.";
+document.getElementById('keyword-search').addEventListener('input', function(e) {
+    const q = e.target.value;
+    if(q.length < 3) { document.getElementById('keyword-results').style.display = 'none'; return; }
+    fetch(`/tmdb_search_proxy?type=keyword&query=${q}`).then(res => res.json()).then(data => {
+        const div = document.getElementById('keyword-results'); div.innerHTML = "";
+        if(data.results && data.results.length > 0) {
+            data.results.forEach(k => {
+                const item = document.createElement('div'); item.className = 'dropdown-item'; item.innerText = k.name;
+                item.onclick = () => addTag(k); div.appendChild(item);
+            });
+            div.style.display = 'block';
+        } else { div.style.display = 'none'; }
+    });
+});
 
-    const card = document.createElement('div');
-    card.className = 'movie-card'; 
-    card.id = `card-${id}`;
+function addTag(k) {
+    if(selectedKeywords.some(x => x.id === k.id || x.name === k.name)) return;
+    selectedKeywords.push(k); renderTags();
+    document.getElementById('keyword-search').value = ""; 
+    document.getElementById('keyword-results').style.display = 'none';
+    filterVisibleCards();
+}
+function removeTag(name) { selectedKeywords = selectedKeywords.filter(k => k.name !== name); renderTags(); filterVisibleCards(); }
+function renderTags() {
+    const container = document.getElementById('selected-keywords'); container.innerHTML = "";
+    selectedKeywords.forEach(k => {
+        const tag = document.createElement('span'); tag.className = 'keyword-tag';
+        tag.innerHTML = `${k.name} <span onclick="removeTag('${k.name}')">&times;</span>`; 
+        container.appendChild(tag);
+    });
+}
+function getKeywordString() { return selectedKeywords.map(k => k.name).join('|'); }
+
+// --- INIT ---
+function init() {
+    if (selectedKeywords.length > 0) renderTags();
+    if (serverMovies && serverMovies.length > 0) {
+        document.getElementById('loading').style.display = 'none';
+        const grid = document.getElementById('results-grid');
+        grid.style.display = 'grid'; grid.innerHTML = '';
+        serverMovies.forEach(item => { try { grid.appendChild(createCard(item)); } catch(e) {} });
+        // document.querySelector('.load-more-wrapper').style.display = 'none';
+        filterVisibleCards();
+    } else { loadMore(null); }
+}
+
+function filterVisibleCards() {
+    const minYear = parseInt(document.getElementById('filter-year').value) || 0;
+    const minRating = parseFloat(document.getElementById('filter-rating').value) || 0;
+    const activeTags = selectedKeywords.map(k => k.name.toLowerCase());
+    document.querySelectorAll('.result-card').forEach(card => {
+        const year = parseInt(card.dataset.year) || 0;
+        const rating = parseFloat(card.dataset.rating) || 0;
+        const text = card.innerText.toLowerCase();
+        let visible = true;
+        if(year < minYear) visible = false;
+        if(rating < minRating) visible = false;
+        if(activeTags.length > 0) {
+            const hasAllTags = activeTags.every(tag => text.includes(tag));
+            if(!hasAllTags) visible = false;
+        }
+        card.style.display = visible ? 'block' : 'none';
+    });
+}
+
+function updateFilters() {
+    const genre = document.getElementById('filter-genre').value;
+    const year = document.getElementById('filter-year').value;
+    const rating = document.getElementById('filter-rating').value;
+    const tags = getKeywordString();
+    document.getElementById('results-grid').innerHTML = '';
+    document.getElementById('loading').style.display = 'block';
+    page = 1;
+    fetch('/api/update_filters', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ genre_filter: genre, min_year: year, min_rating: rating, keywords: tags })
+    }).then(() => { loadMore(null); }).catch(err => {
+        document.getElementById('loading').innerHTML = '<h3 style="color:red">Server Error.</h3>';
+    });
+}
+
+function loadMore(btn) {
+    if(btn) { 
+        btn.disabled = true; 
+        btn.innerText = "Scanning Deep..."; 
+    }
     
-    // Normalize item object for the modal
-    const cleanItem = {
-        tmdb_id: id, title: title, date: date, rating: rating, 
-        media_type: mediaType, poster_path: posterPath, 
-        overview: overview, streaming_info: item.streaming_info,
-        critic_ratings: item.critic_ratings
-    };
+    // INCREASED TIMEOUT TO 60 SECONDS
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000); 
 
-    card.onclick = (e) => {
-        if (!e.target.closest('.play-trailer-btn')) openModal(cleanItem);
-    };
+    fetch(`/load_more_recs?page=${page}&critic_filter=${useCriticFilter}`, { signal: controller.signal })
+        .then(r => {
+            clearTimeout(timeoutId);
+            return r.ok ? r.json() : Promise.reject(r.status);
+        })
+        .then(data => {
+            document.getElementById('loading').style.display = 'none';
+            const grid = document.getElementById('results-grid'); 
+            grid.style.display = 'grid';
+            
+            if (!Array.isArray(data)) { 
+                alert("Server Error: " + (data.error || "Unknown")); 
+                return; 
+            }
+            
+            if (data.length === 0 && page === 1) {
+                grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:50px; color:#777;">No matches found for these filters.</div>';
+            } else {
+                data.forEach(item => { try { grid.appendChild(createCard(item)); } catch(e){} });
+                page++; 
+                filterVisibleCards();
+            }
+            
+            if(btn) { 
+                btn.disabled = false; 
+                btn.innerText = "Load More Results"; 
+            }
+        })
+        .catch(err => {
+            clearTimeout(timeoutId);
+            document.getElementById('loading').style.display = 'none';
+            
+            // TIMEOUT FALLBACK UI
+            if (!btn) {
+                const grid = document.getElementById('results-grid');
+                grid.style.display = 'grid';
+                grid.innerHTML = `
+                    <div style="grid-column:1/-1; text-align:center; padding:40px;">
+                        <h3>⚠️ Still Working...</h3>
+                        <p style="color:#aaa;">This first scan is taking a while to download tags.</p>
+                        <button onclick="loadMore(this)" class="btn-primary" style="padding:10px 20px; margin-top:10px;">Show Results Now</button>
+                    </div>
+                `;
+            } else {
+                btn.innerText = "Timeout - Try Again";
+                btn.disabled = false;
+            }
+        });
+}
 
-    let badges = '';
-    if (item.is_seed) badges += `<span class="badge" title="History Match">🍀</span>`;
-    if (item.streaming_info) badges += `<span class="badge" title="${item.streaming_info}">📡</span>`;
+// --- CARD CREATION ---
+function createCard(item) {
+    const id = item.tmdb_id || item.id;
+    const title = item.title || item.name || "Unknown";
+    const rawDate = item.date || item.year || item.first_air_date || item.release_date || "";
+    const dateStr = String(rawDate);
+    const displayDate = dateStr.length >= 4 ? dateStr.substring(0, 4) : 'N/A';
+    const rating = item.rating || item.vote_average || 0;
+    const rtScore = item.rt_score || 0; // <--- Get RT Score
+    const mediaType = item.media_type || 'movie'; 
+    
+    const card = document.createElement('div');
+    card.className = 'result-card';
+    card.dataset.year = parseInt(displayDate) || 0;
+    card.dataset.rating = rating;
+    
+    const posterUrl = item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : 'https://placehold.co/500x750/222/888?text=No+Poster';
+    const searchableText = `<span style="display:none;">${title} ${item.overview || ''}</span>`;
 
-    if (item.critic_ratings) {
-        if (item.critic_ratings.rt) badges += `<span class="badge rt">🍅 ${item.critic_ratings.rt}</span>`;
-        if (item.critic_ratings.meta) badges += `<span class="badge meta">Ⓜ️ ${item.critic_ratings.meta}</span>`;
-    } else {
-        badges += `<span class="badge tmdb">⭐ ${Math.round(rating * 10)}%</span>`;
+    // --- BUILD BADGES HTML ---
+    let badgesHtml = '<div class="poster-badges">';
+    
+    // 1. TMDB Badge
+    if (rating > 0) {
+        badgesHtml += `
+            <div class="badge-item badge-tmdb" title="TMDB User Score">
+                <span>⭐</span> ${parseFloat(rating).toFixed(1)}
+            </div>`;
     }
 
-    const posterUrl = posterPath 
-        ? `https://image.tmdb.org/t/p/w500${posterPath}` 
-        : `https://placehold.co/500x750/222/888?text=No+Poster`;
+    // 2. Rotten Tomatoes Badge
+    if (rtScore > 0) {
+        const rtClass = rtScore >= 60 ? 'badge-rt-fresh' : 'badge-rt-rotten';
+        const rtIcon = rtScore >= 60 ? '🍅' : '🤢';
+        badgesHtml += `
+            <div class="badge-item ${rtClass}" title="Rotten Tomatoes">
+                <span>${rtIcon}</span> ${rtScore}%
+            </div>`;
+    }
+    badgesHtml += '</div>';
+    // -------------------------
 
     card.innerHTML = `
         <div class="poster-wrapper">
-            <img src="${posterUrl}" onerror="this.src='https://placehold.co/500x750/222/888?text=No+Poster'">
-            <div class="poster-overlay"><span>View Details</span></div>
-            <button class="play-trailer-btn" onclick="playTrailer('${mediaType}', ${id})">▶</button>
+            ${badgesHtml} <img src="${posterUrl}" loading="lazy">
+            <div class="card-icon-overlay">
+                
+                <div class="card-icon-group">
+                    <div class="icon-btn btn-request" title="Request on Overseerr" onclick="requestMedia('${mediaType}', ${id}, this); event.stopPropagation();">📥</div>
+                    <div class="icon-btn" title="Watch Trailer" onclick="playTrailer(${id}, '${mediaType}'); event.stopPropagation();">▶️</div>
+                </div>
+                
+                <div class="card-icon-group">
+                    <a href="https://www.themoviedb.org/${mediaType}/${id}" target="_blank" class="icon-btn" title="TMDB" onclick="event.stopPropagation();" style="font-size:0.7em; font-weight:900;">T</a>
+                    <div class="icon-btn" title="View Details" onclick="openModal(${id}, '${mediaType}'); event.stopPropagation();">👁️</div>
+                </div>
+
+            </div>
         </div>
         <div class="card-info">
-            <h3 class="movie-title">${title}</h3>
-            <div class="movie-meta">
-                <span>${date}</span>
-                <div class="badges">${badges}</div>
-            </div>
+            <div class="movie-title">${title}</div>
+            <div class="movie-meta"><span>${displayDate}</span><span style="color:var(--accent-color);">★ ${Math.round(rating*10)/10}</span></div>
+            ${searchableText}
         </div>
     `;
     return card;
 }
 
-// --- MAIN LOAD FUNCTION ---
-function loadMore(btn) {
-    let originalText = "Load More Results";
-    if (btn && btn.tagName === 'BUTTON') {
-        originalText = btn.innerHTML;
-        btn.disabled = true;
-        btn.innerHTML = 'Loading...';
-        btn.style.opacity = "0.7";
-        btn.style.cursor = "not-allowed";
-    }
+function requestMedia(type, id, btn) {
+    if(!confirm("Send request to Overseerr?")) return;
+    btn.style.background = "#e67e22"; 
+    fetch('/request_media', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({media_type:type, tmdb_id:id})
+    }).then(r=>r.json()).then(d=>{
+        if(d.status === 'success') { btn.innerHTML = "✅"; btn.style.background = "#2ecc71"; } 
+        else { alert(d.message); btn.style.background = "rgba(255,255,255,0.1)"; }
+    });
+}
 
-    fetch(`/load_more_recs?page=${page}&critic_filter=${useCriticFilter}`)
-        .then(response => response.json())
+// --- TRAILER MODAL LOGIC ---
+function playTrailer(id, type) {
+    const modal = document.getElementById('trailer-modal');
+    const body = document.getElementById('trailer-body');
+    modal.style.display = 'flex'; // Flex to center
+    modal.style.justifyContent = 'center';
+    modal.style.alignItems = 'center';
+    
+    body.innerHTML = '<div style="color:white;text-align:center;padding:50px;font-size:1.5em;">Loading Trailer... <div class="loader-small"></div></div>';
+
+    fetch(`/get_metadata/${type}/${id}`)
+        .then(r => r.json())
         .then(data => {
-            document.getElementById('loading').style.display = 'none';
-            document.getElementById('results-container').style.display = 'block';
-            const grid = document.getElementById('results-grid');
-            
-            if (data.length === 0 && page === 1) {
-                grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 50px;"><h3>No matches found 😔</h3><p>Try relaxing your filters or choosing different seed movies.</p></div>';
-                return;
-            }
-
-            data.forEach(item => {
-                grid.appendChild(createCard(item));
-            });
-            page++;
-
-            if (btn && btn.tagName === 'BUTTON') {
-                btn.disabled = false;
-                btn.innerHTML = originalText;
-                btn.style.opacity = "1";
-                btn.style.cursor = "pointer";
+            if(data.trailer_key) {
+                // Embed YouTube
+                body.innerHTML = `<iframe width="100%" height="100%" src="https://www.youtube.com/embed/${data.trailer_key}?autoplay=1" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>`;
+            } else {
+                body.innerHTML = `<div style="text-align:center; padding:50px; color:#ccc;">
+                    <h3>No Trailer Found 😕</h3>
+                    <a href="https://www.youtube.com/results?search_query=${encodeURIComponent(data.title)}+trailer" target="_blank" class="btn-secondary" style="margin-top:10px;">Search YouTube ↗</a>
+                </div>`;
             }
         });
 }
 
-// --- SPIN THE WHEEL ---
-function spinTheWheel() {
-    const cards = document.querySelectorAll('.movie-card');
-    if (cards.length === 0) return;
-    const spinBtn = document.getElementById('spin-btn');
-    spinBtn.disabled = true; spinBtn.innerHTML = "Spinning... 🎰";
-    
-    let spins = 0, maxSpins = 20 + Math.random() * 10, speed = 50, currentIndex = 0;
-    cards.forEach(c => c.classList.remove('winner-card'));
+function closeTrailer() {
+    const modal = document.getElementById('trailer-modal');
+    const body = document.getElementById('trailer-body');
+    modal.style.display = 'none';
+    body.innerHTML = ''; // Kill iframe/video
+}
 
+// --- DETAILS MODAL ---
+function openModal(id, type) {
+    const modal = document.getElementById('detail-modal');
+    modal.style.display = "block";
+    const body = document.getElementById('modal-body');
+    body.innerHTML = '<div style="text-align:center; padding:50px;"><div class="loader-small"></div> Loading...</div>';
+    
+    fetch(`/get_metadata/${type}/${id}`)
+        .then(r => r.json())
+        .then(data => {
+            if(data.error) { body.innerHTML = `<div style="padding:20px; color:var(--error);">Error loading details.</div>`; return; }
+            const poster = data.poster_path ? `https://image.tmdb.org/t/p/w500${data.poster_path}` : 'https://placehold.co/300x450/333/888?text=No+Poster';
+            
+            // New Trailer Button inside Modal too
+            const trailerBtn = `<button onclick="playTrailer(${id}, '${type}')" class="btn-secondary" style="margin-top:10px;">▶ Watch Trailer</button>`;
+            
+            const tmdbLink = `https://www.themoviedb.org/${type}/${id}`;
+            const providersHtml = data.providers && data.providers.length > 0 
+                ? `<div style="margin-top:15px; margin-bottom:15px;"><strong>Streaming on:</strong><br>${data.providers.map(p => `<img src="https://image.tmdb.org/t/p/original${p.logo}" title="${p.name}" style="width:40px; border-radius:8px; margin:5px 5px 0 0;">`).join('')}</div>`
+                : '';
+
+            body.innerHTML = `
+                <div class="modal-poster"><img src="${poster}" onerror="this.style.display='none'"></div>
+                <div class="modal-info">
+                    <h2 style="margin-top:0; font-size:1.8em;">${data.title} <span style="font-weight:normal; color:#888; font-size:0.6em;">(${data.year})</span></h2>
+                    <p class="modal-overview">${data.overview || 'No description available.'}</p>
+                    <p style="color:#aaa; font-size:0.9em;"><strong>Cast:</strong> ${data.cast ? data.cast.join(', ') : 'N/A'}</p>
+                    ${providersHtml}
+                    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:20px;">
+                        <button onclick="requestMedia('${type}', ${id}, this)" class="request-btn" style="flex:2;">Request 📥</button>
+                        ${trailerBtn}
+                        <a href="${tmdbLink}" target="_blank" class="btn-secondary" style="text-decoration:none; display:flex; align-items:center; justify-content:center;">TMDB ↗</a>
+                    </div>
+                </div>`;
+        });
+}
+function closeModal() { document.getElementById('detail-modal').style.display = "none"; }
+
+function spinWheel() {
+    const cards = Array.from(document.querySelectorAll('.result-card')).filter(c => c.style.display !== 'none');
+    if(cards.length === 0) return;
+    let spins = 0, max = 30, idx = 0;
     function step() {
-        cards.forEach(c => c.classList.remove('highlight-card'));
-        currentIndex = (currentIndex + 1) % cards.length;
-        const activeCard = cards[currentIndex];
-        activeCard.classList.add('highlight-card');
-        activeCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        cards.forEach(c => c.style.border = "1px solid #333");
+        idx = (idx + 1) % cards.length;
+        cards[idx].style.border = "3px solid var(--accent-color)";
+        cards[idx].scrollIntoView({behavior: "smooth", block: "center"});
         spins++;
-        
-        if (spins < maxSpins) {
-            speed += (spins * 2); setTimeout(step, Math.min(speed, 400));
-        } else {
-            activeCard.classList.add('winner-card');
-            spinBtn.innerHTML = "Spin Again 🎲"; spinBtn.disabled = false;
-        }
+        if(spins < max) setTimeout(step, 50 + (spins*5));
     }
     step();
 }
 
-// --- TRAILER ---
-function playTrailer(type, id) {
-    const modal = document.getElementById('trailer-modal');
-    modal.style.display = 'flex';
-    fetch(`/get_trailer/${type}/${id}`).then(r => r.json()).then(data => {
-        if (data.status === 'success') document.getElementById('yt-player').src = `https://www.youtube.com/embed/${data.key}?autoplay=1`;
-        else { alert("No trailer found."); closeTrailer(); }
-    });
-}
-function closeTrailer() {
-    document.getElementById('yt-player').src = "";
-    document.getElementById('trailer-modal').style.display = 'none';
-}
-
-// --- MODAL ---
-function openModal(item) {
-    const modal = document.getElementById('detail-modal');
-    const body = document.getElementById('modal-body');
-    
-    let badges = '';
-    if (item.streaming_info) badges += `<span class="badge" title="Streaming">📡 ${item.streaming_info}</span>`;
-    if (item.critic_ratings && item.critic_ratings.rt) badges += `<span class="badge rt">🍅 ${item.critic_ratings.rt}</span>`;
-
-    const posterUrl = item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : `https://placehold.co/500x750/222/888?text=No+Poster`;
-
-    body.innerHTML = `
-        <div class="modal-poster">
-            <img src="${posterUrl}">
-        </div>
-        <div class="modal-info">
-            <h2>${item.title} <span style="font-size:0.6em; opacity:0.7;">(${item.date})</span></h2>
-            <div style="margin: 10px 0; display:flex; gap:10px;">${badges}</div>
-            <p class="modal-overview">${item.overview || "No description available."}</p>
-            <div id="extra-metadata" style="margin-top: 20px; color: #888;">Loading extra info...</div>
-            <button onclick="requestMedia('${item.media_type}', ${item.tmdb_id}, this)" class="request-btn">Request 📥</button>
-        </div>
-    `;
-    modal.style.display = "block";
-
-    fetch(`/get_metadata/${item.media_type}/${item.tmdb_id}`).then(r => r.json()).then(data => {
-        const metaDiv = document.getElementById('extra-metadata');
-        let html = '';
-        if (data.cast && data.cast.length > 0) html += `<div><strong>Cast:</strong> ${data.cast.join(', ')}</div>`;
-        if (data.providers && data.providers.length > 0) {
-            html += `<div style="margin-top:10px;"><strong>Streaming:</strong>`;
-            data.providers.forEach(p => html += ` <img src="https://image.tmdb.org/t/p/original${p.logo}" title="${p.name}" style="width:30px; border-radius:4px; vertical-align:middle; margin-left:5px;">`);
-            html += `</div>`;
-        }
-        metaDiv.innerHTML = html;
-    });
-}
-function closeModal() { document.getElementById('detail-modal').style.display = "none"; }
-function requestMedia(type, id, btn) {
-    btn.innerText = "Requesting..."; btn.disabled = true;
-    fetch('/request_media', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({media_type:type, tmdb_id:id})})
-    .then(r=>r.json()).then(d=>{
-        if(d.status==='success') { btn.innerText="Requested! ✅"; btn.style.background="#2ecc71"; }
-        else { btn.innerText="Error"; alert(d.message); }
-    });
-}
-
-// Start!
 document.addEventListener('DOMContentLoaded', init);
 </script>
 {% endblock %}
