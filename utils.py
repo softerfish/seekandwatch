@@ -108,32 +108,40 @@ def prefetch_keywords_parallel(items, api_key):
     # 3. Save to DB
     if new_entries:
         try:
-            # Add new rows
+            # FIX: Race Condition Protection
+            # Re-query the DB to see if any of these IDs appeared while we were fetching from the API.
+            new_ids = [e['id'] for e in new_entries]
+            existing_in_db = db.session.query(TmdbKeywordCache.tmdb_id).filter(TmdbKeywordCache.tmdb_id.in_(new_ids)).all()
+            existing_ids = {r[0] for r in existing_in_db}
+
+            count_added = 0
             for entry in new_entries:
-                db.session.add(TmdbKeywordCache(
-                    tmdb_id=entry['id'],
-                    media_type=entry['type'],
-                    keywords=json.dumps(entry['tags'])
-                ))
+                # Only add if it STILL doesn't exist
+                if entry['id'] not in existing_ids:
+                    db.session.add(TmdbKeywordCache(
+                        tmdb_id=entry['id'],
+                        media_type=entry['type'],
+                        keywords=json.dumps(entry['tags'])
+                    ))
+                    count_added += 1
             
-            # Prune if over limit
-            s = Settings.query.first()
-            limit = s.keyword_cache_size or 2000
-            
-            total = TmdbKeywordCache.query.count()
-            if total > limit:
-                # Delete oldest entries to maintain limit
-                excess = total - limit
-                # Find the IDs of the oldest rows
-                subq = db.session.query(TmdbKeywordCache.id).order_by(TmdbKeywordCache.timestamp.asc()).limit(excess).subquery()
-                # Delete them
-                TmdbKeywordCache.query.filter(TmdbKeywordCache.id.in_(subq)).delete(synchronize_session=False)
+            # Only prune if we actually added data (saves performance)
+            if count_added > 0:
+                s = Settings.query.first()
+                limit = s.keyword_cache_size or 2000
+                
+                total = TmdbKeywordCache.query.count()
+                if total > limit:
+                    # Delete oldest entries to maintain limit
+                    excess = total - limit
+                    subq = db.session.query(TmdbKeywordCache.id).order_by(TmdbKeywordCache.timestamp.asc()).limit(excess).subquery()
+                    TmdbKeywordCache.query.filter(TmdbKeywordCache.id.in_(subq)).delete(synchronize_session=False)
 
             db.session.commit()
         except Exception as e:
             print(f"Cache Save Error: {e}")
             db.session.rollback()
-
+            
 def item_matches_keywords(item, target_keywords):
     # If no keywords selected, everything passes
     if not target_keywords: return True
