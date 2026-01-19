@@ -8,70 +8,251 @@ import datetime
 import os
 import zipfile
 import threading
+import concurrent.futures
 from flask import flash, redirect, url_for, session, render_template
 from plexapi.server import PlexServer
-# Import TmdbAlias here
-from models import db, CollectionSchedule, SystemLog, Settings, TmdbAlias
+from models import db, CollectionSchedule, SystemLog, Settings, TmdbAlias, TmdbKeywordCache
 from presets import PLAYLIST_PRESETS
 
 # --- CONFIGURATION ---
 BACKUP_DIR = '/config/backups'
 CACHE_FILE = '/config/plex_cache.json'
 LOCK_FILE = '/config/cache.lock'
-# URL to your master alias list
-ALIAS_SOURCE_URL = "https://f005.backblazeb2.com/file/seekandwatch-data/aliases.json" 
+SCANNER_LOG_FILE = '/config/scanner.log'
+
+# --- GLOBAL SHARED STATE ---
+RESULTS_CACHE = {}
 
 if not os.path.exists(BACKUP_DIR):
     os.makedirs(BACKUP_DIR)
 
+# --- SESSION HELPER ---
+def get_session_filters():
+    """Retrieves filter settings from the current user session."""
+    try: min_year = int(session.get('min_year', 0))
+    except: min_year = 0
+    
+    try: min_rating = float(session.get('min_rating', 0))
+    except: min_rating = 0
+    
+    genre = session.get('genre_filter')
+    genre_filter = genre if genre and genre != 'all' else None
+    
+    critic_enabled = session.get('critic_filter') == 'true'
+    try: threshold = int(session.get('critic_threshold', 70))
+    except: threshold = 70
+    
+    return min_year, min_rating, genre_filter, critic_enabled, threshold
+
+# --- KEYWORD HELPERS ---
+
+def prefetch_keywords_parallel(items, api_key):
+    """
+    1. Checks DB for keywords.
+    2. Fetches missing ones from API.
+    3. Saves to DB and enforces the limit.
+    """
+    if not items: return
+
+    # 1. Identify what we need
+    needed = []
+    cached_map = {}
+    
+    # Get all IDs from the list
+    target_ids = [item['id'] for item in items]
+    
+    # Bulk fetch existing from DB
+    try:
+        existing = TmdbKeywordCache.query.filter(TmdbKeywordCache.tmdb_id.in_(target_ids)).all()
+        for row in existing:
+            try: cached_map[row.tmdb_id] = json.loads(row.keywords)
+            except: cached_map[row.tmdb_id] = []
+    except Exception as e:
+        print(f"DB Read Error: {e}")
+
+    # Figure out what is missing
+    for item in items:
+        if item['id'] not in cached_map:
+            needed.append(item)
+    
+    if not needed:
+        return # Everything is already cached!
+
+    # 2. Fetch missing from API (Parallel)
+    def fetch_tags(item):
+        try:
+            # TMDB uses 'keywords' for movies, 'results' for TV keywords
+            ep = 'keywords' # Default endpoint suffix
+            url = f"https://api.themoviedb.org/3/{item['media_type']}/{item['id']}/keywords?api_key={api_key}"
+            
+            r = requests.get(url, timeout=2)
+            if r.status_code != 200: return None
+            
+            data = r.json()
+            # Handle different JSON structures for Movie vs TV
+            raw_tags = data.get('keywords', data.get('results', []))
+            tags = [k['name'].lower() for k in raw_tags]
+            
+            return {'id': item['id'], 'type': item['media_type'], 'tags': tags}
+        except:
+            return None
+
+    new_entries = []
+    # 10 workers to prevent timeouts on large batches
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        results = executor.map(fetch_tags, needed)
+        for res in results:
+            if res:
+                new_entries.append(res)
+
+    # 3. Save to DB
+    if new_entries:
+        try:
+            # Add new rows
+            for entry in new_entries:
+                db.session.add(TmdbKeywordCache(
+                    tmdb_id=entry['id'],
+                    media_type=entry['type'],
+                    keywords=json.dumps(entry['tags'])
+                ))
+            
+            # Prune if over limit
+            s = Settings.query.first()
+            limit = s.keyword_cache_size or 2000
+            
+            total = TmdbKeywordCache.query.count()
+            if total > limit:
+                # Delete oldest entries to maintain limit
+                excess = total - limit
+                # Find the IDs of the oldest rows
+                subq = db.session.query(TmdbKeywordCache.id).order_by(TmdbKeywordCache.timestamp.asc()).limit(excess).subquery()
+                # Delete them
+                TmdbKeywordCache.query.filter(TmdbKeywordCache.id.in_(subq)).delete(synchronize_session=False)
+
+            db.session.commit()
+        except Exception as e:
+            print(f"Cache Save Error: {e}")
+            db.session.rollback()
+
+def item_matches_keywords(item, target_keywords):
+    # If no keywords selected, everything passes
+    if not target_keywords: return True
+    
+    # 0. PREPARE SEARCH TERMS
+    search_terms = {t.lower() for t in target_keywords}
+    
+    # 1. FAST CHECK: Title & Overview
+    text_blob = (item.get('title', '') + ' ' + item.get('name', '') + ' ' + item.get('overview', '')).lower()
+    for term in search_terms:
+        if term in text_blob: return True
+            
+    # 2. DEEP CHECK: Database
+    # We query the local DB for this specific item's tags
+    try:
+        entry = TmdbKeywordCache.query.filter_by(tmdb_id=item['id']).first()
+        api_tags = json.loads(entry.keywords) if entry else []
+    except:
+        api_tags = []
+    
+    for term in search_terms:
+        for tag in api_tags:
+            if term in tag: return True
+                
+    return False
+    
 # --- LOGGING HELPER ---
 def write_log(level, module, message):
-    """
-    Writes to the database log if logging is enabled.
-    Levels: INFO, SUCCESS, WARNING, ERROR
-    """
     try:
         s = Settings.query.first()
         if s and (s.logging_enabled or level == 'ERROR'):
-            log = SystemLog(level=level, module=module, message=str(message))
+            log = SystemLog(level=level, category=module, message=str(message))
             db.session.add(log)
             db.session.commit()
             
             if log.id % 20 == 0: 
                 limit_mb = s.max_log_size if s.max_log_size is not None else 5
-                if limit_mb <= 0: return
+                if limit_mb <= 0:
+                    return
+                
                 count = SystemLog.query.count()
                 estimated_size_mb = (count * 200) / (1024 * 1024)
                 
                 if estimated_size_mb > limit_mb:
                     to_delete = int(count * 0.1)
                     oldest = SystemLog.query.order_by(SystemLog.timestamp.asc()).limit(to_delete).all()
-                    for o in oldest: db.session.delete(o)
+                    for o in oldest:
+                        db.session.delete(o)
                     db.session.commit()
-                    db.session.add(SystemLog(level="WARN", module="System", message=f"Logs exceeded {limit_mb}MB. Pruned {to_delete} oldest entries."))
+                    db.session.add(SystemLog(level="WARN", category="System", message=f"Logs exceeded {limit_mb}MB. Pruned {to_delete} oldest entries."))
                     db.session.commit()
     except Exception as e:
         print(f"Logging Failed: {e}")
 
-def normalize_title(title):
-    if not title: return ""
-    return re.sub(r'[^a-z0-9]', '', str(title).lower())
+def write_scanner_log(message):
+    """Writes to a local file, rotating if it exceeds the size limit."""
+    try:
+        # Local import to avoid circular dependency
+        from models import Settings
+        s = Settings.query.first()
+        limit_mb = s.scanner_log_size if s and s.scanner_log_size is not None else 10
+        limit_bytes = limit_mb * 1024 * 1024
 
-# --- DYNAMIC ALIAS LOOKUP (DB BACKED) ---
+        timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        line = f"[{timestamp}] {message}\n"
+
+        if os.path.exists(SCANNER_LOG_FILE):
+            if os.path.getsize(SCANNER_LOG_FILE) > limit_bytes:
+                try:
+                    bak = SCANNER_LOG_FILE + ".bak"
+                    if os.path.exists(bak): os.remove(bak)
+                    os.rename(SCANNER_LOG_FILE, bak)
+                except: pass
+
+        with open(SCANNER_LOG_FILE, 'a', encoding='utf-8') as f:
+            f.write(line)
+            
+    except Exception as e:
+        print(f"Scanner Log Error: {e}")
+
+def read_scanner_log(lines=100):
+    """Reads the last N lines of the scanner log."""
+    if not os.path.exists(SCANNER_LOG_FILE):
+        return "No scanner logs found yet."
+    try:
+        with open(SCANNER_LOG_FILE, 'r', encoding='utf-8') as f:
+            content = f.readlines()
+            return "".join(content[-lines:])
+    except: return "Error reading logs."
+
+def normalize_title(title):
+    if not title:
+        return ""
+    
+    # 1. Handle Stylized Characters (Leet Speak / Symbols)
+    t = str(title).lower()
+    replacements = {
+        '¢': 'c', '$': 's', '@': 'a', '&': 'and', 
+        'á': 'a', 'é': 'e', 'í': 'i', 'ó': 'o', 'ú': 'u',
+        'à': 'a', 'è': 'e', 'ì': 'i', 'ò': 'o', 'ù': 'u',
+        'ä': 'a', 'ë': 'e', 'ï': 'i', 'ö': 'o', 'ü': 'u',
+        'ñ': 'n', 'ç': 'c'
+    }
+    
+    for char, rep in replacements.items():
+        t = t.replace(char, rep)
+    
+    # 2. Standard Alphanumeric Strip
+    return re.sub(r'[^a-z0-9]', '', t)
+
+# --- ALIAS HELPERS ---
 def get_tmdb_aliases(tmdb_id, media_type, settings):
-    """
-    1. Checks Database for cached aliases.
-    2. If missing, asks TMDB.
-    3. Saves result to Database for next time.
-    """
-    # 1. Check DB
     try:
         cached = TmdbAlias.query.filter_by(tmdb_id=tmdb_id, media_type=media_type).first()
         if cached:
             return json.loads(cached.aliases)
-    except: pass
+    except:
+        pass
 
-    # 2. Fetch from TMDB
     try:
         url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}/alternative_titles?api_key={settings.tmdb_key}"
         data = requests.get(url, timeout=3).json()
@@ -79,356 +260,398 @@ def get_tmdb_aliases(tmdb_id, media_type, settings):
         key = 'titles' if 'titles' in data else 'results'
         aliases = [normalize_title(x['title']) for x in data.get(key, [])]
         
-        # 3. Save to DB
         try:
-            new_entry = TmdbAlias(tmdb_id=tmdb_id, media_type=media_type, aliases=json.dumps(aliases))
-            db.session.add(new_entry)
-            db.session.commit()
+            # Note: Storing aliases is optional in V1.1 as we mainly check ID presence
+            pass 
         except: 
-            db.session.rollback()
+            pass
             
         return aliases
     except:
         return []
 
-# --- REMOTE ALIAS SYNC ---
 def sync_remote_aliases():
-    """
-    Downloads alias list from seekandwatch.com and merges into DB.
-    """
-    write_log("INFO", "System", f"Downloading aliases from {ALIAS_SOURCE_URL}...")
-    try:
-        resp = requests.get(ALIAS_SOURCE_URL, timeout=10)
-        if resp.status_code != 200:
-            write_log("ERROR", "System", f"Remote alias download failed: {resp.status_code}")
-            return False, f"HTTP Error {resp.status_code}"
-            
-        data = resp.json()
-        count = 0
+    return True, "Started in background"
+
+def run_alias_scan(app_obj):
+    write_scanner_log("--- Starting Alias Scan ---")
+    
+    with app_obj.app_context():
+        s = Settings.query.first()
+        if not s or not s.scanner_enabled:
+            write_scanner_log("Scanner disabled or no settings. Aborting.")
+            return
+
+        cache_path = CACHE_FILE
+        if not os.path.exists(cache_path):
+            write_scanner_log("No Plex Cache found. Please run Sync Engine first.")
+            return
+
+        try:
+            with open(cache_path, 'r') as f:
+                # Cache format is now a LIST of strings based on latest refresh_plex_cache
+                owned_titles = json.load(f)
+        except: return
+
+        # Map Titles -> TMDB IDs
+        existing_plex_titles = set([row.plex_title for row in TmdbAlias.query.with_entities(TmdbAlias.plex_title).all()])
+        to_scan = [t for t in owned_titles if t not in existing_plex_titles]
         
-        for item in data:
-            # Expecting format: [{"tmdb_id": 123, "media_type": "movie", "aliases": ["title1", "title2"]}]
-            tid = item.get('tmdb_id')
-            mtype = item.get('media_type', 'movie')
-            new_list = [normalize_title(x) for x in item.get('aliases', [])]
-            
-            if not tid or not new_list: continue
-            
-            # Check existing
-            entry = TmdbAlias.query.filter_by(tmdb_id=tid, media_type=mtype).first()
-            if entry:
-                # Merge existing with new
-                current = set(json.loads(entry.aliases))
-                updated = list(current.union(set(new_list)))
-                entry.aliases = json.dumps(updated)
-            else:
-                # Create new
-                db.session.add(TmdbAlias(tmdb_id=tid, media_type=mtype, aliases=json.dumps(new_list)))
-            count += 1
-            
+        total = len(to_scan)
+        if total == 0:
+            write_scanner_log("All items already indexed. Sleeping.")
+            # FIX: Update timestamp so we don't loop forever
+            s.last_alias_scan = int(time.time())
+            db.session.commit()
+            return
+
+        batch_size = s.scanner_batch or 50
+        current_batch = to_scan[:batch_size]
+        
+        write_scanner_log(f"Found {total} unindexed items. Processing batch of {batch_size}...")
+
+        processed = 0
+        
+        for title in current_batch:
+            try:
+                # 1. Search Movie
+                search_url = f"https://api.themoviedb.org/3/search/movie?api_key={s.tmdb_key}&query={title}"
+                r = requests.get(search_url).json()
+                
+                tmdb_id = None
+                media_type = 'movie'
+                hit = None
+                
+                if r.get('results'):
+                    hit = r['results'][0]
+                    tmdb_id = hit['id']
+                
+                if not tmdb_id:
+                    # 2. Search TV
+                    search_url = f"https://api.themoviedb.org/3/search/tv?api_key={s.tmdb_key}&query={title}"
+                    r = requests.get(search_url).json()
+                    if r.get('results'):
+                        hit = r['results'][0]
+                        tmdb_id = hit['id']
+                        media_type = 'tv'
+                        
+                if tmdb_id and hit:
+                    # Store Main Entry
+                    main_entry = TmdbAlias(
+                        tmdb_id=tmdb_id, media_type=media_type, 
+                        plex_title=title, original_title=normalize_title(hit.get('title', hit.get('name'))),
+                        match_year=0
+                    )
+                    db.session.add(main_entry)
+                else:
+                    # Not found, store dummy
+                    dummy = TmdbAlias(tmdb_id=-1, media_type='unknown', plex_title=title)
+                    db.session.add(dummy)
+                
+                processed += 1
+                if processed % 10 == 0: db.session.commit()
+                time.sleep(0.2)
+                
+            except Exception as e:
+                print(f"Scan Error on {title}: {e}")
+        
+        s.last_alias_scan = int(time.time())
         db.session.commit()
-        msg = f"Imported/Updated {count} alias entries from remote server."
-        write_log("SUCCESS", "System", msg)
-        return True, msg
-        
-    except Exception as e:
-        write_log("ERROR", "System", f"Alias Sync Failed: {str(e)}")
-        return False, str(e)
+        write_scanner_log(f"Batch complete. Processed {processed} items.")
 
-# ==================================================================================
-# LOCK MANAGER
-# ==================================================================================
-
+# --- LOCK & CACHE ---
 def is_system_locked():
     return os.path.exists(LOCK_FILE)
 
 def set_system_lock(status_msg="Busy"):
     try:
         with open(LOCK_FILE, 'w') as f:
-            f.write(status_msg)
+            json.dump({'stage': status_msg}, f)
         return True
-    except: return False
+    except:
+        return False
 
 def remove_system_lock():
     if os.path.exists(LOCK_FILE):
-        try: os.remove(LOCK_FILE)
-        except: pass
+        try:
+            os.remove(LOCK_FILE)
+        except:
+            pass
 
 def get_lock_status():
-    if not os.path.exists(LOCK_FILE): return "Idle"
+    if not os.path.exists(LOCK_FILE):
+        return {'running': False}
     try:
-        with open(LOCK_FILE, 'r') as f: return f.read().strip()
-    except: return "Busy"
+        with open(LOCK_FILE, 'r') as f:
+            data = json.load(f)
+            return {'running': True, 'progress': data.get('stage', 'Busy')}
+    except:
+        return {'running': True, 'progress': 'Unknown'}
 
-# ==================================================================================
-# CACHE MANAGER
-# ==================================================================================
-
-def refresh_plex_cache(settings):
+def refresh_plex_cache(app_obj):
+    # Pass app_obj so we can create a context to read DB settings
     if is_system_locked():
         return False, "System is busy. Please wait."
 
     print("--- STARTING PLEX CACHE REFRESH ---")
-    write_log("INFO", "Cache", "Started background cache refresh.")
-    set_system_lock("Refreshing Plex Cache...") 
-    start_time = time.time()
     
-    try:
-        plex = PlexServer(settings.plex_url, settings.plex_token)
-        cache_data = {} 
+    # Create App Context to access Database
+    with app_obj.app_context():
+        settings = Settings.query.first()
+        if not settings or not settings.plex_url:
+            return False, "Plex not configured."
 
-        for section in plex.library.sections():
-            if section.type not in ['movie', 'show']: continue
-            
-            set_system_lock(f"Scanning {section.title}...")
-            
-            for item in section.all():
-                try:
-                    key = item.ratingKey
-                    year = str(item.year) if item.year else ''
-                    norm_title = normalize_title(item.title)
-                    # FIX: Save the type so we don't mix Movies/TV later
-                    item_type = section.type  # 'movie' or 'show'
-                    
-                    data_packet = {'key': key, 'year': year, 'type': item_type}
-                    
-                    cache_data[norm_title] = data_packet
-                    
-                    if year:
-                        cache_data[f"{norm_title}_{year}"] = data_packet
+        write_log("INFO", "Cache", "Started background cache refresh.")
+        set_system_lock("Refreshing Plex Cache...") 
+        start_time = time.time()
+        
+        try:
+            plex = PlexServer(settings.plex_url, settings.plex_token)
+            cache_data = set() # Use set for titles
 
-                    if hasattr(item, 'originalTitle') and item.originalTitle:
-                        norm_orig = normalize_title(item.originalTitle)
-                        cache_data[norm_orig] = data_packet
-                        
-                except Exception as e:
+            # Loop through libraries
+            sections = plex.library.sections()
+            
+            for section in sections:
+                if section.type not in ['movie', 'show']:
                     continue
+                
+                set_system_lock(f"Scanning {section.title}...")
+                
+                for item in section.all():
+                    try:
+                        # Normalize Title
+                        norm_title = normalize_title(item.title)
+                        cache_data.add(norm_title)
 
-        duration = round(time.time() - start_time, 2)
-        
-        with open(CACHE_FILE, 'w') as f:
-            json.dump({
-                'timestamp': time.time(), 
-                'duration': duration, 
-                'data': cache_data
-            }, f)
+                        if hasattr(item, 'originalTitle') and item.originalTitle:
+                            norm_orig = normalize_title(item.originalTitle)
+                            cache_data.add(norm_orig)
+                            
+                    except Exception as e:
+                        continue
+
+            duration = round(time.time() - start_time, 2)
             
-        msg = f"Cache rebuilt in {duration}s. Indexed {len(cache_data)} titles."
-        print(f"--- {msg} ---")
-        write_log("SUCCESS", "Cache", msg)
-        return True, msg
-        
-    except Exception as e:
-        print(f"Cache Refresh Failed: {e}")
-        write_log("ERROR", "Cache", f"Refresh Failed: {str(e)}")
-        return False, str(e)
-    finally:
-        remove_system_lock()
+            # Save as List
+            with open(CACHE_FILE, 'w') as f:
+                json.dump(list(cache_data), f)
+                
+            msg = f"Cache rebuilt in {duration}s. Indexed {len(cache_data)} titles."
+            print(f"--- {msg} ---")
+            write_log("SUCCESS", "Cache", msg)
+            return True, msg
+            
+        except Exception as e:
+            print(f"Cache Refresh Failed: {e}")
+            write_log("ERROR", "Cache", f"Refresh Failed: {str(e)}")
+            return False, str(e)
+        finally:
+            remove_system_lock()
 
 def get_plex_cache(settings):
     if not os.path.exists(CACHE_FILE):
-        return {} 
+        return []
     
     try:
         with open(CACHE_FILE, 'r') as f:
             content = json.load(f)
-            return content.get('data', {})
+            # Handle legacy format where content might be dict
+            if isinstance(content, dict) and 'data' in content:
+                # Legacy format was data: { title: {...} } keys
+                return list(content['data'].keys())
+            return content # Should be list
     except:
-        return {}
+        return []
 
-# ==================================================================================
-# CORE LOGIC: RUN COLLECTION SYNC
-# ==================================================================================
-
-def run_collection_logic(preset_key, settings):
-    if is_system_locked():
-        msg = get_lock_status()
-        write_log("WARNING", "Sync", f"Skipped '{preset_key}' - System Busy.")
-        return False, f"⚠️ System Busy: {msg}. Please wait..."
-
-    write_log("INFO", "Sync", f"Starting Sync: {preset_key}")
+# --- CORE SYNC ---
+def run_collection_logic(settings, preset, key):
+    # 1. CHECK LOCK (Prevents double-clicking)
+    if is_system_locked(): return False, "System busy."
     
-    # 1. DETERMINE CONFIGURATION
-    if preset_key.startswith('custom_'):
-        schedule_entry = CollectionSchedule.query.filter_by(preset_key=preset_key).first()
-        if not schedule_entry or not schedule_entry.configuration: 
-            return False, "Custom preset not found."
-        config = json.loads(schedule_entry.configuration)
-        params = config.get('tmdb_params', {})
-        params['api_key'] = settings.tmdb_key
-        media_type = config.get('media_type', 'movie')
-        collection_title = config.get('title')
-    else:
-        preset = PLAYLIST_PRESETS.get(preset_key)
-        if not preset: return False, "Preset key not found."
+    # 2. SET LOCK
+    set_system_lock(f"Syncing {preset.get('title', 'Collection')}...")
+    write_log("INFO", "Sync", f"Starting Sync: {key}")
+
+    try:
+        plex = PlexServer(settings.plex_url, settings.plex_token)
         params = preset['tmdb_params'].copy()
         params['api_key'] = settings.tmdb_key
-        media_type = preset['media_type']
-        collection_title = preset['title']
+        tmdb_items = []
 
-    # 2. FETCH ITEMS FROM TMDB
-    tmdb_items = []
-    try:
+        # --- 1. DETERMINE RULES ---
+        category = preset.get('category', '')
+        is_trending = 'Trending' in category or 'Trending' in preset.get('title', '')
+        
+        max_pages = 1 if is_trending else 50
+        
+        user_mode = preset.get('sync_mode', 'append')
+        mode = 'sync' if is_trending else user_mode
+
+        # --- 2. FETCH CANDIDATES ---
         if 'with_collection_id' in params:
             col_id = params.pop('with_collection_id')
             url = f"https://api.themoviedb.org/3/collection/{col_id}?api_key={settings.tmdb_key}&language=en-US"
             data = requests.get(url).json()
-            if 'parts' in data:
-                tmdb_items = data['parts']
-                for item in tmdb_items: item['media_type'] = 'movie' 
-            else:
-                write_log("ERROR", "TMDB", f"ID {col_id}: {data.get('status_message')}")
-                return False, f"TMDB Error: {data.get('status_message', 'Unknown error')}"
+            tmdb_items = data.get('parts', [])
         else:
-            endpoint = 'discover/tv' if media_type == 'tv' else 'discover/movie'
-            url = f"https://api.themoviedb.org/3/{endpoint}"
-            for page in range(1, 3):
-                params['page'] = page
-                res = requests.get(url, params=params).json()
-                results = res.get('results', [])
-                if not results: break
-                tmdb_items.extend(results)
-    except Exception as e:
-        write_log("ERROR", "TMDB", f"API Error: {str(e)}")
-        return False, f"TMDB API Error: {e}"
+            url = f"https://api.themoviedb.org/3/discover/{preset['media_type']}"
+            def fetch_page(p):
+                try:
+                    p_params = params.copy()
+                    p_params['page'] = p
+                    return requests.get(url, params=p_params, timeout=3).json().get('results', [])
+                except: return []
 
-    if not tmdb_items: 
-        write_log("WARNING", "Sync", "No items returned from TMDB.")
-        return False, "No items found on TMDB."
+            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+                results = executor.map(fetch_page, range(1, max_pages + 1))
+                for page_items in results:
+                    if page_items: tmdb_items.extend(page_items)
 
-    plex_map = get_plex_cache(settings)
-    
-    if not plex_map:
-        return False, "⚠️ Cache Missing! Click 'Force Refresh Now' at the top of the page first."
+        if not tmdb_items: 
+            return False, "No items found on TMDB."
 
-    # 3. MATCH TMDB ITEMS TO PLEX KEYS
-    matched_rating_keys = []
-    target_plex_type = 'show' if media_type == 'tv' else 'movie'
-
-    for t_item in tmdb_items:
-        t_title = t_item.get('title') if media_type == 'movie' else t_item.get('name')
-        t_date = t_item.get('release_date') if media_type == 'movie' else t_item.get('first_air_date')
-        t_year = (t_date or '')[:4]
+        # --- 3. OPTIMIZED MATCHING (The Futureproof Fix) ---
+        # A. Load "Dumb" Text Matches (Backup Cache)
+        owned_titles = set(get_plex_cache(settings)) 
         
-        norm_t_title = normalize_title(t_title)
-        match = plex_map.get(norm_t_title)
-        
-        # 1. Direct Match
-        if not match and t_year:
-            match = plex_map.get(f"{norm_t_title}_{t_year}")
-        
-        # 2. Fuzzy Match
-        if not match:
-            closest = difflib.get_close_matches(norm_t_title, plex_map.keys(), n=1, cutoff=0.9)
-            if closest:
-                match = plex_map[closest[0]]
-
-        # 3. Dynamic Alias Lookup (DB Backed)
-        if not match:
-            try:
-                aliases = get_tmdb_aliases(t_item['id'], media_type, settings)
-                for alias in aliases:
-                    match = plex_map.get(alias)
-                    if match: break
-            except: pass
-
-        if match:
-            # FIX: Only add if the cached type matches our target type (if known)
-            if match.get('type') and match['type'] != target_plex_type:
-                continue
-            matched_rating_keys.append(match['key'])
-
-    matched_rating_keys = list(set(matched_rating_keys))
-    
-    if not matched_rating_keys: 
-        write_log("WARNING", "Sync", f"Found 0 matches in library for {len(tmdb_items)} TMDB items.")
-        return False, f"Found 0 matches in Plex (out of {len(tmdb_items)} TMDB items)."
-
-    # 4. CREATE PLEX COLLECTION
-    try:
-        plex = PlexServer(settings.plex_url, settings.plex_token)
-        target_lib = None
-        for section in plex.library.sections():
-            if section.type == target_plex_type:
-                target_lib = section
-                break
-        
-        if not target_lib: return False, "Target Library not found"
-
-        # Check existing collection
-        found_col = None
-        for col in target_lib.collections():
-            if col.title == collection_title:
-                found_col = col
-                break
-        
-        if found_col: found_col.delete()
-            
-        final_items = []
-        for key in matched_rating_keys:
-            try:
-                item = plex.fetchItem(key)
-                # FIX: Double check the item type before adding to list
-                # Plex 'movie' type is 'movie', 'tv' type is 'show'
-                if item.type == target_plex_type:
-                    final_items.append(item)
-            except: pass
-            
-        if not final_items:
-            return False, "No valid items found matching the library type."
-
-        target_lib.createCollection(title=collection_title, items=final_items)
-        
-        msg = f"Created '{collection_title}' with {len(final_items)} items."
-        print(msg)
-        write_log("SUCCESS", "Sync", msg)
-        
-        return True, f"Success! {msg}"
-
-    except Exception as e:
-        write_log("ERROR", "Plex", f"Sync failed: {str(e)}")
-        return False, f"Plex Error: {e}"
-
-# --- HELPERS (Standard) ---
-def is_duplicate(tmdb_title, plex_titles_normalized):
-    if not tmdb_title: return False
-    target = normalize_title(tmdb_title)
-    if target in plex_titles_normalized: return True
-    return False
-
-def fetch_omdb_ratings(tmdb_id, media_type, settings):
-    if not settings.omdb_key: return None
-    try:
-        url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}/external_ids?api_key={settings.tmdb_key}"
-        ext_data = requests.get(url).json()
-        imdb_id = ext_data.get('imdb_id')
-        if imdb_id:
-            omdb_url = f"http://www.omdbapi.com/?apikey={settings.omdb_key}&i={imdb_id}"
-            omdb_data = requests.get(omdb_url).json()
-            if omdb_data.get('Response') == 'True':
-                return omdb_data.get('Ratings', [])
-    except: pass
-    return None
-
-def send_overseerr_request(settings, media_type, tmdb_id, user_id):
-    headers = {'X-Api-Key': settings.overseerr_api_key, 'Content-Type': 'application/json'}
-    payload = {"mediaType": media_type, "mediaId": int(tmdb_id), "userId": user_id}
-    if media_type == 'tv':
+        # B. Load "Smart" ID Matches (Alias DB)
+        # We check the database to see which IDs you definitely own
+        id_map = {}
         try:
-            data = requests.get(f"https://api.themoviedb.org/3/tv/{tmdb_id}?api_key={settings.tmdb_key}", timeout=5).json()
-            payload["seasons"] = [i for i in range(1, data.get('number_of_seasons', 1) + 1)]
-        except: payload["seasons"] = [1]
+            rows = TmdbAlias.query.with_entities(TmdbAlias.tmdb_id, TmdbAlias.plex_title).all()
+            for r in rows:
+                id_map[r.tmdb_id] = r.plex_title
+        except: pass
+
+        potential_matches = []
+        for item in tmdb_items:
+            # 1. Check ID (Perfect Match)
+            if item['id'] in id_map:
+                # We found the ID in your DB! Save the Real Plex Title to use later.
+                item['mapped_plex_title'] = id_map[item['id']]
+                potential_matches.append(item)
+                continue
+            
+            # 2. Check Title (Fuzzy Fallback)
+            # Only runs if the background scanner missed the item
+            norm_title = normalize_title(item.get('title', item.get('name')))
+            if norm_title in owned_titles:
+                potential_matches.append(item)
+
+        # --- 4. VERIFY WITH PLEX ---
+        target_type = 'movie' if preset['media_type'] == 'movie' else 'show'
+        target_lib = next((s for s in plex.library.sections() if s.type == target_type), None)
+        if not target_lib: 
+            return False, f"No library found for {preset['media_type']}"
+
+        found_items = []
+        if potential_matches:
+            for item in potential_matches:
+                # USE THE MAPPED TITLE IF AVAILABLE
+                # This ensures we search for "Star Wars Episode IV" (which works) 
+                # instead of just "Star Wars" (which fails).
+                search_title = item.get('mapped_plex_title', item.get('title', item.get('name')))
+                year = int((item.get('release_date') or item.get('first_air_date') or '0000')[:4])
+                
+                try:
+                    results = target_lib.search(search_title)
+                    for r in results:
+                        # If mapped by ID, it's a guaranteed match.
+                        if 'mapped_plex_title' in item:
+                             found_items.append(r)
+                             break
+                        else:
+                            # If text match, double-check the year
+                            r_year = r.year if r.year else 0
+                            if r_year in [year, year-1, year+1]:
+                                found_items.append(r)
+                                break
+                except: pass
+        
+        found_items = list(set(found_items))
+
+        # --- 5. EXECUTE SYNC VS APPEND ---
+        try:
+            existing_col = target_lib.search(title=preset['title'], libtype='collection')[0]
+        except: existing_col = None
+
+        if not existing_col:
+            if found_items:
+                target_lib.createCollection(title=preset['title'], items=found_items)
+                return True, f"Created '{preset['title']}' with {len(found_items)} items."
+            return True, "No items found."
+        else:
+            current_items = existing_col.items()
+            current_ids = {x.ratingKey for x in current_items}
+            new_ids = {x.ratingKey for x in found_items}
+            
+            to_add = [x for x in found_items if x.ratingKey not in current_ids]
+            
+            if mode == 'sync':
+                to_remove = [x for x in current_items if x.ratingKey not in new_ids]
+            else:
+                to_remove = []
+
+            if to_add: existing_col.addItems(to_add)
+            if to_remove: existing_col.removeItems(to_remove)
+                
+            action = "Synced (Strict)" if mode == 'sync' else "Appended"
+            msg = f"{action} '{preset['title']}': Added {len(to_add)}, Removed {len(to_remove)}."
+            write_log("SUCCESS", "Sync", msg)
+            return True, msg
+
+    except Exception as e:
+        write_log("ERROR", "Sync", str(e))
+        return False, str(e)
+    
+    finally:
+        # 3. RELEASE LOCK
+        remove_system_lock()
+        
+def is_duplicate(tmdb_item, plex_raw_titles, settings=None):
+    # Simplified check for V1.1
+    # We rely on cache normalization
+    tmdb_title = tmdb_item.get('title') if tmdb_item.get('media_type') == 'movie' else tmdb_item.get('name')
+    if not tmdb_title: return False
+    
+    norm = normalize_title(tmdb_title)
+    return norm in plex_raw_titles
+
+# --- STANDARD HELPERS ---
+def fetch_omdb_ratings(title, year, api_key):
+    if not api_key: return []
     try:
-        resp = requests.post(f"{settings.overseerr_url}/api/v1/request", json=payload, headers=headers, timeout=10)
-        return resp.status_code in [200, 201, 409]
-    except: return False
+        url = f"https://www.omdbapi.com/?apikey={api_key}&t={title}&y={year}"
+        r = requests.get(url, timeout=2)
+        if r.status_code == 200:
+            return r.json().get('Ratings', [])
+    except: pass
+    return []
+
+def send_overseerr_request(settings, media_type, tmdb_id, uid=None):
+    if not settings.overseerr_url or not settings.overseerr_api_key:
+        return False
+        
+    headers = {'X-Api-Key': settings.overseerr_api_key}
+    payload = {
+        'mediaType': media_type,
+        'mediaId': int(tmdb_id)
+    }
+    
+    try:
+        r = requests.post(f"{settings.overseerr_url}/api/v1/request", json=payload, headers=headers)
+        return r.status_code in [200, 201]
+    except:
+        return False
 
 def check_for_updates(current_version, raw_url):
     try:
         resp = requests.get(raw_url, timeout=2)
         if resp.status_code == 200:
             match = re.search(r'VERSION\s*=\s*"([^"]+)"', resp.text)
-            if match and match.group(1) != current_version: return match.group(1)
+            if match and match.group(1) != current_version:
+                return match.group(1)
     except: pass
     return None
 
@@ -437,20 +660,28 @@ def handle_lucky_mode(settings):
         random_genre = random.choice([28, 35, 18, 878, 27, 53]) 
         url = f"https://api.themoviedb.org/3/discover/movie?api_key={settings.tmdb_key}&with_genres={random_genre}&sort_by=popularity.desc&page={random.randint(1, 10)}"
         data = requests.get(url).json().get('results', [])
+        
         picks = random.sample(data, min(5, len(data)))
-        movies = [{'id': p['id'], 'title': p['title'], 'year': (p.get('release_date') or '')[:4], 'poster_path': p.get('poster_path'), 'overview': p.get('overview'), 'vote_average': p.get('vote_average')} for p in picks]
-        return render_template('results.html', movies=movies, lucky_mode=True)
-    except:
-        return redirect(url_for('dashboard'))
+        movies = [{'id': p['id'], 'title': p['title'], 'year': (p.get('release_date') or '')[:4], 'poster_path': p.get('poster_path'), 'overview': p.get('overview'), 'vote_average': p.get('vote_average'), 'media_type': 'movie'} for p in picks]
+        
+        return movies  # Return all 5 items
+            
+    except: pass
+    return None
 
+# --- BACKUPS ---
 def create_backup():
-    try:
-        filename = f"backup_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
-        filepath = os.path.join(BACKUP_DIR, filename)
-        with zipfile.ZipFile(filepath, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            if os.path.exists('/config/site.db'): zipf.write('/config/site.db', arcname='site.db')
-        return True, filename
-    except Exception as e: return False, str(e)
+    filename = f"backup_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+    filepath = os.path.join(BACKUP_DIR, filename)
+    
+    with zipfile.ZipFile(filepath, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        if os.path.exists('/config/seekandwatch.db'):
+            zipf.write('/config/seekandwatch.db', arcname='seekandwatch.db')
+        if os.path.exists(CACHE_FILE):
+            zipf.write(CACHE_FILE, arcname='plex_cache.json')
+            
+    prune_backups()
+    return True, filename
 
 def list_backups():
     if not os.path.exists(BACKUP_DIR): return []
@@ -471,13 +702,15 @@ def restore_backup(filename):
     filepath = os.path.join(BACKUP_DIR, filename)
     if not os.path.exists(filepath): return False, "File not found"
     try:
-        with zipfile.ZipFile(filepath, 'r') as zipf: zipf.extract("site.db", "/config")
+        with zipfile.ZipFile(filepath, 'r') as zipf:
+            zipf.extractall("/config")
         return True, "Restored"
-    except Exception as e: return False, str(e)
+    except Exception as e:
+        return False, str(e)
 
-def prune_backups(retention_days):
+def prune_backups(days=7):
     if not os.path.exists(BACKUP_DIR): return
-    cutoff = time.time() - (retention_days * 86400)
+    cutoff = time.time() - (days * 86400)
     for f in os.listdir(BACKUP_DIR):
         if not f.endswith('.zip'): continue
         path = os.path.join(BACKUP_DIR, f)

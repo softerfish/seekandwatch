@@ -32,14 +32,24 @@ class Settings(db.Model):
     tautulli_url = db.Column(db.String(200))
     tautulli_api_key = db.Column(db.String(200))
     
-    # Backup Settings
-    backup_interval = db.Column(db.Integer, default=2)
-    backup_retention = db.Column(db.Integer, default=7)
-
-    # Cache & Logging
+    # System Settings
+    last_checked = db.Column(db.DateTime)
     cache_interval = db.Column(db.Integer, default=24)
     logging_enabled = db.Column(db.Boolean, default=True)
-    max_log_size = db.Column(db.Integer, default=5)
+    max_log_size = db.Column(db.Integer, default=5) # MB
+    
+    # Backup Settings
+    backup_interval = db.Column(db.Integer, default=2) 
+    backup_retention = db.Column(db.Integer, default=7) 
+
+    # --- NEW V1.1.0 FIELDS ---
+    scanner_enabled = db.Column(db.Boolean, default=False)
+    scanner_interval = db.Column(db.Integer, default=15)
+    scanner_batch = db.Column(db.Integer, default=50)
+    last_alias_scan = db.Column(db.Integer, default=0)
+    scanner_log_size = db.Column(db.Integer, default=10)
+    kometa_config = db.Column(db.Text)
+    keyword_cache_size = db.Column(db.Integer, default=2000)
 
 class Blocklist(db.Model):
     __table_args__ = {'extend_existing': True}
@@ -60,13 +70,22 @@ class SystemLog(db.Model):
     __table_args__ = {'extend_existing': True}
     id = db.Column(db.Integer, primary_key=True)
     timestamp = db.Column(db.DateTime, default=datetime.now)
-    level = db.Column(db.String(10))
-    module = db.Column(db.String(50))
-    message = db.Column(db.String(500))
+    level = db.Column(db.String(20)) 
+    category = db.Column(db.String(50))
+    message = db.Column(db.Text)
 
 class TmdbAlias(db.Model):
     __table_args__ = {'extend_existing': True}
     id = db.Column(db.Integer, primary_key=True)
-    tmdb_id = db.Column(db.Integer, index=True)
+    tmdb_id = db.Column(db.Integer, nullable=False)
+    media_type = db.Column(db.String(10), nullable=False)
+    plex_title = db.Column(db.String(200)) # The new column
+    original_title = db.Column(db.String(200))
+    match_year = db.Column(db.Integer)
+    
+class TmdbKeywordCache(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    tmdb_id = db.Column(db.Integer, unique=True)
     media_type = db.Column(db.String(10))
-    aliases = db.Column(db.Text) # Stores JSON string
+    keywords = db.Column(db.Text) # Stored as JSON string
+    timestamp = db.Column(db.DateTime, default=datetime.now)

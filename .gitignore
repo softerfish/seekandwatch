@@ -1,9 +1,26 @@
+# --- Python & System ---
 __pycache__/
 *.pyc
-instance/
-.pytest_cache/
-.env
-site.db
-*.db
 .DS_Store
 venv/
+.pytest_cache/
+
+# --- Secrets & Environment ---
+.env
+instance/
+config/
+
+# --- Database & Cache ---
+*.db
+site.db
+plex_cache.json
+*.sqlite
+*.sqlite3
+
+# --- Logs & Backups ---
+*.log
+*.zip
+
+# --- IDE Settings (Optional but recommended) ---
+.idea/
+.vscode/

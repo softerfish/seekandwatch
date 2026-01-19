@@ -9,343 +9,157 @@ import threading
 import socket
 import hashlib
 import sqlalchemy
-from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
-from werkzeug.security import generate_password_hash, check_password_hash
-from flask_login import LoginManager, login_user, login_required, logout_user, current_user
+import concurrent.futures
+from flask import Flask, Blueprint, request, jsonify, session, send_from_directory, render_template, redirect, url_for, flash
+from flask_login import login_required, current_user, LoginManager, login_user, logout_user
 from flask_apscheduler import APScheduler
+from werkzeug.security import generate_password_hash, check_password_hash
 from plexapi.server import PlexServer
-from models import db, User, Settings, Blocklist, CollectionSchedule, SystemLog, TmdbAlias
+from models import db, Blocklist, CollectionSchedule, TmdbAlias, SystemLog, Settings, User, TmdbKeywordCache
+from utils import (normalize_title, is_duplicate, fetch_omdb_ratings, send_overseerr_request, 
+                   run_collection_logic, create_backup, list_backups, restore_backup, 
+                   prune_backups, BACKUP_DIR, CACHE_FILE, sync_remote_aliases, get_tmdb_aliases, 
+                   refresh_plex_cache, get_plex_cache, get_lock_status, is_system_locked,
+                   write_scanner_log, read_scanner_log, prefetch_keywords_parallel,
+                   item_matches_keywords, RESULTS_CACHE, get_session_filters, write_log,
+                   check_for_updates, handle_lucky_mode, run_alias_scan)
 from presets import PLAYLIST_PRESETS
-from utils import normalize_title, is_duplicate, check_for_updates, fetch_omdb_ratings, send_overseerr_request, handle_lucky_mode, run_collection_logic, create_backup, prune_backups, refresh_plex_cache, CACHE_FILE, is_system_locked, get_lock_status, write_log, sync_remote_aliases
 
 # ==================================================================================
 # 1. APPLICATION CONFIGURATION
 # ==================================================================================
 
-VERSION = "1.0.2"
-GITHUB_RAW_URL = "https://raw.githubusercontent.com/softerfish/seekandwatch/main/app.py"
+VERSION = "1.1.0"
 
-def get_stable_secret_key():
-    """
-    Generates a secure key based on the container's unique identity.
-    This guarantees all workers match without needing to write files.
-    """
-    # 1. Allow override via Env Var (just in case)
-    if os.environ.get('SECRET_KEY'):
-        return os.environ.get('SECRET_KEY')
-    
-    # 2. Generate a stable key from the container's hostname
-    try:
-        container_id = socket.gethostname()
-        secret_src = f"{container_id}-seekandwatch-secure-salt"
-        return hashlib.sha256(secret_src.encode()).hexdigest()
-    except Exception:
-        return 'fallback-static-key-ensure-login-works'
-
-class Config:
-    SECRET_KEY = get_stable_secret_key()
-    SQLALCHEMY_DATABASE_URI = 'sqlite:////config/site.db'
-    SQLALCHEMY_TRACK_MODIFICATIONS = False
-    SCHEDULER_API_ENABLED = True
-    # Ensure cookies work over HTTP (since most users use local IP)
-    SESSION_COOKIE_SECURE = False 
-    SESSION_COOKIE_HTTPONLY = True
-    SESSION_COOKIE_SAMESITE = 'Lax'
+# Stores the latest version
+UPDATE_CACHE = {
+    'version': None,
+    'last_check': 0
+}
 
 app = Flask(__name__)
-app.config.from_object(Config())
+app.config['SECRET_KEY'] = 'seekandwatch_secret_key_change_this'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////config/seekandwatch.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-db.init_app(app)
-login_manager = LoginManager()
-login_manager.login_view = 'login'
-login_manager.init_app(app)
-
+# Initialize Scheduler
 scheduler = APScheduler()
 scheduler.init_app(app)
 scheduler.start()
 
-# --- CONSTANTS ---
-TMDB_GENRES = {
-    'movie': [{'id': 28, 'name': 'Action'}, {'id': 12, 'name': 'Adventure'}, {'id': 16, 'name': 'Animation'}, {'id': 35, 'name': 'Comedy'}, {'id': 80, 'name': 'Crime'}, {'id': 99, 'name': 'Documentary'}, {'id': 18, 'name': 'Drama'}, {'id': 10751, 'name': 'Family'}, {'id': 14, 'name': 'Fantasy'}, {'id': 36, 'name': 'History'}, {'id': 27, 'name': 'Horror'}, {'id': 10402, 'name': 'Music'}, {'id': 9648, 'name': 'Mystery'}, {'id': 10749, 'name': 'Romance'}, {'id': 878, 'name': 'Science Fiction'}, {'id': 10770, 'name': 'TV Movie'}, {'id': 53, 'name': 'Thriller'}, {'id': 10752, 'name': 'War'}, {'id': 37, 'name': 'Western'}],
-    'tv': [{'id': 10759, 'name': 'Action & Adventure'}, {'id': 16, 'name': 'Animation'}, {'id': 35, 'name': 'Comedy'}, {'id': 80, 'name': 'Crime'}, {'id': 99, 'name': 'Documentary'}, {'id': 18, 'name': 'Drama'}, {'id': 10751, 'name': 'Family'}, {'id': 10762, 'name': 'Kids'}, {'id': 9648, 'name': 'Mystery'}, {'id': 10763, 'name': 'News'}, {'id': 10764, 'name': 'Reality'}, {'id': 10765, 'name': 'Sci-Fi & Fantasy'}, {'id': 10766, 'name': 'Soap'}, {'id': 10767, 'name': 'Talk'}, {'id': 10768, 'name': 'War & Politics'}, {'id': 37, 'name': 'Western'}]
-}
+db.init_app(app)
+
+login_manager = LoginManager()
+login_manager.login_view = 'login'
+login_manager.init_app(app)
+
+# ==================================================================================
+# 2. DATABASE MIGRATION & INIT
+# ==================================================================================
+
+def run_migrations():
+    """Checks for missing columns and adds them if necessary."""
+    with app.app_context():
+        try: db.create_all()
+        except: pass
+        
+        # Add Columns if missing
+        try:
+            inspector = sqlalchemy.inspect(db.engine)
+            columns = [c['name'] for c in inspector.get_columns('settings')]
+            
+            with db.engine.connect() as conn:
+                if 'tmdb_region' not in columns:
+                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN tmdb_region VARCHAR(10) DEFAULT 'US'"))
+                if 'ignored_users' not in columns:
+                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN ignored_users VARCHAR(500)"))
+                if 'omdb_key' not in columns:
+                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN omdb_key VARCHAR(200)"))
+                if 'scanner_enabled' not in columns:
+                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN scanner_enabled BOOLEAN DEFAULT 0"))
+                if 'scanner_interval' not in columns:
+                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN scanner_interval INTEGER DEFAULT 15"))
+                if 'scanner_batch' not in columns:
+                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN scanner_batch INTEGER DEFAULT 50"))
+                if 'last_alias_scan' not in columns:
+                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN last_alias_scan INTEGER DEFAULT 0"))
+                if 'kometa_config' not in columns:
+                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN kometa_config TEXT"))
+                if 'scanner_log_size' not in columns:
+                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN scanner_log_size INTEGER DEFAULT 10"))
+                if 'keyword_cache_size' not in columns:
+                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN keyword_cache_size INTEGER DEFAULT 2000"))
+        except: pass
+
+        # Create Tables if missing
+        try: Blocklist.__table__.create(db.engine)
+        except: pass
+        try: CollectionSchedule.__table__.create(db.engine)
+        except: pass
+        try: TmdbAlias.__table__.create(db.engine)
+        except: pass
+        
+        # --- Create Keyword Cache Table ---
+        try: TmdbKeywordCache.__table__.create(db.engine)
+        except: pass
+
+# Run migrations immediately on startup
+run_migrations()
 
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
 
+# ==================================================================================
+# 3. PAGE ROUTES (Frontend)
+# ==================================================================================
+
 @app.context_processor
 def inject_version():
-    return dict(app_version=VERSION)
-
-@scheduler.task('interval', id='scheduled_updates', hours=1)
-def scheduled_update_checker():
-    with app.app_context():
-        user_settings = Settings.query.first() 
-        if not user_settings or not user_settings.plex_url: return
-        for job in CollectionSchedule.query.all():
-            if job.frequency == 'manual': continue
-            hours_threshold = 24 if job.frequency == 'daily' else 168
-            last = job.last_run or datetime.datetime.min
-            if (datetime.datetime.now() - last).total_seconds() > (hours_threshold * 3600):
-                run_collection_logic(job.preset_key, user_settings)
-                job.last_run = datetime.datetime.now()
-                db.session.commit()
-
-# --- BACKUP SCHEDULER ---
-@scheduler.task('interval', id='scheduled_backups', hours=24)
-def scheduled_backup_task():
-    with app.app_context():
-        user_settings = Settings.query.first()
-        if not user_settings: return
-        from utils import BACKUP_DIR
-        import os
-        interval_days = user_settings.backup_interval or 2
-        retention_days = user_settings.backup_retention or 7
-        should_backup = False
-        if not os.path.exists(BACKUP_DIR) or not os.listdir(BACKUP_DIR):
-            should_backup = True
-        else:
-            files = [os.path.join(BACKUP_DIR, f) for f in os.listdir(BACKUP_DIR) if f.endswith('.zip')]
-            if files:
-                newest = max(files, key=os.path.getmtime)
-                days_since = (time.time() - os.path.getmtime(newest)) / 86400
-                if days_since >= interval_days: should_backup = True
-            else: should_backup = True
-        if should_backup:
-            create_backup()
-            prune_backups(retention_days)
-
-# --- ALIAS SYNC SCHEDULER (NEW) ---
-@scheduler.task('interval', id='scheduled_alias_update', hours=24)
-def scheduled_alias_update():
-    with app.app_context():
-        sync_remote_aliases()
-
-# --- PLEX CACHE SCHEDULER ---
-@scheduler.task('interval', id='refresh_cache_job', minutes=30)
-def scheduled_cache_check():
-    with app.app_context():
-        settings = Settings.query.first()
-        if not settings or not settings.plex_url: return
-        interval_hours = settings.cache_interval or 24
-        
-        # Check if already running via file lock
-        if is_system_locked(): return
-
-        should_run = False
-        if not os.path.exists(CACHE_FILE): should_run = True
-        else:
-            try:
-                with open(CACHE_FILE, 'r') as f:
-                    data = json.load(f)
-                    if (time.time() - data.get('timestamp', 0)) > (interval_hours * 3600):
-                        should_run = True
-            except: should_run = True
-        if should_run:
-            refresh_plex_cache(settings)
-
-# ==================================================================================
-# CACHE STATUS ENDPOINTS
-# ==================================================================================
-
-def run_threaded_cache(app_obj, user_id):
-    """Refreshes cache inside an app context so logging works."""
-    with app_obj.app_context():
-        user = User.query.get(user_id)
-        if user and user.settings:
-            refresh_plex_cache(user.settings)
-
-@app.route('/save_cache_settings', methods=['POST'])
-@login_required
-def save_cache_settings():
-    try:
-        data = request.get_json()
-        current_user.settings.cache_interval = int(data.get('interval', 24))
-        db.session.commit()
-        return jsonify({'status': 'success', 'message': 'Cache interval saved!'})
-    except Exception as e: return jsonify({'status': 'error', 'message': str(e)})
-
-@app.route('/force_cache_refresh', methods=['POST'])
-@login_required
-def force_cache_refresh_route():
-    if is_system_locked():
-        return jsonify({'status': 'error', 'message': 'Scan already in progress.'})
-    
-    user_id = current_user.id
-    thread = threading.Thread(target=run_threaded_cache, args=(app, user_id))
-    thread.start()
-    
-    return jsonify({'status': 'success', 'message': 'Background scan started. Controls locked until complete.'})
-
-@app.route('/get_cache_status')
-@login_required
-def get_cache_status_route():
-    locked = is_system_locked()
-    progress = get_lock_status() if locked else "Idle"
-    return jsonify({'running': locked, 'progress': progress})
-
-# ==================================================================================
-# ALIAS & LOGGING ENDPOINTS
-# ==================================================================================
-
-# NOTE: manual_alias_sync is now in api.py to prevent duplicates
-
-@app.route('/logs')
-@login_required
-def logs():
-    # Fetch logs, newest first
-    log_entries = SystemLog.query.order_by(SystemLog.timestamp.desc()).limit(200).all()
-    return render_template('logs.html', logs=log_entries, settings=current_user.settings)
-
-@app.route('/toggle_logging', methods=['POST'])
-@login_required
-def toggle_logging():
-    try:
-        data = request.get_json()
-        current_user.settings.logging_enabled = data.get('enabled', True)
-        db.session.commit()
-        state = "Enabled" if current_user.settings.logging_enabled else "Disabled"
-        write_log("INFO", "System", f"Logging {state} by user.")
-        return jsonify({'status': 'success', 'message': f'Logging {state}'})
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)})
-
-@app.route('/clear_logs', methods=['POST'])
-@login_required
-def clear_logs():
-    try:
-        db.session.query(SystemLog).delete()
-        db.session.commit()
-        write_log("INFO", "System", "Logs cleared by user.")
-        return jsonify({'status': 'success', 'message': 'Logs cleared.'})
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)})
-
-# ==================================================================================
-# 3. ROUTES
-# ==================================================================================
-
-# --- TEST CONNECTION ---
-@app.route('/test_connection', methods=['POST'])
-@login_required
-def test_connection():
-    data = request.json
-    service = data.get('service')
-    
-    try:
-        # 1. PLEX TEST
-        if service == 'plex':
-            url = (data.get('url') or '').rstrip('/')
-            token = data.get('token')
-            if not url or not token: 
-                return jsonify({'status': 'error', 'message': 'Missing URL or Token'})
-            try:
-                server = PlexServer(url, token)
-                return jsonify({'status': 'success', 'message': f"Connected: {server.friendlyName} (v{server.version})"})
-            except Exception as e:
-                return jsonify({'status': 'error', 'message': f"Connection failed: {str(e)}"})
-
-        # 2. TMDB TEST
-        elif service == 'tmdb':
-            key = data.get('api_key')
-            if not key: return jsonify({'status': 'error', 'message': 'Missing API Key'})
-            resp = requests.get(f"https://api.themoviedb.org/3/configuration?api_key={key}", timeout=5)
-            if resp.status_code == 200: 
-                return jsonify({'status': 'success', 'message': 'TMDB Key is valid!'})
-            return jsonify({'status': 'error', 'message': 'Invalid API Key'})
-
-        # 3. OMDB TEST
-        elif service == 'omdb':
-            key = data.get('api_key')
-            if not key: return jsonify({'status': 'error', 'message': 'Missing API Key'})
-            # Search for a known movie (The Shawshank Redemption) to test auth
-            resp = requests.get(f"http://www.omdbapi.com/?apikey={key}&i=tt0111161", timeout=5)
-            data = resp.json()
-            if data.get('Response') == 'True': 
-                return jsonify({'status': 'success', 'message': 'OMDB Key is valid!'})
-            return jsonify({'status': 'error', 'message': data.get('Error', 'Invalid Key')})
-
-        # 4. OVERSEERR TEST
-        elif service == 'overseerr':
-            url = (data.get('url') or '').rstrip('/')
-            key = data.get('api_key')
-            if not url or not key: return jsonify({'status': 'error', 'message': 'Missing URL or Key'})
-            try:
-                resp = requests.get(f"{url}/api/v1/auth/me", headers={'X-Api-Key': key}, timeout=5)
-                if resp.status_code == 200: 
-                    user = resp.json()
-                    return jsonify({'status': 'success', 'message': f"Connected as {user.get('email', 'User')}"})
-                return jsonify({'status': 'error', 'message': f"Error {resp.status_code}: Verify credentials"})
-            except Exception as e:
-                return jsonify({'status': 'error', 'message': str(e)})
-
-        # 5. TAUTULLI TEST
-        elif service == 'tautulli':
-            url = (data.get('url') or '').rstrip('/')
-            key = data.get('api_key')
-            if not url or not key: return jsonify({'status': 'error', 'message': 'Missing URL or Key'})
-            try:
-                resp = requests.get(f"{url}/api/v2?apikey={key}&cmd=get_server_info", timeout=5)
-                if resp.status_code == 200 and resp.json().get('response', {}).get('result') == 'success':
-                    return jsonify({'status': 'success', 'message': 'Tautulli Connected Successfully!'})
-                return jsonify({'status': 'error', 'message': 'Invalid Response from Tautulli'})
-            except Exception as e:
-                return jsonify({'status': 'error', 'message': str(e)})
-
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': f"System Error: {str(e)}"})
-
-    return jsonify({'status': 'error', 'message': 'Unknown Service Requested'})
+    return dict(version=VERSION)
 
 @app.route('/')
-@login_required
-def dashboard():
-    recent_media = []
-    if current_user.settings and current_user.settings.plex_url and current_user.settings.plex_token:
-        try:
-            blocked_titles = {normalize_title(b.title) for b in Blocklist.query.filter_by(user_id=current_user.id).all()}
-            plex = PlexServer(current_user.settings.plex_url, current_user.settings.plex_token)
-            
-            for item in plex.library.recentlyAdded()[:30]:
-                if len(recent_media) >= 10: break
-                thumb = f"{current_user.settings.plex_url}{item.thumb}?X-Plex-Token={current_user.settings.plex_token}" if item.thumb else ""
-                
-                year = None
-                if getattr(item, 'originallyAvailableAt', None): year = item.originallyAvailableAt.year
-                if not year and item.type in ['season', 'episode']:
-                    try:
-                        full_item = plex.fetchItem(item.ratingKey)
-                        if getattr(full_item, 'originallyAvailableAt', None): year = full_item.originallyAvailableAt.year
-                        elif getattr(full_item, 'year', None): year = full_item.year
-                        elif getattr(full_item, 'parentYear', None): year = full_item.parentYear
-                    except: pass
-                if not year:
-                    if getattr(item, 'parentYear', None): year = item.parentYear
-                    elif getattr(item, 'grandparentYear', None): year = item.grandparentYear
-                if not year and getattr(item, 'year', None): year = item.year
-                if not year and getattr(item, 'addedAt', None): year = item.addedAt.year
-                
-                main_title, sub_title = item.title, None
-                if item.type == 'season': main_title, sub_title = item.parentTitle, item.title
-                elif item.type == 'episode': main_title, sub_title = item.grandparentTitle, item.title
-
-                if normalize_title(main_title) in blocked_titles: continue
-                recent_media.append({'title': main_title, 'sub_title': sub_title, 'type': item.type, 'year': str(year or ''), 'thumb': thumb})
-        except: pass
-    new_version = check_for_updates(VERSION, GITHUB_RAW_URL)
-    has_omdb = bool(current_user.settings and current_user.settings.omdb_key)
-    return render_template('dashboard.html', recent_media=recent_media, new_version=new_version, has_omdb=has_omdb)
+def index():
+    if current_user.is_authenticated:
+        return redirect(url_for('dashboard'))
+    return redirect(url_for('login'))
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+    if current_user.is_authenticated:
+        return redirect(url_for('dashboard'))
+        
     if request.method == 'POST':
-        u = User.query.filter_by(username=request.form.get('username')).first()
-        if u and check_password_hash(u.password_hash, request.form.get('password')):
+        u = User.query.filter_by(username=request.form['username']).first()
+        if u and check_password_hash(u.password_hash, request.form['password']):
             login_user(u)
             return redirect(url_for('dashboard'))
-        flash('Invalid credentials')
-    return render_template('login.html')
+        flash('Invalid credentials', 'error')
+        
+    return render_template('login.html', is_register=False)
+
+@app.route('/register', methods=['POST'])
+def register():
+    username = request.form['username']
+    password = request.form['password']
+    
+    if User.query.filter_by(username=username).first():
+        flash('Username taken', 'error')
+        return redirect(url_for('login'))
+        
+    # Create User
+    hashed = generate_password_hash(password, method='pbkdf2:sha256')
+    new_user = User(username=username, password_hash=hashed)
+    db.session.add(new_user)
+    db.session.commit()
+    
+    # Create Default Settings
+    s = Settings(user_id=new_user.id, last_checked=datetime.datetime.now())
+    db.session.add(s)
+    db.session.commit()
+    
+    login_user(new_user)
+    return redirect(url_for('settings'))
 
 @app.route('/logout')
 @login_required
@@ -353,361 +167,575 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
-@app.route('/settings', methods=['GET', 'POST'])
+@app.route('/dashboard')
 @login_required
-def settings():
-    user_settings = Settings.query.filter_by(user_id=current_user.id).first() or Settings(user_id=current_user.id)
-    if not user_settings.id: db.session.add(user_settings); db.session.commit()
-
-    if request.method == 'POST':
-        try:
-            user_settings.plex_url = (request.form.get('plex_url') or '').rstrip('/')
-            user_settings.plex_token = request.form.get('plex_token')
-            user_settings.tmdb_key = request.form.get('tmdb_key')
-            user_settings.tmdb_region = request.form.get('tmdb_region', 'US').upper()
-            user_settings.omdb_key = request.form.get('omdb_key')
-            user_settings.overseerr_url = (request.form.get('overseerr_url') or '').rstrip('/')
-            user_settings.overseerr_api_key = request.form.get('overseerr_api_key')
-            user_settings.tautulli_url = (request.form.get('tautulli_url') or '').rstrip('/')
-            user_settings.tautulli_api_key = request.form.get('tautulli_api_key')
-            try:
-                user_settings.backup_interval = int(request.form.get('backup_interval', 2))
-                user_settings.backup_retention = int(request.form.get('backup_retention', 7))
-                user_settings.max_log_size = int(request.form.get('max_log_size', 5))
-            except: pass
-            user_settings.ignored_users = ",".join(request.form.getlist('ignored_plex_users'))
-            db.session.commit()
-            return jsonify({'status': 'success', 'message': 'Configuration Saved Successfully!'})
-        except Exception as e:
-            db.session.rollback()
-            return jsonify({'status': 'error', 'message': f"Save Error: {str(e)}"})
-
-    plex_users = []
-    if user_settings.plex_url and user_settings.plex_token:
-        try:
-            p = PlexServer(user_settings.plex_url, user_settings.plex_token)
-            account = p.myPlexAccount()
-            plex_users = sorted([u.title for u in account.users()] + ([account.username] if account.username else []))
-        except: pass
-    current_ignored = (user_settings.ignored_users or "").split(",")
+def dashboard():
+    s = Settings.query.filter_by(user_id=current_user.id).first()
     
-    # PASS COUNT TO TEMPLATE
-    alias_count = TmdbAlias.query.count()
-    return render_template('settings.html', settings=user_settings, plex_users=plex_users, current_ignored=current_ignored, alias_count=alias_count)
+    # 1. Check if cache is expired (4 hours) or empty
+    now = time.time()
+    if UPDATE_CACHE['version'] is None or (now - UPDATE_CACHE['last_check'] > 14400):
+        try:
+            # Check GitHub
+            latest = check_for_updates(VERSION, "https://raw.githubusercontent.com/softerfish/seekandwatch/main/app.py")
+            if latest:
+                UPDATE_CACHE['version'] = latest
+            UPDATE_CACHE['last_check'] = now
+        except:
+            pass # Keep old cache if GitHub fails
 
-# --- Silent Auto-Save Endpoint ---
-@app.route('/update_ignore_list', methods=['POST'])
-@login_required
-def update_ignore_list():
-    try:
-        data = request.json
-        # Expecting a list like ['Guest', 'Troyy37']
-        new_list = data.get('ignored_users', [])
+    # 2. Determine if we need to show banner
+    # We show it if we found a version AND it doesn't match current
+    new_version = None
+    if UPDATE_CACHE['version'] and UPDATE_CACHE['version'] != VERSION:
+        new_version = UPDATE_CACHE['version']
         
-        # Save to database
-        current_user.settings.ignored_users = ",".join(new_list)
-        db.session.commit()
-        
-        return jsonify({'status': 'success', 'message': 'Saved'})
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+    return render_template('dashboard.html', 
+                           settings=s, 
+                           new_version=new_version,
+                           has_omdb=bool(s.omdb_key))
 
 @app.route('/review_history', methods=['POST'])
 @login_required
 def review_history():
-    s = current_user.settings
-    media_type = request.form.get('media_type', 'movie')
-    manual = request.form.get('manual_query')
-    session['critic_filter'] = request.form.get('critic_filter')
-    history_limit = int(request.form.get('history_limit', 20))
-    review_list = []
-    providers = []
-
-    # 1. Fetch Providers
-    try:
-        raw_reg = s.tmdb_region or 'US'
-        regions = [r.strip().upper() for r in raw_reg.split(',')]
-        all_providers = {}
-        for reg in regions:
-            if not reg: continue
-            try:
-                p_url = f"https://api.themoviedb.org/3/watch/providers/{media_type}?api_key={s.tmdb_key}&watch_region={reg}"
-                p_data = requests.get(p_url).json().get('results', [])
-                for p in p_data: all_providers[p['provider_id']] = p
-            except: pass
-        providers = sorted(all_providers.values(), key=lambda x: x.get('display_priority', 999))[:40] 
-    except Exception as e: print(f"Provider Fetch Error: {e}")
-
-    # 2. Manual Mode
-    if manual:
-        ep = 'search/tv' if media_type == 'tv' else 'search/movie'
-        try:
-            res = requests.get(f"https://api.themoviedb.org/3/{ep}?query={manual}&api_key={s.tmdb_key}").json().get('results', [])[:5]
-            for i in res:
-                d = i.get('first_air_date') if media_type == 'tv' else i.get('release_date')
-                review_list.append({'title': i.get('name') if media_type == 'tv' else i.get('title'), 'year': (d or '')[:4], 'poster_path': i.get('poster_path'), 'id': i['id']})
-        except Exception as e: flash(f"Error searching TMDB: {e}", "error")
+    """Gold Standard: Scans history using strict ID-to-Name mapping."""
+    import sys 
     
-    # 3. History Scan (STRICT ALLOWLIST)
-    else:
-        try:
+    s = Settings.query.filter_by(user_id=current_user.id).first()
+    media_type = request.form.get('media_type', 'movie')
+    manual_query = request.form.get('manual_query')
+    limit = int(request.form.get('history_limit', 20))
+    
+    # Session defaults
+    session['critic_filter'] = 'true' if request.form.get('critic_filter') else 'false'
+    session['critic_threshold'] = request.form.get('critic_threshold', 70)
+    
+    candidates = []
+    
+    try:
+        # 1. Manual Search Mode
+        if manual_query:
+            url = f"https://api.themoviedb.org/3/search/{media_type}?api_key={s.tmdb_key}&query={manual_query}"
+            res = requests.get(url).json().get('results', [])
+            if res:
+                item = res[0]
+                candidates.append({
+                    'title': item.get('title', item.get('name')),
+                    'year': (item.get('release_date') or item.get('first_air_date') or '')[:4],
+                    'thumb': f"https://image.tmdb.org/t/p/w200{item.get('poster_path')}" if item.get('poster_path') else None,
+                    'poster_path': item.get('poster_path')
+                })
+
+        # 2. Plex History Mode
+        elif s.plex_url and s.plex_token:
             plex = PlexServer(s.plex_url, s.plex_token)
             
-            # --- STEP A: CALCULATE "SAFE" IDs ---
-            # Instead of looking for who to BLOCK, we look for who to KEEP.
-            
-            raw_ignored = (s.ignored_users or "").split(",")
-            ignored_names = [u.strip().lower() for u in raw_ignored if u.strip()]
-            
-            allowed_ids = set()
-            print(f"--- BUILDING ALLOWLIST (Default Deny) ---", flush=True)
-
-            # 1. Check ADMIN (You)
-            # By default, we assume ID '1' is the Admin. We check if you blocked yourself.
+            # --- USER MAPPING ---
+            user_map = {}
             try:
-                my_account = plex.myPlexAccount()
-                admin_aliases = [
-                    str(my_account.username).lower(), 
-                    str(my_account.email).lower(), 
-                    str(my_account.title).lower()
-                ]
-                
-                # If the Admin (You) is NOT in the ignore list, add your IDs
-                if not any(alias in ignored_names for alias in admin_aliases):
-                    allowed_ids.add('1')              # Local Admin ID
-                    allowed_ids.add(str(my_account.id)) # Cloud Admin ID
-                    print(f" -> ALLOWED: Admin (ID: 1 & {my_account.id})", flush=True)
-                
-                # 2. Check FRIENDS
-                for user in my_account.users():
-                    u_aliases = [
-                        str(user.title).lower(), 
-                        str(user.username).lower(), 
-                        str(user.email).lower()
-                    ]
-                    # If friend is NOT ignored, Add them.
-                    if not any(a in ignored_names for a in u_aliases):
-                        allowed_ids.add(str(user.id))
-                        print(f" -> ALLOWED: {user.title} (ID: {user.id})", flush=True)
-            except Exception as e:
-                print(f"WARN: Could not fetch user list: {e}")
-                # Fallback: Always allow ID 1 if fetch fails
-                allowed_ids.add('1')
+                for acct in plex.systemAccounts():
+                    user_map[int(acct.id)] = acct.name
+            except: pass
 
-            print(f"Final Allowed IDs: {allowed_ids}", flush=True)
+            try:
+                account = plex.myPlexAccount()
+                for user in account.users():
+                    if user.id:
+                        user_map[int(user.id)] = user.title
+                if account.id:
+                    user_map[int(account.id)] = account.username or "Admin"
+            except: pass
 
-            # --- STEP B: SCAN HISTORY ---
-            h = plex.history(maxresults=5000)
-            seen = set()
-            count = 0
+            # Prepare ignore list
+            ignored = [u.strip().lower() for u in (s.ignored_users or '').split(',')]
             
-            target_type = 'episode' if media_type == 'tv' else 'movie'
+            history = plex.history(maxresults=5000)
+            seen_titles = set()
+            lib_type = 'movie' if media_type == 'movie' else 'episode'
             
-            for x in h:
-                if count >= history_limit: break
+            for h in history:
+                if h.type != lib_type: continue
                 
-                # 1. Get ID (Force String)
-                raw_id = getattr(x, 'accountID', None)
-                user_id = str(raw_id) if raw_id is not None else ""
+                # Check User
+                user_id = getattr(h, 'accountID', None)
+                user_name = "Unknown"
+                if user_id is not None:
+                    user_name = user_map.get(int(user_id), "Unknown")
                 
-                # 2. THE CHECK: Is this user on the Guest List?
-                # If they are NOT in 'allowed_ids', they are blocked. Period.
-                if user_id not in allowed_ids:
-                    # Guest (ID 519544053) will fall here and be skipped
-                    continue
+                if user_name == "Unknown":
+                    if hasattr(h, 'userName') and h.userName: user_name = h.userName
+                    elif hasattr(h, 'user') and hasattr(h.user, 'title'): user_name = h.user.title
 
-                # 3. Type Filter
-                if x.type != target_type: continue
-                
-                # 4. Deduplication
-                t = x.grandparentTitle if media_type == 'tv' else x.title
-                if t in seen: continue
-                seen.add(t)
-                
-                # Match Found!
-                if count < 5:
-                    print(f"MATCH: '{x.title}' | ID: {user_id}", flush=True)
+                if user_name.lower() in ignored: continue
 
-                # --- TMDB Fetch ---
-                poster_path = None
-                try:
-                    q_type = 'tv' if media_type == 'tv' else 'movie'
-                    tmdb_res = requests.get(f"https://api.themoviedb.org/3/search/{q_type}?query={t}&api_key={s.tmdb_key}").json()
-                    if tmdb_res.get('results'): poster_path = tmdb_res['results'][0].get('poster_path')
+                # --- DEDUPLICATE TV SHOWS ---
+                # If it's an episode, use the Show Name (grandparentTitle)
+                if h.type == 'episode':
+                    title = h.grandparentTitle
+                else:
+                    title = h.title
+                
+                # Fallback checks
+                if not title:
+                    if hasattr(h, 'sourceTitle') and h.sourceTitle: title = h.sourceTitle
+                    else: title = h.title
+
+                if not title: continue
+                
+                # If we've already seen this Show Name, skip it (hides duplicate episodes)
+                if title in seen_titles: continue
+                
+                year = h.year if hasattr(h, 'year') else 0
+                
+                # Fix TV Posters
+                thumb = None
+                try: 
+                    if h.type == 'episode': thumb = h.grandparentThumb or h.thumb
+                    else: thumb = h.thumb 
                 except: pass
-                
-                y = getattr(x, 'year', '')
-                review_list.append({'title': t, 'year': str(y), 'poster_path': poster_path})
-                count += 1
-            
-            if not review_list: 
-                flash("No history found for the allowed users.", "error")
-            
-        except Exception as e:
-            print(f"Plex Error: {e}")
-            flash(f"Could not connect to Plex: {str(e)}", "error")
 
-    return render_template('review.html', movies=review_list, media_type=media_type, genres=TMDB_GENRES[media_type], providers=providers)
-    
+                candidates.append({
+                    'title': title,
+                    'year': year,
+                    'thumb': f"{s.plex_url}{thumb}?X-Plex-Token={s.plex_token}" if thumb else None,
+                    'poster_path': None
+                })
+                seen_titles.add(title)
+            
+            # --- SHUFFLE & LIMIT ---
+            random.shuffle(candidates)
+            candidates = candidates[:limit]
+
+    except Exception as e:
+        flash(f"Scan failed: {str(e)}", "error")
+        return redirect(url_for('dashboard'))
+        
+    # Get Providers for Filtering
+    providers = []
+    try:
+        reg = s.tmdb_region.split(',')[0] if s.tmdb_region else 'US'
+        p_url = f"https://api.themoviedb.org/3/watch/providers/{media_type}?api_key={s.tmdb_key}&watch_region={reg}"
+        p_data = requests.get(p_url).json().get('results', [])
+        providers = sorted(p_data, key=lambda x: x.get('display_priority', 999))[:30]
+    except: pass
+
+    # Get Genres
+    genres = []
+    try:
+        g_url = f"https://api.themoviedb.org/3/genre/{media_type}/list?api_key={s.tmdb_key}"
+        genres = requests.get(g_url).json().get('genres', [])
+    except: pass
+
+    return render_template('review.html', 
+                           movies=candidates, 
+                           media_type=media_type,
+                           providers=providers,
+                           genres=genres)
+
 @app.route('/generate', methods=['POST'])
 @login_required
 def generate():
-    session['seed_titles'] = request.form.getlist('selected_movies')
-    session['media_type'] = request.form.get('media_type')
-    session['genre_filter'] = request.form.get('genre_filter')
-    session['min_rating'] = float(request.form.get('min_rating', 0))
-    session['provider_filter'] = request.form.getlist('provider_filter')
-    use_critic_filter = request.form.get('critic_filter') == 'on'
-    session['critic_threshold'] = int(request.form.get('critic_threshold', 70))
-    if request.form.get('lucky_mode') == 'true': return handle_lucky_mode(current_user.settings)
-    return render_template('results.html', use_critic_filter=use_critic_filter)
+    s = Settings.query.filter_by(user_id=current_user.id).first()
+    
+    # 1. LUCKY MODE
+    if request.form.get('lucky_mode') == 'true':
+        lucky_result = handle_lucky_mode(s)
+        if not lucky_result:
+             flash("Could not find a lucky pick!", "error")
+             return redirect(url_for('dashboard'))
+        RESULTS_CACHE[current_user.id] = {'candidates': [lucky_result], 'next_index': 1}
+        return render_template('results.html', movies=[lucky_result], min_year=0, min_rating=0, genres=[], current_genre=None, use_critic_filter='false')
 
-@app.route('/builder')
+    # 2. STANDARD MODE
+    media_type = request.form.get('media_type')
+    selected_titles = request.form.getlist('selected_movies')
+    
+    session['media_type'] = media_type
+    session['selected_titles'] = selected_titles
+    session['genre_filter'] = request.form.get('genre_filter')
+    session['keywords'] = request.form.get('keywords', '')
+    
+    try: session['min_year'] = int(request.form.get('min_year', 0))
+    except: session['min_year'] = 0
+    try: session['min_rating'] = float(request.form.get('min_rating', 0))
+    except: session['min_rating'] = 0
+    
+    if not selected_titles:
+        flash('Please select at least one item.', 'error')
+        return redirect(url_for('dashboard'))
+
+    owned_keys = get_plex_cache(s)
+    blocked = set([b.title for b in Blocklist.query.filter_by(user_id=current_user.id).all()])
+    
+    recommendations = []
+    seen_ids = set()
+    seed_ids = []
+    
+    # Resolve Seeds
+    for title in selected_titles:
+        try:
+            search_url = f"https://api.themoviedb.org/3/search/{media_type}?api_key={s.tmdb_key}&query={title}"
+            r = requests.get(search_url).json()
+            if r.get('results'):
+                seed_ids.append(r['results'][0]['id'])
+        except: pass
+            
+    ## Fetch Recommendations (fetch 3 pages of media_type per media_type)
+    for tmdb_id in seed_ids:
+        try:
+            # Loop through pages 1, 2, and 3 to get 60 items per seed
+            for page_num in range(1, 4): 
+                rec_url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}/recommendations?api_key={s.tmdb_key}&language=en-US&page={page_num}"
+                data = requests.get(rec_url).json()
+                
+                for item in data.get('results', []):
+                    if item['id'] in seen_ids: continue
+                    
+                    item['media_type'] = media_type
+                    date = item.get('release_date') or item.get('first_air_date')
+                    item['year'] = int(date[:4]) if date else 0
+                    
+                    if item.get('title', item.get('name')) in blocked: continue
+                    t_clean = normalize_title(item.get('title', item.get('name')))
+                    if t_clean in owned_keys: continue
+                    
+                    alias = TmdbAlias.query.filter_by(tmdb_id=item['id'], media_type=media_type).first()
+                    if alias: continue 
+
+                    recommendations.append(item)
+                    seen_ids.add(item['id'])
+        except: pass
+            
+    random.shuffle(recommendations)
+    
+    RESULTS_CACHE[current_user.id] = {
+        'candidates': recommendations,
+        'next_index': 0
+    }
+    
+    # --- PROCESSING ---
+    min_year, min_rating, genre_filter, critic_enabled, threshold = get_session_filters()
+    raw_keywords = session.get('keywords', '')
+    target_keywords = [k.strip() for k in raw_keywords.split('|') if k.strip()]
+
+    # PARALLEL PREFETCH
+    # Always run to populate cache for future filtering
+    if target_keywords:
+        # A. FILTERING ACTIVE: We must wait for data to filter correctly
+        prefetch_keywords_parallel(recommendations, s.tmdb_key)
+    else:
+        # B. BROWSING MODE: Run in background to prevent Timeout/Crashing
+        # This keeps the UI fast while filling the cache silently
+        def async_prefetch(app_obj, items, key):
+            with app_obj.app_context():
+                prefetch_keywords_parallel(items, key)
+        
+        threading.Thread(target=async_prefetch, 
+                         args=(app, recommendations, s.tmdb_key)).start()
+
+    final_list = []
+    idx = 0
+    
+# --- PROCESSING LOOP ---
+    # Increased limit to 40 to fill larger screens
+    while len(final_list) < 40 and idx < len(recommendations):
+        item = recommendations[idx]
+        idx += 1
+        
+        # 1. Apply Filters
+        if item['year'] < min_year: continue
+        if item.get('vote_average', 0) < min_rating: continue
+        if genre_filter and genre_filter != 'all':
+            if int(genre_filter) not in item.get('genre_ids', []): continue
+            
+        if target_keywords:
+            if not item_matches_keywords(item, target_keywords):
+                continue
+
+        # 2. Get Badges (OMDB/Rotten Tomatoes)
+        item['rt_score'] = None
+        if s.omdb_key:
+            ratings = fetch_omdb_ratings(item.get('title', item.get('name')), item['year'], s.omdb_key)
+            rt_score = 0
+            for r in (ratings or []):
+                if r['Source'] == 'Rotten Tomatoes':
+                    rt_score = int(r['Value'].replace('%',''))
+                    break
+            if rt_score > 0: item['rt_score'] = rt_score
+            if critic_enabled and rt_score < threshold: continue
+
+        final_list.append(item)
+
+    # 3. Save Index for "Load More"
+    RESULTS_CACHE[current_user.id]['next_index'] = idx
+    
+    # 4. SMART BACKGROUND PREFETCH (Prevents Timeouts)
+    # If filtering, we wait. If browsing, we do it in background.
+    if target_keywords:
+        prefetch_keywords_parallel(recommendations, s.tmdb_key)
+    else:
+        def async_prefetch(app_obj, items, key):
+            with app_obj.app_context():
+                prefetch_keywords_parallel(items, key)
+        threading.Thread(target=async_prefetch, args=(app, recommendations, s.tmdb_key)).start()
+        
+    g_url = f"https://api.themoviedb.org/3/genre/{media_type}/list?api_key={s.tmdb_key}"
+    try: genres = requests.get(g_url).json().get('genres', [])
+    except: genres = []
+
+    return render_template('results.html', 
+                           movies=final_list, 
+                           genres=genres,
+                           current_genre=genre_filter,
+                           min_year=min_year,
+                           min_rating=min_rating,
+                           use_critic_filter='true' if critic_enabled else 'false')
+
+@app.route('/reset_alias_db')
 @login_required
-def builder(): return render_template('builder.html', genres=TMDB_GENRES['movie'])
+def reset_alias_db():
+    """Nuclear option to fix owned movies showing up"""
+    try:
+        db.session.query(TmdbAlias).delete()
+        s = Settings.query.filter_by(user_id=current_user.id).first()
+        s.last_alias_scan = 0
+        db.session.commit()
+        return "<h1>Alias DB Wiped.</h1><p>The scanner will now restart from scratch. Please wait 10 minutes and check logs.</p><a href='/dashboard'>Back</a>"
+    except Exception as e:
+        return f"Error: {e}"
 
 @app.route('/playlists')
 @login_required
 def playlists():
-    schedules = {s.preset_key: s.frequency for s in CollectionSchedule.query.all()}
-    custom_entries = CollectionSchedule.query.filter(CollectionSchedule.preset_key.like('custom_%')).all()
+    schedules = {}
+    for sch in CollectionSchedule.query.all():
+        schedules[sch.preset_key] = sch.frequency
+        
     custom_presets = {}
-    for job in custom_entries:
-        if job.configuration:
-            config = json.loads(job.configuration)
-            custom_presets[job.preset_key] = {'title': config['title'], 'icon': '🛠️', 'media_type': config['media_type'], 'description': f"Custom {config['media_type']} collection targeting {config.get('year_start', 'Any')} - {config.get('year_end', 'Any')}."}
+    for sch in CollectionSchedule.query.filter(CollectionSchedule.preset_key.like('custom_%')).all():
+        if sch.configuration:
+            config = json.loads(sch.configuration)
+            custom_presets[sch.preset_key] = {
+                'title': config.get('title', 'Untitled'),
+                'description': config.get('description', 'Custom Builder Collection'),
+                'media_type': config.get('media_type', 'movie'),
+                'icon': config.get('icon', '🛠️')
+            }
+
+    return render_template('playlists.html', presets=PLAYLIST_PRESETS, schedules=schedules, custom_presets=custom_presets)
+
+@app.route('/settings', methods=['GET', 'POST'])
+@login_required
+def settings():
+    s = Settings.query.filter_by(user_id=current_user.id).first()
     
+    if request.method == 'POST':
+        s.plex_url = request.form.get('plex_url')
+        s.plex_token = request.form.get('plex_token')
+        s.tmdb_key = request.form.get('tmdb_key')
+        s.tmdb_region = request.form.get('tmdb_region')
+        s.omdb_key = request.form.get('omdb_key')
+        s.overseerr_url = request.form.get('overseerr_url')
+        s.overseerr_api_key = request.form.get('overseerr_api_key')
+        s.tautulli_url = request.form.get('tautulli_url')
+        s.tautulli_api_key = request.form.get('tautulli_api_key')
+        s.backup_interval = int(request.form.get('backup_interval', 2))
+        s.backup_retention = int(request.form.get('backup_retention', 7))
+        
+        try: s.keyword_cache_size = int(request.form.get('keyword_cache_size', 2000))
+        except: s.keyword_cache_size = 2000
+        
+        db.session.commit()
+        
+        # Max log size
+        try: s.max_log_size = int(request.form.get('max_log_size', 5))
+        except: s.max_log_size = 5
+        
+        try: s.scanner_log_size = int(request.form.get('scanner_log_size', 10))
+        except: s.scanner_log_size = 10
+        
+        db.session.commit()
+        # Send both 'message' and 'msg' to satisfy any frontend variation
+        return jsonify({'status': 'success', 'message': 'Settings saved successfully.', 'msg': 'Settings saved successfully.'})
+
+# Get Plex Users for Ignore List
+    plex_users = []
+    try:
+        if s.plex_url and s.plex_token:
+            p = PlexServer(s.plex_url, s.plex_token, timeout=3)
+            # Try MyPlex first
+            try:
+                account = p.myPlexAccount()
+                plex_users = [u.title for u in account.users()]
+                if account.username: plex_users.insert(0, account.username)
+            except:
+                # Fallback: Try to guess from connected clients/system
+                try: plex_users.append(p.myPlexAccount().username)
+                except: pass
+    except: pass
+    
+    # Parse ignored
+    current_ignored = (s.ignored_users or '').split(',')
+
+    # Logs
+    logs = SystemLog.query.order_by(SystemLog.timestamp.desc()).limit(50).all()
+    
+# Cache Age
     cache_age = "Never"
     if os.path.exists(CACHE_FILE):
-        try:
-            with open(CACHE_FILE, 'r') as f:
-                data = json.load(f)
-                ts = data.get('timestamp', 0)
-                dur = data.get('duration', 0)
-                diff = int((time.time() - ts) / 60)
-                time_str = f"{diff} mins ago" if diff < 60 else f"{int(diff/60)} hours ago"
-                if dur > 0: cache_age = f"{time_str} (took {dur}s)"
-                else: cache_age = time_str
-        except: pass
+        ts = os.path.getmtime(CACHE_FILE)
+        dt = datetime.datetime.fromtimestamp(ts)
+        cache_age = dt.strftime('%Y-%m-%d %H:%M')
 
-    # PASS COUNT TO TEMPLATE
-    alias_count = TmdbAlias.query.count()
-    return render_template('playlists.html', presets=PLAYLIST_PRESETS, custom_presets=custom_presets, schedules=schedules, settings=current_user.settings, cache_age=cache_age, alias_count=alias_count)
+    # Get Count
+    try: keyword_count = TmdbKeywordCache.query.count()
+    except: keyword_count = 0
 
-@app.route('/manage_blocklist')
+    return render_template('settings.html', 
+                           settings=s, 
+                           plex_users=plex_users, 
+                           current_ignored=current_ignored, 
+                           logs=logs, 
+                           cache_age=cache_age,
+                           keyword_count=keyword_count)
+
+@app.route('/logs_page')
 @login_required
-def manage_blocklist():
-    return render_template('blocklist.html', blocks=Blocklist.query.filter_by(user_id=current_user.id).all())
+def logs_page():
+    # Dedicated logs page
+    logs = SystemLog.query.order_by(SystemLog.timestamp.desc()).limit(200).all()
+    s = Settings.query.filter_by(user_id=current_user.id).first()
+    return render_template('logs.html', logs=logs, settings=s)
 
-# --- STATS ROUTE (UPDATED) ---
 @app.route('/stats')
 @login_required
-def stats():
-    s = current_user.settings
-    
-    # Check if Tautulli details are missing
-    if not s.tautulli_url or not s.tautulli_api_key:
-        flash("⚠️ Access Denied: Please configure Tautulli details in Settings first.", "error")
-        return redirect(url_for('settings'))
-    
-    # If present, allow access
-    has_tautulli = True
+def stats():       # <--- Renamed to 'stats' to match the template
+    s = Settings.query.filter_by(user_id=current_user.id).first()
+    has_tautulli = bool(s.tautulli_url and s.tautulli_api_key)
     return render_template('stats.html', has_tautulli=has_tautulli, tautulli_active=has_tautulli)
-
-@app.route('/register', methods=['GET', 'POST'])
-def register():
-    if request.method == 'POST':
-        if not User.query.filter_by(username=request.form.get('username')).first():
-            db.session.add(User(username=request.form.get('username'), password_hash=generate_password_hash(request.form.get('password'))))
-            db.session.commit()
-            return redirect(url_for('login'))
-    return render_template('login.html', is_register=True)
 
 @app.route('/delete_profile', methods=['POST'])
 @login_required
 def delete_profile():
-    try:
-        user = current_user
-        if user.settings: db.session.delete(user.settings)
-        db.session.delete(user)
-        db.session.commit()
-        logout_user()
-        flash('Your profile has been permanently deleted.', 'info')
-        return redirect(url_for('login'))
-    except Exception as e:
-        db.session.rollback()
-        flash(f'Error deleting account: {e}', 'error')
-        return redirect(url_for('settings'))
+    user = User.query.get(current_user.id)
+    Settings.query.filter_by(user_id=current_user.id).delete()
+    Blocklist.query.filter_by(user_id=current_user.id).delete()
+    db.session.delete(user)
+    db.session.commit()
+    logout_user()
+    return redirect(url_for('login'))
 
-def check_and_migrate_db():
+@app.route('/builder')
+@login_required
+def builder():
+    s = Settings.query.filter_by(user_id=current_user.id).first()
+    try:
+        g_url = f"https://api.themoviedb.org/3/genre/movie/list?api_key={s.tmdb_key}"
+        genres = requests.get(g_url).json().get('genres', [])
+    except: genres = []
+    return render_template('builder.html', genres=genres)
+
+@app.route('/manage_blocklist')
+@login_required
+def manage_blocklist():
+    blocks = Blocklist.query.filter_by(user_id=current_user.id).all()
+    return render_template('blocklist.html', blocks=blocks)
+
+@app.route('/kometa')
+@login_required
+def kometa():
+    s = Settings.query.filter_by(user_id=current_user.id).first()
+    return render_template('kometa.html', settings=s)
+
+# ==================================================================================
+# 4. SCHEDULER (Background Tasks)
+# ==================================================================================
+
+def run_scan_wrapper(app_ref):
+    """Wraps the scanner in the app context to prevent DB crashes."""
+    with app_ref.app_context():
+        from utils import run_alias_scan
+        run_alias_scan(app_ref)
+
+def scheduled_tasks():
     with app.app_context():
-        try:
-            inspector = sqlalchemy.inspect(db.engine)
-            columns_settings = [c['name'] for c in inspector.get_columns('settings')]
+        # 1. Prune Backups (Daily)
+        if datetime.datetime.now().hour == 4 and datetime.datetime.now().minute == 0:
+            prune_backups()
             
-            if 'omdb_key' not in columns_settings:
-                try:
-                    with db.engine.connect() as con:
-                        con.execute(sqlalchemy.text('ALTER TABLE settings ADD COLUMN omdb_key VARCHAR(200)'))
-                        con.commit()
-                except: pass
-
-            if 'cache_interval' not in columns_settings:
-                try:
-                    with db.engine.connect() as con:
-                        con.execute(sqlalchemy.text('ALTER TABLE settings ADD COLUMN cache_interval INTEGER DEFAULT 24'))
-                        con.commit()
-                except: pass
-            
-            if 'logging_enabled' not in columns_settings:
-                try:
-                    with db.engine.connect() as con:
-                        con.execute(sqlalchemy.text('ALTER TABLE settings ADD COLUMN logging_enabled BOOLEAN DEFAULT 1'))
-                        con.commit()
-                except: pass
-
-            if 'max_log_size' not in columns_settings:
-                try:
-                    with db.engine.connect() as con:
-                        con.execute(sqlalchemy.text('ALTER TABLE settings ADD COLUMN max_log_size INTEGER DEFAULT 5'))
-                        con.commit()
-                except: pass
-
-            columns_schedule = [c['name'] for c in inspector.get_columns('collection_schedule')]
-            if 'configuration' not in columns_schedule:
-                try:
-                    with db.engine.connect() as con:
-                        con.execute(sqlalchemy.text('ALTER TABLE collection_schedule ADD COLUMN configuration TEXT'))
-                        con.commit()
-                except: pass
-
-            if 'backup_interval' not in columns_settings:
-                try:
-                    with db.engine.connect() as con:
-                        con.execute(sqlalchemy.text('ALTER TABLE settings ADD COLUMN backup_interval INTEGER DEFAULT 2'))
-                        con.execute(sqlalchemy.text('ALTER TABLE settings ADD COLUMN backup_retention INTEGER DEFAULT 7'))
-                        con.commit()
-                except: pass
-            
-            if not inspector.has_table("tmdb_alias"):
-                try:
-                    db.create_all()
-                except: pass
-
-        except Exception as e:
-            print(f"Migration check skipped: {e}")
-
-with app.app_context():
-    try:
-        db.create_all() 
-    except: pass
-    check_and_migrate_db() 
+        # 2. Cache Refresh (Based on Interval)
+        s = Settings.query.first()
+        if not s: return
         
-from api import *
+        # Check Cache Age
+        if os.path.exists(CACHE_FILE):
+            mod_time = os.path.getmtime(CACHE_FILE)
+            age_hours = (time.time() - mod_time) / 3600
+            if age_hours >= (s.cache_interval or 24):
+                 if not is_system_locked():
+                     print("Scheduler: Starting Cache Refresh...")
+                     refresh_plex_cache(app)
+
+        # 3. Collection Schedules
+        for sch in CollectionSchedule.query.all():
+            if sch.frequency == 'manual': continue
+            
+            # Logic for daily/weekly
+            should_run = False
+            last = sch.last_run
+            now = datetime.datetime.now()
+            
+            if not last:
+                should_run = True
+            else:
+                delta = now - last
+                if sch.frequency == 'daily' and delta.days >= 1: should_run = True
+                elif sch.frequency == 'weekly' and delta.days >= 7: should_run = True
+                
+            if should_run:
+                print(f"Scheduler: Running collection {sch.preset_key}...")
+                
+                # Fetch Preset Data
+                if sch.preset_key.startswith('custom_'):
+                     preset_data = json.loads(sch.configuration)
+                else:
+                     # 1. Load Default
+                     preset_data = PLAYLIST_PRESETS.get(sch.preset_key, {}).copy()
+                     
+                     # 2. Merge User Overrides (Sync Mode)
+                     if sch.configuration:
+                         try:
+                             user_config = json.loads(sch.configuration)
+                             preset_data.update(user_config)
+                         except: pass
+                
+                if preset_data:
+                    # Run Logic from Utils
+                    success, msg = run_collection_logic(s, preset_data, sch.preset_key)
+                    if success:
+                        sch.last_run = now
+                        db.session.commit()
+
+        # 4. BACKGROUND ALIAS SCANNER
+        if s.scanner_enabled:
+            # Check interval
+            last = s.last_alias_scan or 0
+            now_ts = int(time.time())
+            interval_sec = (s.scanner_interval or 15) * 60
+            
+            if now_ts - last >= interval_sec:
+                if not is_system_locked():
+                    print("Scheduler: Starting Background Alias Scan...")
+                    # FIX: Use the wrapper to pass the context!
+                    threading.Thread(target=run_scan_wrapper, args=(app,)).start()
+
+scheduler.add_job(id='master_task', func=scheduled_tasks, trigger='interval', minutes=1)
+
+# ==================================================================================
+# 5. IMPORT API BLUEPRINT (Crucial Fix)
+# ==================================================================================
+from api import api_bp
+app.register_blueprint(api_bp)
 
 if __name__ == '__main__':
-    with app.app_context():
-        # db.drop_all()  # I ONLY USE FOR TESTING
-        db.create_all()  
-    app.run(debug=False, host='0.0.0.0', port=5000)
-    
+    app.run(host='0.0.0.0', port=5000)

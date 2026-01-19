@@ -4,14 +4,15 @@
 
 PLAYLIST_PRESETS = {
 
-    # --- REGIONAL TRENDING (Safe) ---
-    'trending_us_movies': {'title': 'Trending USA', 'category': 'Regional Trending', 'icon': '🇺🇸', 'media_type': 'movie', 'description': 'Most popular movies in the US.', 'tmdb_params': {'watch_region': 'US', 'sort_by': 'popularity.desc'}},
-    'trending_uk_movies': {'title': 'Trending UK', 'category': 'Regional Trending', 'icon': '🇬🇧', 'media_type': 'movie', 'description': 'Most popular movies in the UK.', 'tmdb_params': {'watch_region': 'GB', 'sort_by': 'popularity.desc'}},
-    'trending_ca_movies': {'title': 'Trending Canada', 'category': 'Regional Trending', 'icon': '🇨🇦', 'media_type': 'movie', 'description': 'Most popular movies in Canada.', 'tmdb_params': {'watch_region': 'CA', 'sort_by': 'popularity.desc'}},
-    'trending_us_tv': {'title': 'Trending USA', 'category': 'Regional Trending', 'icon': '🇺🇸', 'media_type': 'tv', 'description': 'Most popular TV in the US.', 'tmdb_params': {'watch_region': 'US', 'sort_by': 'popularity.desc'}},
-    'trending_uk_tv': {'title': 'Trending UK', 'category': 'Regional Trending', 'icon': '🇬🇧', 'media_type': 'tv', 'description': 'Most popular TV in the UK.', 'tmdb_params': {'watch_region': 'GB', 'sort_by': 'popularity.desc'}},
-    'trending_ca_tv': {'title': 'Trending Canada', 'category': 'Regional Trending', 'icon': '🇨🇦', 'media_type': 'tv', 'description': 'Most popular TV in Canada.', 'tmdb_params': {'watch_region': 'CA', 'sort_by': 'popularity.desc'}},
-
+# --- REGIONAL TRENDING (Fixed) ---
+    'trending_us_movies': {'title': 'Trending USA', 'category': 'Regional Trending', 'icon': '🇺🇸', 'media_type': 'movie', 'description': 'Popular movies in the US.', 'tmdb_params': {'watch_region': 'US', 'with_watch_monetization_types': 'flatrate|rent|buy', 'sort_by': 'popularity.desc'}},
+    'trending_uk_movies': {'title': 'Trending UK', 'category': 'Regional Trending', 'icon': '🇬🇧', 'media_type': 'movie', 'description': 'Popular movies in the UK.', 'tmdb_params': {'watch_region': 'GB', 'with_watch_monetization_types': 'flatrate|rent|buy', 'sort_by': 'popularity.desc'}},
+    'trending_ca_movies': {'title': 'Trending Canada', 'category': 'Regional Trending', 'icon': '🇨🇦', 'media_type': 'movie', 'description': 'Popular movies in Canada.', 'tmdb_params': {'watch_region': 'CA', 'with_watch_monetization_types': 'flatrate|rent|buy', 'sort_by': 'popularity.desc'}},
+    
+    'trending_us_tv': {'title': 'Trending USA', 'category': 'Regional Trending', 'icon': '🇺🇸', 'media_type': 'tv', 'description': 'Popular TV in the US.', 'tmdb_params': {'watch_region': 'US', 'with_watch_monetization_types': 'flatrate|rent|buy', 'sort_by': 'popularity.desc'}},
+    'trending_uk_tv': {'title': 'Trending UK', 'category': 'Regional Trending', 'icon': '🇬🇧', 'media_type': 'tv', 'description': 'Popular TV in the UK.', 'tmdb_params': {'watch_region': 'GB', 'with_watch_monetization_types': 'flatrate|rent|buy', 'sort_by': 'popularity.desc'}},
+    'trending_ca_tv': {'title': 'Trending Canada', 'category': 'Regional Trending', 'icon': '🇨🇦', 'media_type': 'tv', 'description': 'Popular TV in Canada.', 'tmdb_params': {'watch_region': 'CA', 'with_watch_monetization_types': 'flatrate|rent|buy', 'sort_by': 'popularity.desc'}},
+    
     # --- INTERNATIONAL (Safe) ---
     'k_drama': {'title': 'K-Dramas', 'category': 'International & World', 'icon': '🇰🇷', 'media_type': 'tv', 'description': 'Korean dramas & romance.', 'tmdb_params': {'with_original_language': 'ko', 'with_genres': '18', 'sort_by': 'popularity.desc'}},
     'anime_movies': {'title': 'Anime Movies', 'category': 'International & World', 'icon': '🗾', 'media_type': 'movie', 'description': 'Japanese animation.', 'tmdb_params': {'with_original_language': 'ja', 'with_genres': '16', 'sort_by': 'popularity.desc'}},
@@ -40,16 +41,6 @@ PLAYLIST_PRESETS = {
     'theme_highschool': {'title': 'High School', 'category': 'Themes & Vibes', 'icon': '🎒', 'media_type': 'movie', 'description': 'Coming of age.', 'tmdb_params': {'with_keywords': '6270', 'sort_by': 'popularity.desc'}},
     'theme_standup': {'title': 'Stand-Up', 'category': 'Themes & Vibes', 'icon': '🎤', 'media_type': 'movie', 'description': 'Comedy specials.', 'tmdb_params': {'with_keywords': '9716', 'sort_by': 'release_date.desc'}},
     'theme_miniseries': {'title': 'Miniseries', 'category': 'Themes & Vibes', 'icon': '📚', 'media_type': 'tv', 'description': 'Limited series.', 'tmdb_params': {'with_keywords': '210024', 'sort_by': 'vote_average.desc', 'vote_count.gte': '100'}},
-
-    # --- FRANCHISES (Fixed with KOMETA-STYLE IDS) ---
-    # These now use the 'with_collection_id' parameter which your utils.py handles separately.
-    
-    'franchise_wizarding': {'title': 'Harry Potter', 'category': 'Franchises', 'icon': '⚡', 'media_type': 'movie', 'description': 'Wizarding World.', 'tmdb_params': {'with_collection_id': '1241'}}, # Official Harry Potter Collection
-    'franchise_starwars_movies': {'title': 'Star Wars', 'category': 'Franchises', 'icon': '✨', 'media_type': 'movie', 'description': 'Skywalker Saga.', 'tmdb_params': {'with_collection_id': '10'}}, # Official Star Wars Collection
-    'franchise_007': {'title': 'James Bond', 'category': 'Franchises', 'icon': '🔫', 'media_type': 'movie', 'description': '007 Collection.', 'tmdb_params': {'with_collection_id': '645'}}, # Official Bond Collection
-    'franchise_lotr': {'title': 'Middle Earth', 'category': 'Franchises', 'icon': '💍', 'media_type': 'movie', 'description': 'LOTR & Hobbit.', 'tmdb_params': {'with_collection_id': '119'}}, # Lord of the Rings Collection
-    'franchise_mcu_movies': {'title': 'Marvel Universe', 'category': 'Franchises', 'icon': '🛡️', 'media_type': 'movie', 'description': 'Infinity Saga & more.', 'tmdb_params': {'with_companies': '420', 'vote_count.gte': '1000', 'sort_by': 'release_date.asc'}}, # Marvel doesn't have a single "Collection ID" so we keep company filter
-    'franchise_dc': {'title': 'DC Universe', 'category': 'Franchises', 'icon': '🦇', 'media_type': 'movie', 'description': 'Batman, Superman.', 'tmdb_params': {'with_companies': '9993', 'vote_count.gte': '500', 'sort_by': 'release_date.desc'}},
 
     # --- AWARDS ---
     'oscar_winners': {'title': 'Oscar Winners', 'category': 'Awards & Acclaim', 'icon': '🏆', 'media_type': 'movie', 'description': 'Best Picture Winners.', 'tmdb_params': {'with_keywords': '528', 'sort_by': 'vote_average.desc', 'vote_count.gte': '500'}},
