@@ -159,8 +159,6 @@ This product uses the TMDB API but is not endorsed or certified by TMDB.
 
 <img src="images/smart-discovery1.png" alt="Smart Discovery - Step 1" width="500">
 <br>
-<img src="images/smart-discovery2.png" alt="Smart Discovery - Step 2" width="500">
-<br>
 <img src="images/smart-discovery3.png" alt="Smart Discovery - Step 3" width="500">
 <br>
 <img src="images/scanners.png" alt="Settings --> Scanners" width="800">
@@ -172,6 +170,5 @@ This product uses the TMDB API but is not endorsed or certified by TMDB.
 <img src="images/custom-builder.png" alt="Custom Builder" width="500">
 <br>
 <img src="images/plexcollections.png" alt="Plex Collections" width="800">
-
 
 </details>
