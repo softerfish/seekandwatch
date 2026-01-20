@@ -108,7 +108,8 @@ docker run -d \
 - faster collection generation
 
 Accounts
-First-User-Admin: the first user to register is now automatically granted admin privileges. Subsequent users register as standard users. When the app starts, it will ask, "are there users in the database? Yes. Are there admins? No." It will automatically crown the first user found (ID 1) as the admin. Other users can be promoted to admin in User Settings. Currently, this change gives access to User Management tab access in Settings to promote, demote, and delete accounts
+First-User-Admin: the first user to register is now automatically granted admin privileges. 
+Subsequent users register as standard users. When the app starts, it will ask, "are there users in the database? Yes. Are there admins? No." It will automatically crown the first user found (ID 1) as the admin. Other users can be promoted to admin in User Settings. Currently, this change gives access to User Management tab access in Settings to promote, demote, and delete accounts
 
 Builder
 - live Preview now correctly identifies movies you already own instead of listing everything as missing
@@ -170,5 +171,6 @@ This product uses the TMDB API but is not endorsed or certified by TMDB.
 <img src="images/custom-builder.png" alt="Custom Builder" width="500">
 <br>
 <img src="images/plexcollections.png" alt="Plex Collections" width="800">
+
 
 </details>
