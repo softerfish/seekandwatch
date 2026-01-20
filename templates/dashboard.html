@@ -70,7 +70,7 @@
         </div>
 
         <form id="mainScanForm" action="{{ url_for('review_history') }}" method="POST">
-            
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>   
             <input type="hidden" id="mediaTypeInput" name="media_type" value="movie">
 
             <div style="margin-bottom: 20px; text-align: center;">
@@ -113,6 +113,7 @@
         </form>
 
         <form id="luckyForm" action="{{ url_for('generate') }}" method="POST">
+		<input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <input type="hidden" name="lucky_mode" value="true">
             <a href="javascript:void(0)" class="btn btn-lucky" onclick="nuclearLucky()" style="text-align: center; text-decoration: none;">
                 🍀 I'm Feeling Lucky
@@ -172,7 +173,7 @@
                             const safeTitle = item.title.replace(/'/g, "\\'");
                             html += `<div class="search-result-item" onclick="selectItem('${safeTitle}')">
                                 <img src="https://image.tmdb.org/t/p/w92${item.poster}" style="width: 40px; border-radius: 4px;" onerror="this.style.display='none'">
-                                <div><div style="font-weight: bold; color: var(--text-color);">${item.title}</div><div style="font-size: 0.8em; color: #888;">${item.year}</div></div></div>`;
+                                <div><div style="font-weight: bold; color: var(--text-color);">${escapeHtml(item.title)}</div><div style="font-size: 0.8em; color: #888;">${item.year}</div></div></div>`;
                         });
                         resultsDiv.innerHTML = html; resultsDiv.style.display = 'block';
                     } else { resultsDiv.style.display = 'none'; }
@@ -186,6 +187,11 @@
         const form = document.createElement('form'); 
         form.method = 'POST'; 
         form.action = "{{ url_for('review_history') }}";
+		const csrfInput = document.createElement('input');
+		csrfInput.type = 'hidden';
+		csrfInput.name = 'csrf_token';
+		csrfInput.value = "{{ csrf_token() }}";
+		form.appendChild(csrfInput);
         
         const input = document.createElement('input'); 
         input.type = 'hidden'; input.name = 'manual_query'; input.value = title;

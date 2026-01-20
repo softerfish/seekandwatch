@@ -16,7 +16,7 @@
         <div class="filter-group">
             <label class="filter-label">Genre</label>
             <select id="filter-genre" class="filter-input" onchange="updateFilters()">
-                <option value="all">All Genres</option>
+                <option value="">All Genres</option>
                 {% for g in genres %}
                 <option value="{{ g.id }}" {% if current_genre|string == g.id|string %}selected{% endif %}>{{ g.name }}</option>
                 {% endfor %}
@@ -132,14 +132,28 @@ function getKeywordString() { return selectedKeywords.map(k => k.name).join('|')
 // --- INIT ---
 function init() {
     if (selectedKeywords.length > 0) renderTags();
-    if (serverMovies && serverMovies.length > 0) {
+
+    // 1. FILTER OUT GHOSTS
+    // We remove any movie that doesn't have a title or an ID
+    const validMovies = (serverMovies || []).filter(m => m.title && m.title !== "Unknown" && (m.id || m.tmdb_id));
+
+    if (validMovies.length > 0) {
         document.getElementById('loading').style.display = 'none';
         const grid = document.getElementById('results-grid');
-        grid.style.display = 'grid'; grid.innerHTML = '';
-        serverMovies.forEach(item => { try { grid.appendChild(createCard(item)); } catch(e) {} });
-        // document.querySelector('.load-more-wrapper').style.display = 'none';
+        grid.style.display = 'grid'; 
+        grid.innerHTML = '';
+        
+        validMovies.forEach(item => { 
+            try { grid.appendChild(createCard(item)); } catch(e) {} 
+        });
         filterVisibleCards();
-    } else { loadMore(null); }
+    } else { 
+        // 2. AUTO-RECOVERY
+        // Lucky Mode failed (it has no "Page 2", so loadMore() fails).
+        // We call updateFilters() to force a "Standard Scan" instead.
+        console.log("Bad result. Switching to Standard Mode...");
+        updateFilters(); 
+    }
 }
 
 function filterVisibleCards() {
@@ -254,7 +268,7 @@ function createCard(item) {
     card.dataset.rating = rating;
     
     const posterUrl = item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : 'https://placehold.co/500x750/222/888?text=No+Poster';
-    const searchableText = `<span style="display:none;">${title} ${item.overview || ''}</span>`;
+    const searchableText = `<span style="display:none;">${escapeHtml(title)} ${escapeHtml(item.overview || '')}</span>`;
 
     // --- BUILD BADGES HTML ---
     let badgesHtml = '<div class="poster-badges">';
@@ -297,10 +311,10 @@ function createCard(item) {
             </div>
         </div>
         <div class="card-info">
-            <div class="movie-title">${title}</div>
-            <div class="movie-meta"><span>${displayDate}</span><span style="color:var(--accent-color);">★ ${Math.round(rating*10)/10}</span></div>
-            ${searchableText}
-        </div>
+			<div class="movie-title">${escapeHtml(title)}</div>
+			<div class="movie-meta"><span>${escapeHtml(displayDate)}</span><span style="color:var(--accent-color);">★ ${Math.round(rating*10)/10}</span></div>
+			${searchableText}
+		</div>
     `;
     return card;
 }

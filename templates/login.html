@@ -15,7 +15,7 @@
         
         <div class="auth-body">
             <form id="auth-form" method="POST" action="{{ url_for('login') }}" onsubmit="return validateForm()">
-                
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>    
                 <div class="form-group">
                     <label>Username</label>
                     <input type="text" name="username" id="username" required placeholder="Enter username..." autocomplete="username">

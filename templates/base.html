@@ -139,5 +139,29 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+	<script>
+    // Security Helper: Prevents malicious scripts in titles
+    function escapeHtml(text) {
+        if (!text) return text;
+        return text
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+	const csrfToken = "{{ csrf_token() }}";
+
+    const originalFetch = window.fetch;
+    window.fetch = function(url, options) {
+        // Only add token to POST, PUT, DELETE, PATCH requests
+        if (options && options.method && ['POST', 'PUT', 'DELETE', 'PATCH'].includes(options.method.toUpperCase())) {
+            options.headers = options.headers || {};
+            options.headers['X-CSRFToken'] = csrfToken;
+        }
+        return originalFetch(url, options);
+    };
+</script>
+
 </body>
 </html>

@@ -16,10 +16,92 @@
         <button type="button" class="tab-link" onclick="openTab(event, 'tab-scanners')">Scanners & Cache</button>
         <button type="button" class="tab-link" onclick="openTab(event, 'tab-system')">System & Maintenance</button>
         <button type="button" class="tab-link" onclick="openTab(event, 'tab-logs')">System Logs</button>
+        
+        {% if current_user.is_admin %}
+        <button type="button" class="tab-link" onclick="openTab(event, 'tab-users'); loadUsers();">👥 User Management</button>
+        {% endif %}
     </div>
 
-    <form id="settings-form" action="{{ url_for('settings') }}" method="POST" autocomplete="off">
+{% if current_user.is_admin %}
+<div id="tab-users" class="tab-content">
+    <div class="card setting-card border-purple">
+        <h3>👥 Manage Users</h3>
+        <p class="text-muted">Grant admin privileges or remove users from the system.</p>
         
+        <div id="user-list-container">
+            <div style="text-align:center; padding:20px;">Loading users...</div>
+        </div>
+    </div>
+</div>
+
+<script>
+function loadUsers() {
+    fetch('/api/admin/users')
+    .then(r => r.json())
+    .then(users => {
+        if(users.error) return;
+        
+        const container = document.getElementById('user-list-container');
+        if(users.length === 0) {
+            container.innerHTML = "No users found.";
+            return;
+        }
+        
+        let html = '<table style="width:100%; border-collapse:collapse; margin-top:10px;">';
+        html += '<tr style="border-bottom:1px solid #333; text-align:left;"><th style="padding:10px;">Username</th><th style="padding:10px;">Role</th><th style="padding:10px; text-align:right;">Actions</th></tr>';
+        
+        users.forEach(u => {
+            const roleColor = u.is_admin ? '#2ecc71' : '#777';
+            const roleText = u.is_admin ? '🛡️ Admin' : '👤 User';
+            const disableSelf = u.is_current ? 'disabled style="opacity:0.5; cursor:not-allowed;"' : '';
+            
+            html += `
+            <tr style="border-bottom:1px solid #222;">
+                <td style="padding:12px; font-weight:bold; color:white;">${u.username} ${u.is_current ? '(You)' : ''}</td>
+                <td style="padding:12px; color:${roleColor};">${roleText}</td>
+                <td style="padding:12px; text-align:right;">
+                    <button onclick="toggleRole(${u.id})" class="btn-test" ${disableSelf} title="Toggle Admin Status">
+                        ${u.is_admin ? 'Demote ▼' : 'Promote ▲'}
+                    </button>
+                    <button onclick="deleteUser(${u.id}, '${u.username}')" class="btn-delete" ${disableSelf} style="margin-left:10px;">
+                        🗑️
+                    </button>
+                </td>
+            </tr>`;
+        });
+        html += '</table>';
+        container.innerHTML = html;
+    });
+}
+
+function toggleRole(id) {
+    fetch('/api/admin/toggle_role', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({user_id: id})
+    }).then(r => r.json()).then(d => {
+        if(d.status === 'success') loadUsers();
+        else alert(d.message);
+    });
+}
+
+function deleteUser(id, name) {
+    if(!confirm(`Are you sure you want to delete user "${name}"? This will delete their settings and blocklists.`)) return;
+    
+    fetch('/api/admin/delete_user', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({user_id: id})
+    }).then(r => r.json()).then(d => {
+        if(d.status === 'success') loadUsers();
+        else alert(d.message);
+    });
+}
+</script>
+{% endif %}
+
+    <form id="settings-form" action="{{ url_for('settings') }}" method="POST" autocomplete="off">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>    
         <div id="tab-apis" class="tab-content active">
             <div class="card setting-card border-orange">
                 <h3>Plex Integration</h3>
@@ -405,7 +487,9 @@
     </form>
 </div>
 
-<form id="delete-account-form" action="{{ url_for('delete_profile') }}" method="POST" onsubmit="return confirm('🚨 ARE YOU SURE? This cannot be undone.');" style="display:none;"></form>
+<form id="delete-account-form" action="{{ url_for('delete_profile') }}" method="POST" onsubmit="return confirm('🚨 ARE YOU SURE? This cannot be undone.');" style="display:none;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+</form>
 
 <div id="settingsModal" class="custom-modal-overlay">
     <div class="custom-modal-box">
@@ -525,7 +609,23 @@ document.addEventListener('DOMContentLoaded', function() {
         batchSelect.addEventListener('change', validateScannerOptions);
         validateScannerOptions();
     }
-});
+
+    // ... existing URL cleaner code ...
+    ['plex_url', 'overseerr_url', 'tautulli_url'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('blur', function(e) {
+                let val = e.target.value;
+                let clean = val.trim().replace(/\/+$/, '');
+                if (val !== clean) {
+                    e.target.value = clean;
+                    console.log(`Auto-cleaned ${id}:`, clean);
+                }
+            });
+        }
+    });
+
+}); // <--- ADD THIS LINE HERE (Closes the DOMContentLoaded block)
 
 function fetchStatus() {
     fetch('/api/scanner/status').then(r => r.json()).then(data => {
@@ -691,17 +791,29 @@ function testService(service) {
 }
 
 document.addEventListener('submit', function(e) {
-    // Only handle the main settings form, ignore others
+    // Only handle the main settings form
     if (e.target && e.target.id === 'settings-form') {
         e.preventDefault(); 
+        
+        // --- 1. FORCE CLEAN URLs NOW ---
+        ['plex_url', 'overseerr_url', 'tautulli_url'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.value = el.value.trim().replace(/\/+$/, '');
+            }
+        });
+
+        // --- 2. SEND DATA ---
         const btn = document.getElementById('main-save-btn');
         const originalText = btn.innerText;
-        btn.innerText = "Saving... ⏳"; btn.disabled = true;
+        btn.innerText = "Saving... ⏳"; 
+        btn.disabled = true;
 
         fetch(e.target.action, { method: 'POST', body: new FormData(e.target) })
         .then(response => response.json())
         .then(data => {
-            btn.innerText = originalText; btn.disabled = false;
+            btn.innerText = originalText; 
+            btn.disabled = false;
             showModal(data.status==='success'?'✅':'❌', data.status==='success'?'Success!':'Error', data.message, data.status==='success');
         });
     }

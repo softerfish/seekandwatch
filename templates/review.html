@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <form id="generateForm" action="{{ url_for('generate') }}" method="POST" onsubmit="prepareKeywords()">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
     <input type="hidden" name="media_type" value="{{ media_type }}">
     <input type="hidden" name="critic_filter" value="{{ session.get('critic_filter', '') }}">
     <input type="hidden" name="keywords" id="final-keywords">

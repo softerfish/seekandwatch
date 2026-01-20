@@ -213,12 +213,12 @@ searchInput.addEventListener('input', function(e) {
                     const title = item.title || item.name;
                     
                     div.innerHTML = `
-                        <div>
-                            <strong>${title}</strong> 
-                            <span class="suggestion-year">(${year})</span>
-                        </div>
-                        <i class="fas fa-plus-circle" style="color:var(--accent-color);"></i>
-                    `;
+						<img src="${item.poster}" onerror="this.style.display='none'">
+					<div class="info">
+						<div class="title">${escapeHtml(item.title)}</div>
+						<div class="meta">${escapeHtml(item.year)} • ${escapeHtml(item.media_type).toUpperCase()}</div>
+					</div>
+					`;
                     
                     div.onclick = () => addBlock(title, searchType);
                     suggestionsBox.appendChild(div);

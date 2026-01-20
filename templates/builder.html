@@ -44,20 +44,28 @@
             </div>
         </div>
 
-        <div class="input-group">
+        <div class="input-group" style="margin-bottom: 20px;">
             <label class="input-label">Smart Tags (Specific Themes)</label>
             <input type="text" id="keyword-search" placeholder="Type to search tags (e.g. 'aliens', 'time travel')...">
+            
             <div id="keyword-results" class="keyword-dropdown"></div>
-            <div id="selected-keywords" class="tag-container"></div>
-            <div class="tag-help-box">
+            
+            <div id="selected-keywords" class="tag-container" style="margin-bottom: 10px;"></div>
+            
+            <div style="clear: both; width: 100%; height: 10px;"></div>
+
+            <div class="tag-help-box" style="display: block; margin-top: 5px;">
                 <strong>💡 Pro Tip:</strong> Add multiple similar tags (e.g., "alien" and "aliens").
             </div>
         </div>
 
         <div class="input-group">
-            <label class="input-label">Min TMDB Rating (0-10)</label>
-            <span class="rating-display" id="rating-text">0</span>
-            <input type="range" id="c_rating" min="0" max="10" step="0.5" value="0" oninput="document.getElementById('rating-text').innerText = this.value">
+            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 10px;">
+                <label class="input-label" style="margin: 0;">Min TMDB Rating (0-10)</label>
+                <span id="rating-text" style="background: var(--accent-color); color: black; padding: 2px 12px; border-radius: 10px; font-weight: bold;">0</span>
+            </div>
+            
+            <input type="range" id="c_rating" min="0" max="10" step="0.5" value="0" oninput="document.getElementById('rating-text').innerText = this.value" style="width: 100%;">
         </div>
 
         <button onclick="previewMatches()" class="btn btn-secondary">🔍 Preview Top 10 Matches</button>
