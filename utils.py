@@ -1,4 +1,7 @@
 import re
+import socket
+import ipaddress
+from urllib.parse import urlparse
 import requests
 import difflib
 import random
@@ -8,6 +11,7 @@ import datetime
 import os
 import zipfile
 import threading
+import sqlite3
 import concurrent.futures
 from flask import flash, redirect, url_for, session, render_template
 from plexapi.server import PlexServer
@@ -516,10 +520,13 @@ def run_collection_logic(settings, preset, key):
                 for page_items in results:
                     if page_items: tmdb_items.extend(page_items)
 
+        # [SAFETY GUARD 1] Network/API Failure Protection
+        # If we requested pages but got literally 0 items, it's likely a TMDB outage or API key issue.
+        # We abort to prevent 'Sync' mode from seeing 0 items and deleting your whole collection.
         if not tmdb_items: 
-            return False, "No items found on TMDB."
+            return False, "Aborted: No items returned from TMDB. Possible API outage?"
 
-        # --- 3. OPTIMIZED MATCHING (The Futureproof Fix) ---
+        # --- 3. OPTIMIZED MATCHING ---
         # A. Load "Dumb" Text Matches (Backup Cache)
         owned_titles = set(get_plex_cache(settings)) 
         
@@ -601,6 +608,11 @@ def run_collection_logic(settings, preset, key):
             else:
                 to_remove = []
 
+            # [SAFETY GUARD 2] Bulk Add Limit
+            # Prevents crashing Plex or hitting rate limits if a list is unexpectedly huge
+            if len(to_add) > 1000:
+                return False, f"Aborted: Attempted to add {len(to_add)} items. Limit is 1000."
+
             if to_add: existing_col.addItems(to_add)
             if to_remove: existing_col.removeItems(to_remove)
                 
@@ -669,10 +681,11 @@ def handle_lucky_mode(settings):
         url = f"https://api.themoviedb.org/3/discover/movie?api_key={settings.tmdb_key}&with_genres={random_genre}&sort_by=popularity.desc&page={random.randint(1, 10)}"
         data = requests.get(url).json().get('results', [])
         
-        picks = random.sample(data, min(5, len(data)))
-        movies = [{'id': p['id'], 'title': p['title'], 'year': (p.get('release_date') or '')[:4], 'poster_path': p.get('poster_path'), 'overview': p.get('overview'), 'vote_average': p.get('vote_average'), 'media_type': 'movie'} for p in picks]
+        random.shuffle(data)
         
-        return movies  # Return all 5 items
+        movies = [{'id': p['id'], 'title': p['title'], 'year': (p.get('release_date') or '')[:4], 'poster_path': p.get('poster_path'), 'overview': p.get('overview'), 'vote_average': p.get('vote_average'), 'media_type': 'movie'} for p in data]
+        
+        return movies
             
     except: pass
     return None
@@ -710,12 +723,24 @@ def restore_backup(filename):
     filepath = os.path.join(BACKUP_DIR, filename)
     if not os.path.exists(filepath): return False, "File not found"
     try:
+        target_dir = "/config"
         with zipfile.ZipFile(filepath, 'r') as zipf:
-            zipf.extractall("/config")
+            for member in zipf.namelist():
+                # Calculate the absolute path where this file wants to go
+                abs_target = os.path.abspath(os.path.join(target_dir, member))
+                abs_root = os.path.abspath(target_dir)
+
+                # Check: Is the target path actually inside /config?
+                if not abs_target.startswith(abs_root):
+                    # If not, it's an attack trying to escape to /etc/ or /root/
+                    raise Exception(f"Security Alert: Malicious file path detected ({member}). Restore aborted.")
+            
+            # If the loop finishes without error, it is safe to extract
+            zipf.extractall(target_dir)
+            
         return True, "Restored"
     except Exception as e:
         return False, str(e)
-
 def prune_backups(days=7):
     if not os.path.exists(BACKUP_DIR): return
     cutoff = time.time() - (days * 86400)
@@ -725,3 +750,59 @@ def prune_backups(days=7):
         if os.path.getmtime(path) < cutoff:
             try: os.remove(path)
             except: pass
+
+def reset_stuck_locks():
+    """
+    Called on startup.
+    Deletes any stale 'cache.lock' files from the config folder.
+    """
+    lock_file = '/config/cache.lock'
+    
+    if os.path.exists(lock_file):
+        try:
+            os.remove(lock_file)
+            print(f" [Startup] DELETED STALE LOCK FILE: {lock_file}", flush=True)
+        except Exception as e:
+            print(f" [Startup] Could not delete lock file: {e}")
+            
+def validate_url(url):
+    """
+    Security Check: Prevents SSRF attacks.
+    Blocks: Localhost, 127.x.x.x, 0.0.0.0, and Cloud Metadata (169.254.x.x).
+    Allows: Private LAN IPs (192.168.x.x, 10.x.x.x) for self-hosted usage.
+    """
+    try:
+        parsed = urlparse(url)
+        # 1. Check Scheme
+        if parsed.scheme not in ('http', 'https'):
+            return False, "Invalid protocol (only HTTP/HTTPS allowed)"
+        
+        hostname = parsed.hostname
+        if not hostname:
+            return False, "Invalid hostname"
+            
+        # 2. DNS Resolution (Prevents DNS Rebinding)
+        try:
+            ip_str = socket.gethostbyname(hostname)
+        except:
+            return False, "Could not resolve hostname"
+            
+        ip = ipaddress.ip_address(ip_str)
+        
+        # 3. Block Dangerous Ranges
+        if ip.is_loopback: # Blocks 127.0.0.0/8
+            return False, "Access to Loopback (localhost) is denied."
+            
+        if ip.is_link_local: # Blocks 169.254.x.x (Cloud Metadata)
+            return False, "Access to Link-Local (Metadata) is denied."
+            
+        if str(ip) == "0.0.0.0":
+            return False, "Access to 0.0.0.0 is denied."
+            
+        # Explicitly ALLOW private IPs (192.168.x.x, 10.x.x.x)
+        # We do NOT block ip.is_private because this is a dashboard app.
+        
+        return True, "OK"
+        
+    except Exception as e:
+        return False, f"Validation Error: {str(e)}"

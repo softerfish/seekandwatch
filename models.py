@@ -9,12 +9,16 @@ class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(150), unique=True, nullable=False)
     password_hash = db.Column(db.String(150), nullable=False)
-    settings = db.relationship('Settings', backref='user', uselist=False)
+    is_admin = db.Column(db.Boolean, default=False)
+    
+    settings = db.relationship('Settings', back_populates='user', uselist=False)
 
 class Settings(db.Model):
     __table_args__ = {'extend_existing': True}
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), unique=True)
+    
+    user = db.relationship('User', back_populates='settings')
     
     # Plex Settings
     plex_url = db.Column(db.String(200))
@@ -42,7 +46,6 @@ class Settings(db.Model):
     backup_interval = db.Column(db.Integer, default=2) 
     backup_retention = db.Column(db.Integer, default=7) 
 
-    # --- NEW V1.1.0 FIELDS ---
     scanner_enabled = db.Column(db.Boolean, default=False)
     scanner_interval = db.Column(db.Integer, default=15)
     scanner_batch = db.Column(db.Integer, default=50)
@@ -79,7 +82,7 @@ class TmdbAlias(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     tmdb_id = db.Column(db.Integer, nullable=False)
     media_type = db.Column(db.String(10), nullable=False)
-    plex_title = db.Column(db.String(200)) # The new column
+    plex_title = db.Column(db.String(200))
     original_title = db.Column(db.String(200))
     match_year = db.Column(db.Integer)
     
@@ -87,5 +90,5 @@ class TmdbKeywordCache(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     tmdb_id = db.Column(db.Integer, unique=True)
     media_type = db.Column(db.String(10))
-    keywords = db.Column(db.Text) # Stored as JSON string
+    keywords = db.Column(db.Text)
     timestamp = db.Column(db.DateTime, default=datetime.now)

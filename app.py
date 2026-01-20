@@ -10,6 +10,8 @@ import socket
 import hashlib
 import sqlalchemy
 import concurrent.futures
+import secrets
+from flask_wtf.csrf import CSRFProtect
 from flask import Flask, Blueprint, request, jsonify, session, send_from_directory, render_template, redirect, url_for, flash
 from flask_login import login_required, current_user, LoginManager, login_user, logout_user
 from flask_apscheduler import APScheduler
@@ -22,25 +24,25 @@ from utils import (normalize_title, is_duplicate, fetch_omdb_ratings, send_overs
                    refresh_plex_cache, get_plex_cache, get_lock_status, is_system_locked,
                    write_scanner_log, read_scanner_log, prefetch_keywords_parallel,
                    item_matches_keywords, RESULTS_CACHE, get_session_filters, write_log,
-                   check_for_updates, handle_lucky_mode, run_alias_scan)
+                   check_for_updates, handle_lucky_mode, run_alias_scan, reset_stuck_locks)
 from presets import PLAYLIST_PRESETS
 
 # ==================================================================================
 # 1. APPLICATION CONFIGURATION
 # ==================================================================================
 
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 
-# Stores the latest version
 UPDATE_CACHE = {
     'version': None,
     'last_check': 0
 }
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'seekandwatch_secret_key_change_this'
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', secrets.token_hex(32))
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////config/seekandwatch.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+csrf = CSRFProtect(app)
 
 # Initialize Scheduler
 scheduler = APScheduler()
@@ -58,57 +60,93 @@ login_manager.init_app(app)
 # ==================================================================================
 
 def run_migrations():
-    """Checks for missing columns and adds them if necessary."""
+    """Checks for missing columns, adds them, and fixes admin permissions."""
     with app.app_context():
+        # 1. Create Tables if they don't exist
         try: db.create_all()
         except: pass
         
-        # Add Columns if missing
+        # 2. Add Missing Columns (Schema Migration)
         try:
             inspector = sqlalchemy.inspect(db.engine)
-            columns = [c['name'] for c in inspector.get_columns('settings')]
             
+            # Migrate User Table
+            user_columns = [c['name'] for c in inspector.get_columns('user')]
             with db.engine.connect() as conn:
-                if 'tmdb_region' not in columns:
+                if 'is_admin' not in user_columns:
+                    print("--- [Migration] Adding 'is_admin' column to User table ---")
+                    conn.execute(sqlalchemy.text("ALTER TABLE user ADD COLUMN is_admin BOOLEAN DEFAULT 0"))
+            
+            # Migrate Settings Table
+            settings_columns = [c['name'] for c in inspector.get_columns('settings')]
+            with db.engine.connect() as conn:
+                if 'tmdb_region' not in settings_columns:
                     conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN tmdb_region VARCHAR(10) DEFAULT 'US'"))
-                if 'ignored_users' not in columns:
+                if 'ignored_users' not in settings_columns:
                     conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN ignored_users VARCHAR(500)"))
-                if 'omdb_key' not in columns:
+                if 'omdb_key' not in settings_columns:
                     conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN omdb_key VARCHAR(200)"))
-                if 'scanner_enabled' not in columns:
+                if 'scanner_enabled' not in settings_columns:
                     conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN scanner_enabled BOOLEAN DEFAULT 0"))
-                if 'scanner_interval' not in columns:
+                if 'scanner_interval' not in settings_columns:
                     conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN scanner_interval INTEGER DEFAULT 15"))
-                if 'scanner_batch' not in columns:
+                if 'scanner_batch' not in settings_columns:
                     conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN scanner_batch INTEGER DEFAULT 50"))
-                if 'last_alias_scan' not in columns:
+                if 'last_alias_scan' not in settings_columns:
                     conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN last_alias_scan INTEGER DEFAULT 0"))
-                if 'kometa_config' not in columns:
+                if 'kometa_config' not in settings_columns:
                     conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN kometa_config TEXT"))
-                if 'scanner_log_size' not in columns:
+                if 'scanner_log_size' not in settings_columns:
                     conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN scanner_log_size INTEGER DEFAULT 10"))
-                if 'keyword_cache_size' not in columns:
+                if 'keyword_cache_size' not in settings_columns:
                     conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN keyword_cache_size INTEGER DEFAULT 2000"))
-        except: pass
+                    
+        except Exception as e:
+            print(f"Migration Warning: {e}")
 
-        # Create Tables if missing
+        # 3. AUTO-FIX: FIRST USER ADMIN (Raw SQL Method)
+        # This guarantees the fix works even if the ORM model isn't refreshed yet.
+        try:
+            with db.engine.connect() as conn:
+                # Check if ANY admin exists
+                result = conn.execute(sqlalchemy.text("SELECT COUNT(*) FROM user WHERE is_admin = 1")).scalar()
+                
+                if result == 0:
+                    # Check if ANY users exist
+                    user_count = conn.execute(sqlalchemy.text("SELECT COUNT(*) FROM user")).scalar()
+                    
+                    if user_count > 0:
+                        # Promote the user with the lowest ID (The First User)
+                        conn.execute(sqlalchemy.text("UPDATE user SET is_admin = 1 WHERE id = (SELECT MIN(id) FROM user)"))
+                        conn.commit()
+                        print("--- [Startup] AUTO-FIX: No admins found. Promoted the first user to Admin. ---")
+        except Exception as e:
+            print(f"Admin Auto-Fix Error: {e}")
+
+        # 4. Create Auxiliary Tables
         try: Blocklist.__table__.create(db.engine)
         except: pass
         try: CollectionSchedule.__table__.create(db.engine)
         except: pass
         try: TmdbAlias.__table__.create(db.engine)
         except: pass
-        
-        # --- Create Keyword Cache Table ---
         try: TmdbKeywordCache.__table__.create(db.engine)
         except: pass
-
-# Run migrations immediately on startup
-run_migrations()
-
+        
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
+    
+# Run migrations immediately on startup
+run_migrations()
+
+# --- BOOT SEQUENCE: CLEARING LOCKS ---
+print("--- BOOT SEQUENCE: CLEARING LOCKS ---", flush=True)
+try:
+    reset_stuck_locks()
+except Exception as e:
+    print(f"Error resetting locks: {e}", flush=True)
+
 
 # ==================================================================================
 # 3. PAGE ROUTES (Frontend)
@@ -336,15 +374,35 @@ def review_history():
 @login_required
 def generate():
     s = Settings.query.filter_by(user_id=current_user.id).first()
+    owned_keys = get_plex_cache(s)
     
-    # 1. LUCKY MODE
     if request.form.get('lucky_mode') == 'true':
-        lucky_result = handle_lucky_mode(s)
-        if not lucky_result:
+        raw_candidates = handle_lucky_mode(s)
+        if not raw_candidates:
              flash("Could not find a lucky pick!", "error")
              return redirect(url_for('dashboard'))
-        RESULTS_CACHE[current_user.id] = {'candidates': [lucky_result], 'next_index': 1}
-        return render_template('results.html', movies=[lucky_result], min_year=0, min_rating=0, genres=[], current_genre=None, use_critic_filter='false')
+        
+
+        lucky_result = []
+        for item in raw_candidates:
+            # Stop once we have 5 good ones
+            if len(lucky_result) >= 5: break
+            
+            # 1. Check Title (Fuzzy)
+            t_clean = normalize_title(item['title'])
+            if t_clean in owned_keys: continue
+            
+            # 2. Check ID (Exact - Alias DB)
+            if TmdbAlias.query.filter_by(tmdb_id=item['id']).first(): continue
+            
+            lucky_result.append(item)
+            
+        if not lucky_result:
+             flash("You own all the lucky picks! Try again.", "error")
+             return redirect(url_for('dashboard'))
+
+        RESULTS_CACHE[current_user.id] = {'candidates': lucky_result, 'next_index': len(lucky_result)}
+        return render_template('results.html', movies=lucky_result, min_year=0, min_rating=0, genres=[], current_genre=None, use_critic_filter='false')
 
     # 2. STANDARD MODE
     media_type = request.form.get('media_type')
@@ -364,7 +422,6 @@ def generate():
         flash('Please select at least one item.', 'error')
         return redirect(url_for('dashboard'))
 
-    owned_keys = get_plex_cache(s)
     blocked = set([b.title for b in Blocklist.query.filter_by(user_id=current_user.id).all()])
     
     recommendations = []

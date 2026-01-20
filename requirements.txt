@@ -6,3 +6,4 @@ requests
 gunicorn
 werkzeug
 Flask-APScheduler
+Flask-WTF

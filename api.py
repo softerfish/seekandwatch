@@ -9,13 +9,13 @@ import threading
 from flask import Blueprint, request, jsonify, session, send_from_directory, render_template, redirect, url_for
 from flask_login import login_required, current_user
 from plexapi.server import PlexServer
-from models import db, Blocklist, CollectionSchedule, TmdbAlias, SystemLog, Settings
+from models import db, Blocklist, CollectionSchedule, TmdbAlias, SystemLog, Settings, User
 from utils import (normalize_title, is_duplicate, fetch_omdb_ratings, send_overseerr_request, 
                    run_collection_logic, create_backup, list_backups, restore_backup, 
                    prune_backups, BACKUP_DIR, sync_remote_aliases, get_tmdb_aliases, 
                    refresh_plex_cache, get_plex_cache, get_lock_status, is_system_locked,
                    write_scanner_log, read_scanner_log, prefetch_keywords_parallel,
-                   item_matches_keywords, RESULTS_CACHE, get_session_filters)
+                   item_matches_keywords, RESULTS_CACHE, get_session_filters, validate_url)
 from presets import PLAYLIST_PRESETS
 
 # Define Blueprint
@@ -376,36 +376,40 @@ def create_collection(key):
         return jsonify({'status': 'success', 'message': msg})
     return jsonify({'status': 'error', 'message': msg})
 
-@api_bp.route('/save_schedule', methods=['POST'])
+@api_bp.route('/schedule_collection', methods=['POST'])
 @login_required
 def schedule_collection():
-    # 1. Get Form Data
+    # 1. Get Data
     preset_key = request.form.get('preset_key')
-    frequency = request.form.get('frequency')
+    frequency = request.form.get('frequency') # 'manual', 'daily', 'weekly'
     sync_mode = request.form.get('sync_mode', 'append')
-    
-    # 2. Get or Create DB Entry
+
+    # 2. Update Database
     job = CollectionSchedule.query.filter_by(preset_key=preset_key).first()
     if not job:
         job = CollectionSchedule(preset_key=preset_key)
         db.session.add(job)
-        
-    # 3. Load Existing Config or Default
+    
+    # 3. Intelligent Config Update
+    # We must preserve existing custom configs (like TMDB params) if they exist.
+    current_config = {}
     if job.configuration:
-        config = json.loads(job.configuration)
-    else:
-        # Load default from presets if it's a fresh save
-        defaults = PLAYLIST_PRESETS.get(preset_key, {})
-        config = defaults.copy() if defaults else {}
-
-    # 4. Save the Sync Mode Choice
-    config['sync_mode'] = sync_mode
+        try:
+            current_config = json.loads(job.configuration)
+        except:
+            current_config = {}
+            
+    # Update only what changed
+    current_config['sync_mode'] = sync_mode
+    
+    # If it's a built-in preset and we have no config yet, we don't strictly need to copy 
+    # the whole preset into DB, just the overrides. The Scheduler in app.py handles the merging.
     
     job.frequency = frequency
-    job.configuration = json.dumps(config)
-    db.session.commit()
+    job.configuration = json.dumps(current_config)
     
-    return jsonify({'status': 'success'})
+    db.session.commit()
+    return jsonify({'status': 'success', 'message': 'Schedule updated.'})
     
 # --- CUSTOM BUILDER ---
 
@@ -414,6 +418,8 @@ def schedule_collection():
 def preview_custom_collection():
     s = current_user.settings
     data = request.json
+    
+    # 1. Prepare Params
     params = {
         'api_key': s.tmdb_key,
         'sort_by': data['sort_by'],
@@ -424,15 +430,40 @@ def preview_custom_collection():
     if data['year_start']:
         k = 'primary_release_date.gte' if data['media_type'] == 'movie' else 'first_air_date.gte'
         params[k] = f"{data['year_start']}-01-01"
+    if data['year_end']:
+        k = 'primary_release_date.lte' if data['media_type'] == 'movie' else 'first_air_date.lte'
+        params[k] = f"{data['year_end']}-12-31"
     
+    # 2. Fetch from TMDB
     url = f"https://api.themoviedb.org/3/discover/{data['media_type']}"
-    r = requests.get(url, params=params).json()
+    try:
+        r = requests.get(url, params=params, timeout=5).json()
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': 'TMDB Error'})
+
+    # 3. Check Ownership (The Missing Logic)
+    owned_keys = get_plex_cache(s)
     items = []
+    
     for i in r.get('results', [])[:10]:
+        # Check Title
+        t_clean = normalize_title(i.get('title', i.get('name')))
+        is_owned = t_clean in owned_keys
+        
+        # Check ID (Alias) if title failed
+        if not is_owned:
+            if TmdbAlias.query.filter_by(tmdb_id=i['id']).first():
+                is_owned = True
+        
+        year = (i.get('release_date') or i.get('first_air_date') or '----')[:4]
+        
         items.append({
-            'text': f"{i.get('title', i.get('name'))}",
-            'owned': False # Preview simplified
+            'text': f"{i.get('title', i.get('name'))} ({year})",
+            'owned': is_owned,
+            'tmdb_id': i['id'],           # Needed for Request Button
+            'media_type': data['media_type'] # Needed for Request Button
         })
+        
     return jsonify({'status': 'success', 'items': items})
 
 @api_bp.route('/save_custom_collection', methods=['POST'])
@@ -473,42 +504,43 @@ def delete_custom_collection(key):
 def test_connection():
     data = request.json
     service = data.get('service')
+    
+    # Validate the URL before connecting (Prevents SSRF)
+    if 'url' in data and data['url']:
+        is_safe, msg = validate_url(data['url'])
+        if not is_safe:
+            return jsonify({'status': 'error', 'message': f"Security Block: {msg}", 'msg': f"Security Block: {msg}"})
+    # ----------------------
+
     try:
         if service == 'plex':
             p = PlexServer(data['url'], data['token'], timeout=5)
-            # FIX: Send both 'message' and 'msg'
             return jsonify({'status': 'success', 'message': f"Connected: {p.friendlyName}", 'msg': f"Connected: {p.friendlyName}"})
             
         elif service == 'tmdb':
+            # TMDB is external, so we just check the key
             r = requests.get(f"https://api.themoviedb.org/3/configuration?api_key={data['api_key']}")
-            if r.status_code == 200: 
-                # FIX: Added success message
-                return jsonify({'status': 'success', 'message': 'TMDB Connected!', 'msg': 'TMDB Connected!'})
+            if r.status_code == 200: return jsonify({'status': 'success', 'message': 'TMDB Connected!', 'msg': 'TMDB Connected!'})
             return jsonify({'status': 'error', 'message': 'Invalid Key', 'msg': 'Invalid Key'})
             
         elif service == 'omdb':
             r = requests.get(f"https://www.omdbapi.com/?apikey={data['api_key']}&t=Inception")
-            if r.json().get('Response') == 'True': 
-                # FIX: Added success message
-                return jsonify({'status': 'success', 'message': 'OMDB Connected!', 'msg': 'OMDB Connected!'})
+            if r.json().get('Response') == 'True': return jsonify({'status': 'success', 'message': 'OMDB Connected!', 'msg': 'OMDB Connected!'})
             return jsonify({'status': 'error', 'message': 'Invalid Key', 'msg': 'Invalid Key'})
             
         elif service == 'overseerr':
             r = requests.get(f"{data['url']}/api/v1/status", headers={'X-Api-Key': data['api_key']}, timeout=5)
-            if r.status_code == 200: 
-                # FIX: Added success message
-                return jsonify({'status': 'success', 'message': 'Overseerr Connected!', 'msg': 'Overseerr Connected!'})
+            if r.status_code == 200: return jsonify({'status': 'success', 'message': 'Overseerr Connected!', 'msg': 'Overseerr Connected!'})
             return jsonify({'status': 'error', 'message': 'Connection Failed', 'msg': 'Connection Failed'})
             
         elif service == 'tautulli':
             r = requests.get(f"{data['url']}/api/v2?apikey={data['api_key']}&cmd=get_server_info", timeout=5)
-            if r.status_code == 200: 
-                # FIX: Added success message
-                return jsonify({'status': 'success', 'message': 'Tautulli Connected!', 'msg': 'Tautulli Connected!'})
+            if r.status_code == 200: return jsonify({'status': 'success', 'message': 'Tautulli Connected!', 'msg': 'Tautulli Connected!'})
             return jsonify({'status': 'error', 'message': 'Connection Failed', 'msg': 'Connection Failed'})
             
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e), 'msg': str(e)})
+        
         
 @api_bp.route('/toggle_logging', methods=['POST'])
 @login_required
@@ -551,8 +583,6 @@ def tautulli_data():
         if data.get('response', {}).get('result') == 'success': return jsonify(data['response']['data'])
         return jsonify({"error": f"Tautulli Error: {data.get('response', {}).get('message')}"})
     except Exception as e: return jsonify({"error": f"Connection Failed: {str(e)}"})
-
-# --- BACKUP / CACHE / SCANNER ---
 
 @api_bp.route('/api/backups')
 @login_required
@@ -672,3 +702,69 @@ def manual_alias_sync():
     try: total = TmdbAlias.query.count()
     except: total = 0
     return jsonify({'status': status, 'message': msg, 'count': total})
+    
+# --- ADMIN USER MANAGEMENT ---
+
+@api_bp.route('/api/admin/users')
+@login_required
+def get_all_users():
+    # Security Check
+    if not current_user.is_admin:
+        return jsonify({'error': 'Unauthorized'}), 403
+        
+    users = User.query.all()
+    user_list = []
+    for u in users:
+        user_list.append({
+            'id': u.id,
+            'username': u.username,
+            'is_admin': u.is_admin,
+            'is_current': (u.id == current_user.id)
+        })
+    return jsonify(user_list)
+
+@api_bp.route('/api/admin/toggle_role', methods=['POST'])
+@login_required
+def toggle_user_role():
+    if not current_user.is_admin:
+        return jsonify({'status': 'error', 'message': 'Unauthorized'}), 403
+        
+    data = request.json
+    target_id = data.get('user_id')
+    
+    if target_id == current_user.id:
+        return jsonify({'status': 'error', 'message': 'You cannot remove your own admin status.'})
+        
+    user = User.query.get(target_id)
+    if not user:
+        return jsonify({'status': 'error', 'message': 'User not found'})
+        
+    # Toggle
+    user.is_admin = not user.is_admin
+    db.session.commit()
+    
+    status_str = "Admin" if user.is_admin else "User"
+    return jsonify({'status': 'success', 'message': f"User {user.username} is now: {status_str}"})
+
+@api_bp.route('/api/admin/delete_user', methods=['POST'])
+@login_required
+def admin_delete_user():
+    if not current_user.is_admin:
+        return jsonify({'status': 'error', 'message': 'Unauthorized'}), 403
+        
+    data = request.json
+    target_id = data.get('user_id')
+    
+    if target_id == current_user.id:
+        return jsonify({'status': 'error', 'message': 'Cannot delete yourself.'})
+        
+    user = User.query.get(target_id)
+    if user:
+        # Clean up related data
+        Settings.query.filter_by(user_id=user.id).delete()
+        Blocklist.query.filter_by(user_id=user.id).delete()
+        db.session.delete(user)
+        db.session.commit()
+        return jsonify({'status': 'success', 'message': 'User deleted.'})
+        
+    return jsonify({'status': 'error', 'message': 'User not found'})

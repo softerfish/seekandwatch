@@ -18,5 +18,5 @@ RUN mkdir -p /config
 # Expose the port
 EXPOSE 5000
 
-# Run with Gunicorn
-CMD ["gunicorn", "-w", "1", "-b", "0.0.0.0:5000", "app:app"]
+# Run with Gunicorn (1 Worker, 4 Threads)
+CMD ["gunicorn", "-w", "1", "--threads", "4", "-b", "0.0.0.0:5000", "app:app"]

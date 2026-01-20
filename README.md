@@ -1,5 +1,5 @@
 # 🚀 SeekAndWatch
-![Version](https://img.shields.io/badge/version-1.1.0-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) ![License](https://img.shields.io/badge/License-MIT-green.svg)
+![Version](https://img.shields.io/badge/version-1.1.1-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) (coming soon) ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
 ⭐ **Show Your Support By Clicking The Star!**
 If SeekAndWatch has been helpful to you in any way, please consider giving this repository a star. Your gesture will greatly support our efforts and help others discover the project.
@@ -13,6 +13,10 @@ SeekAndWatch fixes that. It’s a self-hosted dashboard that connects your Plex 
 It learns what you like, finds hidden gems you already own, helps you request new stuff, and now, in v1.1.0, helps you build basic, yet powerful Kometa config files without touching a line of code!
 
 ---
+
+## ✨ Screenshots
+
+See end of file
 
 ## ✨ Key Features
 
@@ -95,6 +99,28 @@ docker run -d \
 ```  
   
 ### Changelog
+1.1.1
+- added tooltips to Kometa fields
+- added template variables for collections: limit, sort_by, collection_mode, sync_mode, include, exclude
+- added several collection defaults for Movies and TV. Overlays to follow
+- added a startup routine to auto clear stuck "Busy" flags in the database if the container is killed during a scan
+- I'm feeling lucky will now filter owned movies
+- faster collection generation
+
+Accounts
+First-User-Admin: the first user to register is now automatically granted admin privileges. Subsequent users register as standard users. When the app starts, it will ask, "are there users in the database? Yes. Are there admins? No." It will automatically crown the first user found (ID 1) as the admin. Other users can be promoted to admin in User Settings. Currently, this change gives access to User Management tab access in Settings to promote, demote, and delete accounts
+
+Builder
+- live Preview now correctly identifies movies you already own instead of listing everything as missing
+- fixed the rating slider number overlapping with the label on some screens
+
+Security fixes:
+- added dynamic SECRET_KEY generation using the secrets library to prevent session hijacking and unauthorized admin access
+- added safety checks to the search and blocklist screens to ensure special characters in movie titles are displayed as text instead of being interpreted as code
+- added a security check to every button and form 
+- the new restore function now validates file paths before extraction to prevent malicious overwrites of system files
+- tightened Kometa Config security. The system blindly trusted the configuration data saved in the database. We added a verification step to ensure that loaded settings are treated strictly as text, preventing any commands from running automatically if a hacker messed with your database
+
 1.1.0
 This release has a lot of bugfixes, changes and many tweaks to improve speed and accuracy. This is the first app I've made, so I'm learning how to improve as I go with a lot of time and research. If you have any suggestions or comments, here's the new subreddit: https://www.reddit.com/r/SeekAndWatch/
 
@@ -124,3 +150,27 @@ This release has a lot of bugfixes, changes and many tweaks to improve speed and
 
 
 This product uses the TMDB API but is not endorsed or certified by TMDB.
+
+## ✨ Screenshots V1.1.1 
+
+<details>
+  <summary>Click to see the full screenshots</summary>
+  <br>
+
+<img src="images/smart-discovery1.png" alt="Smart Discovery - Step 1" width="500">
+
+<img src="images/smart-discovery2.png" alt="Smart Discovery - Step 2" width="500">
+
+<img src="images/smart-discovery3.png" alt="Smart Discovery - Step 3" width="500">
+
+<img src="images/scanners.png" alt="Settings --> Scanners" width="800">
+
+<img src="images/kometa.png" alt="Kometa Main Config" width="500">
+
+<img src="images/kometa-variables.png" alt="Kometa Variables" width="500">
+
+<img src="images/custom-builder.png" alt="Custom Builder" width="500">
+
+<img src="images/plexcollections.png" alt="Plex Collections" width="800">
+
+</details>
