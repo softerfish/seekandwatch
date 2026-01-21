@@ -108,6 +108,9 @@ docker run -d \
 1.2.1
 Increased overlays on Kometa Builder
 
+<details>
+  <summary><b>Past Changelog</b></summary>
+
 1.2.0
 - added protections to block password guessing attacks and prevent malicious file access without slowing down your dashboard
 - optimized traffic limits to ensure the app runs smoothly even if you leave it open 24/7
@@ -164,14 +167,14 @@ This release has a lot of bugfixes, changes and many tweaks to improve speed and
 - many small bugfixes
 - fixed ignore users history for recommendations
 - added api testing in settings
-
+</details>
 
 This product uses the TMDB API but is not endorsed or certified by TMDB.
 
 ## 📸 Screenshots
 
 <details>
-  <summary><b>Click here to view screenshots</b></summary>
+  <summary><b>View v1.1.0 screenshots. Please note, screenshots may become outdated.</b></summary>
   <br>
 
 | Smart Discovery | Recommendations |
@@ -185,6 +188,5 @@ This product uses the TMDB API but is not endorsed or certified by TMDB.
 | Plex Collections | Custom Builder |
 | :---: | :---: |
 | <img src="images/plexcollections.png" alt="Plex Collections" width="800"> | <img src="images/custom-builder.png" alt="Custom Builder" width="400"> |
-
 
 </details>
