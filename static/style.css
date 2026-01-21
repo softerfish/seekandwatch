@@ -626,15 +626,6 @@ input[type=range]::-webkit-slider-thumb:hover {
     transform: scale(1.2);
 }
 
-/* 2. Rating Value Text */
-.rating-display {
-    float: right;
-    color: var(--accent-color);
-    font-weight: bold;
-    font-size: 1.1em;
-    margin-top: -35px; /* Pulls it up next to label */
-}
-
 /* 3. Fix Button Widths in Builder */
 .builder-card .btn-secondary {
     width: 100%;
@@ -1538,3 +1529,28 @@ input::placeholder {
     70% { transform: scale(1.0); text-shadow: 0 0 10px rgba(46, 204, 113, 0); }
     100% { transform: scale(0.95); text-shadow: 0 0 0 rgba(46, 204, 113, 0); }
 }
+/* =========================================
+   17. TV STATUS OVERLAYS
+   ========================================= */
+.status-overlay {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: bold;
+    color: white;
+    text-transform: uppercase;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+    z-index: 10;
+    pointer-events: none;
+}
+
+/* Color Coding */
+.status-overlay.ended { background-color: #dc3545; } /* Red */
+.status-overlay.canceled { background-color: #dc3545; } /* Red */
+.status-overlay.returning-series { background-color: #198754; } /* Green */
+.status-overlay.in-production { background-color: #ffc107; color: #000; } /* Yellow */
+.status-overlay.planned { background-color: #0d6efd; } /* Blue */
+.status-overlay.unknown { background-color: #6c757d; } /* Grey */
