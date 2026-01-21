@@ -14,9 +14,16 @@ It learns what you like, finds hidden gems you already own, helps you request ne
 
 ---
 
-## ✨ Screenshots
+### 📚 Table of Contents
+- [Key Features](#-key-features)
+- [Screenshots](#-screenshots)
+- [Requirements](#-requirements)
+- [Installation](#-installation)
+  - [Unraid](#unraid-template-coming-soon)
+  - [Docker (Manual)](#docker-manual)
+- [How to Update](#how-to-update)
+- [Changelog](#-changelog)
 
-See end of file
 
 ## ✨ Key Features
 
@@ -108,8 +115,7 @@ docker run -d \
 - faster collection generation
 
 Accounts
-First-User-Admin: the first user to register is now automatically granted admin privileges. 
-Subsequent users register as standard users. When the app starts, it will ask, "are there users in the database? Yes. Are there admins? No." It will automatically crown the first user found (ID 1) as the admin. Other users can be promoted to admin in User Settings. Currently, this change gives access to User Management tab access in Settings to promote, demote, and delete accounts
+First-User-Admin: the first user to register is now automatically granted admin privileges. Subsequent users register as standard users. When the app starts, it will ask, "are there users in the database? Yes. Are there admins? No." It will automatically crown the first user found (ID 1) as the admin. Other users can be promoted to admin in User Settings. Currently, this change gives access to User Management tab access in Settings to promote, demote, and delete accounts
 
 Builder
 - live Preview now correctly identifies movies you already own instead of listing everything as missing
@@ -152,26 +158,22 @@ This release has a lot of bugfixes, changes and many tweaks to improve speed and
 
 This product uses the TMDB API but is not endorsed or certified by TMDB.
 
-## ✨ Screenshots V1.1.1 
+## 📸 Screenshots
 
 <details>
-  <summary>Click to see the full screenshots</summary>
+  <summary><b>Click here to view screenshots</b></summary>
   <br>
 
-<img src="images/smart-discovery1.png" alt="Smart Discovery - Step 1" width="500">
-<br>
-<img src="images/smart-discovery3.png" alt="Smart Discovery - Step 3" width="500">
-<br>
-<img src="images/scanners.png" alt="Settings --> Scanners" width="800">
-<br>
-<img src="images/kometa.png" alt="Kometa Main Config" width="500">
-<br>
-<img src="images/kometa-variables.png" alt="Kometa Variables" width="500">
-<br>
-<img src="images/custom-builder.png" alt="Custom Builder" width="500">
-<br>
-<img src="images/plexcollections.png" alt="Plex Collections" width="800">
+| Smart Discovery | Recommendations |
+| :---: | :---: |
+| <img src="images/smart-discovery1.png" alt="Smart Discovery - Step 1" width="400"> | <img src="images/smart-discovery3.png" alt="Smart Discovery - Step 3" width="400"> |
 
+| Settings & Cache | Kometa Builder |
+| :---: | :---: |
+| <img src="images/scanners.png" alt="Settings Scanners" width="800"> | <img src="images/kometa.png" alt="Kometa Main Config" width="400"> |
+
+| Plex Collections | Custom Builder |
+| :---: | :---: |
+| <img src="images/plexcollections.png" alt="Plex Collections" width="800"> | <img src="images/custom-builder.png" alt="Custom Builder" width="400"> |
 
 </details>
-
