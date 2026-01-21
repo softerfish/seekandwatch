@@ -86,7 +86,6 @@ Once it's running, just go to: http://<YOUR_SERVER_IP>:5000
 ### How to Update
 To force an update to the latest version:
 
-Bash
 # 1. Get the new version
 docker pull ghcr.io/softerfish/seekandwatch:latest
 
