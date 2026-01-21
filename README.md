@@ -22,7 +22,7 @@ It learns what you like, finds hidden gems you already own, helps you request ne
   - [Unraid](#unraid-template-coming-soon)
   - [Docker (Manual)](#docker-manual)
 - [How to Update](#how-to-update)
-- [Changelog](#-changelog)
+- [Changelog](#changelog)
 
 
 ## ✨ Key Features
