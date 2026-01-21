@@ -103,6 +103,31 @@
     </div>
 </div>
 
+<div class="card p-3 mb-4">
+    <h5>Global Schedule Time</h5>
+    <p class="text-muted small">All "Daily" collections will run automatically after this time.</p>
+    <div class="d-flex gap-2" style="max-width: 300px;">
+        <input type="time" id="globalTime" class="form-control" value="{{ schedule_time }}">
+        <button class="btn btn-primary" onclick="saveGlobalTime()">Save</button>
+    </div>
+</div>
+
+<script>
+function saveGlobalTime() {
+    let t = document.getElementById('globalTime').value;
+    fetch('/save_schedule_time', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': '{{ csrf_token() }}'},
+        body: 'time=' + t
+    })
+    .then(r => r.json())
+    .then(data => {
+        if(data.status === 'success') alert('Time Saved!');
+        else alert(data.message);
+    });
+}
+</script>
+
 {% if custom_presets %}
 <div class="category-header playlist-section" data-type="any">
     <span>🛠️</span> Your Custom Collections

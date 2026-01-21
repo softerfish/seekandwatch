@@ -38,7 +38,7 @@
                    oninput="document.getElementById('rating-val').innerText=this.value; filterVisibleCards();">
         </div>
 
-		<div class="filter-group" style="position:relative;">
+        <div class="filter-group" style="position:relative;">
             <label class="filter-label" title="Search specific TMDB tags (e.g. 'zombies', 'time travel').">
                 TMDB Keywords <span style="font-size: 0.8em; color: #888; font-weight: normal;">(Not Genres)</span>
             </label>
@@ -49,7 +49,7 @@
             <div id="keyword-results" class="keyword-dropdown"></div>
             <div id="selected-keywords" class="tag-container"></div>
         </div>
-		
+        
         <button class="btn btn-lucky" style="width:100%; margin-top:10px;" onclick="updateFilters()">
             🔄 Update Results
         </button>
@@ -134,7 +134,6 @@ function init() {
     if (selectedKeywords.length > 0) renderTags();
 
     // 1. FILTER OUT GHOSTS
-    // We remove any movie that doesn't have a title or an ID
     const validMovies = (serverMovies || []).filter(m => m.title && m.title !== "Unknown" && (m.id || m.tmdb_id));
 
     if (validMovies.length > 0) {
@@ -148,9 +147,6 @@ function init() {
         });
         filterVisibleCards();
     } else { 
-        // 2. AUTO-RECOVERY
-        // Lucky Mode failed (it has no "Page 2", so loadMore() fails).
-        // We call updateFilters() to force a "Standard Scan" instead.
         console.log("Bad result. Switching to Standard Mode...");
         updateFilters(); 
     }
@@ -197,7 +193,6 @@ function loadMore(btn) {
         btn.innerText = "Scanning Deep..."; 
     }
     
-    // INCREASED TIMEOUT TO 60 SECONDS
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 60000); 
 
@@ -233,7 +228,6 @@ function loadMore(btn) {
             clearTimeout(timeoutId);
             document.getElementById('loading').style.display = 'none';
             
-            // TIMEOUT FALLBACK UI
             if (!btn) {
                 const grid = document.getElementById('results-grid');
                 grid.style.display = 'grid';
@@ -259,7 +253,7 @@ function createCard(item) {
     const dateStr = String(rawDate);
     const displayDate = dateStr.length >= 4 ? dateStr.substring(0, 4) : 'N/A';
     const rating = item.rating || item.vote_average || 0;
-    const rtScore = item.rt_score || 0; // <--- Get RT Score
+    const rtScore = item.rt_score || 0; 
     const mediaType = item.media_type || 'movie'; 
     
     const card = document.createElement('div');
@@ -270,32 +264,30 @@ function createCard(item) {
     const posterUrl = item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : 'https://placehold.co/500x750/222/888?text=No+Poster';
     const searchableText = `<span style="display:none;">${escapeHtml(title)} ${escapeHtml(item.overview || '')}</span>`;
 
-    // --- BUILD BADGES HTML ---
+    // --- BADGES ---
     let badgesHtml = '<div class="poster-badges">';
-    
-    // 1. TMDB Badge
     if (rating > 0) {
-        badgesHtml += `
-            <div class="badge-item badge-tmdb" title="TMDB User Score">
-                <span>⭐</span> ${parseFloat(rating).toFixed(1)}
-            </div>`;
+        badgesHtml += `<div class="badge-item badge-tmdb" title="TMDB User Score"><span>⭐</span> ${parseFloat(rating).toFixed(1)}</div>`;
     }
-
-    // 2. Rotten Tomatoes Badge
     if (rtScore > 0) {
         const rtClass = rtScore >= 60 ? 'badge-rt-fresh' : 'badge-rt-rotten';
         const rtIcon = rtScore >= 60 ? '🍅' : '🤢';
-        badgesHtml += `
-            <div class="badge-item ${rtClass}" title="Rotten Tomatoes">
-                <span>${rtIcon}</span> ${rtScore}%
-            </div>`;
+        badgesHtml += `<div class="badge-item ${rtClass}" title="Rotten Tomatoes"><span>${rtIcon}</span> ${rtScore}%</div>`;
     }
     badgesHtml += '</div>';
-    // -------------------------
+
+    // --- TV STATUS OVERLAY ---
+    let statusHtml = '';
+    // Only show if media_type is TV and status exists
+    if (mediaType === 'tv' && item.status) {
+        const slug = item.status.toLowerCase().replace(/ /g, '-');
+        statusHtml = `<div class="status-overlay ${slug}">${item.status}</div>`;
+    }
 
     card.innerHTML = `
         <div class="poster-wrapper">
             ${badgesHtml} <img src="${posterUrl}" loading="lazy">
+            ${statusHtml}
             <div class="card-icon-overlay">
                 
                 <div class="card-icon-group">
@@ -331,11 +323,10 @@ function requestMedia(type, id, btn) {
     });
 }
 
-// --- TRAILER MODAL LOGIC ---
 function playTrailer(id, type) {
     const modal = document.getElementById('trailer-modal');
     const body = document.getElementById('trailer-body');
-    modal.style.display = 'flex'; // Flex to center
+    modal.style.display = 'flex'; 
     modal.style.justifyContent = 'center';
     modal.style.alignItems = 'center';
     
@@ -345,7 +336,6 @@ function playTrailer(id, type) {
         .then(r => r.json())
         .then(data => {
             if(data.trailer_key) {
-                // Embed YouTube
                 body.innerHTML = `<iframe width="100%" height="100%" src="https://www.youtube.com/embed/${data.trailer_key}?autoplay=1" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>`;
             } else {
                 body.innerHTML = `<div style="text-align:center; padding:50px; color:#ccc;">
@@ -360,10 +350,9 @@ function closeTrailer() {
     const modal = document.getElementById('trailer-modal');
     const body = document.getElementById('trailer-body');
     modal.style.display = 'none';
-    body.innerHTML = ''; // Kill iframe/video
+    body.innerHTML = ''; 
 }
 
-// --- DETAILS MODAL ---
 function openModal(id, type) {
     const modal = document.getElementById('detail-modal');
     modal.style.display = "block";
@@ -376,9 +365,7 @@ function openModal(id, type) {
             if(data.error) { body.innerHTML = `<div style="padding:20px; color:var(--error);">Error loading details.</div>`; return; }
             const poster = data.poster_path ? `https://image.tmdb.org/t/p/w500${data.poster_path}` : 'https://placehold.co/300x450/333/888?text=No+Poster';
             
-            // New Trailer Button inside Modal too
             const trailerBtn = `<button onclick="playTrailer(${id}, '${type}')" class="btn-secondary" style="margin-top:10px;">▶ Watch Trailer</button>`;
-            
             const tmdbLink = `https://www.themoviedb.org/${type}/${id}`;
             const providersHtml = data.providers && data.providers.length > 0 
                 ? `<div style="margin-top:15px; margin-bottom:15px;"><strong>Streaming on:</strong><br>${data.providers.map(p => `<img src="https://image.tmdb.org/t/p/original${p.logo}" title="${p.name}" style="width:40px; border-radius:8px; margin:5px 5px 0 0;">`).join('')}</div>`
