@@ -83,7 +83,7 @@ docker run -d \
 ```  
 Once it's running, just go to: http://<YOUR_SERVER_IP>:5000
 
-How to Update
+### How to Update
 To force an update to the latest version:
 
 Bash
