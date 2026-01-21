@@ -8,7 +8,7 @@ If SeekAndWatch has been helpful to you in any way, please consider giving this 
 
 Scrolling through a massive Plex library can feel like work. You spend more time looking for something to watch than actually watching it.
 
-SeekAndWatch fixes that. It’s a self-hosted dashboard that connects your Plex library, your Tautulli stats, and your Overseerr requests into one clean, smart interface. 
+SeekAndWatch fixes that. It’s a self-hosted dashboard that connects your Plex library, your Tautulli stats, and your Overseerr requests into one clean, smart interface. Generate your own Plex Connections and easily create Kometa config files with our Visual Builder.
 
 It learns what you like, finds hidden gems you already own, helps you request new stuff, and now, in v1.1.0, helps you build basic, yet powerful Kometa config files without touching a line of code!
 
@@ -174,3 +174,4 @@ This product uses the TMDB API but is not endorsed or certified by TMDB.
 
 
 </details>
+
