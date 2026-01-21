@@ -33,7 +33,7 @@ from presets import PLAYLIST_PRESETS
 # 1. APPLICATION CONFIGURATION
 # ==================================================================================
 
-VERSION = "1.1.1"
+VERSION = "1.2.0"
 
 UPDATE_CACHE = {
     'version': None,
