@@ -411,20 +411,50 @@
                         <div class="k-check-item type-all"><label title="Critics' Choice Award winners."><input type="checkbox" class="t-opt" value="choice" onchange="gen()"> Critics' Choice</label><button class="btn-gear" onclick="editVars('choice', event)">⚙️</button></div>
                     </div>
 
-                    <div class="k-sub-header">🖼️ Overlays (Posters)</div>
+                    <div class="k-sub-header">🏆 Awards/Charts (Overlay)</div>
                     <div class="k-check-grid">
-                        <div class="k-check-item type-all"><label title="Overlays a badge for 4K, 1080p, 720p, or SD resolution."><input type="checkbox" class="t-opt ovl" value="resolution" onchange="gen()"> Resolution</label></div>
-                        <div class="k-check-item type-all"><label title="Overlays audio icons (Dolby Atmos, DTS-X, 5.1, etc)."><input type="checkbox" class="t-opt ovl" value="audio_codec" onchange="gen()"> Audio Codec</label></div>
-                        <div class="k-check-item type-all"><label title="Adds a colored ribbon corner for HDR, Dolby Vision, or 4K."><input type="checkbox" class="t-opt ovl" value="ribbon" onchange="gen()"> Ribbons (HDR/DV)</label></div>
-                        <div class="k-check-item type-all"><label title="Overlays ratings from IMDb, TMDb, or Rotten Tomatoes."><input type="checkbox" class="t-opt ovl" value="ratings" onchange="gen()"> Ratings Score</label></div>
-                        <div class="k-check-item type-all"><label title="Overlays text flags for available audio tracks (e.g., 'English', 'French')."><input type="checkbox" class="t-opt ovl" value="audio_language" onchange="gen()"> Audio Languages</label></div>
-                        <div class="k-check-item type-all"><label title="Overlays visual flag icons based on available audio/subtitles."><input type="checkbox" class="t-opt ovl" value="languages" onchange="gen()"> Language Flags</label></div>
-                        <div class="k-check-item type-all"><label title="Overlays badges for 'Remux', 'Bluray', 'Web-DL', etc."><input type="checkbox" class="t-opt ovl" value="video_format" onchange="gen()"> Video Format (Remux)</label></div>
-                        <div class="k-check-item type-all"><label title="Adds a 'Direct Play' banner if the item plays natively without transcoding."><input type="checkbox" class="t-opt ovl" value="direct_play" onchange="gen()"> Direct Play Only</label></div>
-                        <div class="k-check-item type-all"><label title="Adds a 'Multiple Versions' badge if you have duplicates."><input type="checkbox" class="t-opt ovl" value="versions" onchange="gen()"> Versions</label></div>
-                        
-                        <div class="k-check-item type-movie"><label title="Overlays a badge if the movie has a post-credit scene."><input type="checkbox" class="t-opt ovl" value="mediastinger" onchange="gen()"> Credit Scenes</label></div>
-                        <div class="k-check-item type-tv hidden"><label title="Overlays 'Airing', 'Ended', or 'Canceled' status on show posters."><input type="checkbox" class="t-opt ovl" value="status" onchange="gen()"> Show Status</label></div>
+                        <div class="k-check-item type-all"><label title="Adds ribbons for IMDb Top 250, Rotten Tomatoes Fresh, Oscars, etc."><input type="checkbox" class="t-opt ovl" value="ribbon" onchange="gen()"> Ribbon</label></div>
+                    </div>
+
+                    <div class="k-sub-header">📺 Content (Overlay)</div>
+                    <div class="k-check-grid">
+                        <div class="k-check-item type-tv hidden"><label title="Overlays season/episode counts on TV posters."><input type="checkbox" class="t-opt ovl" value="episode_info" onchange="gen()"> Episode Info</label></div>
+                        <div class="k-check-item type-movie"><label title="Overlays a badge if the movie has a post-credit scene."><input type="checkbox" class="t-opt ovl" value="mediastinger" onchange="gen()"> Mediastinger</label></div>
+                        <div class="k-check-item type-tv hidden"><label title="Overlays 'Airing', 'Ended', or 'Canceled' status on show posters."><input type="checkbox" class="t-opt ovl" value="status" onchange="gen()"> Status</label></div>
+                    </div>
+
+                    <div class="k-sub-header">🔞 Content Ratings (Overlay)</div>
+                    <div class="k-check-grid">
+                        <div class="k-check-item type-all"><label title="Overlay Australian classification ratings (G, PG, M, etc.)."><input type="checkbox" class="t-opt ovl" value="content_rating_au" onchange="gen()"> AU Content Ratings</label></div>
+                        <div class="k-check-item type-all"><label title="Overlay Common Sense Media age-appropriate ratings."><input type="checkbox" class="t-opt ovl" value="commonsense" onchange="gen()"> Common Sense Age Rating</label></div>
+                        <div class="k-check-item type-all"><label title="Overlay German FSK classification ratings."><input type="checkbox" class="t-opt ovl" value="content_rating_de" onchange="gen()"> DE Content Ratings</label></div>
+                        <div class="k-check-item type-all"><label title="Overlay New Zealand classification ratings."><input type="checkbox" class="t-opt ovl" value="content_rating_nz" onchange="gen()"> NZ Content Ratings</label></div>
+                        <div class="k-check-item type-all"><label title="Overlay UK BBFC classification ratings."><input type="checkbox" class="t-opt ovl" value="content_rating_uk" onchange="gen()"> UK Content Ratings</label></div>
+                        <div class="k-check-item type-movie"><label title="Overlay US MPAA film ratings (G, PG, R, etc.)."><input type="checkbox" class="t-opt ovl" value="content_rating_us_movie" onchange="gen()"> US Content Ratings (Movie)</label></div>
+                        <div class="k-check-item type-tv hidden"><label title="Overlay US TV Parental Guidelines (TV-14, TV-MA, etc.)."><input type="checkbox" class="t-opt ovl" value="content_rating_us_show" onchange="gen()"> US Content Ratings (Show)</label></div>
+                    </div>
+
+                    <div class="k-sub-header">💿 Media (Overlay)</div>
+                    <div class="k-check-grid">
+                        <div class="k-check-item type-all"><label title="Overlay the video aspect ratio (e.g., 2.35:1)."><input type="checkbox" class="t-opt ovl" value="aspect" onchange="gen()"> Aspect Ratio</label></div>
+                        <div class="k-check-item type-all"><label title="Overlay badges for audio codecs (Atmos, DTS-X, etc.)."><input type="checkbox" class="t-opt ovl" value="audio_codec" onchange="gen()"> Audio Codec</label></div>
+                        <div class="k-check-item type-all"><label title="Overlay the number of audio/subtitle languages available."><input type="checkbox" class="t-opt ovl" value="language_count" onchange="gen()"> Audio/Subtitle Language Count</label></div>
+                        <div class="k-check-item type-all"><label title="Overlay flags indicating available audio/subtitle languages."><input type="checkbox" class="t-opt ovl" value="languages" onchange="gen()"> Audio/Subtitle Language Flags</label></div>
+                        <div class="k-check-item type-all"><label title="Overlay resolution (4K, 1080p) and edition info."><input type="checkbox" class="t-opt ovl" value="resolution" onchange="gen()"> Resolution/Editions</label></div>
+                        <div class="k-check-item type-all"><label title="Overlay the content duration on the poster."><input type="checkbox" class="t-opt ovl" value="runtimes" onchange="gen()"> Runtimes</label></div>
+                        <div class="k-check-item type-all"><label title="Overlay a badge if multiple versions of the item exist."><input type="checkbox" class="t-opt ovl" value="versions" onchange="gen()"> Versions</label></div>
+                    </div>
+
+                    <div class="k-sub-header">🏭 Production (Overlay)</div>
+                    <div class="k-check-grid">
+                        <div class="k-check-item type-tv hidden"><label title="Overlay the television network logo."><input type="checkbox" class="t-opt ovl" value="network" onchange="gen()"> Network</label></div>
+                        <div class="k-check-item type-all"><label title="Overlay the streaming service logo."><input type="checkbox" class="t-opt ovl" value="streaming" onchange="gen()"> Streaming</label></div>
+                        <div class="k-check-item type-all"><label title="Overlay the production studio logo."><input type="checkbox" class="t-opt ovl" value="studio" onchange="gen()"> Studio</label></div>
+                    </div>
+
+                    <div class="k-sub-header">🛠️ Utility (Overlay)</div>
+                    <div class="k-check-grid">
+                        <div class="k-check-item type-all"><label title="Overlay a badge indicating if the item can Direct Play."><input type="checkbox" class="t-opt ovl" value="direct_play" onchange="gen()"> Direct Play</label></div>
                     </div>
 
                     <button class="btn-add" onclick="addLibrary()" id="btn-action" disabled>➕ Add/Update Library</button>
