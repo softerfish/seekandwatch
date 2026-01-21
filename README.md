@@ -105,6 +105,9 @@ docker run -d \
 ```  
   
 ### Changelog
+1.2.1
+Increased overlays on Kometa Builder
+
 1.2.0
 - added protections to block password guessing attacks and prevent malicious file access without slowing down your dashboard
 - optimized traffic limits to ensure the app runs smoothly even if you leave it open 24/7
