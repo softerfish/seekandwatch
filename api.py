@@ -15,14 +15,13 @@ from utils import (normalize_title, is_duplicate, fetch_omdb_ratings, send_overs
                    prune_backups, BACKUP_DIR, sync_remote_aliases, get_tmdb_aliases, 
                    refresh_plex_cache, get_plex_cache, get_lock_status, is_system_locked,
                    write_scanner_log, read_scanner_log, prefetch_keywords_parallel,
-                   item_matches_keywords, RESULTS_CACHE, get_session_filters, validate_url)
+                   item_matches_keywords, RESULTS_CACHE, get_session_filters, validate_url, prefetch_tv_states_parallel)
 from presets import PLAYLIST_PRESETS
 
 # Define Blueprint
 api_bp = Blueprint('api', __name__)
 
 # --- GENERATION & FILTERS ---
-
 @api_bp.route('/load_more_recs')
 @login_required
 def load_more_recs():
@@ -58,10 +57,12 @@ def load_more_recs():
     final_list = []
     idx = start_idx
     
+    # --- MAIN FILTERING LOOP ---
     while len(final_list) < 30 and idx < len(candidates):
         item = candidates[idx]
         idx += 1
         
+        # 1. Filters
         if item['year'] < min_year: continue
         if item.get('vote_average', 0) < min_rating: continue
         if genre_filter and genre_filter != 'all':
@@ -71,10 +72,8 @@ def load_more_recs():
             if not item_matches_keywords(item, target_keywords):
                 continue
 
-        # --- UPDATED OMDB LOGIC ---
+        # 2. OMDB/Rotten Tomatoes
         item['rt_score'] = None
-        
-        # Always fetch if key exists
         if s.omdb_key:
             ratings = fetch_omdb_ratings(item.get('title', item.get('name')), item['year'], s.omdb_key)
             rt_score = 0
@@ -83,14 +82,14 @@ def load_more_recs():
                     rt_score = int(r['Value'].replace('%',''))
                     break
             
-            # Save to item for display
-            if rt_score > 0:
-                item['rt_score'] = rt_score
-            
-            # Apply Filter (Only if enabled)
+            if rt_score > 0: item['rt_score'] = rt_score
             if critic_enabled and rt_score < threshold: continue
             
         final_list.append(item)
+
+    # --- TV Status Fetch (Load More) ---
+    if final_list and final_list[0].get('media_type') == 'tv':
+        prefetch_tv_states_parallel(final_list, s.tmdb_key)
         
     RESULTS_CACHE[current_user.id]['next_index'] = idx
     return jsonify(final_list)
@@ -611,10 +610,12 @@ def delete_backup_api(filename):
 @api_bp.route('/api/backup/restore/<filename>', methods=['POST'])
 @login_required
 def run_restore(filename):
-    if '..' in filename: return jsonify({'status': 'error'})
+    # FIX: Block absolute paths ('/') alongside relative paths ('..')
+    if '..' in filename or '/' in filename or '\\' in filename: 
+        return jsonify({'status': 'error', 'message': 'Invalid filename'})
+        
     success, msg = restore_backup(filename)
     return jsonify({'status': 'success' if success else 'error', 'message': msg})
-
 @api_bp.route('/save_cache_settings', methods=['POST'])
 @login_required
 def save_cache_settings():
@@ -768,3 +769,16 @@ def admin_delete_user():
         return jsonify({'status': 'success', 'message': 'User deleted.'})
         
     return jsonify({'status': 'error', 'message': 'User not found'})
+    
+@api_bp.route('/save_schedule_time', methods=['POST'])
+@login_required
+def save_schedule_time():
+    s = current_user.settings
+    new_time = request.form.get('time', '04:00')
+    
+    # Simple validation (HH:MM)
+    if ':' in new_time and len(new_time) == 5:
+        s.schedule_time = new_time
+        db.session.commit()
+        return jsonify({'status': 'success', 'message': f'Global Run Time set to {new_time}'})
+    return jsonify({'status': 'error', 'message': 'Invalid time format'})

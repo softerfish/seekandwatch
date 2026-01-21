@@ -17,6 +17,7 @@ class Settings(db.Model):
     __table_args__ = {'extend_existing': True}
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), unique=True)
+    schedule_time = db.Column(db.String(10), default='04:00')
     
     user = db.relationship('User', back_populates='settings')
     

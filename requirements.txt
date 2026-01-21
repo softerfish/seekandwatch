@@ -7,3 +7,4 @@ gunicorn
 werkzeug
 Flask-APScheduler
 Flask-WTF
+Flask-Limiter

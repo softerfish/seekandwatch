@@ -105,6 +105,14 @@ docker run -d \
 ```  
   
 ### Changelog
+1.2.1
+- added protections to block password guessing attacks and prevent malicious file access without slowing down your dashboard
+- optimized traffic limits to ensure the app runs smoothly even if you leave it open 24/7
+- added permission handling (entrypoint.sh) that automatically adapts to Unraid (PUID 99) or standard Docker setups, eliminating "Permission Denied" errors
+- users now stay logged in even after the server restarts or updates
+- addedd an adjustable time for running daily Plex Collections
+- added TV show status tags to posters in Smart Discovery 
+
 1.1.1
 - added tooltips to Kometa fields
 - added template variables for collections: limit, sort_by, collection_mode, sync_mode, include, exclude

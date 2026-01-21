@@ -720,6 +720,9 @@ def list_backups():
     return backups
 
 def restore_backup(filename):
+    # Force filename to be just the name, preventing absolute path overrides
+    filename = os.path.basename(filename)
+
     filepath = os.path.join(BACKUP_DIR, filename)
     if not os.path.exists(filepath): return False, "File not found"
     try:
@@ -730,8 +733,9 @@ def restore_backup(filename):
                 abs_target = os.path.abspath(os.path.join(target_dir, member))
                 abs_root = os.path.abspath(target_dir)
 
-                # Check: Is the target path actually inside /config?
-                if not abs_target.startswith(abs_root):
+                # Add os.sep to prevent "Partial Path Traversal" (e.g. /config_hack)
+                # We check if it starts with "/config/" not just "/config"
+                if not abs_target.startswith(abs_root + os.sep):
                     # If not, it's an attack trying to escape to /etc/ or /root/
                     raise Exception(f"Security Alert: Malicious file path detected ({member}). Restore aborted.")
             
@@ -741,6 +745,7 @@ def restore_backup(filename):
         return True, "Restored"
     except Exception as e:
         return False, str(e)
+
 def prune_backups(days=7):
     if not os.path.exists(BACKUP_DIR): return
     cutoff = time.time() - (days * 86400)
@@ -768,7 +773,7 @@ def reset_stuck_locks():
 def validate_url(url):
     """
     Security Check: Prevents SSRF attacks.
-    Blocks: Localhost, 127.x.x.x, 0.0.0.0, and Cloud Metadata (169.254.x.x).
+    Blocks: Localhost, 127.x.x.x, 0.0.0.0, Cloud Metadata (169.254.x.x), and IPv6 Loopbacks.
     Allows: Private LAN IPs (192.168.x.x, 10.x.x.x) for self-hosted usage.
     """
     try:
@@ -781,24 +786,41 @@ def validate_url(url):
         if not hostname:
             return False, "Invalid hostname"
             
-        # 2. DNS Resolution (Prevents DNS Rebinding)
+        # 2. DNS Resolution (IPv4 AND IPv6)
+        # Use getaddrinfo to check ALL IPs associated with the host.
+        # This prevents an attacker from hiding a localhost IP in a list of valid IPs.
         try:
-            ip_str = socket.gethostbyname(hostname)
+            # Check both IPv4 and IPv6
+            addr_info = socket.getaddrinfo(hostname, None)
         except:
             return False, "Could not resolve hostname"
+
+        # 3. Block Dangerous Ranges on ALL resolved IPs
+        for res in addr_info:
+            family, socktype, proto, canonname, sockaddr = res
+            ip_str = sockaddr[0]
             
-        ip = ipaddress.ip_address(ip_str)
-        
-        # 3. Block Dangerous Ranges
-        if ip.is_loopback: # Blocks 127.0.0.0/8
-            return False, "Access to Loopback (localhost) is denied."
+            # Skip empty IPs
+            if not ip_str: continue
+
+            try:
+                ip = ipaddress.ip_address(ip_str)
+            except ValueError:
+                continue # Skip invalid IPs
+
+            # Critical Checks
+            if ip.is_loopback: # Blocks 127.0.0.0/8 and ::1
+                return False, f"Access to Loopback ({ip_str}) is denied."
             
-        if ip.is_link_local: # Blocks 169.254.x.x (Cloud Metadata)
-            return False, "Access to Link-Local (Metadata) is denied."
+            if ip.is_link_local: # Blocks 169.254.x.x
+                return False, f"Access to Link-Local ({ip_str}) is denied."
             
-        if str(ip) == "0.0.0.0":
-            return False, "Access to 0.0.0.0 is denied."
-            
+            if ip.is_multicast: # Blocks 224.0.0.0/4
+                return False, "Access to Multicast is denied."
+                
+            if str(ip) == "0.0.0.0" or str(ip) == "::":
+                return False, "Access to 0.0.0.0/:: is denied."
+
         # Explicitly ALLOW private IPs (192.168.x.x, 10.x.x.x)
         # We do NOT block ip.is_private because this is a dashboard app.
         
@@ -806,3 +828,34 @@ def validate_url(url):
         
     except Exception as e:
         return False, f"Validation Error: {str(e)}"
+        
+def prefetch_tv_states_parallel(items, api_key):
+    """
+    Fetches TV Show Status (Ended, Returning, Canceled) for a batch of items.
+    Updates the items list in-place.
+    """
+    if not items: return
+
+    # Filter for TV shows only
+    tv_items = [i for i in items if i.get('media_type') == 'tv']
+    if not tv_items: return
+
+    def fetch_status(item):
+        try:
+            # We fetch details to get the 'status' field
+            url = f"https://api.themoviedb.org/3/tv/{item['id']}?api_key={api_key}"
+            data = requests.get(url, timeout=2).json()
+            return {'id': item['id'], 'status': data.get('status', 'Unknown')}
+        except:
+            return None
+
+    # Use 10 threads to fetch quickly
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        results = executor.map(fetch_status, tv_items)
+        
+    status_map = {r['id']: r['status'] for r in results if r}
+    
+    # Inject status back into the main list
+    for item in items:
+        if item['id'] in status_map:
+            item['status'] = status_map[item['id']]

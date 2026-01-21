@@ -16,6 +16,8 @@ from flask import Flask, Blueprint, request, jsonify, session, send_from_directo
 from flask_login import login_required, current_user, LoginManager, login_user, logout_user
 from flask_apscheduler import APScheduler
 from werkzeug.security import generate_password_hash, check_password_hash
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from plexapi.server import PlexServer
 from models import db, Blocklist, CollectionSchedule, TmdbAlias, SystemLog, Settings, User, TmdbKeywordCache
 from utils import (normalize_title, is_duplicate, fetch_omdb_ratings, send_overseerr_request, 
@@ -24,7 +26,7 @@ from utils import (normalize_title, is_duplicate, fetch_omdb_ratings, send_overs
                    refresh_plex_cache, get_plex_cache, get_lock_status, is_system_locked,
                    write_scanner_log, read_scanner_log, prefetch_keywords_parallel,
                    item_matches_keywords, RESULTS_CACHE, get_session_filters, write_log,
-                   check_for_updates, handle_lucky_mode, run_alias_scan, reset_stuck_locks)
+                   check_for_updates, handle_lucky_mode, run_alias_scan, reset_stuck_locks, prefetch_tv_states_parallel)
 from presets import PLAYLIST_PRESETS
 
 # ==================================================================================
@@ -38,11 +40,48 @@ UPDATE_CACHE = {
     'last_check': 0
 }
 
+def get_persistent_key():
+    """
+    Returns a secure key that persists across restarts.
+    Priority:
+    1. Docker Environment Variable (for advanced users)
+    2. A file stored in /config (auto-generated)
+    3. Random fallback (if filesystem is read-only)
+    """
+    # 1. Check Environment
+    env_key = os.environ.get('SECRET_KEY')
+    if env_key: 
+        return env_key
+    
+    # 2. Check/Create File
+    key_path = '/config/secret.key'
+    try:
+        if os.path.exists(key_path):
+            with open(key_path, 'r') as f:
+                return f.read().strip()
+        else:
+            # Generate new key and save it
+            new_key = secrets.token_hex(32)
+            with open(key_path, 'w') as f:
+                f.write(new_key)
+            return new_key
+    except:
+        # 3. Fallback (If permissions fail)
+        return secrets.token_hex(32)
+
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', secrets.token_hex(32))
+app.config['SECRET_KEY'] = get_persistent_key()
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////config/seekandwatch.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 csrf = CSRFProtect(app)
+
+# This protects the app from brute force and denial of service attacks.
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["36000 per day", "1500 per hour"], 
+    storage_uri="memory://"
+)
 
 # Initialize Scheduler
 scheduler = APScheduler()
@@ -100,11 +139,16 @@ def run_migrations():
                     conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN scanner_log_size INTEGER DEFAULT 10"))
                 if 'keyword_cache_size' not in settings_columns:
                     conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN keyword_cache_size INTEGER DEFAULT 2000"))
+                
+                # --- NEW ADDITION HERE ---
+                if 'schedule_time' not in settings_columns:
+                     print("--- [Migration] Adding 'schedule_time' column ---")
+                     conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN schedule_time VARCHAR(10) DEFAULT '04:00'"))
                     
         except Exception as e:
             print(f"Migration Warning: {e}")
 
-        # 3. AUTO-FIX: FIRST USER ADMIN (Raw SQL Method)
+        # 3. FIRST USER ADMIN (Raw SQL Method)
         # This guarantees the fix works even if the ORM model isn't refreshed yet.
         try:
             with db.engine.connect() as conn:
@@ -163,42 +207,51 @@ def index():
     return redirect(url_for('login'))
 
 @app.route('/login', methods=['GET', 'POST'])
+@limiter.limit("5 per minute") # Strict limit for login
 def login():
-    if current_user.is_authenticated:
-        return redirect(url_for('dashboard'))
-        
     if request.method == 'POST':
-        u = User.query.filter_by(username=request.form['username']).first()
-        if u and check_password_hash(u.password_hash, request.form['password']):
-            login_user(u)
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        user = User.query.filter_by(username=username).first()
+        
+        if user and check_password_hash(user.password_hash, password):
+            login_user(user)
             return redirect(url_for('dashboard'))
-        flash('Invalid credentials', 'error')
-        
-    return render_template('login.html', is_register=False)
+        else:
+            flash('Invalid credentials')
+            
+    return render_template('login.html')
 
-@app.route('/register', methods=['POST'])
+@app.route('/register', methods=['GET', 'POST'])
+@limiter.limit("5 per hour") # Very strict limit for creating accounts
 def register():
-    username = request.form['username']
-    password = request.form['password']
-    
-    if User.query.filter_by(username=username).first():
-        flash('Username taken', 'error')
-        return redirect(url_for('login'))
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
         
-    # Create User
-    hashed = generate_password_hash(password, method='pbkdf2:sha256')
-    new_user = User(username=username, password_hash=hashed)
-    db.session.add(new_user)
-    db.session.commit()
+        if User.query.filter_by(username=username).first():
+            flash('Username already exists')
+        else:
+            hashed_pw = generate_password_hash(password, method='pbkdf2:sha256')
+            new_user = User(username=username, password_hash=hashed_pw)
+            
+            # Auto-Admin Logic (First user is King)
+            if not User.query.first():
+                new_user.is_admin = True
+                
+            db.session.add(new_user)
+            db.session.commit()
+            
+            # Create default settings for the new user
+            db.session.add(Settings(user_id=new_user.id))
+            db.session.commit()
+            
+            login_user(new_user)
+            return redirect(url_for('dashboard'))
+            
+    return render_template('login.html', register=True)
     
-    # Create Default Settings
-    s = Settings(user_id=new_user.id, last_checked=datetime.datetime.now())
-    db.session.add(s)
-    db.session.commit()
-    
-    login_user(new_user)
-    return redirect(url_for('settings'))
-
 @app.route('/logout')
 @login_required
 def logout():
@@ -208,9 +261,10 @@ def logout():
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    s = Settings.query.filter_by(user_id=current_user.id).first()
+    # 1. USE GLOBAL SETTINGS (Fixes the "Blank Settings" issue for Admins)
+    s = Settings.query.order_by(Settings.id.asc()).first()
     
-    # 1. Check if cache is expired (4 hours) or empty
+    # 2. Check if cache is expired (4 hours) or empty
     now = time.time()
     if UPDATE_CACHE['version'] is None or (now - UPDATE_CACHE['last_check'] > 14400):
         try:
@@ -222,16 +276,26 @@ def dashboard():
         except:
             pass # Keep old cache if GitHub fails
 
-    # 2. Determine if we need to show banner
-    # We show it if we found a version AND it doesn't match current
+    # 3. SMARTER VERSION CHECK
     new_version = None
-    if UPDATE_CACHE['version'] and UPDATE_CACHE['version'] != VERSION:
-        new_version = UPDATE_CACHE['version']
-        
+    if UPDATE_CACHE['version']:
+        try:
+            # Split "1.1.2" -> [1, 1, 2] so we compare numbers accurately
+            local_v = [int(x) for x in VERSION.split('.')]
+            remote_v = [int(x) for x in UPDATE_CACHE['version'].split('.')]
+            
+            # Only show update if GitHub is STRICTLY NEWER than us
+            if remote_v > local_v:
+                new_version = UPDATE_CACHE['version']
+        except:
+            # Fallback for weird version strings
+            if UPDATE_CACHE['version'] != VERSION:
+                new_version = UPDATE_CACHE['version']
+       
     return render_template('dashboard.html', 
                            settings=s, 
                            new_version=new_version,
-                           has_omdb=bool(s.omdb_key))
+                           has_omdb=bool(s.omdb_key if s else False))
 
 @app.route('/review_history', methods=['POST'])
 @login_required
@@ -239,7 +303,9 @@ def review_history():
     """Gold Standard: Scans history using strict ID-to-Name mapping."""
     import sys 
     
-    s = Settings.query.filter_by(user_id=current_user.id).first()
+    # USE GLOBAL SETTINGS
+    s = Settings.query.order_by(Settings.id.asc()).first()
+    
     media_type = request.form.get('media_type', 'movie')
     manual_query = request.form.get('manual_query')
     limit = int(request.form.get('history_limit', 20))
@@ -369,7 +435,7 @@ def review_history():
                            media_type=media_type,
                            providers=providers,
                            genres=genres)
-
+                           
 @app.route('/generate', methods=['POST'])
 @login_required
 def generate():
@@ -523,7 +589,14 @@ def generate():
 
         final_list.append(item)
 
-    # 3. Save Index for "Load More"
+    while len(final_list) < 40 and idx < len(recommendations):
+        # ... (loop logic) ...
+        final_list.append(item)
+
+    if media_type == 'tv':
+        prefetch_tv_states_parallel(final_list, s.tmdb_key)
+
+    # Save Index for "Load More"
     RESULTS_CACHE[current_user.id]['next_index'] = idx
     
     # 4. SMART BACKGROUND PREFETCH (Prevents Timeouts)
@@ -564,10 +637,16 @@ def reset_alias_db():
 @app.route('/playlists')
 @login_required
 def playlists():
+    # 1. Get the Global Schedule Time
+    s = Settings.query.filter_by(user_id=current_user.id).first()
+    current_time = s.schedule_time if s and s.schedule_time else "04:00"
+
+    # 2. Get Schedules
     schedules = {}
     for sch in CollectionSchedule.query.all():
         schedules[sch.preset_key] = sch.frequency
         
+    # 3. Get Custom Presets
     custom_presets = {}
     for sch in CollectionSchedule.query.filter(CollectionSchedule.preset_key.like('custom_%')).all():
         if sch.configuration:
@@ -579,8 +658,13 @@ def playlists():
                 'icon': config.get('icon', '🛠️')
             }
 
-    return render_template('playlists.html', presets=PLAYLIST_PRESETS, schedules=schedules, custom_presets=custom_presets)
-
+    # 4. Render with the new 'schedule_time' variable
+    return render_template('playlists.html', 
+                           presets=PLAYLIST_PRESETS, 
+                           schedules=schedules, 
+                           custom_presets=custom_presets,
+                           schedule_time=current_time) # <--- THIS IS THE NEW PART
+                           
 @app.route('/settings', methods=['GET', 'POST'])
 @login_required
 def settings():
@@ -716,7 +800,7 @@ def run_scan_wrapper(app_ref):
 
 def scheduled_tasks():
     with app.app_context():
-        # 1. Prune Backups (Daily)
+        # 1. Prune Backups (Daily at 4:00 AM hardcoded for system cleanup)
         if datetime.datetime.now().hour == 4 and datetime.datetime.now().minute == 0:
             prune_backups()
             
@@ -734,20 +818,43 @@ def scheduled_tasks():
                      refresh_plex_cache(app)
 
         # 3. Collection Schedules
+        # PARSE GLOBAL RUN TIME (Default 04:00 AM)
+        try:
+            target_hour, target_minute = map(int, (s.schedule_time or "04:00").split(':'))
+        except:
+            target_hour, target_minute = 4, 0
+            
+        now = datetime.datetime.now()
+
         for sch in CollectionSchedule.query.all():
             if sch.frequency == 'manual': continue
             
-            # Logic for daily/weekly
             should_run = False
             last = sch.last_run
-            now = datetime.datetime.now()
             
-            if not last:
-                should_run = True
-            else:
-                delta = now - last
-                if sch.frequency == 'daily' and delta.days >= 1: should_run = True
-                elif sch.frequency == 'weekly' and delta.days >= 7: should_run = True
+            # --- NEW LOGIC: "Run Once Per Day After X Time" ---
+            if sch.frequency == 'daily':
+                # Rule 1: Has it run today?
+                run_today = False
+                if last and last.date() == now.date():
+                    run_today = True
+                
+                # Rule 2: Is it past the target time?
+                past_target_time = False
+                if now.hour > target_hour or (now.hour == target_hour and now.minute >= target_minute):
+                    past_target_time = True
+                
+                # Execute if we haven't run today AND it's past the scheduled time
+                if not run_today and past_target_time:
+                    should_run = True
+
+            # --- WEEKLY LOGIC ---
+            elif sch.frequency == 'weekly':
+                if not last:
+                    should_run = True
+                else:
+                    delta = now - last
+                    if delta.days >= 7: should_run = True
                 
             if should_run:
                 print(f"Scheduler: Running collection {sch.preset_key}...")
@@ -783,7 +890,7 @@ def scheduled_tasks():
             if now_ts - last >= interval_sec:
                 if not is_system_locked():
                     print("Scheduler: Starting Background Alias Scan...")
-                    # FIX: Use the wrapper to pass the context!
+                    # Use the wrapper to pass the context
                     threading.Thread(target=run_scan_wrapper, args=(app,)).start()
 
 scheduler.add_job(id='master_task', func=scheduled_tasks, trigger='interval', minutes=1)
