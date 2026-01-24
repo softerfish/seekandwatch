@@ -43,6 +43,62 @@
             background: #1a1a1a;
             z-index: 1000;
         }
+        
+        /* --- NAV ICON GROUP STYLING --- */
+        .nav-icon-group {
+            display: flex;
+            align-items: center;
+            gap: 8px; 
+            border-right: 1px solid #333; 
+            padding-right: 12px; 
+            margin-right: 12px;
+        }
+
+        /* FORCE PIXEL SIZES */
+        .nav-mini-icon {
+            font-size: 14px !important;
+            display: flex;
+            align-items: center;
+            text-decoration: none;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        
+        .version-badge {
+            color: #666;
+            font-size: 12px !important;
+            font-family: var(--bs-body-font-family);
+            border: 1px solid #333;
+            padding: 0px 5px;
+            border-radius: 3px;
+            text-decoration: none;
+            position: relative;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            background: rgba(255,255,255,0.02);
+            height: fit-content;
+            line-height: 1.2;
+            font-weight: 500;
+            margin: 0 !important;
+        }
+        .version-badge:hover {
+            color: white;
+            border-color: #555;
+            background: rgba(255,255,255,0.1);
+        }
+        .update-dot {
+            position: absolute;
+            top: -2px;
+            right: -2px;
+            width: 5px;
+            height: 5px;
+            background-color: #e74c3c;
+            border-radius: 50%;
+            display: none; 
+            box-shadow: 0 0 3px rgba(231, 76, 60, 0.8);
+        }
+
         @media (max-width: 991px) {
             .navbar-collapse {
                 padding: 15px;
@@ -51,6 +107,11 @@
                 top: 100%;
                 left: 0;
                 right: 0;
+            }
+            .nav-icon-group {
+                border-right: none;
+                margin-bottom: 10px;
+                gap: 15px; 
             }
         }
     </style>
@@ -94,21 +155,23 @@
                 
                 <div class="d-flex align-items-center">
                     <div class="nav-icon-group">
+                        
                         {% if current_user.settings.tautulli_url %}
-                            <a href="{{ url_for('stats') }}" class="text-success" title="View Server Stats">
+                            <a href="{{ url_for('stats') }}" class="text-success nav-mini-icon" title="View Server Stats">
                                 <i class="fas fa-chart-line"></i>
                             </a>
                         {% endif %}
                         
-                        {% if current_user.settings.overseerr_url %}
-                            <a href="{{ current_user.settings.overseerr_url }}" target="_blank" class="text-warning" title="Open Overseerr">
-                                <i class="fas fa-eye"></i>
-                            </a>
-                        {% endif %}
-
-                        <a href="https://youtube.com" target="_blank" class="text-danger" title="YouTube">
-                            <i class="fab fa-youtube"></i>
+                        <a href="https://github.com/softerfish/seekandwatch" target="_blank" class="text-white nav-mini-icon" title="Star on GitHub" style="gap: 4px;">
+                            <i class="fab fa-github"></i> 
+                            <span id="gh-star-count" style="font-weight: bold;"></span>
                         </a>
+
+                        <a href="https://github.com/softerfish/seekandwatch" target="_blank" class="version-badge" title="Check for updates">
+                            <span id="current-version-text">v{{ current_version|default(version)|default('0.0.0') }}</span>
+                            <div id="update-dot" class="update-dot" title="Update Available"></div>
+                        </a>
+
                     </div>
 
                     <a href="{{ url_for('logout') }}" class="btn btn-outline-danger btn-sm">
@@ -139,8 +202,7 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-	<script>
-    // Security Helper: Prevents malicious scripts in titles
+    <script>
     function escapeHtml(text) {
         if (!text) return text;
         return text
@@ -150,17 +212,66 @@
             .replace(/"/g, "&quot;")
             .replace(/'/g, "&#039;");
     }
-	const csrfToken = "{{ csrf_token() }}";
+    const csrfToken = "{{ csrf_token() }}";
 
     const originalFetch = window.fetch;
     window.fetch = function(url, options) {
-        // Only add token to POST, PUT, DELETE, PATCH requests
         if (options && options.method && ['POST', 'PUT', 'DELETE', 'PATCH'].includes(options.method.toUpperCase())) {
             options.headers = options.headers || {};
             options.headers['X-CSRFToken'] = csrfToken;
         }
         return originalFetch(url, options);
     };
+
+    document.addEventListener("DOMContentLoaded", function() {
+        
+        // 1. Fetch Stars
+        const starCount = document.getElementById('gh-star-count');
+        if (starCount) {
+            fetch('https://api.github.com/repos/softerfish/seekandwatch')
+            .then(res => res.ok ? res.json() : null)
+            .then(data => {
+                if(data) starCount.innerText = data.stargazers_count;
+            })
+            .catch(e => console.error("Star fetch failed", e));
+        }
+
+        // 2. Check for Updates
+        // Get local version from Flask variable
+        const localVersionStr = "{{ current_version|default(version)|default('0.0.0') }}"; 
+        const localVersion = localVersionStr.replace(/^v/, '');
+        
+        console.log("Local Version:", localVersion); // DEBUG
+
+        const updateDot = document.getElementById('update-dot');
+        const badge = document.querySelector('.version-badge');
+
+        if (updateDot && localVersion !== '0.0.0') {
+            fetch('https://api.github.com/repos/softerfish/seekandwatch/releases/latest')
+            .then(res => {
+                if (!res.ok) {
+                    console.warn("GitHub API Rate Limit might be exceeded.");
+                    return null;
+                }
+                return res.json();
+            })
+            .then(data => {
+                if(data && data.tag_name) {
+                    const remoteVersion = data.tag_name.replace(/^v/, '');
+                    console.log("Remote Version:", remoteVersion); // DEBUG
+                    
+                    if (remoteVersion !== localVersion) {
+                        console.log("Update Available! Showing dot."); // DEBUG
+                        updateDot.style.display = 'block';
+                        badge.title = `Update available: v${remoteVersion}`;
+                        badge.style.borderColor = '#e74c3c'; 
+                        badge.style.color = '#ccc';
+                    }
+                }
+            })
+            .catch(e => console.error("Update check failed", e));
+        }
+    });
 </script>
 
 </body>

@@ -28,6 +28,67 @@
         margin-bottom: 25px;
     }
     @keyframes nuke-spin { to { transform: rotate(360deg); } }
+	
+	/* --- TRENDING WIDGET STYLES --- */
+    .trending-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    
+    .trending-tabs { display: flex; gap: 5px; background: var(--input-bg); padding: 4px; border-radius: 8px; border: 1px solid var(--border-color); }
+    .t-tab { 
+        background: transparent; border: none; color: #888; padding: 6px 15px; cursor: pointer; 
+        font-weight: bold; border-radius: 6px; transition: 0.2s; font-size: 0.85em; text-transform: uppercase;
+    }
+    .t-tab:hover { color: var(--text-color); background: rgba(128,128,128,0.1); }
+    .t-tab.active { background: var(--accent-color); color: #000; }
+    
+    .trending-grid { 
+        display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 15px; 
+        min-height: 230px; 
+    }
+    
+    .t-card { 
+        background: var(--card-bg); border: 1px solid var(--border-color);
+        border-radius: 8px; overflow: hidden; position: relative; 
+        transition: transform 0.2s, border-color 0.2s; cursor: pointer; 
+    }
+    .t-card:hover { transform: translateY(-5px); border-color: var(--accent-color); }
+    .t-poster { width: 100%; aspect-ratio: 2/3; object-fit: cover; display: block; }
+    .t-rank { 
+        position: absolute; top: 0; left: 0; background: var(--accent-color); color: black; 
+        font-weight: 900; padding: 4px 10px; border-bottom-right-radius: 8px; font-size: 0.85em; z-index: 2;
+        box-shadow: 2px 2px 5px rgba(0,0,0,0.5);
+    }
+    .t-info { 
+        padding: 10px; font-size: 0.9em; text-align: center; color: var(--text-color); 
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        background: var(--input-bg); border-top: 1px solid var(--border-color);
+    }
+    
+    .btn-find-similar {
+        background: transparent; border: 1px solid var(--accent-color); color: var(--accent-color);
+        padding: 6px 15px; border-radius: 20px; font-weight: bold; cursor: pointer;
+        font-size: 0.85em; display: flex; align-items: center; gap: 6px; transition: 0.2s;
+    }
+    .btn-find-similar:hover { background: var(--accent-color); color: black; }
+
+    .tautulli-banner {
+        background: rgba(231, 76, 60, 0.1); 
+        border-left: 4px solid #e74c3c; 
+        padding: 20px; 
+        border-radius: 8px; 
+        margin-bottom: 30px; 
+        
+        /* Layout Changes for New Line */
+        display: flex; 
+        flex-direction: column;  /* Stacks items vertically */
+        align-items: center;     /* Centers items horizontally */
+        gap: 15px;               /* Adds space between text and button */
+        text-align: center;      /* Centers the text */
+        
+        border: 1px solid rgba(231, 76, 60, 0.2);
+        max-width: 950px; 
+        margin-left: auto; 
+        margin-right: auto;
+    }
 </style>
 
 <div id="nuclear-loader">
@@ -35,13 +96,6 @@
     <h2 style="color: white; font-weight: 800; margin: 0; font-size: 2em;">Running Scan...</h2>
     <p style="color: #ccc; margin-top: 10px; font-size: 1.1em;">Analyzing your library history.</p>
 </div>
-
-{% if new_version %}
-<div class="update-banner">
-    🚀 Update Available! Version {{ new_version }} is released.
-    <a href="https://github.com/softerfish/seekandwatch" target="_blank" style="color: black; text-decoration: underline; margin-left: 10px;">View on GitHub</a>
-</div>
-{% endif %}
 
 <div style="text-align: center; padding-top: 20px;">
 
@@ -54,6 +108,42 @@
             and allow them to complete a full cycle.
         </span>
     </div>
+
+<div class="section-title" style="margin-top: 30px;">
+        <i class="fas fa-fire"></i> Trending on Server
+    </div>
+    {% if not (settings.tautulli_url and settings.tautulli_api_key) %}
+        <div class="tautulli-banner">
+            <div>
+                <strong style="color: #e74c3c; font-size: 1.1em; display:block; margin-bottom:5px;">📊 Connect Tautulli</strong>
+                <span style="color: #ccc; font-size: 0.9em; line-height: 1.4;">
+                    Link your Tautulli API in Settings to see what's popular on your server and generate recommendations based on what your friends are watching!
+                </span>
+            </div>
+            <a href="{{ url_for('settings') }}" class="btn-secondary" style="font-size:0.9em; white-space:nowrap; padding: 8px 15px;">Go to Settings ↗</a>
+        </div>
+    {% else %}
+        <div class="card" style="margin-bottom: 40px; max-width: 950px; margin-left: auto; margin-right: auto;">
+            <div class="trending-header">
+                <div style="display:flex; align-items:center; gap:15px;">
+                    <h3 style="margin:0; font-size:1.2em;">Top 5</h3>
+                    <div class="trending-tabs">
+                        <button class="t-tab active" onclick="loadTrending('movie')" id="tab-movie">Movies</button>
+                        <button class="t-tab" onclick="loadTrending('tv')" id="tab-tv">TV Shows</button>
+                    </div>
+                </div>
+                <button class="btn-find-similar" onclick="findSimilarToTrending()" title="Get recommendations based on these items">
+                    <span>🔍 Find Similar</span>
+                </button>
+            </div>
+            
+            <div id="trending-grid" class="trending-grid">
+                <div style="grid-column:1/-1; text-align:center; padding:50px; color:#666;">
+                    Loading stats from Tautulli...
+                </div>
+            </div>
+        </div>
+    {% endif %}
 
     <div class="card discovery-card">
         <h3 style="margin-top: 0; color: var(--accent-color); text-align: center;">🎬 Smart Discovery</h3>
@@ -210,6 +300,58 @@
         if (!searchInput.contains(e.target) && !resultsDiv.contains(e.target)) { 
             resultsDiv.style.display = 'none'; 
         } 
+    });
+
+let currentTrendingType = 'movie';
+
+    function loadTrending(type) {
+        currentTrendingType = type;
+        
+        // Update Tabs UI
+        const tabs = document.querySelectorAll('.t-tab');
+        if(tabs.length > 0) {
+            tabs.forEach(b => b.classList.remove('active'));
+            const activeTab = document.getElementById('tab-' + type);
+            if(activeTab) activeTab.classList.add('active');
+        }
+        
+        // Safety Check: If widget isn't on screen (API missing), STOP here.
+        const grid = document.getElementById('trending-grid');
+        if(!grid) return; 
+
+        grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:50px; color:#666;">Loading Tautulli stats...</div>';
+        
+        fetch('/get_local_trending?type=' + type)
+        .then(r => r.json())
+        .then(data => {
+            if(data.status === 'success' && data.items.length > 0) {
+                let html = '';
+                data.items.forEach((item, idx) => {
+                    const poster = item.poster_path ? 'https://image.tmdb.org/t/p/w200' + item.poster_path : 'https://via.placeholder.com/200x300?text=No+Poster';
+                    html += `
+                    <div class="t-card" title="${item.title}" onclick="selectItem('${item.title.replace(/'/g, "\\'")}')">
+                        <div class="t-rank">#${idx + 1}</div>
+                        <img src="${poster}" class="t-poster">
+                        <div class="t-info">${item.title}</div>
+                    </div>`;
+                });
+                grid.innerHTML = html;
+            } else {
+                grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:50px; color:#777;">No trending data found.</div>';
+            }
+        })
+        .catch(err => { console.error(err); grid.innerHTML = 'Error loading stats.'; });
+    }
+
+    function findSimilarToTrending() {
+        window.location.href = '/recommend_from_trending?type=' + currentTrendingType;
+    }
+
+    // Initialize ONLY if grid exists
+    document.addEventListener('DOMContentLoaded', () => { 
+        if(document.getElementById('trending-grid')) {
+            loadTrending('movie');
+        }
     });
 </script>
 {% endblock %}

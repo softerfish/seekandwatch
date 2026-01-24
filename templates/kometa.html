@@ -163,7 +163,7 @@
         <p style="margin-top: 12px; color: #ccc; font-size: 0.9em; margin-bottom: 0;">
             <strong>💡 Power Tip:</strong> Use the gear icon to filter huge lists.<br>
             <em>Example:</em> Enable <strong>Streaming Services</strong>, click the ⚙️ Gear, and add <code>Netflix, Disney+</code> to the <strong>Include</strong> field. Instead of generating 100+ collections for every service under the sun, Kometa will now only create two! <br><br>
-			<strong>Remember</strong> to click Save Progress often
+            <strong>Remember</strong> to click Save Progress often
         </p>
     </div>
 
@@ -413,48 +413,48 @@
 
                     <div class="k-sub-header">🏆 Awards/Charts (Overlay)</div>
                     <div class="k-check-grid">
-                        <div class="k-check-item type-all"><label title="Adds ribbons for IMDb Top 250, Rotten Tomatoes Fresh, Oscars, etc."><input type="checkbox" class="t-opt ovl" value="ribbon" onchange="gen()"> Ribbon</label></div>
+                        <div class="k-check-item type-all"><label title="Adds ribbons for IMDb Top 250, Rotten Tomatoes Fresh, Oscars, etc."><input type="checkbox" class="t-opt ovl" value="ribbon" onchange="gen()"> Ribbon</label><button class="btn-gear" onclick="editVars('ribbon', event)">⚙️</button></div>
                     </div>
 
                     <div class="k-sub-header">📺 Content (Overlay)</div>
                     <div class="k-check-grid">
-                        <div class="k-check-item type-tv hidden"><label title="Overlays season/episode counts on TV posters."><input type="checkbox" class="t-opt ovl" value="episode_info" onchange="gen()"> Episode Info</label></div>
-                        <div class="k-check-item type-movie"><label title="Overlays a badge if the movie has a post-credit scene."><input type="checkbox" class="t-opt ovl" value="mediastinger" onchange="gen()"> Mediastinger</label></div>
-                        <div class="k-check-item type-tv hidden"><label title="Overlays 'Airing', 'Ended', or 'Canceled' status on show posters."><input type="checkbox" class="t-opt ovl" value="status" onchange="gen()"> Status</label></div>
+                        <div class="k-check-item type-tv hidden"><label title="Overlays season/episode counts on TV posters."><input type="checkbox" class="t-opt ovl" value="episode_info" onchange="gen()"> Episode Info</label><button class="btn-gear" onclick="editVars('episode_info', event)">⚙️</button></div>
+                        <div class="k-check-item type-movie"><label title="Overlays a badge if the movie has a post-credit scene."><input type="checkbox" class="t-opt ovl" value="mediastinger" onchange="gen()"> Mediastinger</label><button class="btn-gear" onclick="editVars('mediastinger', event)">⚙️</button></div>
+                        <div class="k-check-item type-tv hidden"><label title="Overlays 'Airing', 'Ended', or 'Canceled' status on show posters."><input type="checkbox" class="t-opt ovl" value="status" onchange="gen()"> Status</label><button class="btn-gear" onclick="editVars('status', event)">⚙️</button></div>
                     </div>
 
                     <div class="k-sub-header">🔞 Content Ratings (Overlay)</div>
                     <div class="k-check-grid">
-                        <div class="k-check-item type-all"><label title="Overlay Australian classification ratings (G, PG, M, etc.)."><input type="checkbox" class="t-opt ovl" value="content_rating_au" onchange="gen()"> AU Content Ratings</label></div>
-                        <div class="k-check-item type-all"><label title="Overlay Common Sense Media age-appropriate ratings."><input type="checkbox" class="t-opt ovl" value="commonsense" onchange="gen()"> Common Sense Age Rating</label></div>
-                        <div class="k-check-item type-all"><label title="Overlay German FSK classification ratings."><input type="checkbox" class="t-opt ovl" value="content_rating_de" onchange="gen()"> DE Content Ratings</label></div>
-                        <div class="k-check-item type-all"><label title="Overlay New Zealand classification ratings."><input type="checkbox" class="t-opt ovl" value="content_rating_nz" onchange="gen()"> NZ Content Ratings</label></div>
-                        <div class="k-check-item type-all"><label title="Overlay UK BBFC classification ratings."><input type="checkbox" class="t-opt ovl" value="content_rating_uk" onchange="gen()"> UK Content Ratings</label></div>
-                        <div class="k-check-item type-movie"><label title="Overlay US MPAA film ratings (G, PG, R, etc.)."><input type="checkbox" class="t-opt ovl" value="content_rating_us_movie" onchange="gen()"> US Content Ratings (Movie)</label></div>
-                        <div class="k-check-item type-tv hidden"><label title="Overlay US TV Parental Guidelines (TV-14, TV-MA, etc.)."><input type="checkbox" class="t-opt ovl" value="content_rating_us_show" onchange="gen()"> US Content Ratings (Show)</label></div>
+                        <div class="k-check-item type-all"><label title="Overlay Australian classification ratings (G, PG, M, etc.)."><input type="checkbox" class="t-opt ovl" value="content_rating_au" onchange="gen()"> AU Content Ratings</label><button class="btn-gear" onclick="editVars('content_rating_au', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay Common Sense Media age-appropriate ratings."><input type="checkbox" class="t-opt ovl" value="commonsense" onchange="gen()"> Common Sense Age Rating</label><button class="btn-gear" onclick="editVars('commonsense', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay German FSK classification ratings."><input type="checkbox" class="t-opt ovl" value="content_rating_de" onchange="gen()"> DE Content Ratings</label><button class="btn-gear" onclick="editVars('content_rating_de', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay New Zealand classification ratings."><input type="checkbox" class="t-opt ovl" value="content_rating_nz" onchange="gen()"> NZ Content Ratings</label><button class="btn-gear" onclick="editVars('content_rating_nz', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay UK BBFC classification ratings."><input type="checkbox" class="t-opt ovl" value="content_rating_uk" onchange="gen()"> UK Content Ratings</label><button class="btn-gear" onclick="editVars('content_rating_uk', event)">⚙️</button></div>
+                        <div class="k-check-item type-movie"><label title="Overlay US MPAA film ratings (G, PG, R, etc.)."><input type="checkbox" class="t-opt ovl" value="content_rating_us_movie" onchange="gen()"> US Content Ratings (Movie)</label><button class="btn-gear" onclick="editVars('content_rating_us_movie', event)">⚙️</button></div>
+                        <div class="k-check-item type-tv hidden"><label title="Overlay US TV Parental Guidelines (TV-14, TV-MA, etc.)."><input type="checkbox" class="t-opt ovl" value="content_rating_us_show" onchange="gen()"> US Content Ratings (Show)</label><button class="btn-gear" onclick="editVars('content_rating_us_show', event)">⚙️</button></div>
                     </div>
 
                     <div class="k-sub-header">💿 Media (Overlay)</div>
                     <div class="k-check-grid">
-                        <div class="k-check-item type-all"><label title="Overlay the video aspect ratio (e.g., 2.35:1)."><input type="checkbox" class="t-opt ovl" value="aspect" onchange="gen()"> Aspect Ratio</label></div>
-                        <div class="k-check-item type-all"><label title="Overlay badges for audio codecs (Atmos, DTS-X, etc.)."><input type="checkbox" class="t-opt ovl" value="audio_codec" onchange="gen()"> Audio Codec</label></div>
-                        <div class="k-check-item type-all"><label title="Overlay the number of audio/subtitle languages available."><input type="checkbox" class="t-opt ovl" value="language_count" onchange="gen()"> Audio/Subtitle Language Count</label></div>
-                        <div class="k-check-item type-all"><label title="Overlay flags indicating available audio/subtitle languages."><input type="checkbox" class="t-opt ovl" value="languages" onchange="gen()"> Audio/Subtitle Language Flags</label></div>
-                        <div class="k-check-item type-all"><label title="Overlay resolution (4K, 1080p) and edition info."><input type="checkbox" class="t-opt ovl" value="resolution" onchange="gen()"> Resolution/Editions</label></div>
-                        <div class="k-check-item type-all"><label title="Overlay the content duration on the poster."><input type="checkbox" class="t-opt ovl" value="runtimes" onchange="gen()"> Runtimes</label></div>
-                        <div class="k-check-item type-all"><label title="Overlay a badge if multiple versions of the item exist."><input type="checkbox" class="t-opt ovl" value="versions" onchange="gen()"> Versions</label></div>
+                        <div class="k-check-item type-all"><label title="Overlay the video aspect ratio (e.g., 2.35:1)."><input type="checkbox" class="t-opt ovl" value="aspect" onchange="gen()"> Aspect Ratio</label><button class="btn-gear" onclick="editVars('aspect', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay badges for audio codecs (Atmos, DTS-X, etc.)."><input type="checkbox" class="t-opt ovl" value="audio_codec" onchange="gen()"> Audio Codec</label><button class="btn-gear" onclick="editVars('audio_codec', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay the number of audio/subtitle languages available."><input type="checkbox" class="t-opt ovl" value="language_count" onchange="gen()"> Audio/Subtitle Language Count</label><button class="btn-gear" onclick="editVars('language_count', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay flags indicating available audio/subtitle languages."><input type="checkbox" class="t-opt ovl" value="languages" onchange="gen()"> Audio/Subtitle Language Flags</label><button class="btn-gear" onclick="editVars('languages', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay resolution (4K, 1080p) and edition info."><input type="checkbox" class="t-opt ovl" value="resolution" onchange="gen()"> Resolution/Editions</label><button class="btn-gear" onclick="editVars('resolution', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay the content duration on the poster."><input type="checkbox" class="t-opt ovl" value="runtimes" onchange="gen()"> Runtimes</label><button class="btn-gear" onclick="editVars('runtimes', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay a badge if multiple versions of the item exist."><input type="checkbox" class="t-opt ovl" value="versions" onchange="gen()"> Versions</label><button class="btn-gear" onclick="editVars('versions', event)">⚙️</button></div>
                     </div>
 
                     <div class="k-sub-header">🏭 Production (Overlay)</div>
                     <div class="k-check-grid">
-                        <div class="k-check-item type-tv hidden"><label title="Overlay the television network logo."><input type="checkbox" class="t-opt ovl" value="network" onchange="gen()"> Network</label></div>
-                        <div class="k-check-item type-all"><label title="Overlay the streaming service logo."><input type="checkbox" class="t-opt ovl" value="streaming" onchange="gen()"> Streaming</label></div>
-                        <div class="k-check-item type-all"><label title="Overlay the production studio logo."><input type="checkbox" class="t-opt ovl" value="studio" onchange="gen()"> Studio</label></div>
+                        <div class="k-check-item type-tv hidden"><label title="Overlay the television network logo."><input type="checkbox" class="t-opt ovl" value="network" onchange="gen()"> Network</label><button class="btn-gear" onclick="editVars('network', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay the streaming service logo."><input type="checkbox" class="t-opt ovl" value="streaming" onchange="gen()"> Streaming</label><button class="btn-gear" onclick="editVars('streaming', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay the production studio logo."><input type="checkbox" class="t-opt ovl" value="studio" onchange="gen()"> Studio</label><button class="btn-gear" onclick="editVars('studio', event)">⚙️</button></div>
                     </div>
 
                     <div class="k-sub-header">🛠️ Utility (Overlay)</div>
                     <div class="k-check-grid">
-                        <div class="k-check-item type-all"><label title="Overlay a badge indicating if the item can Direct Play."><input type="checkbox" class="t-opt ovl" value="direct_play" onchange="gen()"> Direct Play</label></div>
+                        <div class="k-check-item type-all"><label title="Overlay a badge indicating if the item can Direct Play."><input type="checkbox" class="t-opt ovl" value="direct_play" onchange="gen()"> Direct Play</label><button class="btn-gear" onclick="editVars('direct_play', event)">⚙️</button></div>
                     </div>
 
                     <button class="btn-add" onclick="addLibrary()" id="btn-action" disabled>➕ Add/Update Library</button>
@@ -485,33 +485,33 @@
             <span style="color:#e74c3c;">⚠️ Note: Not all variables work with every collection type. Check the wiki!</span>
         </p>
 
-        <div class="k-sub-header" style="margin-top:5px; border-bottom:none;">⚡ Quick Settings</div>
-        <div class="quick-settings">
-            <div class="qs-col">
+        <div class="k-sub-header" id="qs-header" style="margin-top:5px; border-bottom:none;">⚡ Quick Settings</div>
+        <div class="quick-settings" id="qs-container">
+            <div class="qs-col" id="wrapper-qs-limit">
                 <label>Limit (Items) <span class="info-icon" title="Maximum number of items to keep in this collection.">ℹ️</span></label>
                 <input type="number" id="qs-limit" placeholder="Unlimited">
             </div>
-            <div class="qs-col">
+            <div class="qs-col" id="wrapper-qs-sort">
                 <label>Sort By <span class="info-icon" title="How the collection items are ordered in Plex.">ℹ️</span></label>
                 <select id="qs-sort">
-                    <option value="">Default</option>
-                    <option value="release.desc">Release Date (Newest)</option>
-                    <option value="popularity.desc">Popularity</option>
-                    <option value="critic_rating.desc">Critic Rating</option>
-                    <option value="audience_rating.desc">Audience Rating</option>
+                    <option value=""></option>
+                    <option value="release">Release Date (Newest)</option>
+                    <option value="popularity">Popularity</option>
+                    <option value="critic_rating">Critic Rating</option>
+                    <option value="audience_rating">Audience Rating</option>
                     <option value="random">Random</option>
                 </select>
             </div>
-            <div class="qs-col">
+            <div class="qs-col" id="wrapper-qs-coll-mode">
                 <label>Collection Mode <span class="info-icon" title="How the collection appears in the library (e.g. Hide items from main library).">ℹ️</span></label>
                 <select id="qs-coll-mode">
-                    <option value="">Default</option>
+                    <option value=""></option>
                     <option value="hide">Hide Collection</option>
                     <option value="hide_items">Hide Items</option>
                     <option value="show_items">Show Items</option>
                 </select>
             </div>
-            <div class="qs-col">
+            <div class="qs-col" id="wrapper-qs-sync-mode">
                 <label>Sync Mode <span class="info-icon" title="Sync (remove missing items) or Append (only add new items).">ℹ️</span></label>
                 <select id="qs-sync-mode">
                     <option value="">Inherit Global Setting</option>
@@ -519,13 +519,51 @@
                     <option value="append">Append (Add Only)</option>
                 </select>
             </div>
-            <div class="qs-col">
+            <div class="qs-col" id="wrapper-qs-include">
                 <label>Include (Items) <span class="info-icon" title="Enter items separated by commas. We will format them as a YAML list automatically.">ℹ️</span></label>
                 <input type="text" id="qs-include" placeholder="e.g. Star Wars, Matrix">
             </div>
-            <div class="qs-col">
+            <div class="qs-col" id="wrapper-qs-exclude">
                 <label>Exclude (Items) <span class="info-icon" title="Enter items separated by commas. We will format them as a YAML list automatically.">ℹ️</span></label>
                 <input type="text" id="qs-exclude" placeholder="e.g. The Room, Cats">
+            </div>
+
+            <div class="qs-col" id="wrapper-qs-builder-level" style="display:none;">
+                <label>Builder Level</label>
+                <select id="qs-builder-level">
+                    <option value=""></option>
+                    <option value="season">Season</option>
+                    <option value="episode">Episode</option>
+                </select>
+            </div>
+            <div class="qs-col" id="wrapper-qs-style" style="display:none;">
+                <label>Style</label>
+                <select id="qs-style">
+                    <option value=""></option>
+                    <option value="compact">Compact</option>
+                    <option value="standard">Standard</option>
+                </select>
+            </div>
+            <div class="qs-col" id="wrapper-qs-minimum" style="display:none;">
+                <label>Minimum</label>
+                <input type="number" id="qs-minimum">
+            </div>
+            <div class="qs-col" id="wrapper-qs-use-subtitles" style="display:none;">
+                <label>Use Subtitles</label>
+                <select id="qs-use-subtitles">
+                    <option value=""></option>
+                    <option value="true">True</option>
+                </select>
+            </div>
+            <div class="qs-col" id="wrapper-qs-addon-position" style="display:none;">
+                <label>Addon Position</label>
+                <select id="qs-addon-position">
+                    <option value=""></option>
+                    <option value="left">Left</option>
+                    <option value="right">Right</option>
+                    <option value="top">Top</option>
+                    <option value="bottom">Bottom</option>
+                </select>
             </div>
         </div>
 
@@ -559,6 +597,21 @@ if (Array.isArray(savedConfig)) {
     globalSettings = savedConfig.settings || {};
 }
 
+// --- OVERLAY MAPPINGS ---
+// Defines which Quick Settings appear for specific overlays
+const overlaySettingsMap = {
+    'content_rating_au': ['builder_level', 'addon_position'],
+    'commonsense': ['builder_level', 'addon_position'],
+    'content_rating_de': ['builder_level', 'addon_position'],
+    'content_rating_nz': ['builder_level', 'addon_position'],
+    'content_rating_uk': ['builder_level', 'addon_position'],
+    'content_rating_us_movie': ['addon_position'],
+    'content_rating_us_show': ['builder_level', 'addon_position'],
+    'aspect': [],
+    'audio_codec': ['builder_level', 'style'],
+    'language_count': ['builder_level', 'minimum', 'style']
+};
+
 // --- TABS ---
 function switchTab(t) {
     document.querySelectorAll('.k-section').forEach(el => el.classList.remove('active'));
@@ -586,10 +639,23 @@ function toggleOptions() {
 let currentEditKey = null;
 
 function editVars(key, e) {
-    if(e) e.stopPropagation(); // Prevent checking the box when clicking gear
+    if(e) e.stopPropagation(); 
     
-    // Auto-check the box if they open settings
-    const checkbox = document.querySelector(`.t-opt[value="${key}"]`);
+    // Context-aware lookup
+    // We use the clicked button (e.target) to find the exact checkbox it belongs to.
+    // This fixes the issue where duplicates (Collection vs Overlay) confused the selector.
+    let checkbox = null;
+    if (e && e.target) {
+        const parent = e.target.closest('.k-check-item');
+        if (parent) checkbox = parent.querySelector('input[type="checkbox"]');
+    }
+
+    // Fallback to querySelector if event context fails (rare)
+    if (!checkbox) {
+        checkbox = document.querySelector(`.t-opt[value="${key}"]`);
+    }
+
+    // Auto-check the box if it wasn't checked
     if(checkbox && !checkbox.checked) {
         checkbox.checked = true;
         gen();
@@ -599,26 +665,72 @@ function editVars(key, e) {
     document.getElementById('modal-title').innerText = key;
     document.getElementById('var-modal').style.display = 'flex';
     
+    // DETECT OVERLAY VS COLLECTION
+    // Now this correctly checks the SPECIFIC checkbox next to the gear you clicked
+    const isOverlay = checkbox && checkbox.classList.contains('ovl');
+    
+    const qsHeader = document.getElementById('qs-header');
+    const qsContainer = document.getElementById('qs-container');
+
+    // 1. Reset: Hide ALL Quick Settings fields first
+    document.querySelectorAll('.qs-col').forEach(el => el.style.display = 'none');
+    qsHeader.style.display = 'block';
+    qsContainer.style.display = 'grid';
+
+    if (isOverlay) {
+        // If it's an overlay, look up allowed fields in the map
+        const allowedFields = overlaySettingsMap[key];
+        
+        if (allowedFields && allowedFields.length > 0) {
+            allowedFields.forEach(field => {
+                // Convert underscores to dashes (e.g. builder_level -> wrapper-qs-builder-level)
+                const id = 'wrapper-qs-' + field.replace(/_/g, '-');
+                const el = document.getElementById(id);
+                if(el) el.style.display = 'block';
+            });
+        } else {
+            // No specific fields mapped? Hide the Quick Settings section entirely
+            qsHeader.style.display = 'none';
+            qsContainer.style.display = 'none';
+        }
+    } else {
+        // It's a Collection: Show standard collection fields
+        ['limit', 'sort', 'coll-mode', 'sync-mode', 'include', 'exclude'].forEach(f => {
+             const el = document.getElementById('wrapper-qs-' + f);
+             if(el) el.style.display = 'block';
+        });
+    }
+    
     // Load existing vars or empty
     const vars = templateVars[key] || {};
     
-    // 1. Populate Quick Settings
-    document.getElementById('qs-limit').value = vars.limit || '';
-    document.getElementById('qs-sort').value = vars.sort_by || '';
-    document.getElementById('qs-coll-mode').value = vars.collection_mode || '';
-    document.getElementById('qs-sync-mode').value = vars.sync_mode || '';
-    document.getElementById('qs-include').value = vars.include || '';
-    document.getElementById('qs-exclude').value = vars.exclude || '';
+    // 2. Populate Values
+    const setVal = (id, val) => { if(document.getElementById(id)) document.getElementById(id).value = val || ''; };
+    setVal('qs-limit', vars.limit);
+    setVal('qs-sort', vars.sort_by);
+    setVal('qs-coll-mode', vars.collection_mode);
+    setVal('qs-sync-mode', vars.sync_mode);
+    setVal('qs-include', vars.include);
+    setVal('qs-exclude', vars.exclude);
+    setVal('qs-builder-level', vars.builder_level);
+    setVal('qs-addon-position', vars.addon_position);
+    setVal('qs-style', vars.style);
+    setVal('qs-minimum', vars.minimum);
+    setVal('qs-use-subtitles', vars.use_subtitles);
 
-    // 2. Populate Custom Vars (Excluding Quick Settings keys)
+    // 3. Populate Custom Vars
     const container = document.getElementById('var-container');
     container.innerHTML = '';
     
-    const excludedKeys = ['limit', 'sort_by', 'collection_mode', 'sync_mode', 'include', 'exclude'];
+    const excludedKeys = [
+        'limit', 'sort_by', 'collection_mode', 'sync_mode', 'include', 'exclude', 
+        'builder_level', 'addon_position', 'style', 'minimum', 'use_subtitles'
+    ];
+    
     const customEntries = Object.entries(vars).filter(([k, v]) => !excludedKeys.includes(k));
 
     if (customEntries.length === 0) {
-        addVarRow(); // Add one empty row by default
+        addVarRow(); 
     } else {
         customEntries.forEach(([k, v]) => addVarRow(k, v));
     }
@@ -638,20 +750,26 @@ function addVarRow(k = '', v = '') {
 function saveModal() {
     let data = {};
 
-    // 1. Capture Quick Settings
-    const lim = document.getElementById('qs-limit').value;
-    const sort = document.getElementById('qs-sort').value;
-    const cmode = document.getElementById('qs-coll-mode').value;
-    const smode = document.getElementById('qs-sync-mode').value;
-    const inc = document.getElementById('qs-include').value;
-    const exc = document.getElementById('qs-exclude').value;
+    // 1. Capture Quick Settings (Only if visible to avoid capturing hidden values)
+    const captureIfVisible = (id, key, isNum=false) => {
+        const el = document.getElementById(id);
+        // Check if element exists, parent is visible, and value is not empty
+        if(el && el.parentElement.style.display !== 'none' && el.value) {
+            data[key] = isNum ? Number(el.value) : el.value;
+        }
+    };
 
-    if(lim) data.limit = Number(lim);
-    if(sort) data.sort_by = sort;
-    if(cmode) data.collection_mode = cmode;
-    if(smode) data.sync_mode = smode;
-    if(inc) data.include = inc;
-    if(exc) data.exclude = exc;
+    captureIfVisible('qs-limit', 'limit', true);
+    captureIfVisible('qs-sort', 'sort_by');
+    captureIfVisible('qs-coll-mode', 'collection_mode');
+    captureIfVisible('qs-sync-mode', 'sync_mode');
+    captureIfVisible('qs-include', 'include');
+    captureIfVisible('qs-exclude', 'exclude');
+    captureIfVisible('qs-builder-level', 'builder_level');
+    captureIfVisible('qs-addon-position', 'addon_position');
+    captureIfVisible('qs-style', 'style');
+    captureIfVisible('qs-minimum', 'minimum', true);
+    captureIfVisible('qs-use-subtitles', 'use_subtitles');
 
     // 2. Capture Custom Rows
     const rows = document.querySelectorAll('.var-row');
@@ -765,7 +883,25 @@ function gen() {
             }
             if (l.ovls.length > 0) {
                 y += `    overlay_files:\n`;
-                l.ovls.forEach(o => y += `      - default: ${o}\n`);
+                l.ovls.forEach(o => {
+                    if (templateVars[o] && Object.keys(templateVars[o]).length > 0) {
+                        y += `      - default: ${o}\n`;
+                        y += `        template_variables:\n`;
+                        Object.entries(templateVars[o]).forEach(([k, v]) => {
+                            if (k === 'include' || k === 'exclude') {
+                                y += `          ${k}:\n`;
+                                String(v).split(',').forEach(item => {
+                                    const val = item.trim();
+                                    if(val) y += `            - ${val}\n`;
+                                });
+                            } else {
+                                y += `          ${k}: ${v}\n`;
+                            }
+                        });
+                    } else {
+                        y += `      - default: ${o}\n`;
+                    }
+                });
             }
         });
     }
