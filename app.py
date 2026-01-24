@@ -33,7 +33,7 @@ from presets import PLAYLIST_PRESETS
 # 1. APPLICATION CONFIGURATION
 # ==================================================================================
 
-VERSION = "1.2.1"
+VERSION = "1.2.2"
 
 UPDATE_CACHE = {
     'version': None,
@@ -191,7 +191,54 @@ try:
 except Exception as e:
     print(f"Error resetting locks: {e}", flush=True)
 
+# ==========================================
+# GITHUB STATS & UPDATER
+# ==========================================
 
+# Cache storage
+github_cache = {
+    "stars": "...",
+    "latest_version": "0.0.0",
+    "last_updated": 0
+}
+
+def update_github_stats():
+    """Background task to fetch GitHub stats once per hour."""
+    while True:
+        try:
+            # 1. Fetch Stars
+            headers = {"User-Agent": "SeekAndWatch-App"}
+            r_stars = requests.get('https://api.github.com/repos/softerfish/seekandwatch', headers=headers)
+            if r_stars.ok:
+                data = r_stars.json()
+                github_cache['stars'] = data.get('stargazers_count', '...')
+
+            # 2. Fetch Latest Release
+            r_release = requests.get('https://api.github.com/repos/softerfish/seekandwatch/releases/latest', headers=headers)
+            if r_release.ok:
+                tag = r_release.json().get('tag_name', 'v0.0.0')
+                github_cache['latest_version'] = tag.replace('v', '')
+                
+            github_cache['last_updated'] = time.time()
+            
+        except Exception as e:
+            print(f"GitHub Update Error: {e}")
+            
+        # Sleep for 1 hour (3600 seconds)
+        time.sleep(3600)
+
+# Start background thread (Daemon means it dies when the main app dies)
+if not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+    threading.Thread(target=update_github_stats, daemon=True).start()
+
+# Context Processor: Injects variables into ALL templates automatically
+@app.context_processor
+def inject_github_data():
+    return dict(
+        github_stars=github_cache['stars'],
+        latest_version=github_cache['latest_version'],
+        current_version=VERSION  # <--- PULLS FROM YOUR CONFIG AT TOP OF FILE
+    )
 # ==================================================================================
 # 3. PAGE ROUTES (Frontend)
 # ==================================================================================
@@ -261,42 +308,107 @@ def logout():
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    # 1. USE GLOBAL SETTINGS (Fixes the "Blank Settings" issue for Admins)
+    # 1. USE GLOBAL SETTINGS
     s = Settings.query.order_by(Settings.id.asc()).first()
     
-    # 2. Check if cache is expired (4 hours) or empty
+    # 2. Check Updates (Keep existing logic)
     now = time.time()
     if UPDATE_CACHE['version'] is None or (now - UPDATE_CACHE['last_check'] > 14400):
         try:
-            # Check GitHub
             latest = check_for_updates(VERSION, "https://raw.githubusercontent.com/softerfish/seekandwatch/main/app.py")
-            if latest:
-                UPDATE_CACHE['version'] = latest
+            if latest: UPDATE_CACHE['version'] = latest
             UPDATE_CACHE['last_check'] = now
-        except:
-            pass # Keep old cache if GitHub fails
+        except: pass
 
-    # 3. SMARTER VERSION CHECK
     new_version = None
-    if UPDATE_CACHE['version']:
-        try:
-            # Split "1.1.2" -> [1, 1, 2] so we compare numbers accurately
-            local_v = [int(x) for x in VERSION.split('.')]
-            remote_v = [int(x) for x in UPDATE_CACHE['version'].split('.')]
-            
-            # Only show update if GitHub is STRICTLY NEWER than us
-            if remote_v > local_v:
-                new_version = UPDATE_CACHE['version']
-        except:
-            # Fallback for weird version strings
-            if UPDATE_CACHE['version'] != VERSION:
-                new_version = UPDATE_CACHE['version']
+    if UPDATE_CACHE['version'] and UPDATE_CACHE['version'] != VERSION:
+        new_version = UPDATE_CACHE['version']
+        
+    # 3. Check Tautulli Status (NEW)
+    has_tautulli = bool(s.tautulli_url and s.tautulli_api_key)
        
     return render_template('dashboard.html', 
                            settings=s, 
                            new_version=new_version,
-                           has_omdb=bool(s.omdb_key if s else False))
+                           has_omdb=bool(s.omdb_key if s else False),
+                           has_tautulli=has_tautulli) # <--- Added this
 
+@app.route('/get_local_trending')
+@login_required
+def get_local_trending():
+    from utils import get_tautulli_trending
+    m_type = request.args.get('type', 'movie')
+    items = get_tautulli_trending(m_type)
+    return jsonify({'status': 'success', 'items': items})
+
+@app.route('/recommend_from_trending')
+@login_required
+def recommend_from_trending():
+    from utils import get_tautulli_trending, get_plex_cache, normalize_title, RESULTS_CACHE
+    
+    m_type = request.args.get('type', 'movie')
+    
+    # 1. Get Top IDs from Tautulli
+    trending = get_tautulli_trending(m_type)
+    if not trending:
+        flash("No trending data found to base recommendations on.", "error")
+        return redirect(url_for('dashboard'))
+        
+    seed_ids = [str(x['tmdb_id']) for x in trending]
+    
+    # 2. Generate Recommendations (Deep Scan)
+    final_recs = []
+    s = Settings.query.order_by(Settings.id.asc()).first()
+    
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        futures = []
+        for tid in seed_ids:
+            for p in [1, 2]: # Fetch 2 pages
+                url = f"https://api.themoviedb.org/3/{m_type}/{tid}/recommendations?api_key={s.tmdb_key}&language=en-US&page={p}"
+                futures.append(executor.submit(requests.get, url))
+            
+        for f in concurrent.futures.as_completed(futures):
+            try:
+                data = f.result().json()
+                final_recs.extend(data.get('results', []))
+            except: pass
+
+    # 3. Normalize & Deduplicate
+    seen = set()
+    unique_recs = []
+    owned_keys = get_plex_cache(s)
+    
+    for r in final_recs:
+        if r['id'] not in seen:
+            # --- FIX: Normalize Year & Type (Prevents 500 Error) ---
+            date = r.get('release_date') or r.get('first_air_date')
+            r['year'] = int(date[:4]) if date else 0
+            r['media_type'] = m_type
+            # -------------------------------------------------------
+
+            # Filter Owned
+            t_clean = normalize_title(r.get('title', r.get('name')))
+            if t_clean in owned_keys: continue
+            
+            seen.add(r['id'])
+            unique_recs.append(r)
+            
+    random.shuffle(unique_recs)
+    
+    # 4. Save to Cache So "Load More" works
+    RESULTS_CACHE[current_user.id] = {
+        'candidates': unique_recs,
+        'next_index': 40
+    }
+    genres = []
+    try:
+        g_url = f"https://api.themoviedb.org/3/genre/{m_type}/list?api_key={s.tmdb_key}"
+        genres = requests.get(g_url).json().get('genres', [])
+    except: pass
+            
+    return render_template('results.html', movies=unique_recs[:40], 
+                         genres=genres, current_genre=None, min_year=0, min_rating=0)
+                         
 @app.route('/review_history', methods=['POST'])
 @login_required
 def review_history():
@@ -467,8 +579,15 @@ def generate():
              flash("You own all the lucky picks! Try again.", "error")
              return redirect(url_for('dashboard'))
 
+        # [FIX] Fetch genres for the sidebar so it isn't empty
+        genres = []
+        try:
+            g_url = f"https://api.themoviedb.org/3/genre/movie/list?api_key={s.tmdb_key}"
+            genres = requests.get(g_url).json().get('genres', [])
+        except: pass
+
         RESULTS_CACHE[current_user.id] = {'candidates': lucky_result, 'next_index': len(lucky_result)}
-        return render_template('results.html', movies=lucky_result, min_year=0, min_rating=0, genres=[], current_genre=None, use_critic_filter='false')
+        return render_template('results.html', movies=lucky_result, min_year=0, min_rating=0, genres=genres, current_genre=None, use_critic_filter='false')
 
     # 2. STANDARD MODE
     media_type = request.form.get('media_type')
@@ -476,7 +595,7 @@ def generate():
     
     session['media_type'] = media_type
     session['selected_titles'] = selected_titles
-    session['genre_filter'] = request.form.get('genre_filter')
+    session['genre_filter'] = request.form.getlist('genre_filter')
     session['keywords'] = request.form.get('keywords', '')
     
     try: session['min_year'] = int(request.form.get('min_year', 0))
@@ -569,7 +688,15 @@ def generate():
         if item['year'] < min_year: continue
         if item.get('vote_average', 0) < min_rating: continue
         if genre_filter and genre_filter != 'all':
-            if int(genre_filter) not in item.get('genre_ids', []): continue
+            try:
+                # Handle List (Multi-select) or String (Single legacy)
+                allowed_ids = [int(g) for g in genre_filter] if isinstance(genre_filter, list) else [int(genre_filter)]
+                
+                # Logic: Keep item if it matches ANY selected genre
+                item_genres = item.get('genre_ids', [])
+                if not any(gid in allowed_ids for gid in item_genres): 
+                    continue
+            except: pass
             
         if target_keywords:
             if not item_matches_keywords(item, target_keywords):
@@ -663,7 +790,7 @@ def playlists():
                            presets=PLAYLIST_PRESETS, 
                            schedules=schedules, 
                            custom_presets=custom_presets,
-                           schedule_time=current_time) # <--- THIS IS THE NEW PART
+                           schedule_time=current_time)
                            
 @app.route('/settings', methods=['GET', 'POST'])
 @login_required

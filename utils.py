@@ -89,7 +89,7 @@ def prefetch_keywords_parallel(items, api_key):
             ep = 'keywords' # Default endpoint suffix
             url = f"https://api.themoviedb.org/3/{item['media_type']}/{item['id']}/keywords?api_key={api_key}"
             
-            r = requests.get(url, timeout=2)
+            r = requests.get(url, timeout=10)
             if r.status_code != 200: return None
             
             data = r.json()
@@ -859,3 +859,61 @@ def prefetch_tv_states_parallel(items, api_key):
     for item in items:
         if item['id'] in status_map:
             item['status'] = status_map[item['id']]
+
+def get_tautulli_trending(media_type='movie'):
+    """
+    Fetches Top 5 Trending from Tautulli (Home Stats)
+    media_type: 'movie' or 'tv'
+    """
+    try:
+        s = Settings.query.first()
+        if not s or not s.tautulli_url or not s.tautulli_api_key:
+            return []
+
+        # Tautulli uses specific stat_ids for home stats
+        stat_id = 'popular_movies' if media_type == 'movie' else 'popular_tv'
+        
+        # We look back 30 days for better data
+        url = f"{s.tautulli_url.rstrip('/')}/api/v2?apikey={s.tautulli_api_key}&cmd=get_home_stats&time_range=30&stats_count=10"
+        resp = requests.get(url, timeout=5)
+        data = resp.json()
+
+        trending_items = []
+        
+        # Parse Tautulli Response
+        for block in data.get('response', {}).get('data', []):
+            if block.get('stat_id') == stat_id:
+                for row in block.get('rows', []):
+                    # Tautulli gives us a rating_key (Plex ID)
+                    rating_key = row.get('rating_key')
+                    
+                    # Resolve to TMDB via Plex
+                    try:
+                        plex = PlexServer(s.plex_url, s.plex_token)
+                        item = plex.fetchItem(rating_key)
+                        
+                        # Get TMDB ID from GUIDs
+                        tmdb_id = None
+                        for guid in item.guids:
+                            if 'tmdb://' in guid.id:
+                                tmdb_id = guid.id.split('//')[1]
+                                break
+                        
+                        if tmdb_id:
+                            # Fetch Poster from TMDB for high-quality art
+                            tmdb_resp = requests.get(f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}?api_key={s.tmdb_key}").json()
+                            trending_items.append({
+                                'title': row.get('title'),
+                                'poster_path': tmdb_resp.get('poster_path'),
+                                'tmdb_id': tmdb_id,
+                                'media_type': media_type
+                            })
+                    except:
+                        continue # Skip if item not found in Plex or TMDB fail
+                break
+                
+        return trending_items[:5]
+
+    except Exception as e:
+        print(f"Tautulli Error: {e}")
+        return []

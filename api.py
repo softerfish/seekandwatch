@@ -66,7 +66,15 @@ def load_more_recs():
         if item['year'] < min_year: continue
         if item.get('vote_average', 0) < min_rating: continue
         if genre_filter and genre_filter != 'all':
-            if int(genre_filter) not in item.get('genre_ids', []): continue
+            try:
+                # Multi-select or String Single legacy
+                allowed_ids = [int(g) for g in genre_filter] if isinstance(genre_filter, list) else [int(genre_filter)]
+                
+                # If item has ANY of the selected genres, keep it.
+                item_genres = item.get('genre_ids', [])
+                if not any(gid in allowed_ids for gid in item_genres): 
+                    continue
+            except: pass
             
         if target_keywords:
             if not item_matches_keywords(item, target_keywords):
@@ -517,13 +525,14 @@ def test_connection():
             return jsonify({'status': 'success', 'message': f"Connected: {p.friendlyName}", 'msg': f"Connected: {p.friendlyName}"})
             
         elif service == 'tmdb':
-            # TMDB is external, so we just check the key
-            r = requests.get(f"https://api.themoviedb.org/3/configuration?api_key={data['api_key']}")
+            clean_key = data['api_key'].strip()
+            r = requests.get(f"https://api.themoviedb.org/3/configuration?api_key={clean_key}", timeout=10)
             if r.status_code == 200: return jsonify({'status': 'success', 'message': 'TMDB Connected!', 'msg': 'TMDB Connected!'})
             return jsonify({'status': 'error', 'message': 'Invalid Key', 'msg': 'Invalid Key'})
             
         elif service == 'omdb':
-            r = requests.get(f"https://www.omdbapi.com/?apikey={data['api_key']}&t=Inception")
+            clean_key = data['api_key'].strip()
+            r = requests.get(f"https://www.omdbapi.com/?apikey={clean_key}&t=Inception", timeout=10)
             if r.json().get('Response') == 'True': return jsonify({'status': 'success', 'message': 'OMDB Connected!', 'msg': 'OMDB Connected!'})
             return jsonify({'status': 'error', 'message': 'Invalid Key', 'msg': 'Invalid Key'})
             

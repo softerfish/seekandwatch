@@ -105,19 +105,30 @@ docker run -d \
 ```  
   
 ### Changelog
-1.2.1
-Increased overlays on Kometa Builder
+v1.2.2
+- added trending on tatulli server to Smart Discovery
+- added no more items when Smart Discovery results end
+- added block icon to results page
+- started adding variables to overlays under content ratings, content, and part of media
+- genre options are now checkboxes
+- changed layout of filters on review and results pages
+- added GitHub link and version in the header
+- removed YouTube and Overseerr link in the header
 
 <details>
   <summary><b>Past Changelog</b></summary>
+1.2.1
+Increased overlays on Kometa Builder
 
 1.2.0
 - added protections to block password guessing attacks and prevent malicious file access without slowing down your dashboard
-- optimized traffic limits to ensure the app runs smoothly even if you leave it open 24/7
+- optimized traffic limits to ensure the app runs smoothly even if you leave SeekAndWatch open 24/7
 - added permission handling (entrypoint.sh) that automatically adapts to Unraid (PUID 99) or standard Docker setups, eliminating "Permission Denied" errors
 - users now stay logged in even after the server restarts or updates
 - addedd an adjustable time for running daily Plex Collections
 - added TV show status tags to posters in Smart Discovery 
+- leading space in api keys will be removed if included in a copy+paste. " 12345" instead of "12345"
+- external requests timeout changed to 10 seconds
 
 1.1.1
 - added tooltips to Kometa fields
