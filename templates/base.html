@@ -201,8 +201,7 @@
         {% block content %}{% endblock %}
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
+<script>
     function escapeHtml(text) {
         if (!text) return text;
         return text
@@ -223,6 +222,27 @@
         return originalFetch(url, options);
     };
 
+    // --- SMART VERSION COMPARISON FUNCTION ---
+    // Returns true ONLY if remote is strictly newer than local
+    function isUpdateAvailable(remote, local) {
+        // remove 'v' and trim whitespace
+        const r = remote.replace(/^v/, '').trim();
+        const l = local.replace(/^v/, '').trim();
+        
+        if (r === l) return false;
+        
+        const rParts = r.split('.').map(Number);
+        const lParts = l.split('.').map(Number);
+        
+        for (let i = 0; i < Math.max(rParts.length, lParts.length); i++) {
+            const rVal = rParts[i] || 0;
+            const lVal = lParts[i] || 0;
+            if (rVal > lVal) return true;  // Remote is definitely newer
+            if (rVal < lVal) return false; // Local is newer (dev mode), so no update needed
+        }
+        return false;
+    }
+
     document.addEventListener("DOMContentLoaded", function() {
         
         // 1. Fetch Stars
@@ -237,35 +257,33 @@
         }
 
         // 2. Check for Updates
-        // Get local version from Flask variable
-        const localVersionStr = "{{ current_version|default(version)|default('0.0.0') }}"; 
-        const localVersion = localVersionStr.replace(/^v/, '');
+        const localVersionRaw = "{{ current_version|default(version)|default('0.0.0') }}"; 
         
-        console.log("Local Version:", localVersion); // DEBUG
+        console.log("My Local Version:", localVersionRaw); // Debugging
 
         const updateDot = document.getElementById('update-dot');
         const badge = document.querySelector('.version-badge');
 
-        if (updateDot && localVersion !== '0.0.0') {
+        if (updateDot) {
             fetch('https://api.github.com/repos/softerfish/seekandwatch/releases/latest')
             .then(res => {
-                if (!res.ok) {
-                    console.warn("GitHub API Rate Limit might be exceeded.");
-                    return null;
-                }
+                if (!res.ok) { console.warn("GitHub Release check skipped (404 or Rate Limit)"); return null; }
                 return res.json();
             })
             .then(data => {
                 if(data && data.tag_name) {
-                    const remoteVersion = data.tag_name.replace(/^v/, '');
-                    console.log("Remote Version:", remoteVersion); // DEBUG
-                    
-                    if (remoteVersion !== localVersion) {
-                        console.log("Update Available! Showing dot."); // DEBUG
+                    const remoteVersion = data.tag_name;
+                    console.log("GitHub Latest:", remoteVersion);
+
+                    // Use Smart Comparison Logic
+                    if (isUpdateAvailable(remoteVersion, localVersionRaw)) {
+                        console.log("Update found! Turning on red dot.");
                         updateDot.style.display = 'block';
-                        badge.title = `Update available: v${remoteVersion}`;
+                        badge.title = `Update available: ${remoteVersion}`;
                         badge.style.borderColor = '#e74c3c'; 
                         badge.style.color = '#ccc';
+                    } else {
+                        console.log("You are up to date (or ahead).");
                     }
                 }
             })
@@ -273,6 +291,5 @@
         }
     });
 </script>
-
 </body>
 </html>
