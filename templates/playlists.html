@@ -1,38 +1,14 @@
 {% extends "base.html" %}
 {% block content %}
 
-<style>
-    /* Info Icon & Tooltip CSS */
-    .tooltip-container { position: relative; display: inline-block; cursor: help; margin-left: 5px; }
-    .info-icon { font-size: 0.9em; opacity: 0.7; }
-    .tooltip-text {
-        visibility: hidden; width: 200px; background-color: #222; color: #fff; text-align: left;
-        border-radius: 6px; padding: 10px; position: absolute; z-index: 100;
-        bottom: 125%; left: 50%; margin-left: -100px; opacity: 0; transition: opacity 0.3s;
-        font-size: 0.8em; box-shadow: 0 4px 15px rgba(0,0,0,0.8); border: 1px solid #444;
-        line-height: 1.4;
-    }
-    .tooltip-container:hover .tooltip-text { visibility: visible; opacity: 1; }
-    
-    /* Control Row Styling */
-    .control-row {
-        display: flex; justify-content: space-between; align-items: center; 
-        margin-bottom: 8px; font-size: 0.85em; color: #ccc;
-    }
-    .control-select {
-        background: #333; border: 1px solid #555; color: white; 
-        padding: 4px; border-radius: 4px; font-size: 0.9em; width: 110px;
-    }
-    .control-select:disabled {
-        background: #222; color: #777; border-color: #333; cursor: not-allowed;
-    }
-    .locked-badge {
-        font-size: 0.85em; color: var(--accent-color); font-weight: bold; display: flex; align-items: center; gap: 4px;
-    }
-</style>
-
-<div class="playlist-header">
+	<div class="playlist-header">
     <h2>✨ Plex Collections</h2>
+	<div class="tab-header">
+        <button class="tab-btn active" onclick="openTab(event, 'tab-manager')">⚡ Auto-Manager</button>
+        <button class="tab-btn" onclick="openTab(event, 'tab-viewer'); loadLiveCollections();">📂 Library Browser</button>
+    </div>
+
+    <div id="tab-manager" class="tab-content active">
     <p class="media-sub">Curated lists, imported text, and custom builders.</p>
 
     <div style="max-width: 800px; margin: 0 auto 20px auto; background: rgba(243, 156, 18, 0.1); border-left: 4px solid #f39c12; padding: 15px; text-align: left; border-radius: 4px;">
@@ -63,7 +39,19 @@
         <button onclick="filterType('tv')" id="btn-tv" class="type-toggle-btn">TV Shows 📺</button>
     </div>
 </div>
+</div> <div id="tab-viewer" class="tab-content">
+        <div style="text-align:center; color:#aaa; margin-bottom: 30px;">
+            <p>A live view of all collections currently existing on your Plex server.</p>
+        </div>
 
+        <div id="viewer-loading" style="text-align:center; padding:50px;">
+            <div class="spinner"></div>
+            <h3 style="color:#ccc;">Fetching from Plex...</h3>
+        </div>
+
+        <div id="viewer-grid" class="playlist-grid" style="display:none; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));">
+            </div>
+    </div>
 <div id="preview-modal" class="import-modal">
     <div class="import-content wide">
         <span onclick="document.getElementById('preview-modal').style.display='none'" class="close-btn">&times;</span>
@@ -255,6 +243,60 @@ function saveGlobalTime() {
 {% endfor %}
 
 <script>
+function openTab(evt, tabName) {
+        // Hide all tab content
+        var tabcontent = document.getElementsByClassName("tab-content");
+        for (var i = 0; i < tabcontent.length; i++) {
+            tabcontent[i].style.display = "none";
+            tabcontent[i].classList.remove("active");
+        }
+        
+        // Deactivate all buttons
+        var tablinks = document.getElementsByClassName("tab-btn");
+        for (var i = 0; i < tablinks.length; i++) {
+            tablinks[i].classList.remove("active");
+        }
+        
+        // Show current tab and activate button
+        document.getElementById(tabName).style.display = "block";
+        // Small timeout to allow display:block to apply before adding opacity class (for animation)
+        setTimeout(() => document.getElementById(tabName).classList.add("active"), 10);
+        evt.currentTarget.classList.add("active");
+    }
+
+    // --- VIEWER FETCHER ---
+    let viewerLoaded = false;
+    function loadLiveCollections() {
+        if(viewerLoaded) return; // Prevent spamming the API
+        
+        fetch('/get_plex_collections')
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('viewer-loading').style.display = 'none';
+            const grid = document.getElementById('viewer-grid');
+            grid.style.display = 'grid';
+            
+            if(data.status === 'success' && data.collections.length > 0) {
+                let html = '';
+                data.collections.forEach(c => {
+                    const thumb = c.thumb || 'https://via.placeholder.com/200x300?text=No+Art';
+                    html += `
+                    <div class="viewer-card" onclick="window.open('${c.url}', '_blank')">
+                        <img src="${thumb}" style="width:100%; height:100%; object-fit:cover;">
+                        <div class="viewer-badge">${c.count}</div>
+                        <div class="viewer-info">
+                            <div style="font-weight:bold; color:white; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${c.title}</div>
+                            <div style="font-size:0.8em; color:#ccc;">${c.library}</div>
+                        </div>
+                    </div>`;
+                });
+                grid.innerHTML = html;
+                viewerLoaded = true;
+            } else {
+                grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:50px; color:#666;">No collections found.</div>';
+            }
+        });
+    }
 // --- POLLING FOR LOCKOUT ---
 setInterval(checkCacheStatus, 2000); 
 

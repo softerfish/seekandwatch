@@ -1,165 +1,59 @@
 {% extends "base.html" %}
 {% block content %}
 
-<style>
-    /* Page-Specific Styles */
-    .tab-btn {
-        padding: 10px 30px;
-        background: #2a2a2a;
-        color: #aaa;
-        border: 1px solid #444;
-        border-radius: 20px;
-        cursor: pointer;
-        font-weight: bold;
-        transition: 0.2s;
-        font-size: 1em;
-    }
-    .tab-btn.active {
-        background: var(--accent-color);
-        color: #000;
-        border-color: var(--accent-color);
-    }
-    .tab-btn:hover:not(.active) {
-        background: #333;
-        color: white;
-    }
-
-    /* Search Suggestions Popup - High Visibility */
-    #suggestions {
-        position: absolute;
-        top: 100%;
-        left: 0;
-        width: 100%;
-        background-color: #1e1e1e;
-        border: 1px solid var(--accent-color);
-        border-top: none;
-        border-radius: 0 0 8px 8px;
-        z-index: 10000; /* Ensure it floats above everything */
-        display: none;
-        max-height: 300px;
-        overflow-y: auto;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.8);
-    }
-
-    .suggestion-item {
-        padding: 12px 15px;
-        border-bottom: 1px solid #333;
-        cursor: pointer;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        color: #e0e0e0;
-        background-color: #1e1e1e;
-        transition: background-color 0.2s;
-    }
-    .suggestion-item:hover {
-        background-color: #333; /* Highlights on hover */
-        color: #fff;
-    }
-    .suggestion-item strong {
-        color: var(--accent-color);
-    }
-    .suggestion-year {
-        color: #888;
-        font-size: 0.9em;
-    }
-
-    /* Block List Items */
-    .block-item {
-        background: #1e1e1e; 
-        padding: 15px; 
-        border-radius: 8px; 
-        border: 1px solid #333; 
-        display: flex; 
-        justify-content: space-between; 
-        align-items: center;
-        margin-bottom: 10px;
-        transition: border-color 0.2s;
-    }
-    .block-item:hover {
-        border-color: #555;
-    }
-    .block-title {
-        color: white; 
-        font-weight: 500;
-        font-size: 1.1em;
-    }
-    
-    /* Unblock Icon Button */
-    .btn-icon-delete {
-        background: rgba(231, 76, 60, 0.1);
-        color: #e74c3c;
-        border: 1px solid #e74c3c;
-        width: 36px;
-        height: 36px;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        transition: all 0.2s;
-        font-size: 1rem;
-    }
-    .btn-icon-delete:hover {
-        background: #e74c3c;
-        color: white;
-        transform: scale(1.1);
-    }
-</style>
-
 <div class="settings-container">
     <div class="settings-header">
         <h2>🚫 Manage Blocklist</h2>
         <p class="text-muted">Preemptively block titles to prevent them from appearing in recommendations.</p>
     </div>
 
-    <div style="margin-bottom: 25px; display: flex; gap: 15px; justify-content: center;">
+    <div class="tab-container">
         <button onclick="showTab('movie')" class="tab-btn active" id="btn-movie">Movies</button>
         <button onclick="showTab('tv')" class="tab-btn" id="btn-tv">TV Shows</button>
     </div>
 
-    <div class="card setting-card border-orange" style="overflow: visible;"> <h3 style="margin-top:0;">➕ Add to Blocklist</h3>
-        <p class="text-muted" style="font-size: 0.9em; margin-bottom: 15px;">Search for a title to ban it permanently.</p>
-        <div style="position: relative;">
-            <input type="text" id="searchInput" class="filter-input" placeholder="Start typing a title..." autocomplete="off" style="color: white !important; font-size: 1.1em; padding: 12px;">
+    <div class="card setting-card border-orange" style="overflow: visible;"> 
+        <h3>➕ Add to Blocklist</h3>
+        <p class="text-muted">Search for a title to ban it permanently.</p>
+        
+        <div class="search-container-block">
+            <input type="text" id="searchInput" class="main-search" placeholder="Start typing a title..." autocomplete="off" style="font-size: 1em; padding: 12px; margin-top: 0;">
             <div id="suggestions"></div>
         </div>
     </div>
 
     <div id="list-movie" class="block-list-container">
-        <h3 style="color:white; border-bottom: 1px solid #333; padding-bottom: 10px; margin-top: 30px;">Blocked Movies</h3>
-        <div class="block-grid">
-            {% for block in blocks if block.media_type == 'movie' %}
-            <div class="block-item" id="block-{{ block.id }}">
-                <span class="block-title">{{ block.title }}</span>
-                <button onclick="unblock({{ block.id }})" class="btn-icon-delete" title="Unblock Title">
-                    <i class="fas fa-trash-alt"></i>
-                </button>
-            </div>
-            {% else %}
-            <div style="text-align: center; padding: 30px; color: #777; border: 1px dashed #333; border-radius: 8px;">
-                No movies currently blocked.
-            </div>
-            {% endfor %}
+        <h3 class="text-center mb-20" style="border-bottom: 1px solid #333; padding-bottom: 10px;">Blocked Movies</h3>
+        
+        {% for block in blocks if block.media_type == 'movie' %}
+        <div class="block-item-row" id="block-{{ block.id }}">
+            <span>{{ block.title }}</span>
+            <button onclick="unblock({{ block.id }})" class="btn-delete" title="Unblock Title">
+                Unblock
+            </button>
         </div>
+        {% else %}
+        <div class="text-center text-muted" style="padding: 30px; border: 1px dashed #333; border-radius: 8px;">
+            No movies currently blocked.
+        </div>
+        {% endfor %}
     </div>
 
     <div id="list-tv" class="block-list-container" style="display: none;">
-        <h3 style="color:white; border-bottom: 1px solid #333; padding-bottom: 10px; margin-top: 30px;">Blocked TV Shows</h3>
-        <div class="block-grid">
-            {% for block in blocks if block.media_type == 'tv' %}
-            <div class="block-item" id="block-{{ block.id }}">
-                <span class="block-title">{{ block.title }}</span>
-                <button onclick="unblock({{ block.id }})" class="btn-icon-delete" title="Unblock Title">
-                    <i class="fas fa-trash-alt"></i>
-                </button>
-            </div>
-            {% else %}
-            <div style="text-align: center; padding: 30px; color: #777; border: 1px dashed #333; border-radius: 8px;">
-                No TV shows currently blocked.
-            </div>
-            {% endfor %}
+        <h3 class="text-center mb-20" style="border-bottom: 1px solid #333; padding-bottom: 10px;">Blocked TV Shows</h3>
+        
+        {% for block in blocks if block.media_type == 'tv' %}
+        <div class="block-item-row" id="block-{{ block.id }}">
+            <span>{{ block.title }}</span>
+            <button onclick="unblock({{ block.id }})" class="btn-delete" title="Unblock Title">
+                Unblock
+            </button>
         </div>
+        {% else %}
+        <div class="text-center text-muted" style="padding: 30px; border: 1px dashed #333; border-radius: 8px;">
+            No TV shows currently blocked.
+        </div>
+        {% endfor %}
     </div>
 </div>
 
@@ -207,18 +101,20 @@ searchInput.addEventListener('input', function(e) {
                     const div = document.createElement('div');
                     div.className = 'suggestion-item';
                     
-                    // FIX: Check ALL possible date fields
                     const rawDate = item.release_date || item.first_air_date || item.date || item.year || '';
                     const year = rawDate ? String(rawDate).split('-')[0] : 'Unknown';
                     const title = item.title || item.name;
+                    const poster = item.poster ? item.poster : 'https://placehold.co/50x75?text=No+Img';
                     
                     div.innerHTML = `
-						<img src="${item.poster}" onerror="this.style.display='none'">
-					<div class="info">
-						<div class="title">${escapeHtml(item.title)}</div>
-						<div class="meta">${escapeHtml(item.year)} • ${escapeHtml(item.media_type).toUpperCase()}</div>
-					</div>
-					`;
+                    <div style="display:flex; align-items:center; gap:10px; width:100%;">
+                        <img src="${poster}" style="width:40px; height:60px; object-fit:cover; border-radius:4px;">
+                        <div>
+                            <div style="font-weight:bold; color:#fff;">${escapeHtml(title)}</div>
+                            <div style="font-size:0.85em; color:#888;">${year} • ${escapeHtml(item.media_type).toUpperCase()}</div>
+                        </div>
+                    </div>
+                    `;
                     
                     div.onclick = () => addBlock(title, searchType);
                     suggestionsBox.appendChild(div);

@@ -2,94 +2,6 @@
 
 {% block content %}
 
-<style>
-    /* High-contrast, forced-on-top loader */
-    #nuclear-loader {
-        display: none; /* Hidden by default */
-        position: fixed; 
-        top: 0; 
-        left: 0; 
-        width: 100vw; 
-        height: 100vh;
-        background: rgba(0,0,0,0.96) !important;
-        z-index: 2147483647 !important; /* Max possible Z-Index */
-        flex-direction: column; 
-        justify-content: center; 
-        align-items: center; 
-        text-align: center;
-        backdrop-filter: blur(5px);
-    }
-    .nuclear-spinner {
-        width: 70px; height: 70px;
-        border: 6px solid rgba(255,255,255,0.1); 
-        border-radius: 50%;
-        border-top-color: #e5a00d; 
-        animation: nuke-spin 1s linear infinite; 
-        margin-bottom: 25px;
-    }
-    @keyframes nuke-spin { to { transform: rotate(360deg); } }
-	
-	/* --- TRENDING WIDGET STYLES --- */
-    .trending-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-    
-    .trending-tabs { display: flex; gap: 5px; background: var(--input-bg); padding: 4px; border-radius: 8px; border: 1px solid var(--border-color); }
-    .t-tab { 
-        background: transparent; border: none; color: #888; padding: 6px 15px; cursor: pointer; 
-        font-weight: bold; border-radius: 6px; transition: 0.2s; font-size: 0.85em; text-transform: uppercase;
-    }
-    .t-tab:hover { color: var(--text-color); background: rgba(128,128,128,0.1); }
-    .t-tab.active { background: var(--accent-color); color: #000; }
-    
-    .trending-grid { 
-        display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 15px; 
-        min-height: 230px; 
-    }
-    
-    .t-card { 
-        background: var(--card-bg); border: 1px solid var(--border-color);
-        border-radius: 8px; overflow: hidden; position: relative; 
-        transition: transform 0.2s, border-color 0.2s; cursor: pointer; 
-    }
-    .t-card:hover { transform: translateY(-5px); border-color: var(--accent-color); }
-    .t-poster { width: 100%; aspect-ratio: 2/3; object-fit: cover; display: block; }
-    .t-rank { 
-        position: absolute; top: 0; left: 0; background: var(--accent-color); color: black; 
-        font-weight: 900; padding: 4px 10px; border-bottom-right-radius: 8px; font-size: 0.85em; z-index: 2;
-        box-shadow: 2px 2px 5px rgba(0,0,0,0.5);
-    }
-    .t-info { 
-        padding: 10px; font-size: 0.9em; text-align: center; color: var(--text-color); 
-        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-        background: var(--input-bg); border-top: 1px solid var(--border-color);
-    }
-    
-    .btn-find-similar {
-        background: transparent; border: 1px solid var(--accent-color); color: var(--accent-color);
-        padding: 6px 15px; border-radius: 20px; font-weight: bold; cursor: pointer;
-        font-size: 0.85em; display: flex; align-items: center; gap: 6px; transition: 0.2s;
-    }
-    .btn-find-similar:hover { background: var(--accent-color); color: black; }
-
-    .tautulli-banner {
-        background: rgba(231, 76, 60, 0.1); 
-        border-left: 4px solid #e74c3c; 
-        padding: 20px; 
-        border-radius: 8px; 
-        margin-bottom: 30px; 
-        
-        /* Layout Changes for New Line */
-        display: flex; 
-        flex-direction: column;  /* Stacks items vertically */
-        align-items: center;     /* Centers items horizontally */
-        gap: 15px;               /* Adds space between text and button */
-        text-align: center;      /* Centers the text */
-        
-        border: 1px solid rgba(231, 76, 60, 0.2);
-        max-width: 950px; 
-        margin-left: auto; 
-        margin-right: auto;
-    }
-</style>
 
 <div id="nuclear-loader">
     <div class="nuclear-spinner"></div>
@@ -191,7 +103,22 @@
             }
             </script>
             {% endif %}
-            
+            {% if plex_libraries %}
+            <div style="margin-bottom: 20px; text-align: left; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px; border: 1px solid #333;">
+                <label style="color: #aaa; font-size: 0.9em; display: block; margin-bottom: 8px; text-align: center;">
+                    🚫 Exclude Libraries (Optional)
+                </label>
+                
+                <div class="library-grid" style="max-height: 150px; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));">
+                    {% for lib in plex_libraries %}
+                    <div class="lib-check-item" style="padding: 6px;">
+                        <input type="checkbox" id="dash-lib-{{ loop.index }}" name="ignored_libraries" value="{{ lib }}">
+                        <label for="dash-lib-{{ loop.index }}" style="font-size: 0.85em;">{{ lib }}</label>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
             <div class="scan-btn-group">
                 <a href="javascript:void(0)" class="btn btn-scan movie" onclick="nuclearSubmit('movie')" style="text-align: center; text-decoration: none;">
                     Scan Movies

@@ -8,11 +8,12 @@
     <button class="btn btn-primary" onclick="spinWheel()">🎡 Spin Wheel</button>
 </div>
 
-<div class="results-container" style="flex-direction: column;">
-    
-    <div class="card filter-card" style="width: 100%; box-sizing: border-box;">
+<div class="results-container">
         
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-bottom: 20px;">
+        {% if not is_lucky %}
+    <div class="card filter-card">
+        
+        <div class="top-filters-grid" style="margin-bottom: 20px;">
             
             <div>
                 <label class="input-label">Released After (Year)</label>
@@ -22,7 +23,9 @@
             </div>
 
             <div>
-                <label class="input-label">Min. Rating: <span id="rating-val" style="color:var(--accent-color);">{{ min_rating }}</span>/10</label>
+                <label class="input-label">
+                    Min. Rating: <span id="rating-val" style="color:var(--accent-color);">{{ min_rating }}</span>/10
+                </label>
                 <input type="range" id="filter-rating" min="0" max="10" step="0.5" 
                        value="{{ min_rating }}" style="width:100%; accent-color:var(--accent-color); margin-top:10px;" 
                        oninput="document.getElementById('rating-val').innerText=this.value; filterVisibleCards();">
@@ -30,7 +33,7 @@
 
             <div style="position:relative;">
                 <label class="input-label" title="Search specific TMDB tags.">
-                    TMDB Keywords <span style="font-size: 0.8em; color: #888; font-weight: normal;">(Not Genres)</span>
+                    TMDB Keywords <span class="text-muted" style="font-size: 0.8em; font-weight: normal;">(Not Genres)</span>
                 </label>
                 <input type="text" id="keyword-search" placeholder="Filter tags..." autocomplete="off">
                 <div id="keyword-results" class="keyword-dropdown"></div>
@@ -38,7 +41,29 @@
             </div>
 
         </div>
-
+		<div style="margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 20px;">
+            <label class="input-label" style="margin-bottom:10px;">Content Rating</label>
+            <div class="rating-grid" style="grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));">
+                {% set saved_ratings = session.get('rating_filter') %}
+                {% set all_ratings = ['G', 'PG', 'PG-13', 'R', 'NC-17', 'TV-Y', 'TV-Y7', 'TV-G', 'TV-PG', 'TV-14', 'TV-MA', 'NR'] %}
+                {% set defaults = ['G', 'PG', 'PG-13', 'R', 'TV-Y', 'TV-Y7', 'TV-G', 'TV-PG', 'TV-14', 'NR'] %}
+                {% set m_type = session.get('media_type', 'movie') %}
+                
+                {% for r in all_ratings %}
+                    {# --- LOGIC: Hide irrelevant ratings --- #}
+                    {% set is_tv = 'TV-' in r %}
+                    {% set show_box = (m_type == 'tv' and is_tv) or (m_type == 'movie' and not is_tv) or r == 'NR' %}
+                    
+                    {% if show_box %}
+                        {% set is_checked = r in saved_ratings if saved_ratings else r in defaults %}
+                        <label class="rating-check {% if is_checked %}checked{% endif %}">
+                            <input type="checkbox" class="rating-filter-box" value="{{ r }}" {% if is_checked %}checked{% endif %} onchange="this.parentElement.classList.toggle('checked'); filterVisibleCards();">
+                            <span>{{ r }}</span>
+                        </label>
+                    {% endif %}
+                {% endfor %}
+            </div>
+        </div>
         <div class="genre-selector">
             <div class="genre-header">
                 <strong>Genres</strong>
@@ -67,8 +92,9 @@
             🔄 Update Results
         </button>
     </div>
+    {% endif %}
+        <div class="results-main">
 
-    <div class="results-main">
         <div id="loading" class="loading-container">
             <div class="loader"></div>
             <h2>Crunching the numbers...</h2>
@@ -76,9 +102,11 @@
 
         <div id="results-grid" class="results-grid" style="display:none;"></div>
         
+       {% if not is_lucky %}
         <div class="load-more-wrapper">
-            <button onclick="loadMore(this)" class="load-more-btn">Load More Results</button>
+            <button id="load-more-btn" onclick="loadMore(this)" class="load-more-btn">Load More Results</button>
         </div>
+        {% endif %}
     </div>
 </div>
 
@@ -90,7 +118,7 @@
 </div>
 
 <div id="trailer-modal" class="k-modal" style="z-index: 1100;">
-    <div class="k-modal-content" style="background:black; width:90%; max-width:900px; aspect-ratio:16/9; display:flex; flex-direction:column;">
+    <div class="k-modal-content">
         <span class="k-close-modal" onclick="closeTrailer()" style="color:white; z-index:20;">&times;</span>
         <div id="trailer-body" style="flex:1; width:100%; height:100%;"></div>
     </div>
@@ -134,39 +162,59 @@
         parts.forEach(p => { if(p && p.trim() !== '') selectedKeywords.push({ id: p, name: p }); });
     }
 
-    document.getElementById('keyword-search').addEventListener('input', function(e) {
-        const q = e.target.value;
-        if(q.length < 3) { document.getElementById('keyword-results').style.display = 'none'; return; }
-        fetch(`/tmdb_search_proxy?type=keyword&query=${q}`).then(res => res.json()).then(data => {
-            const div = document.getElementById('keyword-results'); div.innerHTML = "";
-            if(data.results && data.results.length > 0) {
-                data.results.forEach(k => {
-                    const item = document.createElement('div'); item.className = 'dropdown-item'; item.innerText = k.name;
-                    item.onclick = () => addTag(k); div.appendChild(item);
+    // Check if element exists (It won't in Lucky Mode) ---
+    const keywordInput = document.getElementById('keyword-search');
+    if (keywordInput) {
+        keywordInput.addEventListener('input', function(e) {
+            const q = e.target.value;
+            if(q.length < 3) { document.getElementById('keyword-results').style.display = 'none'; return; }
+            
+            fetch(`/tmdb_search_proxy?type=keyword&query=${q}`)
+                .then(res => res.json())
+                .then(data => {
+                    const div = document.getElementById('keyword-results'); 
+                    div.innerHTML = "";
+                    if(data.results && data.results.length > 0) {
+                        data.results.forEach(k => {
+                            const item = document.createElement('div'); 
+                            item.className = 'dropdown-item'; 
+                            item.innerText = k.name;
+                            item.onclick = () => addTag(k); 
+                            div.appendChild(item);
+                        });
+                        div.style.display = 'block';
+                    } else { 
+                        div.style.display = 'none'; 
+                    }
                 });
-                div.style.display = 'block';
-            } else { div.style.display = 'none'; }
         });
-    });
+    }
 
     function addTag(k) {
         if(selectedKeywords.some(x => x.id === k.id || x.name === k.name)) return;
         selectedKeywords.push(k); renderTags();
-        document.getElementById('keyword-search').value = ""; 
-        document.getElementById('keyword-results').style.display = 'none';
+        if(keywordInput) {
+            keywordInput.value = ""; 
+            document.getElementById('keyword-results').style.display = 'none';
+        }
     }
+    
     function removeTag(name) { 
         selectedKeywords = selectedKeywords.filter(k => k.name !== name); 
         renderTags(); 
     }
+    
     function renderTags() {
-        const container = document.getElementById('selected-keywords'); container.innerHTML = "";
+        const container = document.getElementById('selected-keywords'); 
+        if (!container) return; 
+        container.innerHTML = "";
         selectedKeywords.forEach(k => {
             const tag = document.createElement('span'); tag.className = 'keyword-tag';
             tag.innerHTML = `${k.name} <span onclick="removeTag('${k.name}')">&times;</span>`; 
             container.appendChild(tag);
         });
     }
+    
     function getKeywordString() { return selectedKeywords.map(k => k.name).join('|'); }
 
     // --- INIT ---
@@ -184,16 +232,30 @@
             validMovies.forEach(item => { 
                 try { grid.appendChild(createCard(item)); } catch(e) {} 
             });
-            filterVisibleCards();
+            
+            if (document.getElementById('filter-year')) {
+                filterVisibleCards();
+            }
         } else { 
-            updateFilters(); 
+            if (document.getElementById('filter-year')) {
+                updateFilters();
+            } else {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('results-grid').innerHTML = '<div style="grid-column:1/-1;text-align:center;">No results found.</div>';
+                document.getElementById('results-grid').style.display = 'block';
+            }
         }
     }
 
     function filterVisibleCards() {
-        const minYear = parseInt(document.getElementById('filter-year').value) || 0;
-        const minRating = parseFloat(document.getElementById('filter-rating').value) || 0;
+        const yearInput = document.getElementById('filter-year');
+        const ratingInput = document.getElementById('filter-rating');
+        
+        const minYear = yearInput ? (parseInt(yearInput.value) || 0) : 0;
+        const minRating = ratingInput ? (parseFloat(ratingInput.value) || 0) : 0;
         const activeTags = selectedKeywords.map(k => k.name.toLowerCase());
+		const ratingBoxes = document.querySelectorAll('.rating-filter-box:checked');
+        const checkedRatings = Array.from(ratingBoxes).map(cb => cb.value);
         
         document.querySelectorAll('.result-card').forEach(card => {
             const year = parseInt(card.dataset.year) || 0;
@@ -207,6 +269,10 @@
                 const hasAllTags = activeTags.every(tag => text.includes(tag));
                 if(!hasAllTags) visible = false;
             }
+            if (checkedRatings.length > 0) {
+                const cardRating = card.dataset.contentRating || 'NR';
+                if (!checkedRatings.includes(cardRating)) visible = false;
+            }
             card.style.display = visible ? 'block' : 'none';
         });
     }
@@ -215,10 +281,12 @@
     function updateFilters() {
         const checkedBoxes = document.querySelectorAll('.genre-checkbox:checked');
         const genreList = Array.from(checkedBoxes).map(cb => cb.value);
-        const year = document.getElementById('filter-year').value;
-        const rating = document.getElementById('filter-rating').value;
+        const year = document.getElementById('filter-year') ? document.getElementById('filter-year').value : 0;
+        const rating = document.getElementById('filter-rating') ? document.getElementById('filter-rating').value : 0;
         const tags = getKeywordString();
-
+		const ratingBoxes = document.querySelectorAll('.rating-filter-box:checked');
+        const ratingList = Array.from(ratingBoxes).map(cb => cb.value);
+		
         document.getElementById('results-grid').innerHTML = '';
         document.getElementById('loading').style.display = 'block';
         page = 1;
@@ -239,7 +307,8 @@
                 genre_filter: genreList, 
                 min_year: year, 
                 min_rating: rating, 
-                keywords: tags 
+                keywords: tags,
+                rating_filter: ratingList 
             })
         }).then(() => { 
             loadMore(null); 
@@ -339,7 +408,6 @@
     }
 
     // --- CARD CREATION ---
-    // --- CARD CREATION ---
     function createCard(item) {
         const id = item.tmdb_id || item.id;
         const title = item.title || item.name || "Unknown";
@@ -357,21 +425,18 @@
         card.className = 'result-card';
         card.dataset.year = parseInt(displayDate) || 0;
         card.dataset.rating = rating;
+		card.dataset.contentRating = item.content_rating || 'NR';
         
         const posterUrl = item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : 'https://placehold.co/500x750/222/888?text=No+Poster';
         const searchableText = `<span style="display:none;">${escapeHtml(title)} ${escapeHtml(item.overview || '')}</span>`;
 
-        // 1. Build Ratings HTML (Year | TMDB | OMDB)
         let ratingsHtml = `<span class="meta-year">${displayDate}</span>`;
         let scoresHtml = '';
 
-        // TMDB Score
         if (rating > 0) {
             scoresHtml += `<span class="meta-rating tmdb-score" title="TMDB">★ ${parseFloat(rating).toFixed(1)}</span>`;
         }
 
-        // OMDB / Rotten Tomatoes Score
-        // Note: The backend 'load_more_recs' currently prioritizes RT score into 'rt_score'
         if (rtScore > 0) {
             const rtIcon = rtScore >= 60 ? '🍅' : '🤢';
             const rtClass = rtScore >= 60 ? 'rt-fresh' : 'rt-rotten';
@@ -382,12 +447,10 @@
             scoresHtml += `<span class="meta-rating imdb-score" title="IMDb">IMDb ${imdbRating}</span>`;
         }
 
-        // Combine Year + Scores (if any scores exist)
         if (scoresHtml) {
             ratingsHtml += `<div class="meta-right">${scoresHtml}</div>`;
         }
 
-        // 2. TV Status (Top Right)
         let statusHtml = '';
         if (mediaType === 'tv' && item.status) {
             const slug = item.status.toLowerCase().replace(/ /g, '-');
@@ -400,20 +463,16 @@
                 ${statusHtml}
                 
                 <div class="card-icon-overlay">
-                    
                     <div class="overlay-top-actions">
                         <div class="icon-btn" title="Block this item" onclick="blockItem(event, '${escapeHtml(title)}', '${mediaType}')" style="color:#e74c3c; border-color:#e74c3c;">🚫</div>
                     </div>
-
                     <div class="overlay-bottom-row">
                         <div class="icon-btn btn-request" title="Request on Overseerr" onclick="requestMedia('${mediaType}', ${id}, this); event.stopPropagation();">📥</div>
-                        
                         <div class="icon-group-right">
                             <div class="icon-btn" title="View Details" onclick="event.preventDefault(); event.stopPropagation(); openModal(${id}, '${mediaType}');">👁️</div>
                             <a href="https://www.themoviedb.org/${mediaType}/${id}" target="_blank" class="icon-btn" title="TMDB Page" onclick="event.stopPropagation();" style="font-size:0.6em; font-weight:900;">TMDB</a>
                         </div>
                     </div>
-
                 </div>
             </div>
             
@@ -421,6 +480,9 @@
                 <div class="movie-title" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
                 <div class="movie-meta-row">
                     ${ratingsHtml}
+                    <span style="margin-left:auto; font-size:0.75em; border:1px solid #555; padding:1px 4px; border-radius:3px; color:#ccc;">
+                        ${item.content_rating || 'NR'}
+                    </span>
                 </div>
                 ${searchableText}
             </div>
@@ -466,7 +528,6 @@
 
     function openModal(id, type) {
         const modal = document.getElementById('detail-modal');
-        // Changed to FLEX to trigger the CSS centering
         modal.style.display = "flex"; 
         const body = document.getElementById('modal-body');
         body.innerHTML = '<div style="text-align:center; padding:50px;"><div class="loader-small"></div> Loading...</div>';

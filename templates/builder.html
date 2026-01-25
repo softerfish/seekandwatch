@@ -37,7 +37,7 @@
             </div>
             <div class="input-group form-col">
                 <label class="input-label">Year Range</label>
-                <div class="year-inputs">
+                <div style="display: flex; gap: 10px;">
                     <input type="number" id="c_year_start" placeholder="1980">
                     <input type="number" id="c_year_end" placeholder="1990">
                 </div>
@@ -52,9 +52,7 @@
             
             <div id="selected-keywords" class="tag-container" style="margin-bottom: 10px;"></div>
             
-            <div style="clear: both; width: 100%; height: 10px;"></div>
-
-            <div class="tag-help-box" style="display: block; margin-top: 5px;">
+            <div class="text-muted small" style="display: block; margin-top: 5px;">
                 <strong>💡 Pro Tip:</strong> Add multiple similar tags (e.g., "alien" and "aliens").
             </div>
         </div>
@@ -65,41 +63,49 @@
                 <span id="rating-text" style="background: var(--accent-color); color: black; padding: 2px 12px; border-radius: 10px; font-weight: bold;">0</span>
             </div>
             
-            <input type="range" id="c_rating" min="0" max="10" step="0.5" value="0" oninput="document.getElementById('rating-text').innerText = this.value" style="width: 100%;">
+            <input type="range" id="c_rating" min="0" max="10" step="0.5" value="0" oninput="document.getElementById('rating-text').innerText = this.value" style="width: 100%; accent-color: var(--accent-color);">
         </div>
 
-        <button onclick="previewMatches()" class="btn btn-secondary">🔍 Preview Top 10 Matches</button>
-        <button onclick="saveCollection()" class="btn btn-primary" style="width:100%; margin-top:20px;">Create Collection & Schedule</button>
+        <button onclick="previewMatches()" class="btn btn-secondary" style="width: 100%;">🔍 Preview Top 10 Matches</button>
+        <button onclick="saveCollection()" class="btn btn-save">Create Collection & Schedule</button>
     </div>
 
-    <div id="preview-area" class="preview-card">
-        <h3>Live Preview Results</h3>
+    <div id="preview-area" class="preview-card" style="display:none; margin-top: 20px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+            <h3 style="margin:0;">Live Preview Results</h3>
+            <button id="request-all-btn" class="btn-request-all" onclick="requestAllMissing()" style="display:none; width:auto; margin:0; padding: 5px 15px;">📥 Request All Missing</button>
+        </div>
         <ul id="preview-list" class="preview-list"></ul>
-        <button id="request-all-btn" class="btn-request-all" onclick="requestAllMissing()">📥 Request All Missing Items</button>
     </div>
 </div>
 
 <script>
-// JS Logic remains identical
+// JS Logic
 let selectedKeywords = [];
+
 document.getElementById('keyword-search').addEventListener('input', function(e) {
     const q = e.target.value;
     if(q.length < 3) { document.getElementById('keyword-results').style.display = 'none'; return; }
     fetch(`/tmdb_search_proxy?type=keyword&query=${q}`).then(res => res.json()).then(data => {
         const div = document.getElementById('keyword-results'); div.innerHTML = "";
-        data.results.forEach(k => {
-            const item = document.createElement('div'); item.className = 'dropdown-item'; item.innerText = k.name;
-            item.onclick = () => addTag(k); div.appendChild(item);
-        });
-        div.style.display = 'block';
+        if (data.results) {
+            data.results.forEach(k => {
+                const item = document.createElement('div'); item.className = 'dropdown-item'; item.innerText = k.name;
+                item.onclick = () => addTag(k); div.appendChild(item);
+            });
+            div.style.display = 'block';
+        }
     });
 });
+
 function addTag(k) {
     if(selectedKeywords.some(x => x.id === k.id)) return;
     selectedKeywords.push(k); renderTags();
     document.getElementById('keyword-search').value = ""; document.getElementById('keyword-results').style.display = 'none';
 }
+
 function removeTag(id) { selectedKeywords = selectedKeywords.filter(k => k.id !== id); renderTags(); }
+
 function renderTags() {
     const container = document.getElementById('selected-keywords'); container.innerHTML = "";
     selectedKeywords.forEach(k => {
@@ -107,49 +113,153 @@ function renderTags() {
         tag.innerHTML = `${k.name} <span onclick="removeTag(${k.id})">&times;</span>`; container.appendChild(tag);
     });
 }
+
 function previewMatches() {
     const keywordString = selectedKeywords.map(k => k.id).join('|');
     const type = document.getElementById('c_type').value;
+    
     if (!document.getElementById('c_genre').value && !keywordString && !document.getElementById('c_year_start').value && !document.getElementById('c_year_end').value) {
         alert("Please select at least a Genre, Tag, or Year Range first!"); return;
     }
-    const data = { media_type: type, sort_by: document.getElementById('c_sort').value, with_genres: document.getElementById('c_genre').value, min_rating: document.getElementById('c_rating').value, year_start: document.getElementById('c_year_start').value, year_end: document.getElementById('c_year_end').value, with_keywords: keywordString };
-    const area = document.getElementById('preview-area'); const list = document.getElementById('preview-list'); const allBtn = document.getElementById('request-all-btn');
-    list.innerHTML = "<li>Loading matches...</li>"; area.style.display = 'block'; allBtn.style.display = 'none';
+    
+    const data = { 
+        media_type: type, 
+        sort_by: document.getElementById('c_sort').value, 
+        with_genres: document.getElementById('c_genre').value, 
+        min_rating: document.getElementById('c_rating').value, 
+        year_start: document.getElementById('c_year_start').value, 
+        year_end: document.getElementById('c_year_end').value, 
+        with_keywords: keywordString 
+    };
+    
+    const area = document.getElementById('preview-area'); 
+    const list = document.getElementById('preview-list'); 
+    const allBtn = document.getElementById('request-all-btn');
+    
+    // Show loading state
+    area.style.display = 'block'; 
+    list.innerHTML = "<li style='text-align:center; padding:20px; color:#777;'>Loading matches...</li>"; 
+    allBtn.style.display = 'none';
+    
     fetch('/preview_custom_collection', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) })
     .then(res => res.json()).then(data => {
         list.innerHTML = "";
+        
         if(data.status === 'success' && data.items && data.items.length > 0) {
             let hasMissing = false;
+            
             data.items.forEach(item => {
-                const li = document.createElement('li'); li.style.marginBottom = '10px'; li.style.display = 'flex'; li.style.justifyContent = 'space-between'; li.style.alignItems = 'center';
-                const textSpan = document.createElement('span'); textSpan.innerText = item.text; textSpan.style.color = item.owned ? '#2ecc71' : '#e74c3c'; li.appendChild(textSpan);
+                // Handle both poster_path (from backend) or fallback
+                const posterPath = item.poster_path || item.poster; 
+                const poster = posterPath ? `https://image.tmdb.org/t/p/w92${posterPath}` : 'https://placehold.co/45x68?text=No+Img';
+                
+                const li = document.createElement('li'); 
+                li.className = 'preview-item-row'; // Uses new CSS class
+                
+                let buttonHtml = '';
                 if (!item.owned) {
                     hasMissing = true;
-                    const reqBtn = document.createElement('button'); reqBtn.innerText = "Request 📥"; reqBtn.className = "item-request-btn"; reqBtn.dataset.tmdbId = item.tmdb_id; reqBtn.dataset.mediaType = item.media_type; reqBtn.style.padding = '3px 8px'; reqBtn.style.fontSize = '0.7em'; reqBtn.style.cursor = 'pointer';
-                    reqBtn.onclick = () => {
-                        reqBtn.innerText = "Sending... ⏳"; reqBtn.disabled = true;
-                        fetch('/request_media', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ tmdb_id: item.tmdb_id, media_type: item.media_type }) }).then(res => res.json()).then(resData => { if(resData.status === 'success') { reqBtn.innerText = "Requested ✅"; reqBtn.style.background = "#2ecc71"; reqBtn.style.color = "white"; } else { reqBtn.innerText = "Failed ❌"; reqBtn.disabled = false; } });
-                    };
-                    li.appendChild(reqBtn);
-                } else { const ownedSpan = document.createElement('span'); ownedSpan.innerText = "Owned ✅"; ownedSpan.style.fontSize = '0.7em'; ownedSpan.style.color = '#2ecc71'; li.appendChild(ownedSpan); }
+                    buttonHtml = `<button class="item-request-btn" data-tmdb-id="${item.tmdb_id}" data-media-type="${item.media_type}" onclick="requestSingle(this)">Request 📥</button>`;
+                } else {
+                    buttonHtml = `<span style="font-size:0.8em; color:#2ecc71; font-weight:bold;">Owned ✅</span>`;
+                }
+
+                li.innerHTML = `
+                    <img src="${poster}" class="preview-tiny-poster" onerror="this.src='https://placehold.co/45x68?text=Error'">
+                    <div class="preview-details">
+                        <div class="preview-title-row">
+                            <strong>${item.text}</strong>
+                            <span style="font-size:0.8em; color:#888;">${item.year || ''}</span>
+                        </div>
+                        ${buttonHtml}
+                    </div>
+                `;
+                
                 list.appendChild(li);
             });
+            
             if(hasMissing) allBtn.style.display = 'block';
-        } else { list.innerHTML = `<li>${data.message || "No matches found."}</li>`; }
+            
+        } else { 
+            list.innerHTML = `<li style='text-align:center; padding:20px; color:#aaa;'>${data.message || "No matches found."}</li>`; 
+        }
     });
 }
-function requestAllMissing() {
-    const btns = document.querySelectorAll('.item-request-btn'); const items = [];
-    btns.forEach(b => { if(!b.disabled) { items.push({ tmdb_id: b.dataset.tmdbId, media_type: b.dataset.mediaType }); b.innerText = "Queued..."; b.disabled = true; } });
-    if(items.length === 0) return;
-    fetch('/request_media', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ items: items }) }).then(res => res.json()).then(data => { alert(`Request successful for ${data.count} items!`); previewMatches(); });
+
+function requestSingle(btn) {
+    const tmdbId = btn.dataset.tmdbId;
+    const type = btn.dataset.mediaType;
+    
+    btn.innerText = "Sending... ⏳"; 
+    btn.disabled = true;
+    
+    fetch('/request_media', { 
+        method: 'POST', 
+        headers: {'Content-Type': 'application/json'}, 
+        body: JSON.stringify({ tmdb_id: tmdbId, media_type: type }) 
+    }).then(res => res.json()).then(resData => { 
+        if(resData.status === 'success') { 
+            btn.innerText = "Requested ✅"; 
+            btn.style.background = "#2ecc71"; 
+            btn.style.color = "white"; 
+        } else { 
+            btn.innerText = "Failed ❌"; 
+            btn.disabled = false; 
+        } 
+    });
 }
+
+function requestAllMissing() {
+    const btns = document.querySelectorAll('.item-request-btn'); 
+    const items = [];
+    
+    btns.forEach(b => { 
+        if(!b.disabled) { 
+            items.push({ tmdb_id: b.dataset.tmdbId, media_type: b.dataset.mediaType }); 
+            b.innerText = "Queued..."; 
+            b.disabled = true; 
+        } 
+    });
+    
+    if(items.length === 0) return;
+    
+    fetch('/request_media', { 
+        method: 'POST', 
+        headers: {'Content-Type': 'application/json'}, 
+        body: JSON.stringify({ items: items }) 
+    }).then(res => res.json()).then(data => { 
+        alert(`Request successful for ${data.count} items!`); 
+        previewMatches(); 
+    });
+}
+
 function saveCollection() {
-    const title = document.getElementById('c_title').value; if(!title) { alert("Please enter a Collection Title!"); return; }
+    const title = document.getElementById('c_title').value; 
+    if(!title) { alert("Please enter a Collection Title!"); return; }
+    
     const keywordString = selectedKeywords.map(k => k.id).join('|');
-    const data = { title: title, media_type: document.getElementById('c_type').value, sort_by: document.getElementById('c_sort').value, with_genres: document.getElementById('c_genre').value, min_rating: document.getElementById('c_rating').value, year_start: document.getElementById('c_year_start').value, year_end: document.getElementById('c_year_end').value, with_keywords: keywordString };
-    fetch('/save_custom_collection', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) }).then(res => res.json()).then(data => { if(data.status === 'success') { window.location.href = '/playlists'; } else { alert("Error saving: " + data.message); } });
+    const data = { 
+        title: title, 
+        media_type: document.getElementById('c_type').value, 
+        sort_by: document.getElementById('c_sort').value, 
+        with_genres: document.getElementById('c_genre').value, 
+        min_rating: document.getElementById('c_rating').value, 
+        year_start: document.getElementById('c_year_start').value, 
+        year_end: document.getElementById('c_year_end').value, 
+        with_keywords: keywordString 
+    };
+    
+    fetch('/save_custom_collection', { 
+        method: 'POST', 
+        headers: {'Content-Type': 'application/json'}, 
+        body: JSON.stringify(data) 
+    }).then(res => res.json()).then(data => { 
+        if(data.status === 'success') { 
+            window.location.href = '/playlists'; 
+        } else { 
+            alert("Error saving: " + data.message); 
+        } 
+    });
 }
 </script>
 {% endblock %}

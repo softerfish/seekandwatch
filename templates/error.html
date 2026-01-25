@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="container" style="text-align: center; margin-top: 50px;">
-    <h1 style="color: var(--error); font-size: 3em;">⚠️ Error</h1>
-    <p style="font-size: 1.2em; color: #ccc; margin: 20px 0;">{{ message }}</p>
-    <a href="{{ url_for('dashboard') }}" class="btn btn-primary" style="padding: 10px 20px; border-radius: 5px; text-decoration: none; font-weight: bold;">
+<div class="container error-container">
+    <h1 class="error-title">⚠️ Error</h1>
+    <p class="error-message">{{ message }}</p>
+    <a href="{{ url_for('dashboard') }}" class="btn btn-home">
         Return Home
     </a>
 </div>

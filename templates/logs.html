@@ -2,14 +2,14 @@
 {% block content %}
 
 <div class="playlist-header">
-    <div style="display:flex; justify-content:space-between; align-items:center;">
+    <div class="logs-header-row">
         <h2>📜 System Logs</h2>
         
-        <div style="display:flex; gap:15px; align-items:center;">
+        <div class="logs-actions">
             
-            <label class="switch-container" style="display:flex; align-items:center; cursor:pointer;">
+            <label class="switch-container">
                 <input type="checkbox" id="log-toggle" {% if settings.logging_enabled %}checked{% endif %} onchange="toggleLogging()">
-                <span style="margin-left: 10px; font-weight:bold; font-size:0.9em;">
+                <span class="switch-label">
                     {% if settings.logging_enabled %}Recording ON 🟢{% else %}Recording OFF 🔴{% endif %}
                 </span>
             </label>
@@ -21,40 +21,40 @@
     <p class="media-sub">Track collection syncs, cache updates, and system errors.</p>
 </div>
 
-<div class="card" style="padding: 0; overflow: hidden;">
+<div class="card logs-table-container">
     <div style="overflow-x: auto;">
-        <table style="width: 100%; border-collapse: collapse; font-size: 0.9em;">
+        <table class="logs-table">
             <thead>
-                <tr style="background: rgba(255,255,255,0.05); text-align: left; border-bottom: 1px solid #333;">
-                    <th style="padding: 15px; width: 180px;">Timestamp</th>
-                    <th style="padding: 15px; width: 100px;">Module</th>
-                    <th style="padding: 15px; width: 100px;">Level</th>
-                    <th style="padding: 15px;">Message</th>
+                <tr>
+                    <th style="width: 180px;">Timestamp</th>
+                    <th style="width: 100px;">Module</th>
+                    <th style="width: 100px;">Level</th>
+                    <th>Message</th>
                 </tr>
             </thead>
             <tbody>
                 {% for log in logs %}
-                <tr style="border-bottom: 1px solid #222;">
-                    <td style="padding: 12px 15px; color: #888;">{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
-                    <td style="padding: 12px 15px;"><code>{{ log.module }}</code></td>
-                    <td style="padding: 12px 15px;">
+                <tr>
+                    <td style="color: #888;">{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                    <td><code>{{ log.module }}</code></td>
+                    <td>
                         {% if log.level == 'INFO' %}
-                            <span style="background: #2980b9; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.8em;">INFO</span>
+                            <span class="log-badge info">INFO</span>
                         {% elif log.level == 'SUCCESS' %}
-                            <span style="background: #27ae60; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.8em;">SUCCESS</span>
+                            <span class="log-badge success">SUCCESS</span>
                         {% elif log.level == 'WARNING' %}
-                            <span style="background: #f39c12; color: black; padding: 2px 8px; border-radius: 4px; font-size: 0.8em;">WARN</span>
+                            <span class="log-badge warning">WARN</span>
                         {% elif log.level == 'ERROR' %}
-                            <span style="background: #c0392b; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.8em;">ERROR</span>
+                            <span class="log-badge error">ERROR</span>
                         {% else %}
-                            <span style="background: #7f8c8d; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.8em;">{{ log.level }}</span>
+                            <span class="log-badge default">{{ log.level }}</span>
                         {% endif %}
                     </td>
-                    <td style="padding: 12px 15px; line-height: 1.4;">{{ log.message }}</td>
+                    <td style="line-height: 1.4;">{{ log.message }}</td>
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="4" style="padding: 30px; text-align: center; color: #666;">No logs found.</td>
+                    <td colspan="4" class="text-center" style="padding: 30px; color: #666;">No logs found.</td>
                 </tr>
                 {% endfor %}
             </tbody>
