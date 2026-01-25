@@ -51,11 +51,9 @@
                 <div class="d-flex align-items-center">
                     <div class="nav-icon-group">
                         
-                        {% if current_user.settings.tautulli_url %}
-                            <a href="{{ url_for('stats') }}" class="text-success nav-mini-icon" title="View Server Stats">
-                                <i class="fas fa-chart-line"></i>
-                            </a>
-                        {% endif %}
+                        <a href="https://www.reddit.com/r/SeekAndWatch/" target="_blank" class="nav-mini-icon" title="Join us on Reddit" style="color: #ff4500;">
+                            <i class="fab fa-reddit"></i>
+                        </a>
                         
                         <a href="https://github.com/softerfish/seekandwatch" target="_blank" class="text-white nav-mini-icon" title="Star on GitHub" style="gap: 4px;">
                             <i class="fab fa-github"></i> 
