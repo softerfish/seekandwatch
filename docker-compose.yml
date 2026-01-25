@@ -1,0 +1,25 @@
+services:
+  seekandwatch:
+    image: ghcr.io/softerfish/seekandwatch:latest
+    container_name: seekandwatch
+    ports:
+      - "5000:5000"
+    volumes:
+      - /path/to/config:/config
+    environment:
+      - TZ=America/New_York
+      - PUID=1000  # Optional: Change if you have permission issues
+      - PGID=1000  # Optional: Change if you have permission issues
+    restart: unless-stopped
+    
+    # Graceful shutdown configuration
+    stop_signal: SIGTERM
+    stop_grace_period: 30s
+    
+    # Python-native healthcheck (No curl required)
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; import sys; r = urllib.request.urlopen('http://localhost:5000/login'); sys.exit(0 if r.getcode() == 200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3

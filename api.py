@@ -15,7 +15,8 @@ from utils import (normalize_title, is_duplicate, fetch_omdb_ratings, send_overs
                    prune_backups, BACKUP_DIR, sync_remote_aliases, get_tmdb_aliases, 
                    refresh_plex_cache, get_plex_cache, get_lock_status, is_system_locked,
                    write_scanner_log, read_scanner_log, prefetch_keywords_parallel,
-                   item_matches_keywords, RESULTS_CACHE, get_session_filters, validate_url, prefetch_tv_states_parallel)
+                   item_matches_keywords, RESULTS_CACHE, get_session_filters, validate_url, 
+                   prefetch_tv_states_parallel, prefetch_ratings_parallel)
 from presets import PLAYLIST_PRESETS
 
 # Define Blueprint
@@ -34,6 +35,11 @@ def load_more_recs():
     s = current_user.settings
     min_year, min_rating, genre_filter, critic_enabled, threshold = get_session_filters()
     
+    # Fetch content ratings allowed from session
+    allowed_ratings = session.get('rating_filter', [])
+    # Normalize empty list to None to skip filtering
+    if not allowed_ratings or 'all' in allowed_ratings: allowed_ratings = None
+    
     raw_keywords = session.get('keywords', '')
     target_keywords = [k.strip() for k in raw_keywords.split('|') if k.strip()]
     
@@ -41,6 +47,8 @@ def load_more_recs():
     
     # Always prefetch the next batch to populate cache
     batch_items = candidates[start_idx:batch_end]
+    # Prefetch Ratings for this batch
+    prefetch_ratings_parallel(batch_items, s.tmdb_key)
     
     if target_keywords:
         prefetch_keywords_parallel(batch_items, s.tmdb_key)
@@ -65,6 +73,11 @@ def load_more_recs():
         # 1. Filters
         if item['year'] < min_year: continue
         if item.get('vote_average', 0) < min_rating: continue
+        # Content Rating Filter
+        if allowed_ratings:
+            c_rate = item.get('content_rating', 'NR')
+            # Safety: Ensure c_rate is a string
+            if str(c_rate) not in allowed_ratings: continue
         if genre_filter and genre_filter != 'all':
             try:
                 # Multi-select or String Single legacy
@@ -114,6 +127,7 @@ def update_filters():
         
     session['genre_filter'] = data.get('genre_filter')
     session['keywords'] = data.get('keywords', '')
+    session['rating_filter'] = data.get('rating_filter', [])
     
     if current_user.id in RESULTS_CACHE:
         RESULTS_CACHE[current_user.id]['next_index'] = 0
@@ -243,6 +257,48 @@ def get_plex_libraries():
         libs = [{'title': sec.title, 'type': sec.type, 'name': sec.title} for sec in plex.library.sections() if sec.type in ['movie', 'show']]
         return jsonify({'status': 'success', 'libraries': libs})
     except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)})
+        
+@api_bp.route('/get_plex_collections')
+@login_required
+def get_plex_collections():
+    s = current_user.settings
+    if not s.plex_url or not s.plex_token:
+        return jsonify({'status': 'error', 'message': 'Plex not configured'})
+    
+    try:
+        # Connect to Plex
+        plex = PlexServer(s.plex_url, s.plex_token, timeout=5)
+        collections = []
+        
+        # Scan Movie and TV libraries for collections
+        for section in plex.library.sections():
+            if section.type in ['movie', 'show']:
+                for col in section.collections():
+                    
+                    # 1. Get Artwork (Fallback: Collection Thumb -> First Item Thumb -> None)
+                    thumb = col.thumb
+                    if not thumb and col.items():
+                        thumb = col.items()[0].thumb
+                        
+                    # 2. Build Collection Object
+                    collections.append({
+                        'title': col.title,
+                        'key': col.ratingKey,
+                        'library': section.title,
+                        'count': col.childCount,
+                        'thumb': f"{s.plex_url}{thumb}?X-Plex-Token={s.plex_token}" if thumb else None,
+                        # Generate a direct link to the collection in Plex Web
+                        'url': f"{s.plex_url}/web/index.html#!/server/{plex.machineIdentifier}/details?key={col.key}"
+                    })
+        
+        # 3. Sort alphabetically by title
+        collections.sort(key=lambda x: x['title'])
+        
+        return jsonify({'status': 'success', 'collections': collections})
+        
+    except Exception as e:
+        print(f"Error fetching collections: {e}")
         return jsonify({'status': 'error', 'message': str(e)})
 
 @api_bp.route('/match_bulk_titles', methods=['POST'])

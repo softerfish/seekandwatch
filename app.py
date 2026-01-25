@@ -26,14 +26,15 @@ from utils import (normalize_title, is_duplicate, fetch_omdb_ratings, send_overs
                    refresh_plex_cache, get_plex_cache, get_lock_status, is_system_locked,
                    write_scanner_log, read_scanner_log, prefetch_keywords_parallel,
                    item_matches_keywords, RESULTS_CACHE, get_session_filters, write_log,
-                   check_for_updates, handle_lucky_mode, run_alias_scan, reset_stuck_locks, prefetch_tv_states_parallel)
+                   check_for_updates, handle_lucky_mode, run_alias_scan, reset_stuck_locks, 
+                   prefetch_tv_states_parallel, prefetch_ratings_parallel)
 from presets import PLAYLIST_PRESETS
 
 # ==================================================================================
 # 1. APPLICATION CONFIGURATION
 # ==================================================================================
 
-VERSION = "1.2.2"
+VERSION = "1.2.3"
 
 UPDATE_CACHE = {
     'version': None,
@@ -139,17 +140,18 @@ def run_migrations():
                     conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN scanner_log_size INTEGER DEFAULT 10"))
                 if 'keyword_cache_size' not in settings_columns:
                     conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN keyword_cache_size INTEGER DEFAULT 2000"))
-                
-                # --- NEW ADDITION HERE ---
                 if 'schedule_time' not in settings_columns:
                      print("--- [Migration] Adding 'schedule_time' column ---")
                      conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN schedule_time VARCHAR(10) DEFAULT '04:00'"))
+                if 'ignored_libraries' not in settings_columns:
+                    print("--- [Migration] Adding 'ignored_libraries' column ---")
+                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN ignored_libraries VARCHAR(500)"))
+                
                     
         except Exception as e:
             print(f"Migration Warning: {e}")
 
         # 3. FIRST USER ADMIN (Raw SQL Method)
-        # This guarantees the fix works even if the ORM model isn't refreshed yet.
         try:
             with db.engine.connect() as conn:
                 # Check if ANY admin exists
@@ -311,7 +313,7 @@ def dashboard():
     # 1. USE GLOBAL SETTINGS
     s = Settings.query.order_by(Settings.id.asc()).first()
     
-    # 2. Check Updates (Keep existing logic)
+    # 2. Check Updates
     now = time.time()
     if UPDATE_CACHE['version'] is None or (now - UPDATE_CACHE['last_check'] > 14400):
         try:
@@ -324,15 +326,24 @@ def dashboard():
     if UPDATE_CACHE['version'] and UPDATE_CACHE['version'] != VERSION:
         new_version = UPDATE_CACHE['version']
         
-    # 3. Check Tautulli Status (NEW)
     has_tautulli = bool(s.tautulli_url and s.tautulli_api_key)
+
+    # --- Fetch Plex Libraries for Dashboard ---
+    plex_libraries = []
+    try:
+        if s.plex_url and s.plex_token:
+            p = PlexServer(s.plex_url, s.plex_token, timeout=2)
+            plex_libraries = [sec.title for sec in p.library.sections() if sec.type in ['movie', 'show']]
+    except: pass
+    # ----------------------------------------------------
        
     return render_template('dashboard.html', 
                            settings=s, 
                            new_version=new_version,
                            has_omdb=bool(s.omdb_key if s else False),
-                           has_tautulli=has_tautulli) # <--- Added this
-
+                           has_tautulli=has_tautulli,
+                           plex_libraries=plex_libraries)
+                           
 @app.route('/get_local_trending')
 @login_required
 def get_local_trending():
@@ -418,6 +429,8 @@ def review_history():
     # USE GLOBAL SETTINGS
     s = Settings.query.order_by(Settings.id.asc()).first()
     
+    ignored_libs = [l.strip().lower() for l in request.form.getlist('ignored_libraries')]
+    
     media_type = request.form.get('media_type', 'movie')
     manual_query = request.form.get('manual_query')
     limit = int(request.form.get('history_limit', 20))
@@ -445,6 +458,18 @@ def review_history():
         # 2. Plex History Mode
         elif s.plex_url and s.plex_token:
             plex = PlexServer(s.plex_url, s.plex_token)
+            # --- Resolve Library Names to IDs ---
+            ignored_lib_names = [l.strip().lower() for l in request.form.getlist('ignored_libraries')]
+            ignored_lib_ids = []
+            
+            if ignored_lib_names:
+                try:
+                    for section in plex.library.sections():
+                        if section.title.lower() in ignored_lib_names:
+                            # Store as string to ensure safe comparison later
+                            ignored_lib_ids.append(str(section.key))
+                except: pass
+            # ----------------------------------------------
             
             # --- USER MAPPING ---
             user_map = {}
@@ -483,9 +508,13 @@ def review_history():
                     elif hasattr(h, 'user') and hasattr(h.user, 'title'): user_name = h.user.title
 
                 if user_name.lower() in ignored: continue
+                
+                # Exclude specific libraries
+                if hasattr(h, 'librarySectionID') and h.librarySectionID:
+                    if str(h.librarySectionID) in ignored_lib_ids:
+                        continue
 
                 # --- DEDUPLICATE TV SHOWS ---
-                # If it's an episode, use the Show Name (grandparentTitle)
                 if h.type == 'episode':
                     title = h.grandparentTitle
                 else:
@@ -554,23 +583,21 @@ def generate():
     s = Settings.query.filter_by(user_id=current_user.id).first()
     owned_keys = get_plex_cache(s)
     
+    # --- LUCKY MODE ---
     if request.form.get('lucky_mode') == 'true':
         raw_candidates = handle_lucky_mode(s)
         if not raw_candidates:
              flash("Could not find a lucky pick!", "error")
              return redirect(url_for('dashboard'))
         
-
         lucky_result = []
         for item in raw_candidates:
-            # Stop once we have 5 good ones
             if len(lucky_result) >= 5: break
             
-            # 1. Check Title (Fuzzy)
+            # Check Ownership
             t_clean = normalize_title(item['title'])
             if t_clean in owned_keys: continue
             
-            # 2. Check ID (Exact - Alias DB)
             if TmdbAlias.query.filter_by(tmdb_id=item['id']).first(): continue
             
             lucky_result.append(item)
@@ -579,7 +606,6 @@ def generate():
              flash("You own all the lucky picks! Try again.", "error")
              return redirect(url_for('dashboard'))
 
-        # [FIX] Fetch genres for the sidebar so it isn't empty
         genres = []
         try:
             g_url = f"https://api.themoviedb.org/3/genre/movie/list?api_key={s.tmdb_key}"
@@ -587,9 +613,16 @@ def generate():
         except: pass
 
         RESULTS_CACHE[current_user.id] = {'candidates': lucky_result, 'next_index': len(lucky_result)}
-        return render_template('results.html', movies=lucky_result, min_year=0, min_rating=0, genres=genres, current_genre=None, use_critic_filter='false')
+        return render_template('results.html', 
+                               movies=lucky_result, 
+                               min_year=0, 
+                               min_rating=0, 
+                               genres=genres, 
+                               current_genre=None, 
+                               use_critic_filter='false',
+                               is_lucky=True) # Tells template to hide filters
 
-    # 2. STANDARD MODE
+    # --- STANDARD MODE ---
     media_type = request.form.get('media_type')
     selected_titles = request.form.getlist('selected_movies')
     
@@ -613,7 +646,7 @@ def generate():
     seen_ids = set()
     seed_ids = []
     
-    # Resolve Seeds
+    # 1. Resolve Seeds
     for title in selected_titles:
         try:
             search_url = f"https://api.themoviedb.org/3/search/{media_type}?api_key={s.tmdb_key}&query={title}"
@@ -622,10 +655,9 @@ def generate():
                 seed_ids.append(r['results'][0]['id'])
         except: pass
             
-    ## Fetch Recommendations (fetch 3 pages of media_type per media_type)
+    # 2. Fetch Recommendations
     for tmdb_id in seed_ids:
         try:
-            # Loop through pages 1, 2, and 3 to get 60 items per seed
             for page_num in range(1, 4): 
                 rec_url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}/recommendations?api_key={s.tmdb_key}&language=en-US&page={page_num}"
                 data = requests.get(rec_url).json()
@@ -638,6 +670,8 @@ def generate():
                     item['year'] = int(date[:4]) if date else 0
                     
                     if item.get('title', item.get('name')) in blocked: continue
+                    
+                    # Ownership Check
                     t_clean = normalize_title(item.get('title', item.get('name')))
                     if t_clean in owned_keys: continue
                     
@@ -655,54 +689,47 @@ def generate():
         'next_index': 0
     }
     
-    # --- PROCESSING ---
+    # 3. Processing & Filtering
     min_year, min_rating, genre_filter, critic_enabled, threshold = get_session_filters()
+    rating_filter = request.form.getlist('rating_filter')
+    session['rating_filter'] = rating_filter
     raw_keywords = session.get('keywords', '')
     target_keywords = [k.strip() for k in raw_keywords.split('|') if k.strip()]
 
-    # PARALLEL PREFETCH
-    # Always run to populate cache for future filtering
+    prefetch_ratings_parallel(recommendations[:60], s.tmdb_key)
+
     if target_keywords:
-        # A. FILTERING ACTIVE: We must wait for data to filter correctly
         prefetch_keywords_parallel(recommendations, s.tmdb_key)
     else:
-        # B. BROWSING MODE: Run in background to prevent Timeout/Crashing
-        # This keeps the UI fast while filling the cache silently
         def async_prefetch(app_obj, items, key):
             with app_obj.app_context():
                 prefetch_keywords_parallel(items, key)
-        
-        threading.Thread(target=async_prefetch, 
-                         args=(app, recommendations, s.tmdb_key)).start()
+        threading.Thread(target=async_prefetch, args=(app, recommendations, s.tmdb_key)).start()
 
     final_list = []
     idx = 0
     
-# --- PROCESSING LOOP ---
-    # Increased limit to 40 to fill larger screens
     while len(final_list) < 40 and idx < len(recommendations):
         item = recommendations[idx]
         idx += 1
         
-        # 1. Apply Filters
         if item['year'] < min_year: continue
         if item.get('vote_average', 0) < min_rating: continue
+        if rating_filter:
+            c_rate = item.get('content_rating', 'NR')
+            if c_rate not in rating_filter: continue
+        
         if genre_filter and genre_filter != 'all':
             try:
-                # Handle List (Multi-select) or String (Single legacy)
                 allowed_ids = [int(g) for g in genre_filter] if isinstance(genre_filter, list) else [int(genre_filter)]
-                
-                # Logic: Keep item if it matches ANY selected genre
                 item_genres = item.get('genre_ids', [])
-                if not any(gid in allowed_ids for gid in item_genres): 
-                    continue
+                if not any(gid in allowed_ids for gid in item_genres): continue
             except: pass
             
         if target_keywords:
-            if not item_matches_keywords(item, target_keywords):
-                continue
+            if not item_matches_keywords(item, target_keywords): continue
 
-        # 2. Get Badges (OMDB/Rotten Tomatoes)
+        # Scores
         item['rt_score'] = None
         if s.omdb_key:
             ratings = fetch_omdb_ratings(item.get('title', item.get('name')), item['year'], s.omdb_key)
@@ -716,26 +743,11 @@ def generate():
 
         final_list.append(item)
 
-    while len(final_list) < 40 and idx < len(recommendations):
-        # ... (loop logic) ...
-        final_list.append(item)
-
     if media_type == 'tv':
         prefetch_tv_states_parallel(final_list, s.tmdb_key)
 
-    # Save Index for "Load More"
     RESULTS_CACHE[current_user.id]['next_index'] = idx
     
-    # 4. SMART BACKGROUND PREFETCH (Prevents Timeouts)
-    # If filtering, we wait. If browsing, we do it in background.
-    if target_keywords:
-        prefetch_keywords_parallel(recommendations, s.tmdb_key)
-    else:
-        def async_prefetch(app_obj, items, key):
-            with app_obj.app_context():
-                prefetch_keywords_parallel(items, key)
-        threading.Thread(target=async_prefetch, args=(app, recommendations, s.tmdb_key)).start()
-        
     g_url = f"https://api.themoviedb.org/3/genre/{media_type}/list?api_key={s.tmdb_key}"
     try: genres = requests.get(g_url).json().get('genres', [])
     except: genres = []
@@ -746,8 +758,9 @@ def generate():
                            current_genre=genre_filter,
                            min_year=min_year,
                            min_rating=min_rating,
-                           use_critic_filter='true' if critic_enabled else 'false')
-
+                           use_critic_filter='true' if critic_enabled else 'false',
+                           is_lucky=False)
+                           
 @app.route('/reset_alias_db')
 @login_required
 def reset_alias_db():
@@ -822,6 +835,9 @@ def settings():
         try: s.scanner_log_size = int(request.form.get('scanner_log_size', 10))
         except: s.scanner_log_size = 10
         
+        ignored_libs = request.form.getlist('ignored_libraries')
+        s.ignored_libraries = ",".join(ignored_libs)
+        
         db.session.commit()
         # Send both 'message' and 'msg' to satisfy any frontend variation
         return jsonify({'status': 'success', 'message': 'Settings saved successfully.', 'msg': 'Settings saved successfully.'})
@@ -845,6 +861,17 @@ def settings():
     # Parse ignored
     current_ignored = (s.ignored_users or '').split(',')
 
+    # Fetch Plex Libraries for the UI
+    plex_libraries = []
+    try:
+        if s.plex_url and s.plex_token:
+            p = PlexServer(s.plex_url, s.plex_token, timeout=3)
+            # Fetch only movie/show sections
+            plex_libraries = [sec.title for sec in p.library.sections() if sec.type in ['movie', 'show']]
+    except: pass
+    
+    current_ignored_libs = (s.ignored_libraries or '').split(',')
+
     # Logs
     logs = SystemLog.query.order_by(SystemLog.timestamp.desc()).limit(50).all()
     
@@ -862,7 +889,9 @@ def settings():
     return render_template('settings.html', 
                            settings=s, 
                            plex_users=plex_users, 
-                           current_ignored=current_ignored, 
+                           current_ignored=current_ignored,
+                           plex_libraries=plex_libraries,
+                           current_ignored_libs=current_ignored_libs,
                            logs=logs, 
                            cache_age=cache_age,
                            keyword_count=keyword_count)

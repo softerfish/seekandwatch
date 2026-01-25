@@ -859,6 +859,57 @@ def prefetch_tv_states_parallel(items, api_key):
     for item in items:
         if item['id'] in status_map:
             item['status'] = status_map[item['id']]
+            
+def prefetch_ratings_parallel(items, api_key):
+    """
+    Fetches US Content Ratings (Certification) for a batch of items.
+    Updates items in-place with 'content_rating' key.
+    """
+    if not items: return
+
+    def fetch_rating(item):
+        if 'content_rating' in item: return None
+
+        try:
+            m_type = item.get('media_type', 'movie')
+            # Endpoint differs by type
+            subset = 'release_dates' if m_type == 'movie' else 'content_ratings'
+            url = f"https://api.themoviedb.org/3/{m_type}/{item['id']}/{subset}?api_key={api_key}"
+            
+            data = requests.get(url, timeout=2).json()
+            results = data.get('results', [])
+            
+            rating = "NR"
+            # Find US Rating
+            for r in results:
+                if r.get('iso_3166_1') == 'US':
+                    if m_type == 'movie':
+                        # Movies return a list of release dates, grab the first non-empty certification
+                        dates = r.get('release_dates', [])
+                        for d in dates:
+                            if d.get('certification'):
+                                rating = d.get('certification')
+                                break
+                    else:
+                        # TV returns a direct rating
+                        rating = r.get('rating')
+                    break
+            
+            # Normalize NR
+            if not rating or rating == '': rating = "NR"
+            
+            return {'id': item['id'], 'rating': rating}
+        except:
+            return None
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        results = executor.map(fetch_rating, items)
+        
+    rating_map = {r['id']: r['rating'] for r in results if r}
+    
+    for item in items:
+        # Default to NR if API fails or no US rating found
+        item['content_rating'] = rating_map.get(item['id'], 'NR')
 
 def get_tautulli_trending(media_type='movie'):
     """

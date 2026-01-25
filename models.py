@@ -25,6 +25,7 @@ class Settings(db.Model):
     plex_url = db.Column(db.String(200))
     plex_token = db.Column(db.String(200))
     ignored_users = db.Column(db.String(500))
+    ignored_libraries = db.Column(db.String(500))
     
     # Metadata Settings
     tmdb_key = db.Column(db.String(200))

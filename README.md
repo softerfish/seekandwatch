@@ -105,6 +105,16 @@ docker run -d \
 ```  
   
 ### Changelog
+v1.2.3
+- moving all styling into a static/style.css file. There might be some broken styling here and there
+- added an ignore library to the Smart Discovery search
+- removed all search filters from the I'm Feeling Lucky results page 
+- in Plex Collections, you now have a live view of all collections currently existing on your Plex server
+- refine searches by US content rating (G, PG, PG-13...)
+- included a docker-compose.yml
+
+<details>
+  <summary><b>Past Changelog</b></summary>
 v1.2.2
 - added trending on tatulli server to Smart Discovery
 - added no more items when Smart Discovery results end
@@ -115,8 +125,6 @@ v1.2.2
 - added GitHub link and version in the header
 - removed YouTube and Overseerr link in the header
 
-<details>
-  <summary><b>Past Changelog</b></summary>
 1.2.1
 Increased overlays on Kometa Builder
 
