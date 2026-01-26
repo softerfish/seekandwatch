@@ -123,11 +123,12 @@
         <div id="trailer-body" style="flex:1; width:100%; height:100%;"></div>
     </div>
 </div>
+<div id="server-data" style="display:none;">{{ movies|tojson if movies else '[]' }}</div>
 
 <script>
     let page = 1;
     const useCriticFilter = "{{ use_critic_filter|lower }}"; 
-    const serverMovies = {{ movies|tojson|safe if movies else '[]' }};
+    const serverMovies = JSON.parse(document.getElementById('server-data').textContent);
 
     // --- GENRE UI LOGIC ---
     function toggleGenreView(btn) {
