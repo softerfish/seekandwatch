@@ -425,10 +425,17 @@
         card.className = 'result-card';
         card.dataset.year = parseInt(displayDate) || 0;
         card.dataset.rating = rating;
-		card.dataset.contentRating = item.content_rating || 'NR';
+        card.dataset.contentRating = item.content_rating || 'NR';
         
         const posterUrl = item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : 'https://placehold.co/500x750/222/888?text=No+Poster';
-        const searchableText = `<span style="display:none;">${escapeHtml(title)} ${escapeHtml(item.overview || '')}</span>`;
+        
+        // --- SAFE STRING CONSTRUCTION ---
+        // 1. escapeHtml: Prevents HTML injection in the visual title
+        const safeTitle = escapeHtml(title);
+        // 2. replace: Escapes single quotes for the JS onclick event so "Grey's Anatomy" doesn't break the code
+        const jsTitle = safeTitle.replace(/'/g, "\\'");
+        
+        const searchableText = `<span style="display:none;">${safeTitle} ${escapeHtml(item.overview || '')}</span>`;
 
         let ratingsHtml = `<span class="meta-year">${displayDate}</span>`;
         let scoresHtml = '';
@@ -459,12 +466,12 @@
         
         card.innerHTML = `
             <div class="poster-wrapper">
-                <img src="${posterUrl}" loading="lazy">
+                <img src="${posterUrl}" loading="lazy" alt="${safeTitle}">
                 ${statusHtml}
                 
                 <div class="card-icon-overlay">
                     <div class="overlay-top-actions">
-                        <div class="icon-btn" title="Block this item" onclick="blockItem(event, '${escapeHtml(title)}', '${mediaType}')" style="color:#e74c3c; border-color:#e74c3c;">🚫</div>
+                        <div class="icon-btn" title="Block this item" onclick="blockItem(event, '${jsTitle}', '${mediaType}')" style="color:#e74c3c; border-color:#e74c3c;">🚫</div>
                     </div>
                     <div class="overlay-bottom-row">
                         <div class="icon-btn btn-request" title="Request on Overseerr" onclick="requestMedia('${mediaType}', ${id}, this); event.stopPropagation();">📥</div>
@@ -477,7 +484,7 @@
             </div>
             
             <div class="card-info">
-                <div class="movie-title" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
+                <div class="movie-title" title="${safeTitle}">${safeTitle}</div>
                 <div class="movie-meta-row">
                     ${ratingsHtml}
                     <span style="margin-left:auto; font-size:0.75em; border:1px solid #555; padding:1px 4px; border-radius:3px; color:#ccc;">

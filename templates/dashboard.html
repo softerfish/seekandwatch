@@ -103,6 +103,18 @@
             }
             </script>
             {% endif %}
+			<div style="margin-bottom: 20px; text-align: center;">
+                <label class="critic-label" style="background: rgba(52, 152, 219, 0.1); border-color: #3498db; color: #3498db;">
+                    <input type="checkbox" name="future_mode" value="true" style="width: 16px; height: 16px; accent-color: #3498db;">
+                    <span>🚀 Search Future Releases Only</span>
+                </label>
+            </div>
+			<div style="margin-bottom: 20px; text-align: center;">
+                <label class="critic-label" style="background: rgba(155, 89, 182, 0.1); border-color: #9b59b6; color: #9b59b6;">
+                    <input type="checkbox" name="include_obscure" value="true" style="width: 16px; height: 16px; accent-color: #9b59b6;">
+                    <span>🌍 Include International & Obscure</span>
+                </label>
+            </div>
             {% if plex_libraries %}
             <div style="margin-bottom: 20px; text-align: left; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px; border: 1px solid #333;">
                 <label style="color: #aaa; font-size: 0.9em; display: block; margin-bottom: 8px; text-align: center;">

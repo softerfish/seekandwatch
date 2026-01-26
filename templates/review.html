@@ -5,6 +5,8 @@
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
     <input type="hidden" name="media_type" value="{{ media_type }}">
     <input type="hidden" name="critic_filter" value="{{ session.get('critic_filter', '') }}">
+	<input type="hidden" name="future_mode" value="{{ 'true' if future_mode else 'false' }}">
+	<input type="hidden" name="include_obscure" value="{{ 'true' if include_obscure else 'false' }}">
     <input type="hidden" name="keywords" id="final-keywords">
     
     <div class="step-header">
