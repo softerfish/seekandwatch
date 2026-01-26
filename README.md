@@ -1,5 +1,5 @@
 # 🚀 SeekAndWatch
-![Version](https://img.shields.io/badge/version-1.2.3-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) (coming soon) ![License](https://img.shields.io/badge/License-MIT-green.svg)
+![Version](https://img.shields.io/badge/version-1.2.4-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) (coming soon) ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
 ⭐ **Show Your Support By Clicking The Star!**
 If SeekAndWatch has been helpful to you in any way, please consider giving this repository a star. Your gesture will greatly support our efforts and help others discover the project.
@@ -212,5 +212,6 @@ This product uses the TMDB API but is not endorsed or certified by TMDB.
 | Plex Collections | Custom Builder |
 | :---: | :---: |
 | <img src="images/plexcollections.png" alt="Plex Collections" width="800"> | <img src="images/custom-builder.png" alt="Custom Builder" width="400"> |
+
 
 </details>
