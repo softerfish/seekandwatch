@@ -98,7 +98,7 @@ ul { list-style: none; padding: 0; margin: 0; }
 }
 
 .nav-mini-icon {
-    font-size: 14px !important;
+    font-size: 15.4px !important;
     display: flex; align-items: center;
     text-decoration: none;
     margin: 0 !important; padding: 0 !important;
@@ -107,7 +107,7 @@ ul { list-style: none; padding: 0; margin: 0; }
 /* Version Badge */
 .version-badge {
     color: #666;
-    font-size: 12px !important;
+    font-size: 13.2px !important;
     font-family: var(--bs-body-font-family);
     border: 1px solid #333;
     padding: 0px 5px;
