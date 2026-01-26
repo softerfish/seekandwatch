@@ -34,7 +34,7 @@ from presets import PLAYLIST_PRESETS
 # 1. APPLICATION CONFIGURATION
 # ==================================================================================
 
-VERSION = "1.2.3"
+VERSION = "1.2.4"
 
 UPDATE_CACHE = {
     'version': None,
@@ -441,6 +441,9 @@ def review_history():
     
     candidates = []
     
+    future_mode = request.form.get('future_mode') == 'true'
+    include_obscure = request.form.get('include_obscure') == 'true'
+    
     try:
         # 1. Manual Search Mode
         if manual_query:
@@ -575,7 +578,9 @@ def review_history():
                            movies=candidates, 
                            media_type=media_type,
                            providers=providers,
-                           genres=genres)
+                           genres=genres,
+                           future_mode=future_mode,
+                           include_obscure=include_obscure)
                            
 @app.route('/generate', methods=['POST'])
 @login_required
@@ -655,37 +660,106 @@ def generate():
                 seed_ids.append(r['results'][0]['id'])
         except: pass
             
-    # 2. Fetch Recommendations
+    # 2. Fetch Recommendations OR Future Discovery
+    future_mode = request.form.get('future_mode') == 'true'
+    today = datetime.datetime.now().strftime('%Y-%m-%d')
+
     for tmdb_id in seed_ids:
         try:
-            for page_num in range(1, 4): 
-                rec_url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}/recommendations?api_key={s.tmdb_key}&language=en-US&page={page_num}"
-                data = requests.get(rec_url).json()
+            # --- FUTURE MODE: DISCOVER STRATEGY ---
+            if future_mode:
+                # We need the genres of the seed to find similar future content
+                details_url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}?api_key={s.tmdb_key}"
+                details = requests.get(details_url).json()
+                genres = [str(g['id']) for g in details.get('genres', [])[:3]] # Top 3 genres
                 
-                for item in data.get('results', []):
-                    if item['id'] in seen_ids: continue
-                    
-                    item['media_type'] = media_type
-                    date = item.get('release_date') or item.get('first_air_date')
-                    item['year'] = int(date[:4]) if date else 0
-                    
-                    if item.get('title', item.get('name')) in blocked: continue
-                    
-                    # Ownership Check
-                    t_clean = normalize_title(item.get('title', item.get('name')))
-                    if t_clean in owned_keys: continue
-                    
-                    alias = TmdbAlias.query.filter_by(tmdb_id=item['id'], media_type=media_type).first()
-                    if alias: continue 
+                # PIPE '|' means OR. Finds movies matching ANY of the genres.
+                genre_str = "|".join(genres)
 
-                    recommendations.append(item)
-                    seen_ids.add(item['id'])
+                # Discover Query
+                disc_url = f"https://api.themoviedb.org/3/discover/{media_type}"
+                params = {
+                    'api_key': s.tmdb_key,
+                    'language': 'en-US',
+                    'sort_by': 'popularity.desc',
+                    'with_genres': genre_str,
+                    'with_original_language': 'en', # <--- 1. FILTER: English Only (Mainstream)
+                    'popularity.gte': 5,            # <--- 2. FILTER: Must have some hype
+                    'page': 1
+                }
+                
+                # Date Logic
+                if media_type == 'movie':
+                    params['primary_release_date.gte'] = today
+                    # Type 3 = Theatrical Only. (Removes direct-to-video/digital junk)
+                    params['with_release_type'] = '3|2' if media_type == 'movie' else ''
+                    params['region'] = 'US' # <--- 3. FILTER: Focus on US Release dates
+                else:
+                    params['first_air_date.gte'] = today
+                    params['include_null_first_air_dates'] = 'false'
+                    params['with_origin_country'] = 'US' # Limit TV to US productions
+
+                data = requests.get(disc_url, params=params).json()
+
+            # --- STANDARD MODE: DIRECT RECOMMENDATIONS ---
+            else:
+                # We fetch 2 pages to get a good variety
+                data = {'results': []}
+                for page_num in range(1, 3): 
+                    rec_url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}/recommendations?api_key={s.tmdb_key}&language=en-US&page={page_num}"
+                    page_data = requests.get(rec_url).json()
+                    data['results'].extend(page_data.get('results', []))
+
+            # Process Results
+            for item in data.get('results', []):
+                if item['id'] in seen_ids: continue
+                
+                # --- QUALITY CONTROL (Mainstream Filter) ---
+                # We only apply these strict filters if the user did NOT ask for "Obscure" content.
+                include_obscure = request.form.get('include_obscure') == 'true'
+                
+                if not include_obscure:
+                    # 1. English Only: Removes random foreign imports
+                    if item.get('original_language') != 'en': continue
+                    
+                    # 2. Vote Threshold: Removes zero-budget junk (Standard Mode only)
+                    if not future_mode and item.get('vote_count', 0) < 20: continue
+                
+                item['media_type'] = media_type
+                date = item.get('release_date') or item.get('first_air_date')
+                item['year'] = int(date[:4]) if date else 0
+                
+                if item.get('title', item.get('name')) in blocked: continue
+                
+                # Ownership Check
+                t_clean = normalize_title(item.get('title', item.get('name')))
+                if t_clean in owned_keys: continue
+                
+                alias = TmdbAlias.query.filter_by(tmdb_id=item['id'], media_type=media_type).first()
+                if alias: continue 
+
+                recommendations.append(item)
+                seen_ids.add(item['id'])
+                
+        except Exception as e: 
+            print(f"Error processing seed {tmdb_id}: {e}")
+
         except: pass
             
-    random.shuffle(recommendations)
+    # ONLY shuffle if we are looking for history recommendations.
+    if not future_mode:
+        random.shuffle(recommendations)
+    
+    # Deduplicate specifically for the final list (preserves order)
+    unique_recs = []
+    seen_final = set()
+    for item in recommendations:
+        if item['id'] not in seen_final:
+            unique_recs.append(item)
+            seen_final.add(item['id'])
     
     RESULTS_CACHE[current_user.id] = {
-        'candidates': recommendations,
+        'candidates': unique_recs,
         'next_index': 0
     }
     
@@ -714,7 +788,8 @@ def generate():
         idx += 1
         
         if item['year'] < min_year: continue
-        if item.get('vote_average', 0) < min_rating: continue
+        # Only check rating if NOT in future mode (Future movies have 0 rating)
+        if not future_mode and item.get('vote_average', 0) < min_rating: continue
         if rating_filter:
             c_rate = item.get('content_rating', 'NR')
             if c_rate not in rating_filter: continue

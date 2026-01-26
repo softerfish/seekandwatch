@@ -216,18 +216,34 @@ def request_media():
     s = current_user.settings
     data = request.json
     try:
+        # Bulk Request Mode
         if 'items' in data:
              success_count = 0
+             last_error = ""
              for item in data['items']:
-                 if send_overseerr_request(s, item['media_type'], item['tmdb_id']): success_count += 1
-             return jsonify({'status': 'success', 'count': success_count})
+                 # We expect a tuple now: (True/False, "Message")
+                 success, msg = send_overseerr_request(s, item['media_type'], item['tmdb_id'])
+                 if success: success_count += 1
+                 else: last_error = msg
+             
+             if success_count > 0:
+                 return jsonify({'status': 'success', 'count': success_count})
+             else:
+                 # Show the ACTUAL error from the last failed item
+                 return jsonify({'status': 'error', 'message': last_error or "All requests failed"})
+        
+        # Single Request Mode
         else:
-             if send_overseerr_request(s, data['media_type'], data['tmdb_id']):
+             success, msg = send_overseerr_request(s, data['media_type'], data['tmdb_id'])
+             if success:
                  return jsonify({'status': 'success'})
              else:
-                 return jsonify({'status': 'error', 'message': 'Request Failed'})
-    except Exception as e: return jsonify({'status': 'error', 'message': str(e)})
+                 # Show the ACTUAL error
+                 return jsonify({'status': 'error', 'message': msg})
 
+    except Exception as e: 
+        return jsonify({'status': 'error', 'message': str(e)})
+        
 @api_bp.route('/block_movie', methods=['POST'])
 @login_required
 def block_movie():

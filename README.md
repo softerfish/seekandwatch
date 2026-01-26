@@ -105,7 +105,14 @@ docker run -d \
 ```  
   
 ### Changelog
-v1.2.3
+v1.2.4
+- I accidently broke TV requests in v1.2.3. Quick repair to get that going again
+- added search by future releases
+- improved search results and added a checkbox to search for obscure instead of mixing them in standard results
+
+<details>
+  <summary><b>Past Changelog</b></summary>
+  v1.2.3
 - moving all styling into a static/style.css file. There might be some broken styling here and there
 - added an ignore library to the Smart Discovery search
 - removed all search filters from the I'm Feeling Lucky results page 
@@ -113,8 +120,6 @@ v1.2.3
 - refine searches by US content rating (G, PG, PG-13...)
 - included a docker-compose.yml
 
-<details>
-  <summary><b>Past Changelog</b></summary>
 v1.2.2
 - added trending on tatulli server to Smart Discovery
 - added no more items when Smart Discovery results end

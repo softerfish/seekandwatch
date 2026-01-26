@@ -648,23 +648,67 @@ def fetch_omdb_ratings(title, year, api_key):
             return r.json().get('Ratings', [])
     except: pass
     return []
-
+    
 def send_overseerr_request(settings, media_type, tmdb_id, uid=None):
     if not settings.overseerr_url or not settings.overseerr_api_key:
-        return False
+        return False, "Overseerr settings missing."
         
     headers = {'X-Api-Key': settings.overseerr_api_key}
-    payload = {
-        'mediaType': media_type,
-        'mediaId': int(tmdb_id)
-    }
     
     try:
-        r = requests.post(f"{settings.overseerr_url}/api/v1/request", json=payload, headers=headers)
-        return r.status_code in [200, 201]
-    except:
-        return False
+        payload = {
+            'mediaType': media_type,
+            'mediaId': int(tmdb_id)
+        }
+        
+        # --- TV LOGIC (Restored from v1.1) ---
+        # 1. Ask TMDB what seasons exist
+        # 2. If that fails, default to Season 1
+        if media_type == 'tv':
+            seasons = []
+            if settings.tmdb_key:
+                try:
+                    url = f"https://api.themoviedb.org/3/tv/{tmdb_id}?api_key={settings.tmdb_key}"
+                    data = requests.get(url, timeout=4).json()
+                    for s in data.get('seasons', []):
+                        if s.get('season_number', 0) > 0:
+                            seasons.append(s['season_number'])
+                except:
+                    pass
+            
+            # Fallback
+            if not seasons: seasons = [1]
+            payload['seasons'] = seasons
 
+        # --- SEND REQUEST ---
+        # Ensure no double slashes
+        base_url = settings.overseerr_url.rstrip('/')
+        url = f"{base_url}/api/v1/request"
+        
+        print(f"Sending to Overseerr: {url} | Payload: {payload}", flush=True)
+        r = requests.post(url, json=payload, headers=headers, timeout=10)
+        
+        # --- RESULT HANDLING ---
+        if r.status_code in [200, 201]:
+            return True, "Success"
+            
+        # Parse the error so we can show it to the user
+        try:
+            error_msg = r.json().get('message', r.text)
+        except:
+            error_msg = f"HTTP Error {r.status_code}"
+
+        # Friendly overrides for common errors
+        if "already available" in str(error_msg).lower():
+            return False, "Already Available"
+        if "already requested" in str(error_msg).lower():
+            return False, "Already Requested"
+            
+        return False, f"Overseerr: {error_msg}"
+
+    except Exception as e:
+        return False, f"Connection Error: {str(e)}"
+        
 def check_for_updates(current_version, raw_url):
     try:
         resp = requests.get(raw_url, timeout=2)
