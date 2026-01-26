@@ -21,30 +21,30 @@ class Settings(db.Model):
     
     user = db.relationship('User', back_populates='settings')
     
-    # Plex Settings
+    # plex
     plex_url = db.Column(db.String(200))
     plex_token = db.Column(db.String(200))
     ignored_users = db.Column(db.String(500))
     ignored_libraries = db.Column(db.String(500))
     
-    # Metadata Settings
+    # metadata
     tmdb_key = db.Column(db.String(200))
     tmdb_region = db.Column(db.String(10), default='US')
     omdb_key = db.Column(db.String(200))
     
-    # Integration Settings
+    # integrations
     overseerr_url = db.Column(db.String(200))
     overseerr_api_key = db.Column(db.String(200))
     tautulli_url = db.Column(db.String(200))
     tautulli_api_key = db.Column(db.String(200))
     
-    # System Settings
+    # system
     last_checked = db.Column(db.DateTime)
     cache_interval = db.Column(db.Integer, default=24)
     logging_enabled = db.Column(db.Boolean, default=True)
-    max_log_size = db.Column(db.Integer, default=5) # MB
+    max_log_size = db.Column(db.Integer, default=5)
     
-    # Backup Settings
+    # backups
     backup_interval = db.Column(db.Integer, default=2) 
     backup_retention = db.Column(db.Integer, default=7) 
 

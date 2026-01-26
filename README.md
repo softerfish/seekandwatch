@@ -213,5 +213,4 @@ This product uses the TMDB API but is not endorsed or certified by TMDB.
 | :---: | :---: |
 | <img src="images/plexcollections.png" alt="Plex Collections" width="800"> | <img src="images/custom-builder.png" alt="Custom Builder" width="400"> |
 
-
 </details>

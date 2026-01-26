@@ -1,6 +1,4 @@
-# ==================================================================================
-# SEEKANDWATCH PRESETS LIBRARY - ULTIMATE EDITION (Categorized)
-# ==================================================================================
+# collection presets
 
 PLAYLIST_PRESETS = {
 
@@ -13,7 +11,7 @@ PLAYLIST_PRESETS = {
     'trending_uk_tv': {'title': 'Trending UK', 'category': 'Regional Trending', 'icon': '🇬🇧', 'media_type': 'tv', 'description': 'Popular TV in the UK.', 'tmdb_params': {'watch_region': 'GB', 'with_watch_monetization_types': 'flatrate|rent|buy', 'sort_by': 'popularity.desc'}},
     'trending_ca_tv': {'title': 'Trending Canada', 'category': 'Regional Trending', 'icon': '🇨🇦', 'media_type': 'tv', 'description': 'Popular TV in Canada.', 'tmdb_params': {'watch_region': 'CA', 'with_watch_monetization_types': 'flatrate|rent|buy', 'sort_by': 'popularity.desc'}},
     
-    # --- INTERNATIONAL (Safe) ---
+    # international
     'k_drama': {'title': 'K-Dramas', 'category': 'International & World', 'icon': '🇰🇷', 'media_type': 'tv', 'description': 'Korean dramas & romance.', 'tmdb_params': {'with_original_language': 'ko', 'with_genres': '18', 'sort_by': 'popularity.desc'}},
     'anime_movies': {'title': 'Anime Movies', 'category': 'International & World', 'icon': '🗾', 'media_type': 'movie', 'description': 'Japanese animation.', 'tmdb_params': {'with_original_language': 'ja', 'with_genres': '16', 'sort_by': 'popularity.desc'}},
     'bollywood_hits': {'title': 'Bollywood Hits', 'category': 'International & World', 'icon': '🇮🇳', 'media_type': 'movie', 'description': 'Cinema from India.', 'tmdb_params': {'with_original_language': 'hi', 'sort_by': 'popularity.desc'}},
@@ -21,7 +19,7 @@ PLAYLIST_PRESETS = {
     'french_cinema': {'title': 'French Cinema', 'category': 'International & World', 'icon': '🇫🇷', 'media_type': 'movie', 'description': 'Art & drama from France.', 'tmdb_params': {'with_original_language': 'fr', 'sort_by': 'popularity.desc'}},
     'british_crime': {'title': 'British Crime', 'category': 'International & World', 'icon': '🇬🇧', 'media_type': 'tv', 'description': 'Gritty UK procedurals.', 'tmdb_params': {'with_origin_country': 'GB', 'with_genres': '80', 'sort_by': 'popularity.desc'}},
 
-    # --- DECADES (Safe) ---
+    # decades
     'movies_40s': {'title': 'The 1940s', 'category': 'Decades', 'icon': '🎩', 'media_type': 'movie', 'description': 'Golden Age classics.', 'tmdb_params': {'primary_release_date.gte': '1940-01-01', 'primary_release_date.lte': '1949-12-31', 'sort_by': 'popularity.desc'}},
     'movies_50s': {'title': 'The 1950s', 'category': 'Decades', 'icon': '👗', 'media_type': 'movie', 'description': 'Post-war & Sci-Fi.', 'tmdb_params': {'primary_release_date.gte': '1950-01-01', 'primary_release_date.lte': '1959-12-31', 'sort_by': 'popularity.desc'}},
     'movies_60s': {'title': 'The 1960s', 'category': 'Decades', 'icon': '☮️', 'media_type': 'movie', 'description': 'Counterculture era.', 'tmdb_params': {'primary_release_date.gte': '1960-01-01', 'primary_release_date.lte': '1969-12-31', 'sort_by': 'popularity.desc'}},
@@ -32,7 +30,7 @@ PLAYLIST_PRESETS = {
     'movies_2010s': {'title': 'The 2010s', 'category': 'Decades', 'icon': '📱', 'media_type': 'movie', 'description': 'Streaming era.', 'tmdb_params': {'primary_release_date.gte': '2010-01-01', 'primary_release_date.lte': '2019-12-31', 'sort_by': 'popularity.desc'}},
     'movies_2020s': {'title': 'The 2020s', 'category': 'Decades', 'icon': '😷', 'media_type': 'movie', 'description': 'Modern cinema.', 'tmdb_params': {'primary_release_date.gte': '2020-01-01', 'sort_by': 'popularity.desc'}},
 
-    # --- THEMES (Verified) ---
+    # themes
     'theme_timetravel': {'title': 'Time Travel', 'category': 'Themes & Vibes', 'icon': '⏳', 'media_type': 'movie', 'description': 'Paradoxes.', 'tmdb_params': {'with_keywords': '4379', 'with_genres': '878', 'sort_by': 'popularity.desc'}},
     'theme_heist': {'title': 'Heist Movies', 'category': 'Themes & Vibes', 'icon': '💰', 'media_type': 'movie', 'description': 'The perfect score.', 'tmdb_params': {'with_keywords': '10051', 'sort_by': 'popularity.desc'}},
     'theme_sports': {'title': 'Sports Dramas', 'category': 'Themes & Vibes', 'icon': '⚾', 'media_type': 'movie', 'description': 'Underdogs & champions.', 'tmdb_params': {'with_keywords': '6075', 'with_genres': '18', 'sort_by': 'popularity.desc'}},
@@ -42,7 +40,7 @@ PLAYLIST_PRESETS = {
     'theme_standup': {'title': 'Stand-Up', 'category': 'Themes & Vibes', 'icon': '🎤', 'media_type': 'movie', 'description': 'Comedy specials.', 'tmdb_params': {'with_keywords': '9716', 'sort_by': 'release_date.desc'}},
     'theme_miniseries': {'title': 'Miniseries', 'category': 'Themes & Vibes', 'icon': '📚', 'media_type': 'tv', 'description': 'Limited series.', 'tmdb_params': {'with_keywords': '210024', 'sort_by': 'vote_average.desc', 'vote_count.gte': '100'}},
 
-    # --- AWARDS ---
+    # awards
     'oscar_winners': {'title': 'Oscar Winners', 'category': 'Awards & Acclaim', 'icon': '🏆', 'media_type': 'movie', 'description': 'Best Picture Winners.', 'tmdb_params': {'with_keywords': '528', 'sort_by': 'vote_average.desc', 'vote_count.gte': '500'}},
     'emmy_winners': {'title': 'Top Rated TV', 'category': 'Awards & Acclaim', 'icon': '📺', 'media_type': 'tv', 'description': 'Critically Acclaimed.', 'tmdb_params': {'vote_average.gte': '8.0', 'vote_count.gte': '500', 'sort_by': 'vote_average.desc'}},
     'sundance_faves': {'title': 'Sundance Hits', 'category': 'Awards & Acclaim', 'icon': '🏔️', 'media_type': 'movie', 'description': 'Festival favorites.', 'tmdb_params': {'with_keywords': '272', 'sort_by': 'popularity.desc'}},
@@ -58,7 +56,7 @@ PLAYLIST_PRESETS = {
     'network_netflix': {'title': 'Netflix Originals', 'category': 'Studios & Networks', 'icon': '🟥', 'media_type': 'tv', 'description': 'Streaming hits.', 'tmdb_params': {'with_networks': '213', 'sort_by': 'popularity.desc'}},
     'network_apple': {'title': 'Apple TV+', 'category': 'Studios & Networks', 'icon': '🍏', 'media_type': 'tv', 'description': 'Apple Originals.', 'tmdb_params': {'with_networks': '2552', 'sort_by': 'popularity.desc'}},
 
-    # --- GENRES (MOVIES) (Safe) ---
+    # genres - movies
     'genre_action_mov': {'title': 'Action', 'category': 'Genre (Movies)', 'icon': '💥', 'media_type': 'movie', 'description': 'Adrenaline rush.', 'tmdb_params': {'with_genres': '28', 'sort_by': 'popularity.desc'}},
     'genre_adventure_mov': {'title': 'Adventure', 'category': 'Genre (Movies)', 'icon': '🤠', 'media_type': 'movie', 'description': 'Epic journeys.', 'tmdb_params': {'with_genres': '12', 'sort_by': 'popularity.desc'}},
     'genre_animation_mov': {'title': 'Animation', 'category': 'Genre (Movies)', 'icon': '🎨', 'media_type': 'movie', 'description': 'Cartoons & CGI.', 'tmdb_params': {'with_genres': '16', 'sort_by': 'popularity.desc'}},
@@ -89,7 +87,7 @@ PLAYLIST_PRESETS = {
     'genre_reality_tv': {'title': 'Reality TV', 'category': 'Genre (TV)', 'icon': '🌹', 'media_type': 'tv', 'description': 'Unscripted.', 'tmdb_params': {'with_genres': '10764', 'sort_by': 'popularity.desc'}},
     'genre_scifi_tv': {'title': 'Sci-Fi TV', 'category': 'Genre (TV)', 'icon': '🛸', 'media_type': 'tv', 'description': 'Otherworldly.', 'tmdb_params': {'with_genres': '10765', 'sort_by': 'popularity.desc'}},
 
-    # --- CONTENT RATINGS (Safe) ---
+    # content ratings
     'rating_us_pg': {'title': 'Rated PG', 'category': 'Content Ratings', 'icon': '🟡', 'media_type': 'movie', 'description': 'Parental Guidance.', 'tmdb_params': {'certification_country': 'US', 'certification': 'PG', 'sort_by': 'popularity.desc'}},
     'rating_us_r': {'title': 'Rated R', 'category': 'Content Ratings', 'icon': '🔴', 'media_type': 'movie', 'description': 'Restricted.', 'tmdb_params': {'certification_country': 'US', 'certification': 'R', 'sort_by': 'popularity.desc'}},
     'rating_us_tvma': {'title': 'TV-MA', 'category': 'Content Ratings', 'icon': '🔞', 'media_type': 'tv', 'description': 'Mature Audiences.', 'tmdb_params': {'certification_country': 'US', 'certification': 'TV-MA', 'sort_by': 'popularity.desc'}},

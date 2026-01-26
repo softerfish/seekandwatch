@@ -30,9 +30,7 @@ from utils import (normalize_title, is_duplicate, fetch_omdb_ratings, send_overs
                    prefetch_tv_states_parallel, prefetch_ratings_parallel)
 from presets import PLAYLIST_PRESETS
 
-# ==================================================================================
-# 1. APPLICATION CONFIGURATION
-# ==================================================================================
+# app config
 
 VERSION = "1.2.4"
 
@@ -42,32 +40,25 @@ UPDATE_CACHE = {
 }
 
 def get_persistent_key():
-    """
-    Returns a secure key that persists across restarts.
-    Priority:
-    1. Docker Environment Variable (for advanced users)
-    2. A file stored in /config (auto-generated)
-    3. Random fallback (if filesystem is read-only)
-    """
-    # 1. Check Environment
+    # try env var first (docker users)
     env_key = os.environ.get('SECRET_KEY')
     if env_key: 
         return env_key
     
-    # 2. Check/Create File
+    # check for existing key file
     key_path = '/config/secret.key'
     try:
         if os.path.exists(key_path):
             with open(key_path, 'r') as f:
                 return f.read().strip()
         else:
-            # Generate new key and save it
+            # generate new one
             new_key = secrets.token_hex(32)
             with open(key_path, 'w') as f:
                 f.write(new_key)
             return new_key
     except:
-        # 3. Fallback (If permissions fail)
+        # fallback if file system is read-only
         return secrets.token_hex(32)
 
 app = Flask(__name__)
@@ -76,7 +67,7 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////config/seekandwatch.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 csrf = CSRFProtect(app)
 
-# This protects the app from brute force and denial of service attacks.
+# rate limiting to prevent abuse
 limiter = Limiter(
     get_remote_address,
     app=app,
@@ -84,7 +75,6 @@ limiter = Limiter(
     storage_uri="memory://"
 )
 
-# Initialize Scheduler
 scheduler = APScheduler()
 scheduler.init_app(app)
 scheduler.start()
@@ -95,29 +85,26 @@ login_manager = LoginManager()
 login_manager.login_view = 'login'
 login_manager.init_app(app)
 
-# ==================================================================================
-# 2. DATABASE MIGRATION & INIT
-# ==================================================================================
+# database migrations
 
 def run_migrations():
-    """Checks for missing columns, adds them, and fixes admin permissions."""
+    # add missing columns and fix admin perms
     with app.app_context():
-        # 1. Create Tables if they don't exist
         try: db.create_all()
         except: pass
         
-        # 2. Add Missing Columns (Schema Migration)
+        # schema migrations
         try:
             inspector = sqlalchemy.inspect(db.engine)
             
-            # Migrate User Table
+            # user table
             user_columns = [c['name'] for c in inspector.get_columns('user')]
             with db.engine.connect() as conn:
                 if 'is_admin' not in user_columns:
                     print("--- [Migration] Adding 'is_admin' column to User table ---")
                     conn.execute(sqlalchemy.text("ALTER TABLE user ADD COLUMN is_admin BOOLEAN DEFAULT 0"))
             
-            # Migrate Settings Table
+            # settings table
             settings_columns = [c['name'] for c in inspector.get_columns('settings')]
             with db.engine.connect() as conn:
                 if 'tmdb_region' not in settings_columns:
@@ -151,25 +138,23 @@ def run_migrations():
         except Exception as e:
             print(f"Migration Warning: {e}")
 
-        # 3. FIRST USER ADMIN (Raw SQL Method)
+        # auto-promote first user to admin if no admins exist
         try:
             with db.engine.connect() as conn:
-                # Check if ANY admin exists
                 result = conn.execute(sqlalchemy.text("SELECT COUNT(*) FROM user WHERE is_admin = 1")).scalar()
                 
                 if result == 0:
-                    # Check if ANY users exist
                     user_count = conn.execute(sqlalchemy.text("SELECT COUNT(*) FROM user")).scalar()
                     
                     if user_count > 0:
-                        # Promote the user with the lowest ID (The First User)
+                        # promote lowest ID user (first user)
                         conn.execute(sqlalchemy.text("UPDATE user SET is_admin = 1 WHERE id = (SELECT MIN(id) FROM user)"))
                         conn.commit()
                         print("--- [Startup] AUTO-FIX: No admins found. Promoted the first user to Admin. ---")
         except Exception as e:
             print(f"Admin Auto-Fix Error: {e}")
 
-        # 4. Create Auxiliary Tables
+        # create missing tables
         try: Blocklist.__table__.create(db.engine)
         except: pass
         try: CollectionSchedule.__table__.create(db.engine)
@@ -183,21 +168,16 @@ def run_migrations():
 def load_user(user_id):
     return User.query.get(int(user_id))
     
-# Run migrations immediately on startup
 run_migrations()
 
-# --- BOOT SEQUENCE: CLEARING LOCKS ---
+# clear any stuck locks on startup
 print("--- BOOT SEQUENCE: CLEARING LOCKS ---", flush=True)
 try:
     reset_stuck_locks()
 except Exception as e:
     print(f"Error resetting locks: {e}", flush=True)
 
-# ==========================================
-# GITHUB STATS & UPDATER
-# ==========================================
-
-# Cache storage
+# github stats cache
 github_cache = {
     "stars": "...",
     "latest_version": "0.0.0",
@@ -205,17 +185,15 @@ github_cache = {
 }
 
 def update_github_stats():
-    """Background task to fetch GitHub stats once per hour."""
+    # fetch stars and latest version every hour
     while True:
         try:
-            # 1. Fetch Stars
             headers = {"User-Agent": "SeekAndWatch-App"}
             r_stars = requests.get('https://api.github.com/repos/softerfish/seekandwatch', headers=headers)
             if r_stars.ok:
                 data = r_stars.json()
                 github_cache['stars'] = data.get('stargazers_count', '...')
 
-            # 2. Fetch Latest Release
             r_release = requests.get('https://api.github.com/repos/softerfish/seekandwatch/releases/latest', headers=headers)
             if r_release.ok:
                 tag = r_release.json().get('tag_name', 'v0.0.0')
@@ -226,24 +204,22 @@ def update_github_stats():
         except Exception as e:
             print(f"GitHub Update Error: {e}")
             
-        # Sleep for 1 hour (3600 seconds)
         time.sleep(3600)
 
-# Start background thread (Daemon means it dies when the main app dies)
+# start background thread
 if not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
     threading.Thread(target=update_github_stats, daemon=True).start()
 
-# Context Processor: Injects variables into ALL templates automatically
+# inject into all templates
 @app.context_processor
 def inject_github_data():
     return dict(
         github_stars=github_cache['stars'],
         latest_version=github_cache['latest_version'],
-        current_version=VERSION  # <--- PULLS FROM YOUR CONFIG AT TOP OF FILE
+        current_version=VERSION
     )
-# ==================================================================================
-# 3. PAGE ROUTES (Frontend)
-# ==================================================================================
+
+# page routes
 
 @app.context_processor
 def inject_version():
@@ -256,7 +232,7 @@ def index():
     return redirect(url_for('login'))
 
 @app.route('/login', methods=['GET', 'POST'])
-@limiter.limit("5 per minute") # Strict limit for login
+@limiter.limit("5 per minute")
 def login():
     if request.method == 'POST':
         username = request.form.get('username')
@@ -273,7 +249,7 @@ def login():
     return render_template('login.html')
 
 @app.route('/register', methods=['GET', 'POST'])
-@limiter.limit("5 per hour") # Very strict limit for creating accounts
+@limiter.limit("5 per hour")
 def register():
     if request.method == 'POST':
         username = request.form.get('username')
@@ -285,14 +261,13 @@ def register():
             hashed_pw = generate_password_hash(password, method='pbkdf2:sha256')
             new_user = User(username=username, password_hash=hashed_pw)
             
-            # Auto-Admin Logic (First user is King)
-            if not User.query.first():
-                new_user.is_admin = True
-                
             db.session.add(new_user)
             db.session.commit()
             
-            # Create default settings for the new user
+            if User.query.count() == 1:
+                new_user.is_admin = True
+                db.session.commit()
+            
             db.session.add(Settings(user_id=new_user.id))
             db.session.commit()
             
@@ -310,10 +285,9 @@ def logout():
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    # 1. USE GLOBAL SETTINGS
     s = Settings.query.order_by(Settings.id.asc()).first()
     
-    # 2. Check Updates
+    # check for updates (every 4 hours)
     now = time.time()
     if UPDATE_CACHE['version'] is None or (now - UPDATE_CACHE['last_check'] > 14400):
         try:
@@ -328,14 +302,13 @@ def dashboard():
         
     has_tautulli = bool(s.tautulli_url and s.tautulli_api_key)
 
-    # --- Fetch Plex Libraries for Dashboard ---
+    # get plex libraries for display
     plex_libraries = []
     try:
         if s.plex_url and s.plex_token:
             p = PlexServer(s.plex_url, s.plex_token, timeout=2)
             plex_libraries = [sec.title for sec in p.library.sections() if sec.type in ['movie', 'show']]
     except: pass
-    # ----------------------------------------------------
        
     return render_template('dashboard.html', 
                            settings=s, 
@@ -359,7 +332,7 @@ def recommend_from_trending():
     
     m_type = request.args.get('type', 'movie')
     
-    # 1. Get Top IDs from Tautulli
+    # get trending from tautulli
     trending = get_tautulli_trending(m_type)
     if not trending:
         flash("No trending data found to base recommendations on.", "error")
@@ -367,14 +340,14 @@ def recommend_from_trending():
         
     seed_ids = [str(x['tmdb_id']) for x in trending]
     
-    # 2. Generate Recommendations (Deep Scan)
+    # fetch recommendations for each trending item
     final_recs = []
     s = Settings.query.order_by(Settings.id.asc()).first()
     
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         futures = []
         for tid in seed_ids:
-            for p in [1, 2]: # Fetch 2 pages
+            for p in [1, 2]: # 2 pages per item
                 url = f"https://api.themoviedb.org/3/{m_type}/{tid}/recommendations?api_key={s.tmdb_key}&language=en-US&page={p}"
                 futures.append(executor.submit(requests.get, url))
             
@@ -384,20 +357,18 @@ def recommend_from_trending():
                 final_recs.extend(data.get('results', []))
             except: pass
 
-    # 3. Normalize & Deduplicate
+    # dedupe and filter owned
     seen = set()
     unique_recs = []
     owned_keys = get_plex_cache(s)
     
     for r in final_recs:
         if r['id'] not in seen:
-            # --- FIX: Normalize Year & Type (Prevents 500 Error) ---
+            # normalize year/type to prevent errors
             date = r.get('release_date') or r.get('first_air_date')
             r['year'] = int(date[:4]) if date else 0
             r['media_type'] = m_type
-            # -------------------------------------------------------
 
-            # Filter Owned
             t_clean = normalize_title(r.get('title', r.get('name')))
             if t_clean in owned_keys: continue
             
@@ -406,7 +377,7 @@ def recommend_from_trending():
             
     random.shuffle(unique_recs)
     
-    # 4. Save to Cache So "Load More" works
+    # cache for load more
     RESULTS_CACHE[current_user.id] = {
         'candidates': unique_recs,
         'next_index': 40
@@ -423,10 +394,7 @@ def recommend_from_trending():
 @app.route('/review_history', methods=['POST'])
 @login_required
 def review_history():
-    """Gold Standard: Scans history using strict ID-to-Name mapping."""
-    import sys 
-    
-    # USE GLOBAL SETTINGS
+    # scan plex history for recommendations
     s = Settings.query.order_by(Settings.id.asc()).first()
     
     ignored_libs = [l.strip().lower() for l in request.form.getlist('ignored_libraries')]
@@ -445,7 +413,7 @@ def review_history():
     include_obscure = request.form.get('include_obscure') == 'true'
     
     try:
-        # 1. Manual Search Mode
+        # manual search
         if manual_query:
             url = f"https://api.themoviedb.org/3/search/{media_type}?api_key={s.tmdb_key}&query={manual_query}"
             res = requests.get(url).json().get('results', [])
@@ -458,10 +426,10 @@ def review_history():
                     'poster_path': item.get('poster_path')
                 })
 
-        # 2. Plex History Mode
+        # plex history scan
         elif s.plex_url and s.plex_token:
             plex = PlexServer(s.plex_url, s.plex_token)
-            # --- Resolve Library Names to IDs ---
+            # convert library names to IDs
             ignored_lib_names = [l.strip().lower() for l in request.form.getlist('ignored_libraries')]
             ignored_lib_ids = []
             
@@ -469,12 +437,10 @@ def review_history():
                 try:
                     for section in plex.library.sections():
                         if section.title.lower() in ignored_lib_names:
-                            # Store as string to ensure safe comparison later
                             ignored_lib_ids.append(str(section.key))
                 except: pass
-            # ----------------------------------------------
             
-            # --- USER MAPPING ---
+            # map user IDs to names
             user_map = {}
             try:
                 for acct in plex.systemAccounts():
@@ -490,7 +456,6 @@ def review_history():
                     user_map[int(account.id)] = account.username or "Admin"
             except: pass
 
-            # Prepare ignore list
             ignored = [u.strip().lower() for u in (s.ignored_users or '').split(',')]
             
             history = plex.history(maxresults=5000)
@@ -500,7 +465,7 @@ def review_history():
             for h in history:
                 if h.type != lib_type: continue
                 
-                # Check User
+                # check if user should be ignored
                 user_id = getattr(h, 'accountID', None)
                 user_name = "Unknown"
                 if user_id is not None:
@@ -512,30 +477,29 @@ def review_history():
 
                 if user_name.lower() in ignored: continue
                 
-                # Exclude specific libraries
+                # check library ignore list
                 if hasattr(h, 'librarySectionID') and h.librarySectionID:
                     if str(h.librarySectionID) in ignored_lib_ids:
                         continue
 
-                # --- DEDUPLICATE TV SHOWS ---
+                # dedupe TV shows (use show title, not episode)
                 if h.type == 'episode':
                     title = h.grandparentTitle
                 else:
                     title = h.title
                 
-                # Fallback checks
                 if not title:
                     if hasattr(h, 'sourceTitle') and h.sourceTitle: title = h.sourceTitle
                     else: title = h.title
 
                 if not title: continue
                 
-                # If we've already seen this Show Name, skip it (hides duplicate episodes)
+                # skip if we've seen this show already
                 if title in seen_titles: continue
                 
                 year = h.year if hasattr(h, 'year') else 0
                 
-                # Fix TV Posters
+                # get poster (use show poster for TV)
                 thumb = None
                 try: 
                     if h.type == 'episode': thumb = h.grandparentThumb or h.thumb
@@ -550,7 +514,6 @@ def review_history():
                 })
                 seen_titles.add(title)
             
-            # --- SHUFFLE & LIMIT ---
             random.shuffle(candidates)
             candidates = candidates[:limit]
 
@@ -558,7 +521,7 @@ def review_history():
         flash(f"Scan failed: {str(e)}", "error")
         return redirect(url_for('dashboard'))
         
-    # Get Providers for Filtering
+    # get providers and genres for filters
     providers = []
     try:
         reg = s.tmdb_region.split(',')[0] if s.tmdb_region else 'US'
@@ -567,7 +530,6 @@ def review_history():
         providers = sorted(p_data, key=lambda x: x.get('display_priority', 999))[:30]
     except: pass
 
-    # Get Genres
     genres = []
     try:
         g_url = f"https://api.themoviedb.org/3/genre/{media_type}/list?api_key={s.tmdb_key}"
@@ -588,7 +550,7 @@ def generate():
     s = Settings.query.filter_by(user_id=current_user.id).first()
     owned_keys = get_plex_cache(s)
     
-    # --- LUCKY MODE ---
+    # lucky mode - random picks
     if request.form.get('lucky_mode') == 'true':
         raw_candidates = handle_lucky_mode(s)
         if not raw_candidates:
@@ -599,7 +561,6 @@ def generate():
         for item in raw_candidates:
             if len(lucky_result) >= 5: break
             
-            # Check Ownership
             t_clean = normalize_title(item['title'])
             if t_clean in owned_keys: continue
             
@@ -625,9 +586,9 @@ def generate():
                                genres=genres, 
                                current_genre=None, 
                                use_critic_filter='false',
-                               is_lucky=True) # Tells template to hide filters
+                               is_lucky=True)
 
-    # --- STANDARD MODE ---
+    # standard recommendation mode
     media_type = request.form.get('media_type')
     selected_titles = request.form.getlist('selected_movies')
     
@@ -651,7 +612,7 @@ def generate():
     seen_ids = set()
     seed_ids = []
     
-    # 1. Resolve Seeds
+    # resolve titles to TMDB IDs
     for title in selected_titles:
         try:
             search_url = f"https://api.themoviedb.org/3/search/{media_type}?api_key={s.tmdb_key}&query={title}"
@@ -660,69 +621,61 @@ def generate():
                 seed_ids.append(r['results'][0]['id'])
         except: pass
             
-    # 2. Fetch Recommendations OR Future Discovery
     future_mode = request.form.get('future_mode') == 'true'
     today = datetime.datetime.now().strftime('%Y-%m-%d')
 
     for tmdb_id in seed_ids:
         try:
-            # --- FUTURE MODE: DISCOVER STRATEGY ---
+            # future mode - find upcoming releases
             if future_mode:
-                # We need the genres of the seed to find similar future content
+                # get genres from seed to find similar upcoming content
                 details_url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}?api_key={s.tmdb_key}"
                 details = requests.get(details_url).json()
-                genres = [str(g['id']) for g in details.get('genres', [])[:3]] # Top 3 genres
+                genres = [str(g['id']) for g in details.get('genres', [])[:3]]
                 
-                # PIPE '|' means OR. Finds movies matching ANY of the genres.
                 genre_str = "|".join(genres)
 
-                # Discover Query
                 disc_url = f"https://api.themoviedb.org/3/discover/{media_type}"
                 params = {
                     'api_key': s.tmdb_key,
                     'language': 'en-US',
                     'sort_by': 'popularity.desc',
                     'with_genres': genre_str,
-                    'with_original_language': 'en', # <--- 1. FILTER: English Only (Mainstream)
-                    'popularity.gte': 5,            # <--- 2. FILTER: Must have some hype
+                    'with_original_language': 'en', # english only
+                    'popularity.gte': 5,            # must have some hype
                     'page': 1
                 }
                 
-                # Date Logic
                 if media_type == 'movie':
                     params['primary_release_date.gte'] = today
-                    # Type 3 = Theatrical Only. (Removes direct-to-video/digital junk)
-                    params['with_release_type'] = '3|2' if media_type == 'movie' else ''
-                    params['region'] = 'US' # <--- 3. FILTER: Focus on US Release dates
+                    params['with_release_type'] = '3|2' # theatrical only
+                    params['region'] = 'US'
                 else:
                     params['first_air_date.gte'] = today
                     params['include_null_first_air_dates'] = 'false'
-                    params['with_origin_country'] = 'US' # Limit TV to US productions
+                    params['with_origin_country'] = 'US'
 
                 data = requests.get(disc_url, params=params).json()
 
-            # --- STANDARD MODE: DIRECT RECOMMENDATIONS ---
+            # standard mode - direct recommendations
             else:
-                # We fetch 2 pages to get a good variety
                 data = {'results': []}
                 for page_num in range(1, 3): 
                     rec_url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}/recommendations?api_key={s.tmdb_key}&language=en-US&page={page_num}"
                     page_data = requests.get(rec_url).json()
                     data['results'].extend(page_data.get('results', []))
 
-            # Process Results
             for item in data.get('results', []):
                 if item['id'] in seen_ids: continue
                 
-                # --- QUALITY CONTROL (Mainstream Filter) ---
-                # We only apply these strict filters if the user did NOT ask for "Obscure" content.
+                # quality filters (skip if obscure mode)
                 include_obscure = request.form.get('include_obscure') == 'true'
                 
                 if not include_obscure:
-                    # 1. English Only: Removes random foreign imports
+                    # english only
                     if item.get('original_language') != 'en': continue
                     
-                    # 2. Vote Threshold: Removes zero-budget junk (Standard Mode only)
+                    # minimum vote count (standard mode only)
                     if not future_mode and item.get('vote_count', 0) < 20: continue
                 
                 item['media_type'] = media_type
@@ -731,7 +684,7 @@ def generate():
                 
                 if item.get('title', item.get('name')) in blocked: continue
                 
-                # Ownership Check
+                # check if already owned
                 t_clean = normalize_title(item.get('title', item.get('name')))
                 if t_clean in owned_keys: continue
                 
@@ -746,11 +699,11 @@ def generate():
 
         except: pass
             
-    # ONLY shuffle if we are looking for history recommendations.
+    # shuffle for history recs, keep order for future mode
     if not future_mode:
         random.shuffle(recommendations)
     
-    # Deduplicate specifically for the final list (preserves order)
+    # final dedupe
     unique_recs = []
     seen_final = set()
     for item in recommendations:
@@ -763,7 +716,7 @@ def generate():
         'next_index': 0
     }
     
-    # 3. Processing & Filtering
+    # apply filters
     min_year, min_rating, genre_filter, critic_enabled, threshold = get_session_filters()
     rating_filter = request.form.getlist('rating_filter')
     session['rating_filter'] = rating_filter
@@ -788,7 +741,7 @@ def generate():
         idx += 1
         
         if item['year'] < min_year: continue
-        # Only check rating if NOT in future mode (Future movies have 0 rating)
+        # skip rating check in future mode (upcoming movies have 0 rating)
         if not future_mode and item.get('vote_average', 0) < min_rating: continue
         if rating_filter:
             c_rate = item.get('content_rating', 'NR')
@@ -804,7 +757,7 @@ def generate():
         if target_keywords:
             if not item_matches_keywords(item, target_keywords): continue
 
-        # Scores
+        # get RT score
         item['rt_score'] = None
         if s.omdb_key:
             ratings = fetch_omdb_ratings(item.get('title', item.get('name')), item['year'], s.omdb_key)
@@ -839,7 +792,7 @@ def generate():
 @app.route('/reset_alias_db')
 @login_required
 def reset_alias_db():
-    """Nuclear option to fix owned movies showing up"""
+    # wipe alias DB to fix owned items showing up
     try:
         db.session.query(TmdbAlias).delete()
         s = Settings.query.filter_by(user_id=current_user.id).first()
@@ -852,16 +805,13 @@ def reset_alias_db():
 @app.route('/playlists')
 @login_required
 def playlists():
-    # 1. Get the Global Schedule Time
     s = Settings.query.filter_by(user_id=current_user.id).first()
     current_time = s.schedule_time if s and s.schedule_time else "04:00"
 
-    # 2. Get Schedules
     schedules = {}
     for sch in CollectionSchedule.query.all():
         schedules[sch.preset_key] = sch.frequency
         
-    # 3. Get Custom Presets
     custom_presets = {}
     for sch in CollectionSchedule.query.filter(CollectionSchedule.preset_key.like('custom_%')).all():
         if sch.configuration:
@@ -873,7 +823,6 @@ def playlists():
                 'icon': config.get('icon', '🛠️')
             }
 
-    # 4. Render with the new 'schedule_time' variable
     return render_template('playlists.html', 
                            presets=PLAYLIST_PRESETS, 
                            schedules=schedules, 
@@ -914,10 +863,9 @@ def settings():
         s.ignored_libraries = ",".join(ignored_libs)
         
         db.session.commit()
-        # Send both 'message' and 'msg' to satisfy any frontend variation
         return jsonify({'status': 'success', 'message': 'Settings saved successfully.', 'msg': 'Settings saved successfully.'})
 
-# Get Plex Users for Ignore List
+    # get plex users for ignore list
     plex_users = []
     try:
         if s.plex_url and s.plex_token:
@@ -933,31 +881,27 @@ def settings():
                 except: pass
     except: pass
     
-    # Parse ignored
     current_ignored = (s.ignored_users or '').split(',')
 
-    # Fetch Plex Libraries for the UI
+    # get plex libraries
     plex_libraries = []
     try:
         if s.plex_url and s.plex_token:
             p = PlexServer(s.plex_url, s.plex_token, timeout=3)
-            # Fetch only movie/show sections
             plex_libraries = [sec.title for sec in p.library.sections() if sec.type in ['movie', 'show']]
     except: pass
     
     current_ignored_libs = (s.ignored_libraries or '').split(',')
 
-    # Logs
     logs = SystemLog.query.order_by(SystemLog.timestamp.desc()).limit(50).all()
     
-# Cache Age
+    # cache age
     cache_age = "Never"
     if os.path.exists(CACHE_FILE):
         ts = os.path.getmtime(CACHE_FILE)
         dt = datetime.datetime.fromtimestamp(ts)
         cache_age = dt.strftime('%Y-%m-%d %H:%M')
 
-    # Get Count
     try: keyword_count = TmdbKeywordCache.query.count()
     except: keyword_count = 0
 
@@ -974,14 +918,13 @@ def settings():
 @app.route('/logs_page')
 @login_required
 def logs_page():
-    # Dedicated logs page
     logs = SystemLog.query.order_by(SystemLog.timestamp.desc()).limit(200).all()
     s = Settings.query.filter_by(user_id=current_user.id).first()
     return render_template('logs.html', logs=logs, settings=s)
 
 @app.route('/stats')
 @login_required
-def stats():       # <--- Renamed to 'stats' to match the template
+def stats():
     s = Settings.query.filter_by(user_id=current_user.id).first()
     has_tautulli = bool(s.tautulli_url and s.tautulli_api_key)
     return render_template('stats.html', has_tautulli=has_tautulli, tautulli_active=has_tautulli)
@@ -1019,27 +962,24 @@ def kometa():
     s = Settings.query.filter_by(user_id=current_user.id).first()
     return render_template('kometa.html', settings=s)
 
-# ==================================================================================
-# 4. SCHEDULER (Background Tasks)
-# ==================================================================================
+# background scheduler
 
 def run_scan_wrapper(app_ref):
-    """Wraps the scanner in the app context to prevent DB crashes."""
+    # wrap scanner with app context
     with app_ref.app_context():
         from utils import run_alias_scan
         run_alias_scan(app_ref)
 
 def scheduled_tasks():
     with app.app_context():
-        # 1. Prune Backups (Daily at 4:00 AM hardcoded for system cleanup)
+        # prune backups at 4am
         if datetime.datetime.now().hour == 4 and datetime.datetime.now().minute == 0:
             prune_backups()
             
-        # 2. Cache Refresh (Based on Interval)
+        # cache refresh
         s = Settings.query.first()
         if not s: return
         
-        # Check Cache Age
         if os.path.exists(CACHE_FILE):
             mod_time = os.path.getmtime(CACHE_FILE)
             age_hours = (time.time() - mod_time) / 3600
@@ -1048,8 +988,7 @@ def scheduled_tasks():
                      print("Scheduler: Starting Cache Refresh...")
                      refresh_plex_cache(app)
 
-        # 3. Collection Schedules
-        # PARSE GLOBAL RUN TIME (Default 04:00 AM)
+        # collection schedules
         try:
             target_hour, target_minute = map(int, (s.schedule_time or "04:00").split(':'))
         except:
@@ -1063,23 +1002,20 @@ def scheduled_tasks():
             should_run = False
             last = sch.last_run
             
-            # --- NEW LOGIC: "Run Once Per Day After X Time" ---
+            # daily: run once per day after target time
             if sch.frequency == 'daily':
-                # Rule 1: Has it run today?
                 run_today = False
                 if last and last.date() == now.date():
                     run_today = True
                 
-                # Rule 2: Is it past the target time?
                 past_target_time = False
                 if now.hour > target_hour or (now.hour == target_hour and now.minute >= target_minute):
                     past_target_time = True
                 
-                # Execute if we haven't run today AND it's past the scheduled time
                 if not run_today and past_target_time:
                     should_run = True
 
-            # --- WEEKLY LOGIC ---
+            # weekly
             elif sch.frequency == 'weekly':
                 if not last:
                     should_run = True
@@ -1090,14 +1026,12 @@ def scheduled_tasks():
             if should_run:
                 print(f"Scheduler: Running collection {sch.preset_key}...")
                 
-                # Fetch Preset Data
                 if sch.preset_key.startswith('custom_'):
                      preset_data = json.loads(sch.configuration)
                 else:
-                     # 1. Load Default
                      preset_data = PLAYLIST_PRESETS.get(sch.preset_key, {}).copy()
                      
-                     # 2. Merge User Overrides (Sync Mode)
+                     # merge user overrides
                      if sch.configuration:
                          try:
                              user_config = json.loads(sch.configuration)
@@ -1105,15 +1039,13 @@ def scheduled_tasks():
                          except: pass
                 
                 if preset_data:
-                    # Run Logic from Utils
-                    success, msg = run_collection_logic(s, preset_data, sch.preset_key)
+                    success, msg = run_collection_logic(s, preset_data, sch.preset_key, app_obj=app)
                     if success:
                         sch.last_run = now
                         db.session.commit()
 
-        # 4. BACKGROUND ALIAS SCANNER
+        # background alias scanner
         if s.scanner_enabled:
-            # Check interval
             last = s.last_alias_scan or 0
             now_ts = int(time.time())
             interval_sec = (s.scanner_interval or 15) * 60
@@ -1121,14 +1053,10 @@ def scheduled_tasks():
             if now_ts - last >= interval_sec:
                 if not is_system_locked():
                     print("Scheduler: Starting Background Alias Scan...")
-                    # Use the wrapper to pass the context
                     threading.Thread(target=run_scan_wrapper, args=(app,)).start()
 
 scheduler.add_job(id='master_task', func=scheduled_tasks, trigger='interval', minutes=1)
 
-# ==================================================================================
-# 5. IMPORT API BLUEPRINT (Crucial Fix)
-# ==================================================================================
 from api import api_bp
 app.register_blueprint(api_bp)
 

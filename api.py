@@ -6,7 +6,7 @@ import datetime
 import re
 import os
 import threading
-from flask import Blueprint, request, jsonify, session, send_from_directory, render_template, redirect, url_for
+from flask import Blueprint, request, jsonify, session, send_from_directory
 from flask_login import login_required, current_user
 from plexapi.server import PlexServer
 from models import db, Blocklist, CollectionSchedule, TmdbAlias, SystemLog, Settings, User
@@ -19,13 +19,15 @@ from utils import (normalize_title, is_duplicate, fetch_omdb_ratings, send_overs
                    prefetch_tv_states_parallel, prefetch_ratings_parallel)
 from presets import PLAYLIST_PRESETS
 
-# Define Blueprint
+# setup blueprint
 api_bp = Blueprint('api', __name__)
 
 # --- GENERATION & FILTERS ---
+
 @api_bp.route('/load_more_recs')
 @login_required
 def load_more_recs():
+    # bail if we don't have results cached
     if current_user.id not in RESULTS_CACHE: return jsonify([])
     
     cache = RESULTS_CACHE[current_user.id]
@@ -35,25 +37,25 @@ def load_more_recs():
     s = current_user.settings
     min_year, min_rating, genre_filter, critic_enabled, threshold = get_session_filters()
     
-    # Fetch content ratings allowed from session
+    # grab allowed ratings (G, PG, etc) from session
     allowed_ratings = session.get('rating_filter', [])
-    # Normalize empty list to None to skip filtering
+    # if empty or 'all', just ignore the filter
     if not allowed_ratings or 'all' in allowed_ratings: allowed_ratings = None
     
+    # parse keywords from the pipe-separated string
     raw_keywords = session.get('keywords', '')
     target_keywords = [k.strip() for k in raw_keywords.split('|') if k.strip()]
     
     batch_end = min(start_idx + 100, len(candidates))
     
-    # Always prefetch the next batch to populate cache
     batch_items = candidates[start_idx:batch_end]
-    # Prefetch Ratings for this batch
+    # prefetch ratings now so UI doesn't lag
     prefetch_ratings_parallel(batch_items, s.tmdb_key)
     
     if target_keywords:
         prefetch_keywords_parallel(batch_items, s.tmdb_key)
     else:
-        # Background fetch to prevent timeout
+        # keywords not needed immediately, do it async
         from flask import current_app
         def async_prefetch(app_obj, items, key):
             with app_obj.app_context():
@@ -65,25 +67,24 @@ def load_more_recs():
     final_list = []
     idx = start_idx
     
-    # --- MAIN FILTERING LOOP ---
+    # keep going until we have 30 or run out
     while len(final_list) < 30 and idx < len(candidates):
         item = candidates[idx]
         idx += 1
         
-        # 1. Filters
+        # basic filters first
         if item['year'] < min_year: continue
         if item.get('vote_average', 0) < min_rating: continue
-        # Content Rating Filter
+        
+        # content rating check (kid mode stuff)
         if allowed_ratings:
             c_rate = item.get('content_rating', 'NR')
-            # Safety: Ensure c_rate is a string
             if str(c_rate) not in allowed_ratings: continue
+            
         if genre_filter and genre_filter != 'all':
             try:
-                # Multi-select or String Single legacy
+                # handle old format where it was a single int vs list
                 allowed_ids = [int(g) for g in genre_filter] if isinstance(genre_filter, list) else [int(genre_filter)]
-                
-                # If item has ANY of the selected genres, keep it.
                 item_genres = item.get('genre_ids', [])
                 if not any(gid in allowed_ids for gid in item_genres): 
                     continue
@@ -93,7 +94,7 @@ def load_more_recs():
             if not item_matches_keywords(item, target_keywords):
                 continue
 
-        # 2. OMDB/Rotten Tomatoes
+        # check RT score if omdb key exists
         item['rt_score'] = None
         if s.omdb_key:
             ratings = fetch_omdb_ratings(item.get('title', item.get('name')), item['year'], s.omdb_key)
@@ -108,7 +109,7 @@ def load_more_recs():
             
         final_list.append(item)
 
-    # --- TV Status Fetch (Load More) ---
+    # TV shows need status (ended/returning) for display
     if final_list and final_list[0].get('media_type') == 'tv':
         prefetch_tv_states_parallel(final_list, s.tmdb_key)
         
@@ -129,6 +130,7 @@ def update_filters():
     session['keywords'] = data.get('keywords', '')
     session['rating_filter'] = data.get('rating_filter', [])
     
+    # reset pagination when filters change
     if current_user.id in RESULTS_CACHE:
         RESULTS_CACHE[current_user.id]['next_index'] = 0
         
@@ -151,6 +153,8 @@ def tmdb_search_proxy():
         
     ep = 'search/tv' if search_type == 'tv' else 'search/movie'
     res = requests.get(f"https://api.themoviedb.org/3/{ep}?query={q}&api_key={s.tmdb_key}", timeout=5).json().get('results', [])[:5]
+    
+    # normalize response format for frontend
     return {'results': [{'title': i.get('name') if request.args.get('type') == 'tv' else i.get('title'), 'year': (i.get('first_air_date') or i.get('release_date') or '')[:4], 'poster': i.get('poster_path')} for i in res]}
 
 # --- METADATA & ACTIONS ---
@@ -160,24 +164,28 @@ def tmdb_search_proxy():
 def get_metadata(media_type, tmdb_id):
     s = current_user.settings
     try:
+        # get everything in one call
         url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}?api_key={s.tmdb_key}&append_to_response=credits,videos,watch/providers"
         data = requests.get(url, timeout=5).json()
         
+        # top 5 cast is enough
         cast = [c['name'] for c in data.get('credits', {}).get('cast', [])[:5]]
         
-        # Trailer
+        # find trailer - prefer official ones
         trailer = None
         for v in data.get('videos', {}).get('results', []):
             if v['type'] == 'Trailer' and v['site'] == 'YouTube':
                 trailer = v['key']
                 break
+        
+        # fallback to any youtube video
         if not trailer:
              for v in data.get('videos', {}).get('results', []):
                 if v['site'] == 'YouTube':
                     trailer = v['key']
                     break
                 
-        # Providers
+        # streaming providers - default to US
         reg = (s.tmdb_region or 'US').split(',')[0]
         prov = data.get('watch/providers', {}).get('results', {}).get(reg, {}).get('flatrate', [])
         
@@ -200,12 +208,17 @@ def get_trailer(media_type, tmdb_id):
     try:
         url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}/videos?api_key={s.tmdb_key}&language=en-US"
         results = requests.get(url, timeout=5).json().get('results', [])
+        
+        # official trailers first
         for vid in results:
             if vid['site'] == 'YouTube' and vid['type'] == 'Trailer':
                 return jsonify({'status': 'success', 'key': vid['key']})
+        
+        # any youtube video works
         for vid in results:
             if vid['site'] == 'YouTube':
                 return jsonify({'status': 'success', 'key': vid['key']})
+                
         return jsonify({'status': 'error', 'message': 'No trailer found'})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)})
@@ -216,12 +229,12 @@ def request_media():
     s = current_user.settings
     data = request.json
     try:
-        # Bulk Request Mode
+        # bulk mode from import lists
         if 'items' in data:
              success_count = 0
              last_error = ""
+             
              for item in data['items']:
-                 # We expect a tuple now: (True/False, "Message")
                  success, msg = send_overseerr_request(s, item['media_type'], item['tmdb_id'])
                  if success: success_count += 1
                  else: last_error = msg
@@ -229,16 +242,14 @@ def request_media():
              if success_count > 0:
                  return jsonify({'status': 'success', 'count': success_count})
              else:
-                 # Show the ACTUAL error from the last failed item
                  return jsonify({'status': 'error', 'message': last_error or "All requests failed"})
         
-        # Single Request Mode
+        # single request
         else:
              success, msg = send_overseerr_request(s, data['media_type'], data['tmdb_id'])
              if success:
                  return jsonify({'status': 'success'})
              else:
-                 # Show the ACTUAL error
                  return jsonify({'status': 'error', 'message': msg})
 
     except Exception as e: 
@@ -249,6 +260,8 @@ def request_media():
 def block_movie():
     title = request.json['title']
     media_type = request.json.get('media_type', 'movie')
+    
+    # avoid duplicates
     exists = Blocklist.query.filter_by(user_id=current_user.id, title=title, media_type=media_type).first()
     if not exists:
         db.session.add(Blocklist(user_id=current_user.id, title=title, media_type=media_type))
@@ -258,7 +271,8 @@ def block_movie():
 @api_bp.route('/unblock_movie/<int:id>', methods=['POST'])
 @login_required
 def unblock_movie(id):
-    Blocklist.query.filter_by(id=id).delete()
+    # make sure user can only delete their own blocks
+    Blocklist.query.filter_by(id=id, user_id=current_user.id).delete()
     db.session.commit()
     return {'status': 'success'}
 
@@ -270,6 +284,7 @@ def get_plex_libraries():
     s = current_user.settings
     try:
         plex = PlexServer(s.plex_url, s.plex_token)
+        # only video libraries
         libs = [{'title': sec.title, 'type': sec.type, 'name': sec.title} for sec in plex.library.sections() if sec.type in ['movie', 'show']]
         return jsonify({'status': 'success', 'libraries': libs})
     except Exception as e:
@@ -283,32 +298,26 @@ def get_plex_collections():
         return jsonify({'status': 'error', 'message': 'Plex not configured'})
     
     try:
-        # Connect to Plex
         plex = PlexServer(s.plex_url, s.plex_token, timeout=5)
         collections = []
         
-        # Scan Movie and TV libraries for collections
         for section in plex.library.sections():
             if section.type in ['movie', 'show']:
                 for col in section.collections():
-                    
-                    # 1. Get Artwork (Fallback: Collection Thumb -> First Item Thumb -> None)
+                    # use first item's poster if collection doesn't have one
                     thumb = col.thumb
                     if not thumb and col.items():
                         thumb = col.items()[0].thumb
                         
-                    # 2. Build Collection Object
                     collections.append({
                         'title': col.title,
                         'key': col.ratingKey,
                         'library': section.title,
                         'count': col.childCount,
                         'thumb': f"{s.plex_url}{thumb}?X-Plex-Token={s.plex_token}" if thumb else None,
-                        # Generate a direct link to the collection in Plex Web
                         'url': f"{s.plex_url}/web/index.html#!/server/{plex.machineIdentifier}/details?key={col.key}"
                     })
         
-        # 3. Sort alphabetically by title
         collections.sort(key=lambda x: x['title'])
         
         return jsonify({'status': 'success', 'collections': collections})
@@ -320,11 +329,13 @@ def get_plex_collections():
 @api_bp.route('/match_bulk_titles', methods=['POST'])
 @login_required
 def match_bulk_titles():
+    # paste a list of titles and match them to plex
     s = current_user.settings
     data = request.json
     raw_text = data.get('titles', '')
     target_library = data.get('target_library')
     
+    # split on newlines, commas, pipes
     titles = [x.strip() for x in re.split(r'[\n,|]', raw_text) if x.strip()]
     if not titles: return jsonify({'status': 'error', 'message': 'No titles found.'})
     
@@ -333,12 +344,14 @@ def match_bulk_titles():
         lib = plex.library.section(target_library)
         
         results = []
+        # limit to 100 so it doesn't hang
         for t in titles[:100]:
             found = False
             key = None
             final_title = t
             
             try:
+                # TODO: fuzzy matching would be better here
                 hits = lib.search(t)
                 if hits:
                     found = True
@@ -363,16 +376,19 @@ def create_bulk_collection():
         keys = data['rating_keys']
         if not keys: return jsonify({'status': 'error', 'message': 'No items.'})
         
-        # Create
+        # create collection from first item
         first = lib.fetchItem(keys[0])
         col = first.addCollection(data['collection_title'])
+        
+        # add remaining items
         for k in keys[1:]:
             try: lib.fetchItem(k).addCollection(data['collection_title'])
             except: pass
             
-        # Save Static Preset
+        # save as custom preset so it shows in UI
         key = f"custom_import_{int(time.time())}"
         config = {'title': data['collection_title'], 'description': f"Imported Static List ({len(keys)} items)", 'media_type': 'movie', 'icon': '📋'}
+        
         db.session.add(CollectionSchedule(preset_key=key, frequency='manual', configuration=json.dumps(config)))
         db.session.commit()
         
@@ -385,11 +401,11 @@ def create_bulk_collection():
 def preview_preset_items(key):
     s = current_user.settings
     preset = {}
+    
     if key.startswith('custom_'):
         job = CollectionSchedule.query.filter_by(preset_key=key).first()
         if job and job.configuration:
             config = json.loads(job.configuration)
-            # Rebuild params
             params = config.get('tmdb_params', {})
             preset = {'media_type': config.get('media_type', 'movie'), 'tmdb_params': params}
     else:
@@ -405,9 +421,13 @@ def preview_preset_items(key):
         
         owned_keys = get_plex_cache(s)
         items = []
+        
+        # show first 12
         for i in r.get('results', [])[:12]:
             t = normalize_title(i.get('title', i.get('name')))
             is_owned = t in owned_keys
+            
+            # fallback to alias check if title match failed
             if not is_owned:
                 if TmdbAlias.query.filter_by(tmdb_id=i['id']).first(): is_owned = True
             
@@ -426,26 +446,26 @@ def preview_preset_items(key):
 def create_collection(key):
     s = current_user.settings
     
-    # --- UPDATED LOADING LOGIC ---
     if key.startswith('custom_'):
-        # Custom Lists: Always load from DB
         job = CollectionSchedule.query.filter_by(preset_key=key).first()
         preset = json.loads(job.configuration)
     else:
-        # Standard Presets: Load defaults, THEN check DB for overrides (like Sync Mode)
         preset = PLAYLIST_PRESETS.get(key, {}).copy()
         
+        # check for user overrides (sync mode, etc)
         job = CollectionSchedule.query.filter_by(preset_key=key).first()
         if job and job.configuration:
             try: 
                 user_config = json.loads(job.configuration)
-                # If the user saved a specific mode, use it
                 if 'sync_mode' in user_config:
                     preset['sync_mode'] = user_config['sync_mode']
             except: pass
             
-    success, msg = run_collection_logic(s, preset, key)
+    from flask import current_app
+    success, msg = run_collection_logic(s, preset, key, app_obj=current_app._get_current_object())
+    
     if success:
+        # update last run time
         job = CollectionSchedule.query.filter_by(preset_key=key).first()
         if not job: 
             job = CollectionSchedule(preset_key=key)
@@ -453,52 +473,45 @@ def create_collection(key):
         job.last_run = datetime.datetime.now()
         db.session.commit()
         return jsonify({'status': 'success', 'message': msg})
+        
     return jsonify({'status': 'error', 'message': msg})
 
 @api_bp.route('/schedule_collection', methods=['POST'])
 @login_required
 def schedule_collection():
-    # 1. Get Data
     preset_key = request.form.get('preset_key')
-    frequency = request.form.get('frequency') # 'manual', 'daily', 'weekly'
+    frequency = request.form.get('frequency') # manual, daily, weekly
     sync_mode = request.form.get('sync_mode', 'append')
 
-    # 2. Update Database
     job = CollectionSchedule.query.filter_by(preset_key=preset_key).first()
     if not job:
         job = CollectionSchedule(preset_key=preset_key)
         db.session.add(job)
     
-    # 3. Intelligent Config Update
-    # We must preserve existing custom configs (like TMDB params) if they exist.
+    # keep existing config, just update what changed
     current_config = {}
     if job.configuration:
-        try:
-            current_config = json.loads(job.configuration)
-        except:
-            current_config = {}
+        try: current_config = json.loads(job.configuration)
+        except: current_config = {}
             
-    # Update only what changed
     current_config['sync_mode'] = sync_mode
-    
-    # If it's a built-in preset and we have no config yet, we don't strictly need to copy 
-    # the whole preset into DB, just the overrides. The Scheduler in app.py handles the merging.
     
     job.frequency = frequency
     job.configuration = json.dumps(current_config)
     
     db.session.commit()
     return jsonify({'status': 'success', 'message': 'Schedule updated.'})
-    
+
 # --- CUSTOM BUILDER ---
 
 @api_bp.route('/preview_custom_collection', methods=['POST'])
 @login_required
 def preview_custom_collection():
+    # test filters before saving
     s = current_user.settings
     data = request.json
     
-    # 1. Prepare Params
+    # map UI fields to TMDB params
     params = {
         'api_key': s.tmdb_key,
         'sort_by': data['sort_by'],
@@ -506,6 +519,8 @@ def preview_custom_collection():
         'with_genres': data['with_genres'],
         'with_keywords': data.get('with_keywords', '')
     }
+    
+    # date fields differ for movies vs TV
     if data['year_start']:
         k = 'primary_release_date.gte' if data['media_type'] == 'movie' else 'first_air_date.gte'
         params[k] = f"{data['year_start']}-01-01"
@@ -513,23 +528,20 @@ def preview_custom_collection():
         k = 'primary_release_date.lte' if data['media_type'] == 'movie' else 'first_air_date.lte'
         params[k] = f"{data['year_end']}-12-31"
     
-    # 2. Fetch from TMDB
     url = f"https://api.themoviedb.org/3/discover/{data['media_type']}"
     try:
         r = requests.get(url, params=params, timeout=5).json()
     except Exception as e:
         return jsonify({'status': 'error', 'message': 'TMDB Error'})
 
-    # 3. Check Ownership (The Missing Logic)
     owned_keys = get_plex_cache(s)
     items = []
     
     for i in r.get('results', [])[:10]:
-        # Check Title
         t_clean = normalize_title(i.get('title', i.get('name')))
         is_owned = t_clean in owned_keys
         
-        # Check ID (Alias) if title failed
+        # try alias match if title didn't work
         if not is_owned:
             if TmdbAlias.query.filter_by(tmdb_id=i['id']).first():
                 is_owned = True
@@ -539,8 +551,8 @@ def preview_custom_collection():
         items.append({
             'text': f"{i.get('title', i.get('name'))} ({year})",
             'owned': is_owned,
-            'tmdb_id': i['id'],           # Needed for Request Button
-            'media_type': data['media_type'] # Needed for Request Button
+            'tmdb_id': i['id'],
+            'media_type': data['media_type']
         })
         
     return jsonify({'status': 'success', 'items': items})
@@ -550,6 +562,7 @@ def preview_custom_collection():
 def save_custom_collection():
     data = request.json
     key = f"custom_{int(time.time())}"
+    
     config = {
         'title': data['title'],
         'description': 'Custom Smart Collection',
@@ -561,6 +574,7 @@ def save_custom_collection():
             'with_keywords': data.get('with_keywords', '')
         }
     }
+    
     if data['year_start']:
         k = 'primary_release_date.gte' if data['media_type'] == 'movie' else 'first_air_date.gte'
         config['tmdb_params'][k] = f"{data['year_start']}-01-01"
@@ -584,14 +598,14 @@ def test_connection():
     data = request.json
     service = data.get('service')
     
-    # Validate the URL before connecting (Prevents SSRF)
+    # SSRF protection
     if 'url' in data and data['url']:
         is_safe, msg = validate_url(data['url'])
         if not is_safe:
             return jsonify({'status': 'error', 'message': f"Security Block: {msg}", 'msg': f"Security Block: {msg}"})
-    # ----------------------
 
     try:
+        # test logic for each service type
         if service == 'plex':
             p = PlexServer(data['url'], data['token'], timeout=5)
             return jsonify({'status': 'success', 'message': f"Connected: {p.friendlyName}", 'msg': f"Connected: {p.friendlyName}"})
@@ -651,18 +665,26 @@ def update_ignore_list():
 def tautulli_data():
     s = current_user.settings
     if not s.tautulli_url or not s.tautulli_api_key: return jsonify({'error': 'Not Configured'})
+    
     days = request.args.get('days', 30)
     stat_type = request.args.get('type', '0')
+    
     try:
         base_url = s.tautulli_url.rstrip('/')
         url = f"{base_url}/api/v2?apikey={s.tautulli_api_key}&cmd=get_home_stats&time_range={days}&stats_type={stat_type}"
+        
         resp = requests.get(url, timeout=10)
         if resp.status_code != 200: return jsonify({"error": f"Tautulli Error {resp.status_code}"})
+        
         try: data = resp.json()
         except: return jsonify({"error": "Invalid JSON response"})
+        
         if data.get('response', {}).get('result') == 'success': return jsonify(data['response']['data'])
         return jsonify({"error": f"Tautulli Error: {data.get('response', {}).get('message')}"})
+        
     except Exception as e: return jsonify({"error": f"Connection Failed: {str(e)}"})
+
+# --- BACKUPS ---
 
 @api_bp.route('/api/backups')
 @login_required
@@ -677,6 +699,7 @@ def trigger_backup():
 @api_bp.route('/api/backup/download/<filename>')
 @login_required
 def download_backup(filename):
+    # basic path traversal check
     if '..' in filename or '/' in filename: return "Invalid", 400
     return send_from_directory(BACKUP_DIR, filename, as_attachment=True)
 
@@ -691,12 +714,15 @@ def delete_backup_api(filename):
 @api_bp.route('/api/backup/restore/<filename>', methods=['POST'])
 @login_required
 def run_restore(filename):
-    # FIX: Block absolute paths ('/') alongside relative paths ('..')
+    # be extra careful with paths
     if '..' in filename or '/' in filename or '\\' in filename: 
         return jsonify({'status': 'error', 'message': 'Invalid filename'})
         
     success, msg = restore_backup(filename)
     return jsonify({'status': 'success' if success else 'error', 'message': msg})
+
+# --- CACHE & SCANNER ---
+
 @api_bp.route('/save_cache_settings', methods=['POST'])
 @login_required
 def save_cache_settings():
@@ -709,7 +735,7 @@ def save_cache_settings():
 @login_required
 def force_cache_refresh_route():
     from flask import current_app
-    # Use current_app._get_current_object() to pass real app object to thread
+    # run in background thread so the UI doesn't hang
     threading.Thread(target=refresh_plex_cache, args=(current_app._get_current_object(),)).start()
     return jsonify({'status': 'success'})
 
@@ -727,6 +753,7 @@ def scanner_status():
         last = s.last_alias_scan or 0
         interval_sec = (s.scanner_interval or 15) * 60
         next_ts = last + interval_sec
+        
     return jsonify({
         'enabled': s.scanner_enabled,
         'interval': s.scanner_interval,
@@ -749,13 +776,15 @@ def save_scanner_settings():
 @api_bp.route('/api/scanner/reset', methods=['POST'])
 @login_required
 def reset_scanner():
+    # wipe everything and start over
     TmdbAlias.query.delete()
     s = current_user.settings
     s.last_alias_scan = 0
     db.session.commit()
+    
     write_scanner_log("Database Wiped by User.")
-    # Add this line below to show in System Event Log
     write_log("INFO", "Scanner", "Alias Database wiped by user.")
+    
     return jsonify({'status': 'success', 'message': 'Database wiped.'})
     
 @api_bp.route('/api/scanner/logs_stream')
@@ -769,16 +798,19 @@ def save_kometa_config():
     s = current_user.settings
     data = request.json
     s.kometa_config = json.dumps(data)
-    # Update main settings if changed in builder
+    
+    # sync these settings with main config if user changed them here
     if data.get('plex_url'): s.plex_url = data['plex_url']
     if data.get('plex_token'): s.plex_token = data['plex_token']
     if data.get('tmdb_key'): s.tmdb_key = data['tmdb_key']
+    
     db.session.commit()
     return jsonify({'status': 'success'})
 
 @api_bp.route('/api/sync_aliases', methods=['POST'])
 @login_required
 def manual_alias_sync():
+    # legacy button, probably not used much anymore
     success, msg = sync_remote_aliases()
     status = 'success' if success else 'error'
     try: total = TmdbAlias.query.count()
@@ -790,7 +822,6 @@ def manual_alias_sync():
 @api_bp.route('/api/admin/users')
 @login_required
 def get_all_users():
-    # Security Check
     if not current_user.is_admin:
         return jsonify({'error': 'Unauthorized'}), 403
         
@@ -821,7 +852,6 @@ def toggle_user_role():
     if not user:
         return jsonify({'status': 'error', 'message': 'User not found'})
         
-    # Toggle
     user.is_admin = not user.is_admin
     db.session.commit()
     
@@ -842,7 +872,7 @@ def admin_delete_user():
         
     user = User.query.get(target_id)
     if user:
-        # Clean up related data
+        # Cascade delete settings/blocklists to avoid orphaned rows
         Settings.query.filter_by(user_id=user.id).delete()
         Blocklist.query.filter_by(user_id=user.id).delete()
         db.session.delete(user)
@@ -857,7 +887,7 @@ def save_schedule_time():
     s = current_user.settings
     new_time = request.form.get('time', '04:00')
     
-    # Simple validation (HH:MM)
+    # quick validation
     if ':' in new_time and len(new_time) == 5:
         s.schedule_time = new_time
         db.session.commit()
