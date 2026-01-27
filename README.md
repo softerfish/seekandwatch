@@ -1,5 +1,5 @@
 # 🚀 SeekAndWatch
-![Version](https://img.shields.io/badge/version-1.2.4-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) (coming soon) ![License](https://img.shields.io/badge/License-MIT-green.svg)
+![Version](https://img.shields.io/badge/version-1.3.0-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) (coming soon) ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
 ⭐ **If this saves you from endless scrolling, a star helps a ton.**
 
@@ -127,7 +127,7 @@ docker run -d \
 ---
 
 ## Changelog
-v1.2.5
+v1.3.0
 - finished one click updates for non-unraid app installs. unraid users will have to use appstore updates when the app is approved
 - users can import backup files now
 - many small Smart Discovery improvements not limited to, but including: parallelize TMDB recommendation fetches, cache plex history for 1 hour, and instead of pure shuffle for review, we now score items by vote average × vote count and keep shuffle as a tie‑breaker 
@@ -239,5 +239,6 @@ This product uses the TMDB API but is not endorsed or certified by TMDB.
 | Plex Collections | Custom Builder |
 | :---: | :---: |
 | <img src="images/plexcollections.png" alt="Plex Collections" width="800"> | <img src="images/custom-builder.png" alt="Custom Builder" width="400"> |
+
 
 </details>
