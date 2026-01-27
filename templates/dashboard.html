@@ -11,14 +11,17 @@
 
 <div style="text-align: center; padding-top: 20px;">
 
-    <div style="max-width: 800px; margin: 0 auto 30px auto; background: rgba(243, 156, 18, 0.1); border-left: 4px solid #f39c12; padding: 15px; text-align: left; border-radius: 4px;">
-        <strong style="color: #f39c12; display: block; margin-bottom: 5px;">⚠️ Important Setup Requirement:</strong> 
-        <span style="color: #ccc; font-size: 0.95em; line-height: 1.5; display: block;">
-            To prevent duplicates and ensure accurate recommendations, you <b>must</b> enable 
-            <b>Sync Engine</b> & <b>Background Alias Discovery</b> in 
-            <a href="{{ url_for('settings') }}" style="text-decoration: underline; color: white; font-weight: bold;">Settings</a> 
+    <div class="setup-notice" data-notice-key="sync-engine">
+        <div class="setup-notice__header">
+            <strong>⚠️ Important Setup Requirement</strong>
+            <button type="button" class="setup-notice__toggle" aria-expanded="true">Minimize</button>
+        </div>
+        <div class="setup-notice__body">
+            To prevent duplicates and ensure accurate recommendations, you <b>must</b> enable
+            <b>Sync Engine</b> & <b>Background Alias Discovery</b> in
+            <a href="{{ url_for('settings') }}">Settings</a>
             and allow them to complete a full cycle.
-        </span>
+        </div>
     </div>
 
 <div class="section-title" style="margin-top: 30px;">
@@ -72,7 +75,7 @@
         </div>
 
         <form id="mainScanForm" action="{{ url_for('review_history') }}" method="POST">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>   
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <input type="hidden" id="mediaTypeInput" name="media_type" value="movie">
 
             <div style="margin-bottom: 20px; text-align: center;">
@@ -85,7 +88,7 @@
                 </p>
             </div>
 
-           {% if has_omdb %}
+            {% if has_omdb %}
             <div style="margin-bottom: 20px; text-align: center;">
                 <label class="critic-label">
                     <input type="checkbox" name="critic_filter" id="critic-filter" onchange="toggleCritic()" style="width: 16px; height: 16px; accent-color: #ff6347;">
@@ -103,13 +106,13 @@
             }
             </script>
             {% endif %}
-			<div style="margin-bottom: 20px; text-align: center;">
+            <div style="margin-bottom: 20px; text-align: center;">
                 <label class="critic-label" style="background: rgba(52, 152, 219, 0.1); border-color: #3498db; color: #3498db;">
                     <input type="checkbox" name="future_mode" value="true" style="width: 16px; height: 16px; accent-color: #3498db;">
                     <span>🚀 Search Future Releases Only</span>
                 </label>
             </div>
-			<div style="margin-bottom: 20px; text-align: center;">
+            <div style="margin-bottom: 20px; text-align: center;">
                 <label class="critic-label" style="background: rgba(155, 89, 182, 0.1); border-color: #9b59b6; color: #9b59b6;">
                     <input type="checkbox" name="include_obscure" value="true" style="width: 16px; height: 16px; accent-color: #9b59b6;">
                     <span>🌍 Include International & Obscure</span>
@@ -142,7 +145,7 @@
         </form>
 
         <form id="luckyForm" action="{{ url_for('generate') }}" method="POST">
-		<input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <input type="hidden" name="lucky_mode" value="true">
             <a href="javascript:void(0)" class="btn btn-lucky" onclick="nuclearLucky()" style="text-align: center; text-decoration: none;">
                 🍀 I'm Feeling Lucky
@@ -160,7 +163,7 @@
 
 <script>
     document.addEventListener("DOMContentLoaded", function() {
-        // Move loader to body to avoid clipping
+        // Move the loader to <body> so it doesn't get clipped.
         const loader = document.getElementById('nuclear-loader');
         if (loader && document.body) {
             document.body.appendChild(loader);
@@ -183,7 +186,7 @@
         }, 50);
     }
 
-    // --- Search Logic ---
+    // Search wiring.
     const searchInput = document.getElementById('main-search');
     const resultsDiv = document.getElementById('search-results');
     let debounceTimer;
@@ -216,11 +219,11 @@
         const form = document.createElement('form'); 
         form.method = 'POST'; 
         form.action = "{{ url_for('review_history') }}";
-		const csrfInput = document.createElement('input');
-		csrfInput.type = 'hidden';
-		csrfInput.name = 'csrf_token';
-		csrfInput.value = "{{ csrf_token() }}";
-		form.appendChild(csrfInput);
+        const csrfInput = document.createElement('input');
+        csrfInput.type = 'hidden';
+        csrfInput.name = 'csrf_token';
+        csrfInput.value = "{{ csrf_token() }}";
+        form.appendChild(csrfInput);
         
         const input = document.createElement('input'); 
         input.type = 'hidden'; input.name = 'manual_query'; input.value = title;
@@ -246,7 +249,7 @@ let currentTrendingType = 'movie';
     function loadTrending(type) {
         currentTrendingType = type;
         
-        // Update Tabs UI
+        // Update the tab UI.
         const tabs = document.querySelectorAll('.t-tab');
         if(tabs.length > 0) {
             tabs.forEach(b => b.classList.remove('active'));
@@ -254,7 +257,7 @@ let currentTrendingType = 'movie';
             if(activeTab) activeTab.classList.add('active');
         }
         
-        // Safety Check: If widget isn't on screen (API missing), STOP here.
+        // If the widget isn't present, bail (API not configured).
         const grid = document.getElementById('trending-grid');
         if(!grid) return; 
 
@@ -286,8 +289,8 @@ let currentTrendingType = 'movie';
         window.location.href = '/recommend_from_trending?type=' + currentTrendingType;
     }
 
-    // Initialize ONLY if grid exists
-    document.addEventListener('DOMContentLoaded', () => { 
+    // Only initialize if the grid exists.
+    document.addEventListener('DOMContentLoaded', () => {
         if(document.getElementById('trending-grid')) {
             loadTrending('movie');
         }

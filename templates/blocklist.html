@@ -58,27 +58,27 @@
 </div>
 
 <script>
-// --- STATE ---
+// UI state
 let currentTab = 'movie';
 
-// --- TAB LOGIC ---
+// Tab switching
 function showTab(tab) {
     currentTab = tab;
-    // Hide all lists
+    // Hide all lists.
     document.querySelectorAll('.block-list-container').forEach(el => el.style.display = 'none');
-    // Show selected list
+    // Show selected list.
     document.getElementById('list-' + tab).style.display = 'block';
     
-    // Update buttons
+    // Update buttons.
     document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
     document.getElementById('btn-' + tab).classList.add('active');
     
-    // Clear search box to avoid confusion
+    // Clear the search box to avoid confusion.
     document.getElementById('searchInput').value = '';
     document.getElementById('suggestions').style.display = 'none';
 }
 
-// --- SEARCH & ADD LOGIC ---
+// Search + add
 const searchInput = document.getElementById('searchInput');
 const suggestionsBox = document.getElementById('suggestions');
 
@@ -89,7 +89,7 @@ searchInput.addEventListener('input', function(e) {
         return;
     }
 
-    // Determine type based on active tab
+    // Determine type based on active tab.
     const searchType = currentTab; 
 
     fetch(`/tmdb_search_proxy?query=${encodeURIComponent(query)}&type=${searchType}`)
@@ -127,7 +127,7 @@ searchInput.addEventListener('input', function(e) {
         .catch(err => console.error("Search error:", err));
 });
 
-// Hide suggestions when clicking outside
+// Hide suggestions when clicking outside.
 document.addEventListener('click', function(e) {
     if (e.target !== searchInput && e.target !== suggestionsBox) {
         suggestionsBox.style.display = 'none';
@@ -146,14 +146,14 @@ function addBlock(title, type) {
         })
     }).then(res => {
         if (res.ok) {
-            location.reload(); // Reload to show new block
+            location.reload(); // Reload to show new block.
         } else {
             alert("Failed to block content.");
         }
     });
 }
 
-// --- UNBLOCK LOGIC ---
+// Unblock
 function unblock(id) {
     if(!confirm("Unblock this title?")) return;
     

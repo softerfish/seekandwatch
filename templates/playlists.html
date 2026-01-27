@@ -1,25 +1,28 @@
 {% extends "base.html" %}
 {% block content %}
 
-	<div class="playlist-header">
-    <h2>✨ Plex Collections</h2>
-	<div class="tab-header">
-        <button class="tab-btn active" onclick="openTab(event, 'tab-manager')">⚡ Auto-Manager</button>
-        <button class="tab-btn" onclick="openTab(event, 'tab-viewer'); loadLiveCollections();">📂 Library Browser</button>
+    <div class="playlist-header">
+        <h2>✨ Plex Collections</h2>
+        <div class="tab-header">
+            <button class="tab-btn active" onclick="openTab(event, 'tab-manager')">⚡ Auto-Manager</button>
+            <button class="tab-btn" onclick="openTab(event, 'tab-viewer'); loadLiveCollections();">📂 Library Browser</button>
+        </div>
     </div>
+    <div id="tab-manager" class="tab-content active playlists-center">
+        <p class="media-sub">Curated lists, imported text, and custom builders.</p>
 
-    <div id="tab-manager" class="tab-content active">
-    <p class="media-sub">Curated lists, imported text, and custom builders.</p>
-
-    <div style="max-width: 800px; margin: 0 auto 20px auto; background: rgba(243, 156, 18, 0.1); border-left: 4px solid #f39c12; padding: 15px; text-align: left; border-radius: 4px;">
-        <strong style="color: #f39c12; display: block; margin-bottom: 5px;">⚠️ Important Setup Requirement:</strong> 
-        <span style="color: #ccc; font-size: 0.95em; line-height: 1.5; display: block;">
-            To ensure accurate collections and remove duplicates, you <b>must</b> enable 
-            <b>Sync Engine</b> & <b>Background Alias Discovery</b> in 
-            <a href="{{ url_for('settings') }}" style="text-decoration: underline; color: white; font-weight: bold;">Settings</a> 
-            and allow them to complete a full cycle.
-        </span>
-    </div>
+        <div class="setup-notice setup-notice--center" data-notice-key="sync-engine">
+            <div class="setup-notice__header">
+                <strong>⚠️ Important Setup Requirement</strong>
+                <button type="button" class="setup-notice__toggle" aria-expanded="true">Minimize</button>
+            </div>
+            <div class="setup-notice__body">
+                To ensure accurate collections and remove duplicates, you <b>must</b> enable
+                <b>Sync Engine</b> & <b>Background Alias Discovery</b> in
+                <a href="{{ url_for('settings') }}">Settings</a>
+                and allow them to complete a full cycle.
+            </div>
+        </div>
 
     <div class="stats-bar">
         <span title="Your custom created lists">🛠️ <b>{{ custom_presets|length }}</b> Custom</span>
@@ -34,12 +37,12 @@
         <button onclick="openImportModal()" class="btn-import" id="btn-import-open">📋 Import List</button>
     </div>
 
-    <div class="type-toggle-group">
+        <div class="type-toggle-group">
         <button onclick="filterType('movie')" id="btn-movie" class="type-toggle-btn active">Movies 🎬</button>
         <button onclick="filterType('tv')" id="btn-tv" class="type-toggle-btn">TV Shows 📺</button>
+        </div>
     </div>
-</div>
-</div> <div id="tab-viewer" class="tab-content">
+    <div id="tab-viewer" class="tab-content">
         <div style="text-align:center; color:#aaa; margin-bottom: 30px;">
             <p>A live view of all collections currently existing on your Plex server.</p>
         </div>
@@ -50,7 +53,7 @@
         </div>
 
         <div id="viewer-grid" class="playlist-grid" style="display:none; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));">
-            </div>
+        </div>
     </div>
 <div id="preview-modal" class="import-modal">
     <div class="import-content wide">
@@ -91,7 +94,7 @@
     </div>
 </div>
 
-<div class="card p-3 mb-4">
+<div class="card p-3 mb-4 schedule-card">
     <h5>Global Schedule Time</h5>
     <p class="text-muted small">All "Daily" collections will run automatically after this time.</p>
     <div class="d-flex gap-2" style="max-width: 300px;">
@@ -244,30 +247,30 @@ function saveGlobalTime() {
 
 <script>
 function openTab(evt, tabName) {
-        // Hide all tab content
+        // Hide every tab panel first.
         var tabcontent = document.getElementsByClassName("tab-content");
         for (var i = 0; i < tabcontent.length; i++) {
             tabcontent[i].style.display = "none";
             tabcontent[i].classList.remove("active");
         }
         
-        // Deactivate all buttons
+        // Clear active state on tabs.
         var tablinks = document.getElementsByClassName("tab-btn");
         for (var i = 0; i < tablinks.length; i++) {
             tablinks[i].classList.remove("active");
         }
         
-        // Show current tab and activate button
+        // Show selected tab and mark it active.
         document.getElementById(tabName).style.display = "block";
-        // Small timeout to allow display:block to apply before adding opacity class (for animation)
+        // Small delay so the transition has a frame to kick in.
         setTimeout(() => document.getElementById(tabName).classList.add("active"), 10);
         evt.currentTarget.classList.add("active");
     }
 
-    // --- VIEWER FETCHER ---
+    // Live collections viewer
     let viewerLoaded = false;
     function loadLiveCollections() {
-        if(viewerLoaded) return; // Prevent spamming the API
+        if(viewerLoaded) return; // Avoid repeat API calls.
         
         fetch('/get_plex_collections')
         .then(r => r.json())
@@ -297,7 +300,7 @@ function openTab(evt, tabName) {
             }
         });
     }
-// --- POLLING FOR LOCKOUT ---
+// Check cache lockout so we don't fire while busy.
 setInterval(checkCacheStatus, 2000); 
 
 function checkCacheStatus() {
@@ -316,8 +319,8 @@ function checkCacheStatus() {
         } else {
             btns.forEach(b => {
                 if(b.disabled && b.innerText.includes("System Busy")) {
-                    b.innerText = "Run Now 🪄"; // Default text, might need logic to restore 'Sync Now' for custom
-                    if(b.id.startsWith("btn-custom")) b.innerText = "Sync Now 🪄"; // Rough guess
+                    b.innerText = "Run Now 🪄"; // Default label.
+                    if(b.id.startsWith("btn-custom")) b.innerText = "Sync Now 🪄"; // Custom presets get a different label.
                     b.disabled = false; b.innerText = "Run Now 🪄"; 
                     b.style.opacity = "1"; b.style.cursor = "pointer";
                 }
@@ -328,7 +331,7 @@ function checkCacheStatus() {
     });
 }
 
-// Filter Logic
+// Filter cards by media type.
 function filterType(type) {
     document.getElementById('btn-movie').classList.remove('active');
     document.getElementById('btn-tv').classList.remove('active');
@@ -351,7 +354,7 @@ function filterType(type) {
 }
 document.addEventListener('DOMContentLoaded', () => { filterType('movie'); });
 
-// PREVIEW LOGIC
+// Preview modal
 function previewCollection(key, title) {
     document.getElementById('preview-title').innerText = "👀 " + title;
     const grid = document.getElementById('preview-grid');
@@ -380,14 +383,14 @@ function previewCollection(key, title) {
     });
 }
 
-// DELETE CUSTOM
+// Delete a custom preset.
 function deleteCustom(key) {
     if (!confirm("Delete from SeekAndWatch AND Plex?")) return;
     fetch('/delete_custom_collection/' + key, {method: 'POST'})
     .then(res => res.json()).then(data => { location.reload(); });
 }
 
-// SYNC STANDARD
+// Run a preset now.
 function createCollection(key) {
     const btn = document.getElementById('btn-' + key);
     const originalText = btn.innerText;
@@ -400,22 +403,22 @@ function createCollection(key) {
     });
 }
 
-// --- NEW: SAVE SETTINGS (Handles Frequency AND Sync Mode) ---
+// Save schedule settings (frequency + sync mode).
 function saveSettings(key) {
     const freqEl = document.getElementById('freq-' + key);
     const syncEl = document.getElementById('sync-' + key);
     
     const freq = freqEl ? freqEl.value : 'manual';
-    // If sync element is hidden (Trending locked), default to 'sync'
+    // If sync is locked (Trending), fall back to strict sync.
     const sync = syncEl ? syncEl.value : 'sync';
 
-    fetch('/schedule_collection', { // Note: ensure route is /schedule_collection in app.py
+    fetch('/schedule_collection', { // NOTE: keep route in sync with app.py
         method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'},
         body: `preset_key=${key}&frequency=${freq}&sync_mode=${sync}`
     });
 }
 
-// --- IMPORT MODAL LOGIC ---
+// Import modal
 let matchedKeys = [];
 function openImportModal() { document.getElementById('import-modal').style.display = 'block'; document.body.style.overflow = 'hidden'; fetchLibraries(); }
 function closeImportModal() { document.getElementById('import-modal').style.display = 'none'; document.body.style.overflow = 'auto'; }

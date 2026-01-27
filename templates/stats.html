@@ -82,7 +82,7 @@ function toggleStats(type) {
         btnCount.className = "btn btn-secondary";
         btnTime.className = "btn btn-primary";
     }
-    // Re-apply small padding utility if needed, or rely on CSS
+    // Keep the compact button sizing.
     btnCount.style.padding = "6px 15px"; btnCount.style.fontSize = "0.9em";
     btnTime.style.padding = "6px 15px"; btnTime.style.fontSize = "0.9em";
 
@@ -115,7 +115,7 @@ async function loadTautulli() {
             let rows = '';
             panel.rows.forEach((row, index) => {
                 const smartData = getSmartData(panel.stat_id, row);
-                // Using inline flex for the generated rows to maintain specific alignment logic
+                // Inline flex keeps rows aligned cleanly.
                 rows += `
                 <div style="display:flex; justify-content:space-between; padding: 8px 0; border-bottom: 1px solid #333; font-size: 0.95em;">
                     <div style="display:flex; gap: 10px; align-items: center; max-width: 70%;">
@@ -188,13 +188,13 @@ function renderCharts(data) {
 function getSmartData(statId, row) {
     let label = 'Unknown';
     
-    // Label Logic
+    // Pick a human-friendly label.
     if (row.section_name) label = row.section_name;
     else if (row.user || row.friendly_name) label = row.user || row.friendly_name;
     else if (row.platform) label = row.platform;
     else label = row.title || row.name || 'Item';
     
-    // Value Logic
+    // Pick the value to display.
     if (statId.includes('concurrent')) {
         const count = row.count || row.total_plays || 0;
         return { label: label, value: count + (count === 1 ? " Stream" : " Streams") };
@@ -209,13 +209,13 @@ function getSmartData(statId, row) {
     }
 
     let val = 0;
-    if (currentStatType === 1) { // Duration Mode
+    if (currentStatType === 1) { // Duration mode
         if (row.total_duration && row.total_duration > 0) {
             val = formatTime(row.total_duration);
         } else {
             val = row.total_plays || row.count || 0;
         }
-    } else { // Play Count Mode
+    } else { // Play count mode
         val = row.total_plays || row.count || 0;
     }
     

@@ -2,11 +2,11 @@
 {% block content %}
 
 <form id="generateForm" action="{{ url_for('generate') }}" method="POST" onsubmit="prepareKeywords()">
-<input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
     <input type="hidden" name="media_type" value="{{ media_type }}">
     <input type="hidden" name="critic_filter" value="{{ session.get('critic_filter', '') }}">
-	<input type="hidden" name="future_mode" value="{{ 'true' if future_mode else 'false' }}">
-	<input type="hidden" name="include_obscure" value="{{ 'true' if include_obscure else 'false' }}">
+    <input type="hidden" name="future_mode" value="{{ 'true' if future_mode else 'false' }}">
+    <input type="hidden" name="include_obscure" value="{{ 'true' if include_obscure else 'false' }}">
     <input type="hidden" name="keywords" id="final-keywords">
     
     <div class="step-header">
@@ -44,14 +44,14 @@
             </div>
 
         </div>
-		<div class="filter-col">
+        <div class="filter-col">
             <label class="input-label">Content Rating (US)</label>
             <div class="rating-grid">
                 {% set all_ratings = ['G', 'PG', 'PG-13', 'R', 'NC-17', 'TV-Y', 'TV-Y7', 'TV-G', 'TV-PG', 'TV-14', 'TV-MA', 'NR'] %}
                 {% set defaults = ['G', 'PG', 'PG-13', 'R', 'TV-Y', 'TV-Y7', 'TV-G', 'TV-PG', 'TV-14', 'NR'] %}
                 
                 {% for r in all_ratings %}
-                    {# --- Filter ratings based on media type --- #}
+                    {# Skip ratings that don't apply to this media type. #}
                     {% set is_tv_rating = 'TV-' in r %}
                     {% set show_box = (media_type == 'tv' and is_tv_rating) or (media_type == 'movie' and not is_tv_rating) or r == 'NR' %}
                     
@@ -126,7 +126,7 @@
                 {% endif %}
                 
                 <div class="selection-overlay">
-                    <input type="checkbox" name="selected_movies" value="{{ movie.title }}" checked class="custom-check">
+                    <input type="checkbox" name="selected_movies" value="{{ movie.title }}" checked class="custom-check" onclick="event.stopPropagation();">
                 </div>
 
                 <button type="button" class="btn-block-floating" onclick="blockItem(event, '{{ movie.title|replace("'", "\\'") }}', '{{ media_type }}', this)" title="Block this title">🚫</button>
@@ -148,7 +148,7 @@
 </div>
 
 <script>
-// --- GENRE UI LOGIC ---
+// Genre expand/collapse
 function toggleGenreView(btn) {
     const hidden = document.querySelectorAll('.hidden-genre');
     const isExpanded = btn.classList.contains('expanded');
@@ -174,7 +174,7 @@ function toggleAllGenres(link) {
     link.innerText = isSelecting ? "Deselect All" : "Select All";
 }
 
-// --- SMART TAG LOGIC ---
+// Keyword tag picker
 let selectedKeywords = [];
 
 document.getElementById('keyword-search').addEventListener('input', function(e) {
@@ -230,13 +230,13 @@ function renderTags() {
 }
 
 function prepareKeywords() {
-    // Join names with pipe for backend logic
+    // Backend expects a pipe-delimited string.
     const keywordString = selectedKeywords.map(k => k.name).join('|');
     document.getElementById('final-keywords').value = keywordString;
     document.getElementById('loadingOverlay').style.display = 'flex';
 }
 
-// --- EXISTING LOGIC ---
+// Selection UI helpers
 function toggleSelection(card) {
     const cb = card.querySelector('input[type="checkbox"]');
     cb.checked = !cb.checked;

@@ -80,7 +80,7 @@
 </div>
 
 <script>
-// JS Logic
+// Keyword tag helpers
 let selectedKeywords = [];
 
 document.getElementById('keyword-search').addEventListener('input', function(e) {
@@ -136,7 +136,7 @@ function previewMatches() {
     const list = document.getElementById('preview-list'); 
     const allBtn = document.getElementById('request-all-btn');
     
-    // Show loading state
+    // Show a quick loading state.
     area.style.display = 'block'; 
     list.innerHTML = "<li style='text-align:center; padding:20px; color:#777;'>Loading matches...</li>"; 
     allBtn.style.display = 'none';
@@ -149,12 +149,12 @@ function previewMatches() {
             let hasMissing = false;
             
             data.items.forEach(item => {
-                // Handle both poster_path (from backend) or fallback
+                // Support both backend poster_path and cached poster fields.
                 const posterPath = item.poster_path || item.poster; 
                 const poster = posterPath ? `https://image.tmdb.org/t/p/w92${posterPath}` : 'https://placehold.co/45x68?text=No+Img';
                 
                 const li = document.createElement('li'); 
-                li.className = 'preview-item-row'; // Uses new CSS class
+                li.className = 'preview-item-row';
                 
                 let buttonHtml = '';
                 if (!item.owned) {

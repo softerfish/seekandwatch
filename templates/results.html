@@ -10,7 +10,7 @@
 
 <div class="results-container">
         
-        {% if not is_lucky %}
+    {% if not is_lucky %}
     <div class="card filter-card">
         
         <div class="top-filters-grid" style="margin-bottom: 20px;">
@@ -41,7 +41,7 @@
             </div>
 
         </div>
-		<div style="margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 20px;">
+        <div style="margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 20px;">
             <label class="input-label" style="margin-bottom:10px;">Content Rating</label>
             <div class="rating-grid" style="grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));">
                 {% set saved_ratings = session.get('rating_filter') %}
@@ -50,7 +50,7 @@
                 {% set m_type = session.get('media_type', 'movie') %}
                 
                 {% for r in all_ratings %}
-                    {# --- LOGIC: Hide irrelevant ratings --- #}
+                    {# Skip ratings that don't match the current media type. #}
                     {% set is_tv = 'TV-' in r %}
                     {% set show_box = (m_type == 'tv' and is_tv) or (m_type == 'movie' and not is_tv) or r == 'NR' %}
                     
@@ -102,7 +102,7 @@
 
         <div id="results-grid" class="results-grid" style="display:none;"></div>
         
-       {% if not is_lucky %}
+        {% if not is_lucky %}
         <div class="load-more-wrapper">
             <button id="load-more-btn" onclick="loadMore(this)" class="load-more-btn">Load More Results</button>
         </div>
@@ -130,7 +130,7 @@
     const useCriticFilter = "{{ use_critic_filter|lower }}"; 
     const serverMovies = JSON.parse(document.getElementById('server-data').textContent);
 
-    // --- GENRE UI LOGIC ---
+    // Genre expand/collapse
     function toggleGenreView(btn) {
         const hidden = document.querySelectorAll('.hidden-genre');
         const isExpanded = btn.classList.contains('expanded');
@@ -155,7 +155,7 @@
         link.innerText = isSelecting ? "Deselect All" : "Select All";
     }
 
-    // --- SMART TAGS ---
+    // Keyword tag picker
     let selectedKeywords = [];
     const initialTags = "{{ session.get('keywords', '') }}";
     if (initialTags) {
@@ -163,7 +163,7 @@
         parts.forEach(p => { if(p && p.trim() !== '') selectedKeywords.push({ id: p, name: p }); });
     }
 
-    // Check if element exists (It won't in Lucky Mode) ---
+    // Lucky mode doesn't show keyword UI.
     const keywordInput = document.getElementById('keyword-search');
     if (keywordInput) {
         keywordInput.addEventListener('input', function(e) {
@@ -218,7 +218,7 @@
     
     function getKeywordString() { return selectedKeywords.map(k => k.name).join('|'); }
 
-    // --- INIT ---
+    // Kick things off once the page is ready.
     function init() {
         if (selectedKeywords.length > 0) renderTags();
 
@@ -255,7 +255,7 @@
         const minYear = yearInput ? (parseInt(yearInput.value) || 0) : 0;
         const minRating = ratingInput ? (parseFloat(ratingInput.value) || 0) : 0;
         const activeTags = selectedKeywords.map(k => k.name.toLowerCase());
-		const ratingBoxes = document.querySelectorAll('.rating-filter-box:checked');
+        const ratingBoxes = document.querySelectorAll('.rating-filter-box:checked');
         const checkedRatings = Array.from(ratingBoxes).map(cb => cb.value);
         
         document.querySelectorAll('.result-card').forEach(card => {
@@ -278,16 +278,16 @@
         });
     }
 
-    // --- MAIN LOGIC ---
+    // Filter + fetch flow
     function updateFilters() {
         const checkedBoxes = document.querySelectorAll('.genre-checkbox:checked');
         const genreList = Array.from(checkedBoxes).map(cb => cb.value);
         const year = document.getElementById('filter-year') ? document.getElementById('filter-year').value : 0;
         const rating = document.getElementById('filter-rating') ? document.getElementById('filter-rating').value : 0;
         const tags = getKeywordString();
-		const ratingBoxes = document.querySelectorAll('.rating-filter-box:checked');
+        const ratingBoxes = document.querySelectorAll('.rating-filter-box:checked');
         const ratingList = Array.from(ratingBoxes).map(cb => cb.value);
-		
+
         document.getElementById('results-grid').innerHTML = '';
         document.getElementById('loading').style.display = 'block';
         page = 1;
@@ -408,7 +408,7 @@
         });
     }
 
-    // --- CARD CREATION ---
+    // Card rendering
     function createCard(item) {
         const id = item.tmdb_id || item.id;
         const title = item.title || item.name || "Unknown";
@@ -416,7 +416,7 @@
         const dateStr = String(rawDate);
         const displayDate = dateStr.length >= 4 ? dateStr.substring(0, 4) : 'N/A';
         
-        // Ratings Data
+        // Ratings data
         const rating = item.rating || item.vote_average || 0;
         const rtScore = item.rt_score || 0; 
         const imdbRating = item.imdb_rating || item.imdbRating || 0; 
@@ -430,10 +430,8 @@
         
         const posterUrl = item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : 'https://placehold.co/500x750/222/888?text=No+Poster';
         
-        // --- SAFE STRING CONSTRUCTION ---
-        // 1. escapeHtml: Prevents HTML injection in the visual title
+        // Safe string handling for UI + onclick.
         const safeTitle = escapeHtml(title);
-        // 2. replace: Escapes single quotes for the JS onclick event so "Grey's Anatomy" doesn't break the code
         const jsTitle = safeTitle.replace(/'/g, "\\'");
         
         const searchableText = `<span style="display:none;">${safeTitle} ${escapeHtml(item.overview || '')}</span>`;
@@ -579,13 +577,13 @@
     
     function closeModal() { document.getElementById('detail-modal').style.display = "none"; }
 
-    // Close when clicking outside
+    // Close on outside click
     window.onclick = function(event) {
         const modal = document.getElementById('detail-modal');
         if (event.target == modal) {
             closeModal();
         }
-        // Also handle trailer modal closing
+        // Also close the trailer modal if it's open
         const trailerModal = document.getElementById('trailer-modal');
         if (event.target == trailerModal) {
             closeTrailer();

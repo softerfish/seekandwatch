@@ -437,24 +437,21 @@
 </div>
 
 <script>
-// --- STATE ---
-// Load config from DB. Handles both old (array) and new (object) formats.
-// Use JSON.parse + tojson to prevent XSS
+// Load saved config (handles the legacy array format too).
 const savedConfig = JSON.parse({{ settings.kometa_config|tojson if settings.kometa_config else 'null' }});let libraries = [];
 let globalSettings = {};
 let templateVars = {}; // Stores variables: { 'genre': { limit: 10 }, 'tmdb': { ... } }
 
 if (Array.isArray(savedConfig)) {
-    // Legacy support
+    // Legacy format
     libraries = savedConfig;
 } else if (savedConfig) {
-    // New Format
+    // Current format
     libraries = savedConfig.libraries || [];
     globalSettings = savedConfig.settings || {};
 }
 
-// --- OVERLAY MAPPINGS ---
-// Defines which Quick Settings appear for specific overlays
+// Map overlay keys to quick settings fields.
 const overlaySettingsMap = {
     'content_rating_au': ['builder_level', 'addon_position'],
     'commonsense': ['builder_level', 'addon_position'],
@@ -468,7 +465,7 @@ const overlaySettingsMap = {
     'language_count': ['builder_level', 'minimum', 'style']
 };
 
-// --- TABS ---
+// Tab switching
 function switchTab(t) {
     document.querySelectorAll('.k-section').forEach(el => el.classList.remove('active'));
     document.querySelectorAll('.k-tab').forEach(el => el.classList.remove('active'));
@@ -476,7 +473,7 @@ function switchTab(t) {
     event.target.classList.add('active');
 }
 
-// --- TOGGLE INPUTS (LOCK/UNLOCK) ---
+// Lock options until a library is selected.
 function toggleOptions() {
     const libName = document.getElementById('temp_lib_name').value;
     const wrapper = document.getElementById('options-lock-wrapper');
@@ -491,27 +488,25 @@ function toggleOptions() {
     }
 }
 
-// --- MODAL LOGIC ---
+// Variable modal
 let currentEditKey = null;
 
 function editVars(key, e) {
     if(e) e.stopPropagation(); 
     
-    // Context-aware lookup
-    // We use the clicked button (e.target) to find the exact checkbox it belongs to.
-    // This fixes the issue where duplicates (Collection vs Overlay) confused the selector.
+    // Prefer the checkbox next to the clicked gear icon to avoid duplicates.
     let checkbox = null;
     if (e && e.target) {
         const parent = e.target.closest('.k-check-item');
         if (parent) checkbox = parent.querySelector('input[type="checkbox"]');
     }
 
-    // Fallback to querySelector if event context fails (rare)
+    // Fall back to a selector if we lose event context.
     if (!checkbox) {
         checkbox = document.querySelector(`.t-opt[value="${key}"]`);
     }
 
-    // Auto-check the box if it wasn't checked
+    // Auto-check the box if it wasn't already selected.
     if(checkbox && !checkbox.checked) {
         checkbox.checked = true;
         gen();
@@ -521,46 +516,45 @@ function editVars(key, e) {
     document.getElementById('modal-title').innerText = key;
     document.getElementById('var-modal').style.display = 'flex';
     
-    // DETECT OVERLAY VS COLLECTION
-    // Now this correctly checks the SPECIFIC checkbox next to the gear you clicked
+    // Detect overlay vs collection.
     const isOverlay = checkbox && checkbox.classList.contains('ovl');
     
     const qsHeader = document.getElementById('qs-header');
     const qsContainer = document.getElementById('qs-container');
 
-    // 1. Reset: Hide ALL Quick Settings fields first
+    // Reset quick settings visibility.
     document.querySelectorAll('.qs-col').forEach(el => el.style.display = 'none');
     qsHeader.style.display = 'block';
     qsContainer.style.display = 'grid';
 
     if (isOverlay) {
-        // If it's an overlay, look up allowed fields in the map
+        // Overlays only show the allowed quick settings.
         const allowedFields = overlaySettingsMap[key];
         
         if (allowedFields && allowedFields.length > 0) {
             allowedFields.forEach(field => {
-                // Convert underscores to dashes (e.g. builder_level -> wrapper-qs-builder-level)
+                // Convert underscores to dashes (e.g. builder_level -> wrapper-qs-builder-level).
                 const id = 'wrapper-qs-' + field.replace(/_/g, '-');
                 const el = document.getElementById(id);
                 if(el) el.style.display = 'block';
             });
         } else {
-            // No specific fields mapped? Hide the Quick Settings section entirely
+            // No fields for this overlay, hide quick settings.
             qsHeader.style.display = 'none';
             qsContainer.style.display = 'none';
         }
     } else {
-        // It's a Collection: Show standard collection fields
+        // Collections show the standard quick settings.
         ['limit', 'sort', 'coll-mode', 'sync-mode', 'include', 'exclude'].forEach(f => {
              const el = document.getElementById('wrapper-qs-' + f);
              if(el) el.style.display = 'block';
         });
     }
     
-    // Load existing vars or empty
+    // Load existing vars (or empty).
     const vars = templateVars[key] || {};
     
-    // 2. Populate Values
+    // Populate values.
     const setVal = (id, val) => { if(document.getElementById(id)) document.getElementById(id).value = val || ''; };
     setVal('qs-limit', vars.limit);
     setVal('qs-sort', vars.sort_by);
@@ -574,7 +568,7 @@ function editVars(key, e) {
     setVal('qs-minimum', vars.minimum);
     setVal('qs-use-subtitles', vars.use_subtitles);
 
-    // 3. Populate Custom Vars
+    // Populate custom vars.
     const container = document.getElementById('var-container');
     container.innerHTML = '';
     
@@ -606,10 +600,10 @@ function addVarRow(k = '', v = '') {
 function saveModal() {
     let data = {};
 
-    // 1. Capture Quick Settings (Only if visible to avoid capturing hidden values)
+    // Capture quick settings (only when visible).
     const captureIfVisible = (id, key, isNum=false) => {
         const el = document.getElementById(id);
-        // Check if element exists, parent is visible, and value is not empty
+        // Only save visible fields with values.
         if(el && el.parentElement.style.display !== 'none' && el.value) {
             data[key] = isNum ? Number(el.value) : el.value;
         }
@@ -627,12 +621,12 @@ function saveModal() {
     captureIfVisible('qs-minimum', 'minimum', true);
     captureIfVisible('qs-use-subtitles', 'use_subtitles');
 
-    // 2. Capture Custom Rows
+    // Capture custom rows.
     const rows = document.querySelectorAll('.var-row');
     rows.forEach(r => {
         const k = r.querySelector('.key').value.trim();
         const v = r.querySelector('.val').value.trim();
-        if(k) data[k] = isNaN(v) || v === "" ? v : Number(v); // Auto-convert numbers
+        if(k) data[k] = isNaN(v) || v === "" ? v : Number(v); // Auto-convert numbers.
     });
 
     if(Object.keys(data).length > 0) {
@@ -650,11 +644,11 @@ function closeModal() {
     currentEditKey = null;
 }
 
-// --- GENERATOR LOGIC ---
+// YAML generation
 function gen() {
     let y = "";
 
-    // 1. CORE
+    // Core settings
     y += `plex:\n`;
     y += `  url: ${esc(document.getElementById('plex_url').value)}\n`;
     y += `  token: ${esc(document.getElementById('plex_token').value)}\n`;
@@ -664,7 +658,7 @@ function gen() {
     y += `  apikey: ${esc(document.getElementById('tmdb_key').value)}\n`;
     y += `  language: en\n  cache_expiration: 60\n  region: US\n\n`;
 
-    // 2. GLOBAL SETTINGS
+    // Global settings
     y += `settings:\n`;
     y += `  cache: ${val('s_cache')}\n`;
     y += `  cache_expiration: ${val('s_cache_expiration')}\n`;
@@ -675,7 +669,7 @@ function gen() {
     y += `  delete_below_minimum: ${val('s_delete_below_min')}\n`;
     y += `  overlay_artwork_quality: ${val('s_artwork_quality')}\n`;
     
-    // Hardcoded defaults
+    // Defaults that Kometa expects.
     y += `  asset_directory: config/assets\n  run_order:\n`;
     if(val('s_run_order') === 'collections_first') {
         y += `    - collections\n    - overlays\n    - metadata\n    - operations\n\n`;
@@ -683,10 +677,10 @@ function gen() {
         y += `    - operations\n    - metadata\n    - collections\n    - overlays\n\n`;
     }
 
-    // 3. LIBRARIES
+    // Libraries
     y += `libraries:\n`;
     
-    // Combine saved libs with current preview
+    // Merge saved libs with current preview.
     let allLibs = JSON.parse(JSON.stringify(libraries)); 
     const currentName = document.getElementById('temp_lib_name')?.value;
 
@@ -720,10 +714,10 @@ function gen() {
                         y += `      - default: ${c}\n`;
                         y += `        template_variables:\n`;
                         Object.entries(templateVars[c]).forEach(([k, v]) => {
-                            // Special handling for list-based variables
+                            // Special handling for list-based variables.
                             if (k === 'include' || k === 'exclude') {
                                 y += `          ${k}:\n`;
-                                // Ensure v is treated as string and split
+                                // Ensure value is treated as a list.
                                 String(v).split(',').forEach(item => {
                                     const val = item.trim();
                                     if(val) y += `            - ${val}\n`;
@@ -765,21 +759,21 @@ function gen() {
     document.getElementById('output').innerHTML = y;
 }
 
-// Helpers
+// Small helpers
 function esc(str) { return str ? str : "INSERT_HERE"; }
 function val(id) { 
     const el = document.getElementById(id);
     return el ? el.value : ''; 
 }
 
-// --- SAVE FEATURE ---
+// Save progress
 function saveProgress() {
     const btn = document.querySelector('button[onclick="saveProgress()"]');
     const oldText = btn.innerText;
     btn.innerText = "Saving...";
     btn.disabled = true;
 
-    // Capture Settings Inputs
+    // Capture settings inputs.
     const currentSettings = {
         cache: val('s_cache'),
         cache_expiration: val('s_cache_expiration'),
@@ -794,7 +788,7 @@ function saveProgress() {
 
     const payload = {
         libraries: libraries,
-        settings: currentSettings, // Save the new settings object
+        settings: currentSettings, // Save the new settings object.
         plex_url: document.getElementById('plex_url').value,
         plex_token: document.getElementById('plex_token').value,
         tmdb_key: document.getElementById('tmdb_key').value
@@ -817,7 +811,7 @@ function saveProgress() {
     });
 }
 
-// --- FETCH LIBRARIES ---
+// Fetch libraries
 function fetchLibs() {
     const select = document.getElementById('temp_lib_name');
     select.innerHTML = '<option disabled selected>Loading...</option>';
@@ -962,9 +956,9 @@ function copyYaml() {
     document.body.removeChild(textArea);
 }
 
-// --- INIT ---
+// Bootstrapping
 document.addEventListener('DOMContentLoaded', () => { 
-    // Populate Settings from Saved State
+    // Populate settings from saved state.
     if (globalSettings) {
         const setVal = (id, v) => { if(document.getElementById(id) && v !== undefined) document.getElementById(id).value = v; };
         

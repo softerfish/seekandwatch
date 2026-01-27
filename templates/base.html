@@ -60,7 +60,7 @@
                             <span id="gh-star-count" style="font-weight: bold;"></span>
                         </a>
 
-                        <a href="https://github.com/softerfish/seekandwatch" target="_blank" class="version-badge" title="Check for updates">
+                        <a href="javascript:void(0)" onclick="smartUpdate()" class="version-badge" title="Installed v{{ current_version|default(version)|default('0.0.0') }} | Latest v{{ latest_version|default('0.0.0') }}">
                             <span id="current-version-text">v{{ current_version|default(version)|default('0.0.0') }}</span>
                             <div id="update-dot" class="update-dot" title="Update Available"></div>
                         </a>
@@ -94,7 +94,168 @@
         {% block content %}{% endblock %}
     </div>
 
+    <div id="updateConfirmModal" class="custom-modal-overlay">
+        <div class="custom-modal-box">
+            <div class="modal-icon">⬆️</div>
+            <h3 class="modal-title" id="updateConfirmTitle">Update Available</h3>
+            <p class="modal-message" id="updateConfirmMessage"></p>
+            <div style="display:flex; gap:10px; justify-content:center;">
+                <button id="updateCancelBtn" class="btn-secondary">Not now</button>
+                <button id="updateConfirmBtn" class="modal-btn">Update now</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="settingsModal" class="custom-modal-overlay">
+        <div class="custom-modal-box">
+            <div class="modal-icon" id="modalIcon">✅</div>
+            <h3 class="modal-title" id="modalTitle">Notice</h3>
+            <p class="modal-message" id="modalMessage"></p>
+            <button id="modalBtn" class="modal-btn">OK</button>
+        </div>
+    </div>
+
 <script>
+    function showModal(icon, title, message, isSuccess) {
+        let modal = document.getElementById('settingsModal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'settingsModal';
+            modal.className = 'custom-modal-overlay';
+            modal.innerHTML = `
+                <div class="custom-modal-box">
+                    <div class="modal-icon" id="modalIcon">✅</div>
+                    <h3 class="modal-title" id="modalTitle">Notice</h3>
+                    <p class="modal-message" id="modalMessage"></p>
+                    <button id="modalBtn" class="modal-btn">OK</button>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+        const iconEl = document.getElementById('modalIcon');
+        const titleEl = document.getElementById('modalTitle');
+        const messageEl = document.getElementById('modalMessage');
+        const btn = document.getElementById('modalBtn');
+
+        if (iconEl) iconEl.innerText = icon || '';
+        if (titleEl) titleEl.innerText = title || '';
+        if (messageEl) messageEl.innerHTML = message || '';
+        if (btn) {
+            btn.onclick = function() {
+                modal.style.display = 'none';
+                if (isSuccess) location.reload();
+            };
+        }
+        modal.style.display = 'flex';
+    }
+
+    function showUpdateConfirm(version, source = 'git') {
+        const modal = document.getElementById('updateConfirmModal');
+        const title = document.getElementById('updateConfirmTitle');
+        const message = document.getElementById('updateConfirmMessage');
+        const cancelBtn = document.getElementById('updateCancelBtn');
+        const confirmBtn = document.getElementById('updateConfirmBtn');
+
+        title.innerText = `Update Available (v${version})`;
+        if (source === 'release') {
+            message.innerText = "Update now? This will download the latest GitHub release and may require a restart.";
+        } else {
+            message.innerText = "Update now? This will pull the latest code and may require a restart.";
+        }
+
+        cancelBtn.onclick = () => { modal.style.display = 'none'; };
+        confirmBtn.onclick = () => {
+            modal.style.display = 'none';
+            smartUpdate(true);
+        };
+
+        modal.style.display = 'flex';
+    }
+
+    function smartUpdate(forceGit = false) {
+        const badge = document.querySelector('.version-badge');
+        const originalText = document.getElementById('current-version-text').innerText;
+
+        badge.style.opacity = "0.5";
+        document.getElementById('current-version-text').innerText = "Checking...";
+
+        // If the confirm modal kicked this off, pass the force flag.
+        const url = forceGit ? '/trigger_update?force_git=true' : '/trigger_update';
+
+        const headers = {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': "{{ csrf_token() }}"
+        };
+
+        fetch(url, { method: 'POST', headers: headers })
+            .then(async response => {
+                const text = await response.text();
+                const trimmed = text.trim();
+                if (trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html')) {
+                    throw new Error('Update request was redirected. Please refresh and try again.');
+                }
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch (e) {
+                    throw new Error(`Update request failed (${response.status}). ${text.slice(0, 200)}`);
+                }
+                if (!response.ok) {
+                    throw new Error(data.message || `Update request failed (${response.status}).`);
+                }
+                return data;
+            })
+            .then(data => {
+                badge.style.opacity = "1";
+                document.getElementById('current-version-text').innerText = originalText;
+
+                if (data.action === 'none') {
+                    alert("You are up to date! ✨");
+                } else if (data.action === 'unraid_instruction') {
+                    showModal("🧰 Update Available: " + data.version,
+                        `<div style='text-align:left;'>
+                            <p>This install was detected as <b>Unraid</b>.</p>
+                            <p>Please update via the <b>Unraid App Store</b>.</p>
+                            <hr>
+                            <p style='color:#aaa; font-size:0.8em; margin-top:10px;'>
+                                One-click updates are disabled on Unraid to avoid breaking installs.
+                            </p>
+                        </div>`, false);
+                } else if (data.action === 'git_update_available') {
+                    showUpdateConfirm(data.version, 'git');
+                } else if (data.action === 'release_update_available') {
+                    showUpdateConfirm(data.version, 'release');
+                } else if (data.action === 'docker_instruction') {
+                    // Give advanced users a manual pull option if they mapped the repo.
+                    showModal("🐳 Update Available: " + data.version,
+                        `<div style='text-align:left;'>
+                            <p>The app detected Docker but <b>could not find a .git folder</b>.</p>
+                            <p>If you mapped your source code volume correctly, you can force the update:</p>
+                            <button onclick="smartUpdate(true); document.getElementById('settingsModal').style.display='none';" class="btn btn-primary" style="width:100%; margin-top:10px;">
+                                Force Git Pull ⬇️
+                            </button>
+                            <hr>
+                            <p style='color:#aaa; font-size:0.8em; margin-top:10px;'>
+                                Otherwise, please update the image via your Docker UI.
+                            </p>
+                        </div>`, false);
+                } else if (data.action === 'restart_needed') {
+                    showModal("✅ Update Complete", "<p>Files updated successfully.</p><p>Please <b>restart the container</b> to apply changes.</p>", true);
+                } else if (data.action === 'manual_instruction') {
+                    if (confirm("⬇️ Update Available! Download from GitHub?")) {
+                        window.open('https://github.com/softerfish/seekandwatch/releases', '_blank');
+                    }
+                } else {
+                    alert(data.message);
+                }
+            })
+            .catch(err => {
+                badge.style.opacity = "1";
+                document.getElementById('current-version-text').innerText = originalText;
+                alert(err && err.message ? err.message : "Connection Failed");
+            });
+    }
+
     function escapeHtml(text) {
         if (!text) return text;
         return text
@@ -104,6 +265,7 @@
             .replace(/"/g, "&quot;")
             .replace(/'/g, "&#039;");
     }
+
     const csrfToken = "{{ csrf_token() }}";
 
     const originalFetch = window.fetch;
@@ -115,73 +277,95 @@
         return originalFetch(url, options);
     };
 
-    // --- SMART VERSION COMPARISON FUNCTION ---
-    // Returns true ONLY if remote is strictly newer than local
+    // Tiny semver compare; only flag when remote is newer.
     function isUpdateAvailable(remote, local) {
-        // remove 'v' and trim whitespace
         const r = remote.replace(/^v/, '').trim();
         const l = local.replace(/^v/, '').trim();
-        
+
         if (r === l) return false;
-        
+
         const rParts = r.split('.').map(Number);
         const lParts = l.split('.').map(Number);
-        
+
         for (let i = 0; i < Math.max(rParts.length, lParts.length); i++) {
             const rVal = rParts[i] || 0;
             const lVal = lParts[i] || 0;
-            if (rVal > lVal) return true;  // Remote is definitely newer
-            if (rVal < lVal) return false; // Local is newer (dev mode), so no update needed
+            if (rVal > lVal) return true;
+            if (rVal < lVal) return false;
         }
         return false;
     }
 
     document.addEventListener("DOMContentLoaded", function() {
-        
-        // 1. Fetch Stars
+        // Populate the GitHub stars in the header.
         const starCount = document.getElementById('gh-star-count');
         if (starCount) {
             fetch('https://api.github.com/repos/softerfish/seekandwatch')
-            .then(res => res.ok ? res.json() : null)
-            .then(data => {
-                if(data) starCount.innerText = data.stargazers_count;
-            })
-            .catch(e => console.error("Star fetch failed", e));
+                .then(res => res.ok ? res.json() : null)
+                .then(data => {
+                    if (data) starCount.innerText = data.stargazers_count;
+                })
+                .catch(e => console.error("Star fetch failed", e));
         }
 
-        // 2. Check for Updates
-        const localVersionRaw = "{{ current_version|default(version)|default('0.0.0') }}"; 
-        
-        console.log("My Local Version:", localVersionRaw); // Debugging
+        // Check latest release to drive the red dot badge.
+        const localVersionRaw = "{{ current_version|default(version)|default('0.0.0') }}";
+        console.log("My Local Version:", localVersionRaw);
 
         const updateDot = document.getElementById('update-dot');
         const badge = document.querySelector('.version-badge');
 
         if (updateDot) {
             fetch('https://api.github.com/repos/softerfish/seekandwatch/releases/latest')
-            .then(res => {
-                if (!res.ok) { console.warn("GitHub Release check skipped (404 or Rate Limit)"); return null; }
-                return res.json();
-            })
-            .then(data => {
-                if(data && data.tag_name) {
-                    const remoteVersion = data.tag_name;
-                    console.log("GitHub Latest:", remoteVersion);
-
-                    // Use Smart Comparison Logic
-                    if (isUpdateAvailable(remoteVersion, localVersionRaw)) {
-                        console.log("Update found! Turning on red dot.");
-                        updateDot.style.display = 'block';
-                        badge.title = `Update available: ${remoteVersion}`;
-                        badge.style.borderColor = '#e74c3c'; 
-                        badge.style.color = '#ccc';
-                    } else {
-                        console.log("You are up to date (or ahead).");
+                .then(res => {
+                    if (!res.ok) {
+                        console.warn("GitHub release check skipped (404 or rate limit)");
+                        return null;
                     }
-                }
-            })
-            .catch(e => console.error("Update check failed", e));
+                    return res.json();
+                })
+                .then(data => {
+                    if (data && data.tag_name) {
+                        const remoteVersion = data.tag_name;
+                        console.log("GitHub Latest:", remoteVersion);
+
+                        if (isUpdateAvailable(remoteVersion, localVersionRaw)) {
+                            console.log("Update found, enabling badge.");
+                            updateDot.style.display = 'block';
+                            badge.title = `Update available: ${remoteVersion}`;
+                            badge.style.borderColor = '#e74c3c';
+                            badge.style.color = '#ccc';
+                        } else {
+                            console.log("Already up to date (or ahead).");
+                        }
+                    }
+                })
+                .catch(e => console.error("Update check failed", e));
         }
+    });
+
+    document.addEventListener("DOMContentLoaded", function() {
+        const notices = document.querySelectorAll('.setup-notice');
+        notices.forEach(notice => {
+            const key = notice.getAttribute('data-notice-key') || 'default';
+            const toggle = notice.querySelector('.setup-notice__toggle');
+            const stored = localStorage.getItem(`notice:${key}`) === 'collapsed';
+
+            if (stored) {
+                notice.classList.add('is-collapsed');
+                if (toggle) toggle.textContent = 'Expand';
+                if (toggle) toggle.setAttribute('aria-expanded', 'false');
+            }
+
+            if (toggle) {
+                toggle.addEventListener('click', () => {
+                    const isCollapsed = notice.classList.toggle('is-collapsed');
+                    toggle.textContent = isCollapsed ? 'Expand' : 'Minimize';
+                    toggle.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
+                    localStorage.setItem(`notice:${key}`, isCollapsed ? 'collapsed' : 'expanded');
+                });
+            }
+        });
     });
 </script>
 </body>

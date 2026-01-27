@@ -145,37 +145,53 @@ function deleteUser(id, name) {
             </div>
 
             <div class="card setting-card border-green">
-    <h3>Metadata APIs</h3>
-    
-    <div class="input-group">
-        <label class="input-label">TMDB API Key (v3) <span style="color: var(--error);">*Required</span></label>
-        <div class="test-row">
-            <div class="password-wrapper">
-                <input type="password" id="tmdb_key" name="tmdb_key" value="{{ settings.tmdb_key or '' }}" autocomplete="new-password">
-                <button type="button" class="toggle-pass" onclick="toggleVisibility('tmdb_key', this)">👁️</button>
-            </div>
-            <button type="button" onclick="testService('tmdb')" class="btn-secondary">Test ⚡</button>
-        </div>
-    </div>
+                <h3>Metadata APIs</h3>
 
-    <div class="input-group" style="border: 1px dashed #2ecc71; padding: 15px; border-radius: 8px; background: rgba(46, 204, 113, 0.05);">
-        <label class="input-label">🍅 OMDB API Key (Critics Scores)</label>
-        <p class="helper-text">Required to filter by Rotten Tomatoes scores.</p>
-        <div class="test-row">
-            <div class="password-wrapper">
-                <input type="password" id="omdb_key" name="omdb_key" value="{{ settings.omdb_key or '' }}" placeholder="xxxxxx" autocomplete="new-password">
-                <button type="button" class="toggle-pass" onclick="toggleVisibility('omdb_key', this)">👁️</button>
-            </div>
-            <button type="button" onclick="testService('omdb')" class="btn-secondary">Test ⚡</button>
-        </div>
-    </div>
+                <div class="input-group">
+                    <label class="input-label">TMDB API Key (v3) <span style="color: var(--error);">*Required</span></label>
+                    <details class="help-box">
+                        <summary>❓ How to get your TMDB API key</summary>
+                        <ol>
+                            <li>Create a free account at <a href="https://www.themoviedb.org" target="_blank" style="color: var(--accent-color); text-decoration: underline;">themoviedb.org</a>.</li>
+                            <li>Go to <b>Settings → API</b> and request an API key.</li>
+                            <li>Copy the <b>API Key (v3)</b> and paste it here.</li>
+                        </ol>
+                    </details>
+                    <div class="test-row">
+                        <div class="password-wrapper">
+                            <input type="password" id="tmdb_key" name="tmdb_key" value="{{ settings.tmdb_key or '' }}" autocomplete="new-password">
+                            <button type="button" class="toggle-pass" onclick="toggleVisibility('tmdb_key', this)">👁️</button>
+                        </div>
+                        <button type="button" onclick="testService('tmdb')" class="btn-secondary">Test ⚡</button>
+                    </div>
+                </div>
 
-    <div class="input-group">
-        <label class="input-label">Streaming Regions</label>
-        <input type="text" id="tmdb_region" name="tmdb_region" value="{{ settings.tmdb_region or 'US' }}" placeholder="US, CA" autocomplete="off">
-        <p class="helper-text">Comma separated ISO codes (e.g. <code>US, CA, GB</code>).</p>
-    </div>
-</div>
+                <div class="input-group" style="border: 1px dashed #2ecc71; padding: 15px; border-radius: 8px; background: rgba(46, 204, 113, 0.05);">
+                    <label class="input-label">🍅 OMDB API Key (Critics Scores)</label>
+                    <p class="helper-text">Required to filter by Rotten Tomatoes scores.</p>
+                    <details class="help-box">
+                        <summary>❓ How to get your OMDB API key</summary>
+                        <ol>
+                            <li>Visit <a href="https://www.omdbapi.com/apikey.aspx" target="_blank" style="color: var(--accent-color); text-decoration: underline;">omdbapi.com/apikey</a>.</li>
+                            <li>Choose the free tier and submit your email.</li>
+                            <li>Use the key emailed to you and paste it here.</li>
+                        </ol>
+                    </details>
+                    <div class="test-row">
+                        <div class="password-wrapper">
+                            <input type="password" id="omdb_key" name="omdb_key" value="{{ settings.omdb_key or '' }}" placeholder="xxxxxx" autocomplete="new-password">
+                            <button type="button" class="toggle-pass" onclick="toggleVisibility('omdb_key', this)">👁️</button>
+                        </div>
+                        <button type="button" onclick="testService('omdb')" class="btn-secondary">Test ⚡</button>
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label class="input-label">Streaming Regions</label>
+                    <input type="text" id="tmdb_region" name="tmdb_region" value="{{ settings.tmdb_region or 'US' }}" placeholder="US, CA" autocomplete="off">
+                    <p class="helper-text">Comma separated ISO codes (e.g. <code>US, CA, GB</code>).</p>
+                </div>
+            </div>
 
             <div class="card setting-card border-purple">
                 <h3>Overseerr & Tautulli</h3>
@@ -187,6 +203,14 @@ function deleteUser(id, name) {
                 
                 <div class="input-group">
                     <label class="input-label">Overseerr API Key</label>
+                    <details class="help-box">
+                        <summary>❓ How to find your Overseerr API key</summary>
+                        <ol>
+                            <li>Open Overseerr and go to <b>Settings</b>.</li>
+                            <li>Under <b>General</b>, copy the <b>API Key</b>.</li>
+                            <li>Paste it here and click Test.</li>
+                        </ol>
+                    </details>
                     <div style="display: flex; gap: 10px;">
                         <div class="password-wrapper">
                             <input type="password" id="overseerr_api_key" name="overseerr_api_key" value="{{ settings.overseerr_api_key or '' }}" autocomplete="new-password" style="width: 100%; padding-right: 40px;">
@@ -205,6 +229,14 @@ function deleteUser(id, name) {
                 
                 <div class="input-group">
                     <label class="input-label">Tautulli API Key</label>
+                    <details class="help-box">
+                        <summary>❓ How to find your Tautulli API key</summary>
+                        <ol>
+                            <li>Open Tautulli and go to <b>Settings → Web Interface</b>.</li>
+                            <li>Scroll to <b>API</b> and copy the API Key.</li>
+                            <li>Paste it here and click Test.</li>
+                        </ol>
+                    </details>
                     <div style="display: flex; gap: 10px;">
                         <div class="password-wrapper">
                             <input type="password" id="tautulli_api_key" name="tautulli_api_key" value="{{ settings.tautulli_api_key or '' }}" autocomplete="new-password" style="width: 100%; padding-right: 40px;">
@@ -356,9 +388,21 @@ function deleteUser(id, name) {
                 <hr style="border-color: #333; margin: 20px 0;">
                 
                 <div style="margin-top:20px; border-top:1px solid #333; padding-top:20px;">
-                    <div class="backup-controls" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
-                        <h4 style="margin:0;">Existing Backups</h4>
-                        <button type="button" onclick="createBackup()" class="btn-primary" style="padding:8px 15px;">+ Backup Now</button>
+                    <div class="backup-controls" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; gap:10px;">
+                        <div>
+                            <h4 style="margin:0;">Existing Backups</h4>
+                            <div style="font-size:0.85em; color:#888; margin-top:4px;">
+                                Import a backup ZIP from a previous install to restore it here.
+                            </div>
+                        </div>
+                        <div style="display:flex; gap:10px;">
+                            <input type="file" id="backup-upload-input" accept=".zip" style="display:none;" onchange="handleBackupUpload(this.files)">
+                            <button type="button" onclick="triggerBackupUpload()" class="btn-secondary" style="padding:8px 15px;">Upload Backup</button>
+                            <button type="button" onclick="createBackup()" class="btn-primary" style="padding:8px 15px;">+ Backup Now</button>
+                        </div>
+                    </div>
+                    <div style="font-size:0.85em; color:#888; margin:8px 0 12px;">
+                        🔒 Admin-only: only admins can upload or restore backups.
                     </div>
                     <div id="backup-list" class="backup-list">
                         <div style="text-align:center; color:#777;">Loading...</div>
@@ -489,7 +533,7 @@ function deleteUser(id, name) {
 </div>
 
 <script>
-// --- TABS LOGIC ---
+// Tabs
 function openTab(evt, tabName) {
     var i, tabcontent, tablinks;
     tabcontent = document.getElementsByClassName("tab-content");
@@ -508,7 +552,7 @@ function openTab(evt, tabName) {
     evt.currentTarget.className += " active";
 }
 
-// --- GLOBAL & UI HELPERS ---
+// Small UI helpers
 function toggleVisibility(id, btn) {
     const el = document.getElementById(id);
     if (el.type === "password") { el.type = "text"; btn.innerText = "🔒"; } 
@@ -531,7 +575,7 @@ function showToast() {
     setTimeout(() => { toast.style.opacity = '0'; }, 2000);
 }
 
-// --- LOGGING FUNCTIONS ---
+// Logging toggle
 function toggleLogging() {
     const enabled = document.getElementById('log-toggle').checked;
     fetch('/toggle_logging', {
@@ -553,7 +597,7 @@ function clearLogs() {
     });
 }
 
-// --- SCANNER & CACHE LOGIC ---
+// Scanner + cache controls
 let countdownInterval;
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -598,7 +642,7 @@ document.addEventListener('DOMContentLoaded', function() {
         validateScannerOptions();
     }
 
-    // ... existing URL cleaner code ...
+    // Trim trailing slashes so URLs stay consistent.
     ['plex_url', 'overseerr_url', 'tautulli_url'].forEach(id => {
         const el = document.getElementById(id);
         if (el) {
@@ -736,7 +780,7 @@ function checkCacheStatus() {
     });
 }
 
-// --- SERVICE TESTING & MAIN SAVE ---
+// Service testing + main save
 function testService(service) {
     let payload = { service: service };
     let btn;
@@ -779,11 +823,11 @@ function testService(service) {
 }
 
 document.addEventListener('submit', function(e) {
-    // Only handle the main settings form
+    // Only intercept the main settings form.
     if (e.target && e.target.id === 'settings-form') {
         e.preventDefault(); 
         
-        // --- 1. FORCE CLEAN URLs NOW ---
+        // Trim trailing slashes before save.
         ['plex_url', 'overseerr_url', 'tautulli_url'].forEach(id => {
             const el = document.getElementById(id);
             if (el) {
@@ -791,7 +835,7 @@ document.addEventListener('submit', function(e) {
             }
         });
 
-        // --- 2. SEND DATA ---
+        // Submit via fetch to keep the UI snappy.
         const btn = document.getElementById('main-save-btn');
         const originalText = btn.innerText;
         btn.innerText = "Saving... ⏳"; 
@@ -825,7 +869,7 @@ function resetScannerIndex() {
     });
 }
 
-// --- BACKUP HELPERS ---
+// Backups
 function loadBackups() {
     fetch('/api/backups').then(r => r.json()).then(data => {
         const div = document.getElementById('backup-list');
@@ -849,7 +893,36 @@ function createBackup() { fetch('/api/backup/create', {method: 'POST'}).then(r =
 function deleteBackup(f) { if(confirm("Delete backup?")) fetch('/api/backup/delete/' + f, {method: 'DELETE'}).then(()=>loadBackups()); }
 function restoreBackup(f) { if(confirm("Overwrite DB?")) fetch('/api/backup/restore/' + f, {method: 'POST'}).then(r=>r.json()).then(d=>showModal('♻️', 'Restored', d.message, true)); }
 
-// --- SCANNER LOG POLLING ---
+function triggerBackupUpload() {
+    const input = document.getElementById('backup-upload-input');
+    if (input) input.click();
+}
+
+function handleBackupUpload(files) {
+    const file = files && files[0];
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.zip')) {
+        showModal('❌', 'Invalid File', 'Please select a .zip backup file.', false);
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('backup_file', file);
+
+    fetch('/api/backup/upload', { method: 'POST', body: formData })
+        .then(r => r.json())
+        .then(d => {
+            if (d.status === 'success') {
+                loadBackups();
+                showModal('✅', 'Backup Imported', d.message, false);
+            } else {
+                showModal('❌', 'Upload Failed', d.message || 'Upload failed.', false);
+            }
+        })
+        .catch(() => showModal('❌', 'Upload Failed', 'Could not upload backup.', false));
+}
+
+// Scanner log polling
 let scannerLogInterval;
 
 function refreshScannerLogs() {
@@ -864,10 +937,10 @@ function refreshScannerLogs() {
     });
 }
 
-// Start polling when the Scanner tab is opened
+// Only poll when the logs tab is visible.
 document.addEventListener('DOMContentLoaded', function() {
     scannerLogInterval = setInterval(function() {
-        // Only poll if the Scanner Tab is visible to save bandwidth
+        // Skip polling when hidden to save bandwidth.
         const scannerTab = document.getElementById('tab-logs');
         if (scannerTab && scannerTab.style.display === 'block') {
             refreshScannerLogs();

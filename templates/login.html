@@ -15,7 +15,7 @@
         
         <div class="auth-body">
             <form id="auth-form" method="POST" action="{{ url_for('login') }}" onsubmit="return validateForm()">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>    
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <div class="form-group">
                     <label>Username</label>
                     <input type="text" name="username" id="username" required placeholder="Enter username..." autocomplete="username">
@@ -44,10 +44,10 @@
 </div>
 
 <script>
-    // State Management
+    // UI state
     let currentMode = 'login'; 
 
-    // Handle incoming server state (e.g. if user clicked a Register link elsewhere)
+    // Honor server-provided state (e.g., deep link to register).
     {% if is_register %}
     document.addEventListener('DOMContentLoaded', () => setMode('register'));
     {% endif %}
@@ -60,36 +60,36 @@
         const confirmInput = document.getElementById('confirm_password');
         const footer = document.getElementById('auth-footer-text');
         
-        // Buttons
+        // Tabs
         const tabLogin = document.getElementById('tab-login');
         const tabRegister = document.getElementById('tab-register');
 
         if (mode === 'login') {
-            // Visuals
+            // Visual state
             tabLogin.classList.add('active');
             tabRegister.classList.remove('active');
             
-            // Logic
+            // Form behavior
             form.action = "{{ url_for('login') }}";
             submitBtn.innerText = "Sign In";
             footer.innerText = "Welcome back to SeekAndWatch";
             
-            // Hide Confirm Password
+            // Hide confirm password
             confirmBox.classList.remove('visible-field');
             confirmBox.classList.add('hidden-field');
             confirmInput.required = false;
             
         } else {
-            // Visuals
+            // Visual state
             tabRegister.classList.add('active');
             tabLogin.classList.remove('active');
             
-            // Logic
+            // Form behavior
             form.action = "{{ url_for('register') }}";
             submitBtn.innerText = "Create Account";
             footer.innerText = "Your watch history, reimagined.";
             
-            // Show Confirm Password
+            // Show confirm password
             confirmBox.classList.remove('hidden-field');
             confirmBox.classList.add('visible-field');
             confirmInput.required = true;
@@ -103,10 +103,10 @@
             
             if (p1 !== p2) {
                 alert("⚠️ Passwords do not match!");
-                return false; // Stop submission
+                return false; // Stop submission.
             }
         }
-        return true; // Allow submission
+        return true; // Allow submission.
     }
 </script>
 {% endblock %}
