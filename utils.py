@@ -1,36 +1,154 @@
-import re
-import socket
-import ipaddress
-from urllib.parse import urlparse
-import requests
-import difflib
-import random
-import json
-import time
-import datetime
-import os
-import zipfile
-import threading
-import sqlite3
+"""Shared helpers and background utilities."""
+
 import concurrent.futures
+import datetime
+import difflib
+import ipaddress
+import json
+import math
+import os
+import random
+import re
+import shutil
+import socket
+import sqlite3
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import zipfile
+from urllib.parse import urlparse
+
+import requests
 from flask import flash, redirect, url_for, session, render_template, has_app_context, current_app
 from plexapi.server import PlexServer
+from werkzeug.utils import secure_filename
+
 from models import db, CollectionSchedule, SystemLog, Settings, TmdbAlias, TmdbKeywordCache
 from presets import PLAYLIST_PRESETS
 
-# --- CONFIGURATION ---
+# Configuration
 BACKUP_DIR = '/config/backups'
 CACHE_FILE = '/config/plex_cache.json'
 LOCK_FILE = '/config/cache.lock'
 SCANNER_LOG_FILE = '/config/scanner.log'
 
-# --- GLOBAL SHARED STATE ---
+# Global shared state
 RESULTS_CACHE = {}
+HISTORY_CACHE = {}
+TMDB_REC_CACHE = {}
+TMDB_REC_CACHE_LOCK = threading.Lock()
+
+RESULTS_CACHE_FILE = '/config/results_cache.json'
+RESULTS_CACHE_TTL = 60 * 60 * 24
+HISTORY_CACHE_FILE = '/config/history_cache.json'
+HISTORY_CACHE_TTL = 60 * 60
+TMDB_REC_CACHE_TTL = 60 * 60 * 24
 
 if not os.path.exists(BACKUP_DIR):
     os.makedirs(BACKUP_DIR)
 
-# --- SESSION HELPER ---
+def _now_ts():
+    return int(time.time())
+
+def _load_cache_file(path, ttl):
+    if not os.path.exists(path):
+        return {}
+    try:
+        raw = json.loads(open(path, 'r', encoding='utf-8').read())
+    except Exception:
+        return {}
+    now = _now_ts()
+    cleaned = {}
+    for k, v in (raw or {}).items():
+        if not isinstance(v, dict):
+            continue
+        ts = v.get('ts', 0)
+        if ts and now - ts <= ttl:
+            cleaned[k] = v
+    return cleaned
+
+def _save_cache_file(path, payload):
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(payload, f)
+    except Exception:
+        pass
+
+def load_results_cache():
+    global RESULTS_CACHE
+    RESULTS_CACHE = _load_cache_file(RESULTS_CACHE_FILE, RESULTS_CACHE_TTL)
+
+def save_results_cache():
+    _save_cache_file(RESULTS_CACHE_FILE, RESULTS_CACHE)
+
+def load_history_cache():
+    global HISTORY_CACHE
+    HISTORY_CACHE = _load_cache_file(HISTORY_CACHE_FILE, HISTORY_CACHE_TTL)
+
+def save_history_cache():
+    _save_cache_file(HISTORY_CACHE_FILE, HISTORY_CACHE)
+
+def get_history_cache(key):
+    entry = HISTORY_CACHE.get(key)
+    if not entry:
+        return None
+    if _now_ts() - entry.get('ts', 0) > HISTORY_CACHE_TTL:
+        HISTORY_CACHE.pop(key, None)
+        return None
+    return entry.get('candidates')
+
+def set_history_cache(key, candidates):
+    HISTORY_CACHE[key] = {'candidates': candidates, 'ts': _now_ts()}
+    save_history_cache()
+
+def get_tmdb_rec_cache(key):
+    with TMDB_REC_CACHE_LOCK:
+        entry = TMDB_REC_CACHE.get(key)
+        if not entry:
+            return None
+        if _now_ts() - entry.get('ts', 0) > TMDB_REC_CACHE_TTL:
+            TMDB_REC_CACHE.pop(key, None)
+            return None
+        return entry.get('results')
+
+def set_tmdb_rec_cache(key, results):
+    with TMDB_REC_CACHE_LOCK:
+        TMDB_REC_CACHE[key] = {'results': results, 'ts': _now_ts()}
+
+def score_recommendation(item):
+    vote_avg = item.get('vote_average', 0) or 0
+    vote_count = item.get('vote_count', 0) or 0
+    popularity = item.get('popularity', 0) or 0
+    return (vote_avg * math.log1p(vote_count)) + (popularity * 0.5)
+
+def diverse_sample(items, limit, bucket_fn=None):
+    if not items or limit <= 0:
+        return []
+    buckets = {}
+    for item in items:
+        key = bucket_fn(item) if bucket_fn else None
+        buckets.setdefault(key, []).append(item)
+    for key in list(buckets.keys()):
+        buckets[key].sort(key=lambda x: x.get('score', 0), reverse=True)
+    result = []
+    keys = list(buckets.keys())
+    while len(result) < limit and keys:
+        next_keys = []
+        for key in keys:
+            bucket = buckets.get(key, [])
+            if bucket:
+                result.append(bucket.pop(0))
+                if len(result) >= limit:
+                    break
+            if bucket:
+                next_keys.append(key)
+        keys = next_keys
+    return result
+
+# Session helpers
 def get_session_filters():
     """Retrieves filter settings from the current user session."""
     try: min_year = int(session.get('min_year', 0))
@@ -48,7 +166,7 @@ def get_session_filters():
     
     return min_year, min_rating, genre_filter, critic_enabled, threshold
 
-# --- KEYWORD HELPERS ---
+# Keyword helpers
 
 def prefetch_keywords_parallel(items, api_key):
     """
@@ -58,14 +176,14 @@ def prefetch_keywords_parallel(items, api_key):
     """
     if not items: return
 
-    # 1. Identify what we need
+    # Identify what we need.
     needed = []
     cached_map = {}
     
-    # Get all IDs from the list
+    # Get all IDs from the list.
     target_ids = [item['id'] for item in items]
     
-    # Bulk fetch existing from DB
+    # Bulk fetch existing from DB.
     try:
         existing = TmdbKeywordCache.query.filter(TmdbKeywordCache.tmdb_id.in_(target_ids)).all()
         for row in existing:
@@ -74,19 +192,19 @@ def prefetch_keywords_parallel(items, api_key):
     except Exception as e:
         print(f"DB Read Error: {e}")
 
-    # Figure out what is missing
+    # Figure out what is missing.
     for item in items:
         if item['id'] not in cached_map:
             needed.append(item)
     
     if not needed:
-        return # Everything is already cached!
+        return  # Everything is already cached.
 
-    # 2. Fetch missing from API (Parallel)
+    # Fetch missing from API (parallel).
     def fetch_tags(item):
         try:
-            # TMDB uses 'keywords' for movies, 'results' for TV keywords
-            ep = 'keywords' # Default endpoint suffix
+            # TMDB uses 'keywords' for movies, 'results' for TV keywords.
+            ep = 'keywords'  # Default endpoint suffix.
             url = f"https://api.themoviedb.org/3/{item['media_type']}/{item['id']}/keywords?api_key={api_key}"
             
             r = requests.get(url, timeout=10)
@@ -109,18 +227,17 @@ def prefetch_keywords_parallel(items, api_key):
             if res:
                 new_entries.append(res)
 
-    # 3. Save to DB
+    # Save to DB.
     if new_entries:
         try:
-            # FIX: Race Condition Protection
-            # Re-query the DB to see if any of these IDs appeared while we were fetching from the API.
+            # Re-query in case another thread wrote the same IDs.
             new_ids = [e['id'] for e in new_entries]
             existing_in_db = db.session.query(TmdbKeywordCache.tmdb_id).filter(TmdbKeywordCache.tmdb_id.in_(new_ids)).all()
             existing_ids = {r[0] for r in existing_in_db}
 
             count_added = 0
             for entry in new_entries:
-                # Only add if it STILL doesn't exist
+                # Only add if it still doesn't exist.
                 if entry['id'] not in existing_ids:
                     db.session.add(TmdbKeywordCache(
                         tmdb_id=entry['id'],
@@ -129,14 +246,14 @@ def prefetch_keywords_parallel(items, api_key):
                     ))
                     count_added += 1
             
-            # Only prune if we actually added data (saves performance)
+            # Only prune if we actually added data.
             if count_added > 0:
                 s = Settings.query.first()
                 limit = s.keyword_cache_size or 2000
                 
                 total = TmdbKeywordCache.query.count()
                 if total > limit:
-                    # Delete oldest entries to maintain limit
+                    # Delete oldest entries to maintain limit.
                     excess = total - limit
                     subq = db.session.query(TmdbKeywordCache.id).order_by(TmdbKeywordCache.timestamp.asc()).limit(excess).subquery()
                     TmdbKeywordCache.query.filter(TmdbKeywordCache.id.in_(subq)).delete(synchronize_session=False)
@@ -147,34 +264,67 @@ def prefetch_keywords_parallel(items, api_key):
             db.session.rollback()
             
 def item_matches_keywords(item, target_keywords):
-    # If no keywords selected, everything passes
+    # If no keywords selected, everything passes.
     if not target_keywords: return True
     
-    # 0. PREPARE SEARCH TERMS
+    # Prepare search terms.
     search_terms = {t.lower() for t in target_keywords}
     
-    # 1. FAST CHECK: Title & Overview
+    # Fast check: title + overview.
     text_blob = (item.get('title', '') + ' ' + item.get('name', '') + ' ' + item.get('overview', '')).lower()
     for term in search_terms:
         if term in text_blob: return True
             
-    # 2. DEEP CHECK: Database
-    # We query the local DB for this specific item's tags
+    # Deep check: cached keywords in DB.
     try:
         entry = TmdbKeywordCache.query.filter_by(tmdb_id=item['id']).first()
         api_tags = json.loads(entry.keywords) if entry else []
     except:
         api_tags = []
     
-    for term in search_terms:
-        for tag in api_tags:
-            if term in tag: return True
+    if api_tags:
+        if search_terms.intersection(set(api_tags)):
+            return True
                 
     return False
+
+def prefetch_omdb_parallel(items, api_key):
+    # Fetch RT scores in parallel to reduce per-item latency.
+    if not api_key or not items:
+        return
+
+    def fetch_rt(item):
+        if item.get('rt_score') is not None:
+            return None
+        title = item.get('title') or item.get('name')
+        year = item.get('year')
+        if not title:
+            return None
+        ratings = fetch_omdb_ratings(title, year, api_key)
+        rt_score = 0
+        for r in (ratings or []):
+            if r['Source'] == 'Rotten Tomatoes':
+                try:
+                    rt_score = int(r['Value'].replace('%', ''))
+                except Exception:
+                    rt_score = 0
+                break
+        return {'id': item.get('id'), 'rt_score': rt_score}
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        results = executor.map(fetch_rt, items)
+
+    rt_map = {r['id']: r['rt_score'] for r in results if r and r.get('id')}
+    for item in items:
+        if item.get('id') in rt_map:
+            item['rt_score'] = rt_map[item['id']]
+
+load_results_cache()
+load_history_cache()
     
-# logging
+# Logging
 def write_log(level, module, message, app_obj=None):
-    # handle app context for logging
+    # Handle app context for logging.
     try:
         if app_obj:
             with app_obj.app_context():
@@ -182,7 +332,7 @@ def write_log(level, module, message, app_obj=None):
         elif has_app_context():
             _write_log_internal(level, module, message)
         else:
-            # try to get app from current context
+            # Try to get app from current context.
             try:
                 app = current_app._get_current_object()
                 with app.app_context():
@@ -193,14 +343,14 @@ def write_log(level, module, message, app_obj=None):
         print(f"Logging Failed: {e}")
 
 def _write_log_internal(level, module, message):
-    # actual logging logic
+    # Actual logging logic.
     s = Settings.query.first()
     if s and (s.logging_enabled or level == 'ERROR'):
         log = SystemLog(level=level, category=module, message=str(message))
         db.session.add(log)
         db.session.commit()
         
-        if log.id % 20 == 0: 
+        if log.id % 20 == 0:
             limit_mb = s.max_log_size if s.max_log_size is not None else 5
             if limit_mb <= 0:
                 return
@@ -220,7 +370,7 @@ def _write_log_internal(level, module, message):
 def write_scanner_log(message):
     """Writes to a local file, rotating if it exceeds the size limit."""
     try:
-        # Local import to avoid circular dependency
+        # Local import to avoid circular dependency.
         from models import Settings
         s = Settings.query.first()
         limit_mb = s.scanner_log_size if s and s.scanner_log_size is not None else 10
@@ -244,7 +394,7 @@ def write_scanner_log(message):
         print(f"Scanner Log Error: {e}")
 
 def read_scanner_log(lines=100):
-    # read last N lines
+    # Read last N lines.
     if not os.path.exists(SCANNER_LOG_FILE):
         return "No scanner logs found yet."
     try:
@@ -257,7 +407,7 @@ def normalize_title(title):
     if not title:
         return ""
     
-    # normalize special chars and accents
+    # Normalize special chars and accents.
     t = str(title).lower()
     replacements = {
         '¢': 'c', '$': 's', '@': 'a', '&': 'and', 
@@ -270,10 +420,10 @@ def normalize_title(title):
     for char, rep in replacements.items():
         t = t.replace(char, rep)
     
-    # strip non-alphanumeric
+    # Strip non-alphanumeric.
     return re.sub(r'[^a-z0-9]', '', t)
 
-# --- ALIAS HELPERS ---
+# Alias helpers
 def get_tmdb_aliases(tmdb_id, media_type, settings):
     try:
         cached = TmdbAlias.query.filter_by(tmdb_id=tmdb_id, media_type=media_type).first()
@@ -290,9 +440,9 @@ def get_tmdb_aliases(tmdb_id, media_type, settings):
         aliases = [normalize_title(x['title']) for x in data.get(key, [])]
         
         try:
-            # Note: Storing aliases is optional in V1.1 as we mainly check ID presence
-            pass 
-        except: 
+            # Storing aliases is optional; ID presence is the primary check.
+            pass
+        except:
             pass
             
         return aliases
@@ -318,18 +468,18 @@ def run_alias_scan(app_obj):
 
         try:
             with open(cache_path, 'r') as f:
-                # Cache format is now a LIST of strings based on latest refresh_plex_cache
+                # Cache format is now a list of strings.
                 owned_titles = json.load(f)
         except: return
 
-        # Map Titles -> TMDB IDs
+        # Map titles -> TMDB IDs.
         existing_plex_titles = set([row.plex_title for row in TmdbAlias.query.with_entities(TmdbAlias.plex_title).all()])
         to_scan = [t for t in owned_titles if t not in existing_plex_titles]
         
         total = len(to_scan)
         if total == 0:
             write_scanner_log("All items already indexed. Sleeping.")
-            # FIX: Update timestamp so we don't loop forever
+            # Update timestamp so we don't loop forever.
             s.last_alias_scan = int(time.time())
             db.session.commit()
             return
@@ -365,7 +515,7 @@ def run_alias_scan(app_obj):
                         media_type = 'tv'
                         
                 if tmdb_id and hit:
-                    # Store Main Entry
+                    # Store main entry.
                     main_entry = TmdbAlias(
                         tmdb_id=tmdb_id, media_type=media_type, 
                         plex_title=title, original_title=normalize_title(hit.get('title', hit.get('name'))),
@@ -373,7 +523,7 @@ def run_alias_scan(app_obj):
                     )
                     db.session.add(main_entry)
                 else:
-                    # Not found, store dummy
+                    # Not found, store placeholder.
                     dummy = TmdbAlias(tmdb_id=-1, media_type='unknown', plex_title=title)
                     db.session.add(dummy)
                 
@@ -388,7 +538,7 @@ def run_alias_scan(app_obj):
         db.session.commit()
         write_scanner_log(f"Batch complete. Processed {processed} items.")
 
-# lock & cache
+# Lock + cache
 def is_system_locked():
     return os.path.exists(LOCK_FILE)
 
@@ -487,7 +637,7 @@ def get_plex_cache(settings):
     except:
         return []
 
-# collection sync
+# Collection sync
 def run_collection_logic(settings, preset, key, app_obj=None):
     if is_system_locked(): return False, "System busy."
     
@@ -509,7 +659,7 @@ def run_collection_logic(settings, preset, key, app_obj=None):
         user_mode = preset.get('sync_mode', 'append')
         mode = 'sync' if is_trending else user_mode
 
-        # fetch from TMDB
+        # Fetch from TMDB.
         if 'with_collection_id' in params:
             col_id = params.pop('with_collection_id')
             url = f"https://api.themoviedb.org/3/collection/{col_id}?api_key={settings.tmdb_key}&language=en-US"
@@ -529,14 +679,14 @@ def run_collection_logic(settings, preset, key, app_obj=None):
                 for page_items in results:
                     if page_items: tmdb_items.extend(page_items)
 
-        # safety check - abort if no items (prevents sync mode from deleting everything)
+        # Safety check: abort if no items to avoid wiping collections.
         if not tmdb_items: 
             return False, "Aborted: No items returned from TMDB. Possible API outage?"
 
-        # match items to plex library
+        # Match items to the Plex library.
         owned_titles = set(get_plex_cache(settings)) 
         
-        # load ID mappings from alias DB
+        # Load ID mappings from alias DB.
         id_map = {}
         try:
             rows = TmdbAlias.query.with_entities(TmdbAlias.tmdb_id, TmdbAlias.plex_title).all()
@@ -546,18 +696,18 @@ def run_collection_logic(settings, preset, key, app_obj=None):
 
         potential_matches = []
         for item in tmdb_items:
-            # check ID match first (most reliable)
+            # Check ID match first (most reliable).
             if item['id'] in id_map:
                 item['mapped_plex_title'] = id_map[item['id']]
                 potential_matches.append(item)
                 continue
             
-            # fallback to title match
+            # Fall back to title match.
             norm_title = normalize_title(item.get('title', item.get('name')))
             if norm_title in owned_titles:
                 potential_matches.append(item)
 
-        # verify matches exist in plex
+        # Verify matches exist in Plex.
         target_type = 'movie' if preset['media_type'] == 'movie' else 'show'
         target_lib = next((s for s in plex.library.sections() if s.type == target_type), None)
         if not target_lib: 
@@ -566,19 +716,19 @@ def run_collection_logic(settings, preset, key, app_obj=None):
         found_items = []
         if potential_matches:
             for item in potential_matches:
-                # use mapped title if available (more reliable)
+                # Use mapped title if available (more reliable).
                 search_title = item.get('mapped_plex_title', item.get('title', item.get('name')))
                 year = int((item.get('release_date') or item.get('first_air_date') or '0000')[:4])
                 
                 try:
                     results = target_lib.search(search_title)
                     for r in results:
-                        # ID match is guaranteed
+                        # ID match is guaranteed.
                         if 'mapped_plex_title' in item:
                              found_items.append(r)
                              break
                         else:
-                            # text match - verify year
+                            # Text match: verify year.
                             r_year = r.year if r.year else 0
                             if r_year in [year, year-1, year+1]:
                                 found_items.append(r)
@@ -587,7 +737,7 @@ def run_collection_logic(settings, preset, key, app_obj=None):
         
         found_items = list(set(found_items))
 
-        # sync or append
+        # Sync or append.
         try:
             existing_col = target_lib.search(title=preset['title'], libtype='collection')[0]
         except: existing_col = None
@@ -609,8 +759,7 @@ def run_collection_logic(settings, preset, key, app_obj=None):
             else:
                 to_remove = []
 
-            # [SAFETY GUARD 2] Bulk Add Limit
-            # Prevents crashing Plex or hitting rate limits if a list is unexpectedly huge
+            # Guardrail: bulk add limit to avoid Plex rate limits.
             if len(to_add) > 1000:
                 return False, f"Aborted: Attempted to add {len(to_add)} items. Limit is 1000."
 
@@ -627,18 +776,18 @@ def run_collection_logic(settings, preset, key, app_obj=None):
         return False, str(e)
     
     finally:
-        # 3. RELEASE LOCK
+        # Release lock.
         remove_system_lock()
         
 def is_duplicate(tmdb_item, plex_raw_titles, settings=None):
-    # simple title match check
+    # Simple title match check.
     tmdb_title = tmdb_item.get('title') if tmdb_item.get('media_type') == 'movie' else tmdb_item.get('name')
     if not tmdb_title: return False
     
     norm = normalize_title(tmdb_title)
     return norm in plex_raw_titles
 
-# helpers
+# Helpers
 def fetch_omdb_ratings(title, year, api_key):
     if not api_key: return []
     try:
@@ -661,28 +810,27 @@ def send_overseerr_request(settings, media_type, tmdb_id, uid=None):
             'mediaId': int(tmdb_id)
         }
         
-        # TV shows need season info - check Overseerr first for requestable seasons
+        # TV shows need season info; check Overseerr first for requestable seasons.
         if media_type == 'tv':
             seasons = []
             base_url = settings.overseerr_url.rstrip('/')
             
-            # try to get seasons from Overseerr's media endpoint first (most reliable)
+            # Try Overseerr's media endpoint first.
             try:
                 media_url = f"{base_url}/api/v1/tv/{tmdb_id}"
                 media_resp = requests.get(media_url, headers=headers, timeout=5)
                 if media_resp.status_code == 200:
                     media_data = media_resp.json()
-                    # Overseerr season status: 1=Available, 2=Partially Available, 3=Unavailable, 4=Requested, 5=Pending
-                    # Try to include all seasons that aren't unavailable (status 3)
-                    # Overseerr will handle filtering out already available/requested ones
+                    # Overseerr season status: 1=Available, 2=Partial, 3=Unavailable, 4=Requested, 5=Pending.
+                    # Include all seasons that aren't unavailable (status 3).
                     for season in media_data.get('seasons', []):
                         season_num = season.get('seasonNumber', 0)
                         status = season.get('status', 0)
-                        # include regular seasons (not specials) that aren't unavailable
+                        # Include regular seasons (not specials) that aren't unavailable.
                         if season_num > 0 and status != 3:
                             seasons.append(season_num)
             except Exception as e:
-                # if Overseerr check fails, fall back to TMDB
+                # If Overseerr fails, fall back to TMDB.
                 if settings.tmdb_key:
                     try:
                         url = f"https://api.themoviedb.org/3/tv/{tmdb_id}?api_key={settings.tmdb_key}"
@@ -694,7 +842,7 @@ def send_overseerr_request(settings, media_type, tmdb_id, uid=None):
                     except:
                         pass
             
-            # if still no seasons, can't request
+            # If still no seasons, can't request.
             if not seasons:
                 return False, "No seasons available to request (all seasons may already be available, requested, or unavailable)"
             
@@ -712,13 +860,13 @@ def send_overseerr_request(settings, media_type, tmdb_id, uid=None):
         try:
             error_data = r.json()
             error_msg = error_data.get('message', error_data.get('error', r.text))
-            # log full response for debugging
+            # Log full response for debugging.
             if media_type == 'tv':
                 print(f"Overseerr TV request error: {error_data}", flush=True)
         except:
             error_msg = f"HTTP Error {r.status_code}: {r.text[:200]}"
 
-        # friendly error messages
+        # Friendly error messages.
         error_lower = str(error_msg).lower()
         if "already available" in error_lower:
             return False, "Already Available"
@@ -732,14 +880,35 @@ def send_overseerr_request(settings, media_type, tmdb_id, uid=None):
     except Exception as e:
         return False, f"Connection Error: {str(e)}"
         
-def check_for_updates(current_version, raw_url):
+def check_for_updates(current_version, url):
     try:
-        resp = requests.get(raw_url, timeout=2)
+        # User-Agent is required for GitHub API.
+        resp = requests.get(url, headers={'User-Agent': 'SeekAndWatch'}, timeout=3)
+        
         if resp.status_code == 200:
+            # Try GitHub API JSON first.
+            try:
+                data = resp.json()
+                if 'tag_name' in data:
+                    remote = data['tag_name'].lstrip('v').strip()
+                    local = current_version.lstrip('v').strip()
+                    
+                    if remote != local:
+                        return remote
+            except:
+                pass
+
+            # Fallback: regex on raw text (older releases).
             match = re.search(r'VERSION\s*=\s*"([^"]+)"', resp.text)
-            if match and match.group(1) != current_version:
-                return match.group(1)
-    except: pass
+            if match:
+                remote = match.group(1).lstrip('v').strip()
+                local = current_version.lstrip('v').strip()
+                if remote != local:
+                    return remote
+                    
+    except Exception as e:
+        print(f"Update Check Error: {e}")
+        
     return None
 
 def handle_lucky_mode(settings):
@@ -757,7 +926,7 @@ def handle_lucky_mode(settings):
     except: pass
     return None
 
-# --- BACKUPS ---
+# Backups
 def create_backup():
     filename = f"backup_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
     filepath = os.path.join(BACKUP_DIR, filename)
@@ -787,61 +956,66 @@ def list_backups():
     return backups
 
 def restore_backup(filename):
-    # Force filename to be just the name, preventing absolute path overrides
+    # Force filename to be just the name, preventing absolute path overrides.
     filename = os.path.basename(filename)
+    safe_name = secure_filename(filename)
+    if not safe_name or safe_name != filename:
+        return False, "Invalid backup filename"
 
-    filepath = os.path.join(BACKUP_DIR, filename)
+    filepath = os.path.abspath(os.path.join(BACKUP_DIR, filename))
+    root = os.path.abspath(BACKUP_DIR)
+    if os.path.commonpath([root, filepath]) != root:
+        return False, "Invalid backup path"
     if not os.path.exists(filepath): return False, "File not found"
     try:
         target_dir = "/config"
         
-        # validate it's actually a zip file
+        # Validate it's actually a zip file.
         if not zipfile.is_zipfile(filepath):
             return False, "Invalid backup file (not a ZIP archive)"
         
         with zipfile.ZipFile(filepath, 'r') as zipf:
-            # check for required files
+            # Check for required files.
             members = zipf.namelist()
             if not members:
                 return False, "Backup file is empty"
             
-            # normalize member paths (remove leading slashes, handle subdirectories)
+            # Normalize member paths (remove leading slashes, handle subdirectories).
             normalized_members = {}
             for member in members:
-                # skip directories
+                # Skip directories.
                 if member.endswith('/'):
                     continue
                 
-                # remove leading slashes and normalize
+                # Remove leading slashes and normalize.
                 clean_member = member.lstrip('/').replace('\\', '/')
                 
-                # handle files in subdirectories - extract just the filename
+                # Handle files in subdirectories by extracting the filename.
                 if '/' in clean_member:
-                    # if file is in a subdirectory, use just the filename
-                    # this allows backups with different structures
+                    # Backups may have different structures.
                     base_name = os.path.basename(clean_member)
-                    # only allow known backup files
+                    # Only allow known backup files.
                     if base_name not in ['seekandwatch.db', 'plex_cache.json']:
                         continue
                     normalized_members[base_name] = member
                 else:
-                    # file at root
+                    # File at root.
                     if clean_member in ['seekandwatch.db', 'plex_cache.json']:
                         normalized_members[clean_member] = member
             
             if not normalized_members:
                 return False, "Backup file does not contain seekandwatch.db or plex_cache.json"
             
-            # extract files to target directory
+            # Extract files to target directory.
             for target_name, zip_member in normalized_members.items():
-                # security check - ensure we're not escaping the target directory
+                # Security check: ensure we're not escaping the target directory.
                 abs_target = os.path.abspath(os.path.join(target_dir, target_name))
                 abs_root = os.path.abspath(target_dir)
                 
                 if not abs_target.startswith(abs_root + os.sep) and abs_target != abs_root:
                     return False, f"Security check failed for {target_name}"
                 
-                # extract the file
+                # Extract the file.
                 with zipf.open(zip_member) as source:
                     target_path = os.path.join(target_dir, target_name)
                     with open(target_path, 'wb') as target:
@@ -931,7 +1105,7 @@ def validate_url(url):
         return False, f"Validation Error: {str(e)}"
         
 def prefetch_tv_states_parallel(items, api_key):
-    # fetch TV show status (ended/returning/canceled)
+    # Fetch TV show status (ended/returning/canceled).
     if not items: return
 
     tv_items = [i for i in items if i.get('media_type') == 'tv']
@@ -955,7 +1129,7 @@ def prefetch_tv_states_parallel(items, api_key):
             item['status'] = status_map[item['id']]
             
 def prefetch_ratings_parallel(items, api_key):
-    # fetch content ratings (PG-13, etc)
+    # Fetch content ratings (PG-13, etc).
     if not items: return
 
     def fetch_rating(item):
@@ -1045,3 +1219,124 @@ def get_tautulli_trending(media_type='movie'):
     except Exception as e:
         print(f"Tautulli Error: {e}")
         return []
+        
+# Updater helpers
+
+def is_docker():
+    """Checks if we are running inside a Docker container."""
+    path = '/proc/self/cgroup'
+    return (
+        os.path.exists('/.dockerenv') or
+        (os.path.isfile(path) and any('docker' in line for line in open(path)))
+    )
+
+def is_unraid():
+    """Best-effort detection for Unraid-hosted containers."""
+    if os.environ.get('UNRAID_VERSION') or os.environ.get('UNRAID_API_KEY'):
+        return True
+    if os.path.exists('/etc/unraid-version'):
+        return True
+    if os.path.exists('/boot/config') or os.path.exists('/usr/local/emhttp'):
+        return True
+    return False
+
+def is_git_repo():
+    """Checks if .git exists in app dir or /config."""
+    app_dir = get_app_root()
+    return os.path.isdir(os.path.join(app_dir, '.git')) or os.path.isdir('/config/.git')
+
+def get_app_root():
+    """Return the absolute path to the app code directory."""
+    env_root = os.environ.get("APP_DIR")
+    if env_root and os.path.isdir(env_root):
+        return env_root
+    if os.path.isdir("/config/app"):
+        return "/config/app"
+    return os.path.dirname(os.path.abspath(__file__))
+
+def is_app_dir_writable():
+    """True if the app directory can be updated in place."""
+    app_dir = get_app_root()
+    return os.path.isdir(app_dir) and os.access(app_dir, os.W_OK)
+
+def _copy_tree(src, dst):
+    for root, dirs, files in os.walk(src):
+        rel = os.path.relpath(root, src)
+        target_dir = dst if rel == "." else os.path.join(dst, rel)
+        os.makedirs(target_dir, exist_ok=True)
+        for name in files:
+            shutil.copy2(os.path.join(root, name), os.path.join(target_dir, name))
+
+def perform_git_update():
+    """
+    Safely updates Git installs by pulling code AND installing new requirements.
+    """
+    try:
+        # Figure out where the repo lives.
+        cwd = None
+        if os.path.isdir('/config/.git'):
+            cwd = '/config'
+            
+        # 1) Fetch latest changes.
+        subprocess.check_call(['git', 'fetch'], cwd=cwd)
+        
+        # 2) Hard reset to the remote default branch.
+        subprocess.check_call(['git', 'reset', '--hard', 'origin/main'], cwd=cwd)
+        
+        # 3) Reinstall requirements if needed.
+        req_path = 'requirements.txt'
+        if cwd: req_path = os.path.join(cwd, 'requirements.txt')
+        
+        if os.path.exists(req_path):
+             subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-r', req_path])
+             
+        return True, "Update Successful! Restarting..."
+    except Exception as e:
+        return False, f"Git Update Failed: {str(e)}"
+
+def perform_release_update():
+    """
+    Updates the app by downloading the latest GitHub release archive.
+    """
+    try:
+        app_dir = get_app_root()
+        if not is_app_dir_writable():
+            return False, "App directory is not writable. Mount the repo or rebuild the image."
+
+        api_url = "https://api.github.com/repos/softerfish/seekandwatch/releases/latest"
+        headers = {"User-Agent": "SeekAndWatch"}
+        resp = requests.get(api_url, headers=headers, timeout=10)
+        if not resp.ok:
+            return False, f"GitHub release lookup failed: {resp.status_code}"
+
+        data = resp.json()
+        archive_url = data.get("zipball_url") or data.get("tarball_url")
+        if not archive_url:
+            return False, "GitHub release archive URL not found."
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            archive_path = os.path.join(tmpdir, "release.zip")
+            with requests.get(archive_url, headers=headers, stream=True, timeout=30) as r:
+                r.raise_for_status()
+                with open(archive_path, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=1024 * 1024):
+                        if chunk:
+                            f.write(chunk)
+
+            with zipfile.ZipFile(archive_path, "r") as zf:
+                zf.extractall(tmpdir)
+
+            extracted = [p for p in os.listdir(tmpdir) if os.path.isdir(os.path.join(tmpdir, p))]
+            if not extracted:
+                return False, "Release archive did not contain files."
+
+            release_root = os.path.join(tmpdir, extracted[0])
+            _copy_tree(release_root, app_dir)
+
+        req_path = os.path.join(app_dir, "requirements.txt")
+        if os.path.exists(req_path):
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", req_path])
+
+        return True, "Release Update Successful! Restarting..."
+    except Exception as e:
+        return False, f"Release Update Failed: {str(e)}"

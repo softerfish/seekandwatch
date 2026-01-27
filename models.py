@@ -1,6 +1,9 @@
-from flask_sqlalchemy import SQLAlchemy
-from flask_login import UserMixin
+"""Database models for SeekAndWatch."""
+
 from datetime import datetime
+
+from flask_login import UserMixin
+from flask_sqlalchemy import SQLAlchemy
 
 db = SQLAlchemy()
 
@@ -21,36 +24,37 @@ class Settings(db.Model):
     
     user = db.relationship('User', back_populates='settings')
     
-    # plex
+    # Plex
     plex_url = db.Column(db.String(200))
     plex_token = db.Column(db.String(200))
     ignored_users = db.Column(db.String(500))
     ignored_libraries = db.Column(db.String(500))
     
-    # metadata
+    # Metadata APIs
     tmdb_key = db.Column(db.String(200))
     tmdb_region = db.Column(db.String(10), default='US')
     omdb_key = db.Column(db.String(200))
     
-    # integrations
+    # Integrations
     overseerr_url = db.Column(db.String(200))
     overseerr_api_key = db.Column(db.String(200))
     tautulli_url = db.Column(db.String(200))
     tautulli_api_key = db.Column(db.String(200))
     
-    # system
+    # System
     last_checked = db.Column(db.DateTime)
     cache_interval = db.Column(db.Integer, default=24)
     logging_enabled = db.Column(db.Boolean, default=True)
     max_log_size = db.Column(db.Integer, default=5)
     
-    # backups
+    # Backups
     backup_interval = db.Column(db.Integer, default=2) 
     backup_retention = db.Column(db.Integer, default=7) 
 
+    # Background scanner
     scanner_enabled = db.Column(db.Boolean, default=False)
     scanner_interval = db.Column(db.Integer, default=15)
-    scanner_batch = db.Column(db.Integer, default=50)
+    scanner_batch = db.Column(db.Integer, default=500)
     last_alias_scan = db.Column(db.Integer, default=0)
     scanner_log_size = db.Column(db.Integer, default=10)
     kometa_config = db.Column(db.Text)

@@ -1,3 +1,5 @@
+"""Main Flask application for SeekAndWatch."""
+
 import time
 import os
 import re
@@ -11,13 +13,13 @@ import hashlib
 import sqlalchemy
 import concurrent.futures
 import secrets
-from flask_wtf.csrf import CSRFProtect
 from flask import Flask, Blueprint, request, jsonify, session, send_from_directory, render_template, redirect, url_for, flash
 from flask_login import login_required, current_user, LoginManager, login_user, logout_user
 from flask_apscheduler import APScheduler
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from flask_wtf.csrf import CSRFProtect
 from plexapi.server import PlexServer
 from models import db, Blocklist, CollectionSchedule, TmdbAlias, SystemLog, Settings, User, TmdbKeywordCache
 from utils import (normalize_title, is_duplicate, fetch_omdb_ratings, send_overseerr_request, 
@@ -27,12 +29,15 @@ from utils import (normalize_title, is_duplicate, fetch_omdb_ratings, send_overs
                    write_scanner_log, read_scanner_log, prefetch_keywords_parallel,
                    item_matches_keywords, RESULTS_CACHE, get_session_filters, write_log,
                    check_for_updates, handle_lucky_mode, run_alias_scan, reset_stuck_locks, 
-                   prefetch_tv_states_parallel, prefetch_ratings_parallel)
+                   prefetch_tv_states_parallel, prefetch_ratings_parallel, prefetch_omdb_parallel,
+                   is_docker, is_unraid, is_git_repo, is_app_dir_writable, perform_git_update,
+                   perform_release_update, save_results_cache, get_history_cache, set_history_cache,
+                   score_recommendation, diverse_sample, get_tmdb_rec_cache, set_tmdb_rec_cache)
 from presets import PLAYLIST_PRESETS
 
-# app config
+# App config
 
-VERSION = "1.2.4"
+VERSION = "1.3.0"
 
 UPDATE_CACHE = {
     'version': None,
@@ -40,25 +45,26 @@ UPDATE_CACHE = {
 }
 
 def get_persistent_key():
-    # try env var first (docker users)
+    """Load or generate a persistent SECRET_KEY."""
+    # Prefer env var (common in containers).
     env_key = os.environ.get('SECRET_KEY')
     if env_key: 
         return env_key
     
-    # check for existing key file
+    # Fall back to a key file in /config.
     key_path = '/config/secret.key'
     try:
         if os.path.exists(key_path):
             with open(key_path, 'r') as f:
                 return f.read().strip()
         else:
-            # generate new one
+            # Generate and persist a new key.
             new_key = secrets.token_hex(32)
             with open(key_path, 'w') as f:
                 f.write(new_key)
             return new_key
     except:
-        # fallback if file system is read-only
+        # Fallback if the file system is read-only.
         return secrets.token_hex(32)
 
 app = Flask(__name__)
@@ -67,7 +73,7 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////config/seekandwatch.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 csrf = CSRFProtect(app)
 
-# rate limiting to prevent abuse
+# Rate limiting to prevent abuse.
 limiter = Limiter(
     get_remote_address,
     app=app,
@@ -85,26 +91,26 @@ login_manager = LoginManager()
 login_manager.login_view = 'login'
 login_manager.init_app(app)
 
-# database migrations
+# Database migrations
 
 def run_migrations():
-    # add missing columns and fix admin perms
+    """Add missing columns and ensure at least one admin exists."""
     with app.app_context():
         try: db.create_all()
         except: pass
         
-        # schema migrations
+        # Schema migrations.
         try:
             inspector = sqlalchemy.inspect(db.engine)
             
-            # user table
+            # User table.
             user_columns = [c['name'] for c in inspector.get_columns('user')]
             with db.engine.connect() as conn:
                 if 'is_admin' not in user_columns:
                     print("--- [Migration] Adding 'is_admin' column to User table ---")
                     conn.execute(sqlalchemy.text("ALTER TABLE user ADD COLUMN is_admin BOOLEAN DEFAULT 0"))
             
-            # settings table
+            # Settings table.
             settings_columns = [c['name'] for c in inspector.get_columns('settings')]
             with db.engine.connect() as conn:
                 if 'tmdb_region' not in settings_columns:
@@ -118,7 +124,7 @@ def run_migrations():
                 if 'scanner_interval' not in settings_columns:
                     conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN scanner_interval INTEGER DEFAULT 15"))
                 if 'scanner_batch' not in settings_columns:
-                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN scanner_batch INTEGER DEFAULT 50"))
+                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN scanner_batch INTEGER DEFAULT 500"))
                 if 'last_alias_scan' not in settings_columns:
                     conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN last_alias_scan INTEGER DEFAULT 0"))
                 if 'kometa_config' not in settings_columns:
@@ -128,8 +134,8 @@ def run_migrations():
                 if 'keyword_cache_size' not in settings_columns:
                     conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN keyword_cache_size INTEGER DEFAULT 2000"))
                 if 'schedule_time' not in settings_columns:
-                     print("--- [Migration] Adding 'schedule_time' column ---")
-                     conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN schedule_time VARCHAR(10) DEFAULT '04:00'"))
+                    print("--- [Migration] Adding 'schedule_time' column ---")
+                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN schedule_time VARCHAR(10) DEFAULT '04:00'"))
                 if 'ignored_libraries' not in settings_columns:
                     print("--- [Migration] Adding 'ignored_libraries' column ---")
                     conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN ignored_libraries VARCHAR(500)"))
@@ -138,7 +144,7 @@ def run_migrations():
         except Exception as e:
             print(f"Migration Warning: {e}")
 
-        # auto-promote first user to admin if no admins exist
+        # Auto-promote the first user to admin if none exist.
         try:
             with db.engine.connect() as conn:
                 result = conn.execute(sqlalchemy.text("SELECT COUNT(*) FROM user WHERE is_admin = 1")).scalar()
@@ -147,14 +153,14 @@ def run_migrations():
                     user_count = conn.execute(sqlalchemy.text("SELECT COUNT(*) FROM user")).scalar()
                     
                     if user_count > 0:
-                        # promote lowest ID user (first user)
+                        # Promote the lowest ID user.
                         conn.execute(sqlalchemy.text("UPDATE user SET is_admin = 1 WHERE id = (SELECT MIN(id) FROM user)"))
                         conn.commit()
                         print("--- [Startup] AUTO-FIX: No admins found. Promoted the first user to Admin. ---")
         except Exception as e:
             print(f"Admin Auto-Fix Error: {e}")
 
-        # create missing tables
+        # Create missing tables.
         try: Blocklist.__table__.create(db.engine)
         except: pass
         try: CollectionSchedule.__table__.create(db.engine)
@@ -170,14 +176,14 @@ def load_user(user_id):
     
 run_migrations()
 
-# clear any stuck locks on startup
+# Clear any stuck locks on startup.
 print("--- BOOT SEQUENCE: CLEARING LOCKS ---", flush=True)
 try:
     reset_stuck_locks()
 except Exception as e:
     print(f"Error resetting locks: {e}", flush=True)
 
-# github stats cache
+# GitHub stats cache.
 github_cache = {
     "stars": "...",
     "latest_version": "0.0.0",
@@ -185,7 +191,7 @@ github_cache = {
 }
 
 def update_github_stats():
-    # fetch stars and latest version every hour
+    """Fetch stars and latest version once per hour."""
     while True:
         try:
             headers = {"User-Agent": "SeekAndWatch-App"}
@@ -206,11 +212,11 @@ def update_github_stats():
             
         time.sleep(3600)
 
-# start background thread
+# Start background thread.
 if not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
     threading.Thread(target=update_github_stats, daemon=True).start()
 
-# inject into all templates
+# Inject into all templates.
 @app.context_processor
 def inject_github_data():
     return dict(
@@ -219,8 +225,93 @@ def inject_github_data():
         current_version=VERSION
     )
 
-# page routes
+# Page routes
 
+# One-click updater
+@app.route('/trigger_update', methods=['POST'])
+@csrf.exempt
+@login_required
+def trigger_update_route():
+    import json
+    import sys
+    from flask import Response
+    
+    # Allow the confirm modal to force an update.
+    force_update = request.args.get('force_git') == 'true'
+    
+    try:
+        if not current_user.is_admin:
+            return Response(json.dumps({'status': 'error', 'message': 'Unauthorized'}), mimetype='application/json')
+
+        # Check latest release.
+        current_version = "Unknown"
+        try: current_version = VERSION
+        except: pass
+        latest = check_for_updates(current_version, "https://api.github.com/repos/softerfish/seekandwatch/releases/latest")
+        if not latest and not force_update:
+             return Response(json.dumps({'status': 'success', 'message': 'Up to date', 'action': 'none'}), mimetype='application/json')
+
+        # Unraid installs must update via the Unraid UI.
+        if is_unraid():
+            return Response(json.dumps({
+                'status': 'success',
+                'message': 'Update available!',
+                'action': 'unraid_instruction',
+                'version': str(latest)
+            }), mimetype='application/json')
+
+        if not is_git_repo() and not force_update:
+            if is_app_dir_writable():
+                return Response(json.dumps({
+                    'status': 'success',
+                    'message': 'Update available',
+                    'action': 'release_update_available',
+                    'version': str(latest)
+                }), mimetype='application/json')
+            if is_docker():
+                return Response(json.dumps({
+                    'status': 'success',
+                    'message': 'Update available!',
+                    'action': 'docker_instruction',
+                    'version': str(latest)
+                }), mimetype='application/json')
+            return Response(json.dumps({'status': 'success', 'message': 'Manual update required', 'action': 'manual_instruction', 'version': str(latest)}), mimetype='application/json')
+
+        # Manual (git) installs: ask for confirmation before pulling.
+        if is_git_repo() and not force_update:
+            return Response(json.dumps({
+                'status': 'success',
+                'message': 'Update available',
+                'action': 'git_update_available',
+                'version': str(latest)
+            }), mimetype='application/json')
+
+        # Prefer git updates when a repo is available.
+        if is_git_repo():
+            print(f"--- Git Update Triggered (Force: {force_update}) ---", flush=True)
+            success, msg = perform_git_update()
+            action = 'restart_needed' if success else 'error'
+            status = 'success' if success else 'error'
+            return Response(json.dumps({'status': status, 'message': msg, 'action': action}), mimetype='application/json')
+
+        # No git repo: try a release update when forced.
+        if force_update:
+            success, msg = perform_release_update()
+            action = 'restart_needed' if success else 'error'
+            status = 'success' if success else 'error'
+            return Response(json.dumps({'status': status, 'message': msg, 'action': action}), mimetype='application/json')
+
+        return Response(json.dumps({'status': 'error', 'message': 'Update failed to determine path.'}), mimetype='application/json')
+
+    except Exception as e:
+        try:
+            import traceback
+            write_log("ERROR", "Updater", traceback.format_exc())
+        except Exception:
+            pass
+        print(f"Update Error: {e}", flush=True)
+        return Response(json.dumps({'status': 'error', 'message': 'Update failed. Check logs for details.'}), mimetype='application/json')
+        
 @app.context_processor
 def inject_version():
     return dict(version=VERSION)
@@ -458,64 +549,106 @@ def review_history():
 
             ignored = [u.strip().lower() for u in (s.ignored_users or '').split(',')]
             
-            history = plex.history(maxresults=5000)
-            seen_titles = set()
-            lib_type = 'movie' if media_type == 'movie' else 'episode'
-            
-            for h in history:
-                if h.type != lib_type: continue
+            cache_key = f"{current_user.id}:{media_type}:{limit}:{','.join(sorted(ignored))}:{','.join(sorted(ignored_lib_ids))}"
+            cached_candidates = get_history_cache(cache_key)
+            if cached_candidates:
+                candidates = cached_candidates
+            else:
+                history = plex.history(maxresults=5000)
+                seen_titles = set()
+                lib_type = 'movie' if media_type == 'movie' else 'episode'
+                title_stats = {}
+                now_ts = datetime.datetime.now().timestamp()
                 
-                # check if user should be ignored
-                user_id = getattr(h, 'accountID', None)
-                user_name = "Unknown"
-                if user_id is not None:
-                    user_name = user_map.get(int(user_id), "Unknown")
-                
-                if user_name == "Unknown":
-                    if hasattr(h, 'userName') and h.userName: user_name = h.userName
-                    elif hasattr(h, 'user') and hasattr(h.user, 'title'): user_name = h.user.title
-
-                if user_name.lower() in ignored: continue
-                
-                # check library ignore list
-                if hasattr(h, 'librarySectionID') and h.librarySectionID:
-                    if str(h.librarySectionID) in ignored_lib_ids:
+                for h in history:
+                    if h.type != lib_type:
                         continue
 
-                # dedupe TV shows (use show title, not episode)
-                if h.type == 'episode':
-                    title = h.grandparentTitle
-                else:
-                    title = h.title
-                
-                if not title:
-                    if hasattr(h, 'sourceTitle') and h.sourceTitle: title = h.sourceTitle
-                    else: title = h.title
+                    # check if user should be ignored
+                    user_id = getattr(h, 'accountID', None)
+                    user_name = "Unknown"
+                    if user_id is not None:
+                        user_name = user_map.get(int(user_id), "Unknown")
 
-                if not title: continue
-                
-                # skip if we've seen this show already
-                if title in seen_titles: continue
-                
-                year = h.year if hasattr(h, 'year') else 0
-                
-                # get poster (use show poster for TV)
-                thumb = None
-                try: 
-                    if h.type == 'episode': thumb = h.grandparentThumb or h.thumb
-                    else: thumb = h.thumb 
-                except: pass
+                    if user_name == "Unknown":
+                        if hasattr(h, 'userName') and h.userName:
+                            user_name = h.userName
+                        elif hasattr(h, 'user') and hasattr(h.user, 'title'):
+                            user_name = h.user.title
 
-                candidates.append({
-                    'title': title,
-                    'year': year,
-                    'thumb': f"{s.plex_url}{thumb}?X-Plex-Token={s.plex_token}" if thumb else None,
-                    'poster_path': None
-                })
-                seen_titles.add(title)
-            
-            random.shuffle(candidates)
-            candidates = candidates[:limit]
+                    if user_name.lower() in ignored:
+                        continue
+
+                    # check library ignore list
+                    if hasattr(h, 'librarySectionID') and h.librarySectionID:
+                        if str(h.librarySectionID) in ignored_lib_ids:
+                            continue
+
+                    # dedupe TV shows (use show title, not episode)
+                    if h.type == 'episode':
+                        title = h.grandparentTitle
+                    else:
+                        title = h.title
+
+                    if not title:
+                        if hasattr(h, 'sourceTitle') and h.sourceTitle:
+                            title = h.sourceTitle
+                        else:
+                            title = h.title
+
+                    if not title:
+                        continue
+
+                    # Track frequency + recency for scoring.
+                    viewed_at = getattr(h, 'viewedAt', None)
+                    if isinstance(viewed_at, datetime.datetime):
+                        viewed_ts = viewed_at.timestamp()
+                    elif isinstance(viewed_at, (int, float)):
+                        viewed_ts = float(viewed_at)
+                    else:
+                        viewed_ts = None
+
+                    stats = title_stats.setdefault(title, {'count': 0, 'last_viewed': 0})
+                    stats['count'] += 1
+                    if viewed_ts and viewed_ts > stats['last_viewed']:
+                        stats['last_viewed'] = viewed_ts
+
+                    # skip if we've seen this show already
+                    if title in seen_titles:
+                        continue
+
+                    year = h.year if hasattr(h, 'year') else 0
+
+                    # get poster (use show poster for TV)
+                    thumb = None
+                    try:
+                        if h.type == 'episode':
+                            thumb = h.grandparentThumb or h.thumb
+                        else:
+                            thumb = h.thumb
+                    except:
+                        pass
+
+                    candidates.append({
+                        'title': title,
+                        'year': year,
+                        'thumb': f"{s.plex_url}{thumb}?X-Plex-Token={s.plex_token}" if thumb else None,
+                        'poster_path': None
+                    })
+                    seen_titles.add(title)
+
+                # Score for recency + frequency (history relevance).
+                for c in candidates:
+                    stats = title_stats.get(c['title'], {})
+                    count = stats.get('count', 1)
+                    last_viewed = stats.get('last_viewed', 0)
+                    days_ago = (now_ts - last_viewed) / 86400 if last_viewed else 365
+                    recency = 1 / (1 + max(days_ago, 0))
+                    c['score'] = (count * 0.7) + (recency * 0.3)
+
+                candidates.sort(key=lambda x: x.get('score', 0), reverse=True)
+                candidates = candidates[:limit]
+                set_history_cache(cache_key, candidates)
 
     except Exception as e:
         flash(f"Scan failed: {str(e)}", "error")
@@ -622,17 +755,20 @@ def generate():
         except: pass
             
     future_mode = request.form.get('future_mode') == 'true'
+    include_obscure = request.form.get('include_obscure') == 'true'
     today = datetime.datetime.now().strftime('%Y-%m-%d')
 
-    for tmdb_id in seed_ids:
+    def fetch_seed_results(tmdb_id):
+        cache_key = f"{media_type}:{tmdb_id}:{'future' if future_mode else 'recs'}:{today}"
+        cached = get_tmdb_rec_cache(cache_key)
+        if cached is not None:
+            return cached
+
         try:
-            # future mode - find upcoming releases
             if future_mode:
-                # get genres from seed to find similar upcoming content
                 details_url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}?api_key={s.tmdb_key}"
                 details = requests.get(details_url).json()
                 genres = [str(g['id']) for g in details.get('genres', [])[:3]]
-                
                 genre_str = "|".join(genres)
 
                 disc_url = f"https://api.themoviedb.org/3/discover/{media_type}"
@@ -641,14 +777,14 @@ def generate():
                     'language': 'en-US',
                     'sort_by': 'popularity.desc',
                     'with_genres': genre_str,
-                    'with_original_language': 'en', # english only
-                    'popularity.gte': 5,            # must have some hype
+                    'with_original_language': 'en',
+                    'popularity.gte': 5,
                     'page': 1
                 }
-                
+
                 if media_type == 'movie':
                     params['primary_release_date.gte'] = today
-                    params['with_release_type'] = '3|2' # theatrical only
+                    params['with_release_type'] = '3|2'
                     params['region'] = 'US'
                 else:
                     params['first_air_date.gte'] = today
@@ -656,21 +792,25 @@ def generate():
                     params['with_origin_country'] = 'US'
 
                 data = requests.get(disc_url, params=params).json()
-
-            # standard mode - direct recommendations
+                results = data.get('results', [])
             else:
-                data = {'results': []}
-                for page_num in range(1, 3): 
+                results = []
+                for page_num in range(1, 3):
                     rec_url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}/recommendations?api_key={s.tmdb_key}&language=en-US&page={page_num}"
                     page_data = requests.get(rec_url).json()
-                    data['results'].extend(page_data.get('results', []))
+                    results.extend(page_data.get('results', []))
 
-            for item in data.get('results', []):
+            set_tmdb_rec_cache(cache_key, results)
+            return results
+        except Exception:
+            return []
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
+        for results in executor.map(fetch_seed_results, seed_ids):
+            for item in results:
                 if item['id'] in seen_ids: continue
                 
                 # quality filters (skip if obscure mode)
-                include_obscure = request.form.get('include_obscure') == 'true'
-                
                 if not include_obscure:
                     # english only
                     if item.get('original_language') != 'en': continue
@@ -681,6 +821,7 @@ def generate():
                 item['media_type'] = media_type
                 date = item.get('release_date') or item.get('first_air_date')
                 item['year'] = int(date[:4]) if date else 0
+                item['score'] = score_recommendation(item)
                 
                 if item.get('title', item.get('name')) in blocked: continue
                 
@@ -693,15 +834,16 @@ def generate():
 
                 recommendations.append(item)
                 seen_ids.add(item['id'])
-                
-        except Exception as e: 
-            print(f"Error processing seed {tmdb_id}: {e}")
-
-        except: pass
             
-    # shuffle for history recs, keep order for future mode
-    if not future_mode:
-        random.shuffle(recommendations)
+    recommendations.sort(key=lambda x: x.get('score', 0), reverse=True)
+    if include_obscure:
+        def bucket_fn(item):
+            genre_ids = item.get('genre_ids') or []
+            if genre_ids:
+                return genre_ids[0]
+            year = item.get('year', 0)
+            return year // 10
+        recommendations = diverse_sample(recommendations, len(recommendations), bucket_fn=bucket_fn)
     
     # final dedupe
     unique_recs = []
@@ -713,8 +855,11 @@ def generate():
     
     RESULTS_CACHE[current_user.id] = {
         'candidates': unique_recs,
-        'next_index': 0
+        'next_index': 0,
+        'ts': int(time.time()),
+        'sorted': True
     }
+    save_results_cache()
     
     # apply filters
     min_year, min_rating, genre_filter, critic_enabled, threshold = get_session_filters()
@@ -724,6 +869,8 @@ def generate():
     target_keywords = [k.strip() for k in raw_keywords.split('|') if k.strip()]
 
     prefetch_ratings_parallel(recommendations[:60], s.tmdb_key)
+    if s.omdb_key:
+        prefetch_omdb_parallel(recommendations[:80], s.omdb_key)
 
     if target_keywords:
         prefetch_keywords_parallel(recommendations, s.tmdb_key)
@@ -760,14 +907,17 @@ def generate():
         # get RT score
         item['rt_score'] = None
         if s.omdb_key:
-            ratings = fetch_omdb_ratings(item.get('title', item.get('name')), item['year'], s.omdb_key)
-            rt_score = 0
-            for r in (ratings or []):
-                if r['Source'] == 'Rotten Tomatoes':
-                    rt_score = int(r['Value'].replace('%',''))
-                    break
-            if rt_score > 0: item['rt_score'] = rt_score
-            if critic_enabled and rt_score < threshold: continue
+            if item.get('rt_score') is None and critic_enabled:
+                ratings = fetch_omdb_ratings(item.get('title', item.get('name')), item['year'], s.omdb_key)
+                rt_score = 0
+                for r in (ratings or []):
+                    if r['Source'] == 'Rotten Tomatoes':
+                        rt_score = int(r['Value'].replace('%',''))
+                        break
+                if rt_score > 0:
+                    item['rt_score'] = rt_score
+            if critic_enabled and (item.get('rt_score') or 0) < threshold:
+                continue
 
         final_list.append(item)
 
@@ -775,6 +925,7 @@ def generate():
         prefetch_tv_states_parallel(final_list, s.tmdb_key)
 
     RESULTS_CACHE[current_user.id]['next_index'] = idx
+    save_results_cache()
     
     g_url = f"https://api.themoviedb.org/3/genre/{media_type}/list?api_key={s.tmdb_key}"
     try: genres = requests.get(g_url).json().get('genres', [])

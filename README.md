@@ -1,16 +1,12 @@
 # 🚀 SeekAndWatch
 ![Version](https://img.shields.io/badge/version-1.2.4-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) (coming soon) ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
-⭐ **Show Your Support By Clicking The Star!**
-If SeekAndWatch has been helpful to you in any way, please consider giving this repository a star. Your gesture will greatly support our efforts and help others discover the project.
+⭐ **If this saves you from endless scrolling, a star helps a ton.**
 
 ### 👋 What is SeekAndWatch?
+SeekAndWatch is a self-hosted Plex companion that turns your library into a smart, personalized "what should we watch?" hub. It connects Plex, Tautulli, TMDB, and Overseerr into one clean dashboard so you can discover, decide, and request faster.
 
-Scrolling through a massive Plex library can feel like work. You spend more time looking for something to watch than actually watching it.
-
-SeekAndWatch fixes that. It’s a self-hosted dashboard that connects your Plex library, your Tautulli stats, and your Overseerr requests into one clean, smart interface. Generate your own Plex Connections and easily create Kometa config files with our Visual Builder.
-
-It learns what you like, finds hidden gems you already own, helps you request new stuff, and now, in v1.1.0, helps you build basic, yet powerful Kometa config files without touching a line of code!
+The goal is simple: spend less time browsing, more time watching. It learns your taste from real watch history, surfaces hidden gems you already own, and gives you tools to build better collections without touching YAML.
 
 ---
 
@@ -19,32 +15,48 @@ It learns what you like, finds hidden gems you already own, helps you request ne
 - [Screenshots](#-screenshots)
 - [Requirements](#-requirements)
 - [Installation](#-installation)
-  - [Unraid](#unraid-template-coming-soon)
+  - [Unraid](#unraid-has-not-been-submitted-yet)
   - [Docker (Manual)](#docker-manual)
+  - [Docker Compose](#docker-compose)
 - [How to Update](#how-to-update)
 - [Changelog](#changelog)
 
-
 ## ✨ Key Features
 
-### 🧠 Smart Discovery
-- We don't just guess what you might like. The app analyzes the last 5,000 items you've watched to build a custom taste profile specifically for you.
-- Seed-Based Recommendations: We use your watch history as "Seeds" to find movies or shows you haven't seen yet.
-- Streaming & Scores: instantly see Rotten Tomatoes scores and check if a movie is streaming on Netflix, Prime, or Disney+ right now.
+### 🧠 Smart Discovery (Built From Your Taste)
+- Analyzes your last 5,000 plays to build a personalized taste profile.
+- Seed-based recommendations to surface titles you don't own or haven't watched.
+- Streaming availability + Rotten Tomatoes/critic scores (with OMDB).
+- "I'm Feeling Lucky" and "Spin the Wheel" for instant decisions.
+- Instant trailers inside the dashboard.
 
-### 🧩 Kometa Config Builder (New in v1.1!)
- No Code Required: You've heard it. Spend 10 minutes to learn YAML files. But it's not always that easy. Building YAML configuration files for Kometa can be a headache for some. We've included a **Visual Kometa Config Builder** that generates the basic code for you. More to come on this in future updates.
-Click & Go: Select your libraries, choose your overlays (4K badges, ratings, audio codecs), and toggle collections (Decades, Studios, Genres) with simple checkboxes.
+### 🧩 Kometa Config Builder (No YAML Needed)
+- Visual Kometa builder for overlays and collections with simple toggles.
+- Live preview for overlays, ratings, codecs, and content badges.
+- Generates clean starter configs you can refine later.
 
-### 🛠️ Powerful Library Tools
-- Background Alias Scanner: Hate seeing duplicate recommendations because a movie is named slightly differently on TMDB? Our new **background scanner** finds these "Aliases" automatically and ensures your library matches perfectly.
-- Bulk Import: Found a great movie list on Reddit? Copy the text, paste it into the **Bulk Importer**, and instantly turn it into a Plex Collection or send it to Overseerr.
-- Auto-Collections: Create dynamic rules (like *"80s Sci-Fi"* or *"Zombie Movies"*) that auto-update every week with our **Collection Builder**.
+### 📂 Plex Collections, Done Right
+- Auto-Collections with schedules (daily/weekly/manual).
+- Sync modes: strict (sync) or append-only (grow forever).
+- Bulk list import from IMDb/Letterboxd/Reddit, with smart matching.
+- Library browser to see what collections already exist in Plex.
+- Custom builder for collections and curated presets out of the box.
 
-### 🎲 Fun & Easy
-- **I'm Feeling Lucky**: Can't decide? One click serves up a highly-rated movie you haven't watched yet.
-- **Spin the Wheel**: A fun visual way to pick a movie when your group can't make up their minds.
-- **Instant Trailers**: Watch trailers right inside the dashboard without opening YouTube.
+### 🛠️ Library Quality Tools
+- Background Alias Discovery to reduce duplicate recommendations.
+- Blocklist for titles you never want to see again.
+- Ignore specific Plex users in recommendation history.
+
+### 📊 Stats & Requests in One Place
+- Results based off top on server.
+- Overseerr integration for one-click requests.
+
+### 🔒 Built for Long-Running Servers
+- Built-in backup/restore (including importing backups).
+- One-click updates for non-Unraid installs.
+- System logs + health tracking for scans and scheduled jobs.
+- Security safeguards for logins, forms, and file handling.
+- Multi-user accounts with admin controls.
 
 ---
 
@@ -52,67 +64,82 @@ Click & Go: Select your libraries, choose your overlays (4K badges, ratings, aud
 
 | Service | Status | Why we need it |
 | :--- | :--- | :--- |
-| **Plex** | **Required** | To scan your library and watch history. |
-| **TMDB API Key** | **Required** | To get posters, plot summaries, and actor info. (Free at [themoviedb.org](https://www.themoviedb.org/settings/api)) |
-| **Overseerr** | Recommended | To handle requests for new content. |
-| **Tautulli** | Recommended | To display detailed server stats and user activity. |
-| **OMDB API Key** | Optional | Adds Rotten Tomatoes/Critic scores to the UI. |
+| **Plex** | **Required** | Library access and watch history. |
+| **TMDB API Key** | **Required** | Posters, plot summaries, cast, and metadata. (Free at [themoviedb.org](https://www.themoviedb.org/settings/api)) |
+| **Overseerr** | Recommended | Requests for new content. |
+| **Tautulli** | Recommended | Live server stats and watch history analytics. |
+| **OMDB API Key** | Optional | Rotten Tomatoes / critic scores. |
 
 ---
 
 ## 🐳 Installation
 
-### Unraid (has not been submitted yet)
-1.  Go to the **Apps** tab in Unraid.
-2.  Search for `SeekAndWatch`.
-3.  Click **Install**.
+### Unraid (waiting on approval)
+1. Go to the **Apps** tab in Unraid.
+2. Search for `SeekAndWatch`.
+3. Click **Install**.
 
 ### Docker (Manual)
-If you prefer to install manually, you can run the GitHub install command from the Command Line in Unraid (the `>_` in the header). Access via http://<YOUR_UNRAID_IP>:5000 after install has completed. Access via http://<YOUR_SERVER_IP>:5000
+If you prefer manual setup, run the container and point a browser to http://<YOUR_SERVER_IP>:5000
 
-** Note:** Replace `/path/to/config` with the actual path where you want to store your database and settings.
+**Note:** Replace `/path/to/config` with the path where you want to store your database and settings.
 
 ```bash
 docker run -d \
   --name=seekandwatch \
   -p 5000:5000 \
-  -v /path/to/config:/config \
+  -v /path/to/seekandwatch:/config \
   -e TZ=America/New_York \
   --restart unless-stopped \
   ghcr.io/softerfish/seekandwatch:latest
-```  
-Once it's running, just go to: http://<YOUR_SERVER_IP>:5000
+```
 
-### How to Update
-To force an update to the latest version:
+### Docker Compose
+There's a `docker-compose.yml` included. From the repo root:
 
-# 1. Get the new version
+```bash
+docker compose up -d
+```
+
+---
+
+## How to Update
+If you're not using Unraid's App store, you can update manually or use the one click updater in the app:
+
+```bash
+# 1) Pull the latest version
 docker pull ghcr.io/softerfish/seekandwatch:latest
 
-# 2. Reset the container
+# 2) Stop + remove the container
 docker stop seekandwatch
 docker rm seekandwatch
 
-# 3. Start it back up
-```bash
+# 3) Start it again
 docker run -d \
   --name=seekandwatch \
   -p 5000:5000 \
-  -v /path/to/config:/config \
+  -v /path/to/seekandwatch:/config \
   -e TZ=America/New_York \
   --restart unless-stopped \
   ghcr.io/softerfish/seekandwatch:latest
-```  
-  
-### Changelog
+```
+
+---
+
+## Changelog
+v1.2.5
+- finished one click updates for non-unraid app installs. unraid users will have to use appstore updates when the app is approved
+- users can import backup files now
+- many small Smart Discovery improvements not limited to, but including: parallelize TMDB recommendation fetches, cache plex history for 1 hour, and instead of pure shuffle for review, we now score items by vote average × vote count and keep shuffle as a tie‑breaker 
+
+<details>
+  <summary><b>Past Changelog</b></summary>
 v1.2.4
 - I accidently broke TV requests in v1.2.3. Quick repair to get that going again
 - added search by future releases
 - improved search results and added a checkbox to search for obscure instead of mixing them in standard results
 
-<details>
-  <summary><b>Past Changelog</b></summary>
-  v1.2.3
+v1.2.3
 - moving all styling into a static/style.css file. There might be some broken styling here and there
 - added an ignore library to the Smart Discovery search
 - removed all search filters from the I'm Feeling Lucky results page 
@@ -130,10 +157,10 @@ v1.2.2
 - added GitHub link and version in the header
 - removed YouTube and Overseerr link in the header
 
-1.2.1
+v1.2.1
 Increased overlays on Kometa Builder
 
-1.2.0
+v1.2.0
 - added protections to block password guessing attacks and prevent malicious file access without slowing down your dashboard
 - optimized traffic limits to ensure the app runs smoothly even if you leave SeekAndWatch open 24/7
 - added permission handling (entrypoint.sh) that automatically adapts to Unraid (PUID 99) or standard Docker setups, eliminating "Permission Denied" errors
@@ -143,7 +170,7 @@ Increased overlays on Kometa Builder
 - leading space in api keys will be removed if included in a copy+paste. " 12345" instead of "12345"
 - external requests timeout changed to 10 seconds
 
-1.1.1
+v1.1.1
 - added tooltips to Kometa fields
 - added template variables for collections: limit, sort_by, collection_mode, sync_mode, include, exclude
 - added several collection defaults for Movies and TV. Overlays to follow
@@ -165,7 +192,7 @@ Security fixes:
 - the new restore function now validates file paths before extraction to prevent malicious overwrites of system files
 - tightened Kometa Config security. The system blindly trusted the configuration data saved in the database. We added a verification step to ensure that loaded settings are treated strictly as text, preventing any commands from running automatically if a hacker messed with your database
 
-1.1.0
+v1.1.0
 This release has a lot of bugfixes, changes and many tweaks to improve speed and accuracy. This is the first app I've made, so I'm learning how to improve as I go with a lot of time and research. If you have any suggestions or comments, here's the new subreddit: https://www.reddit.com/r/SeekAndWatch/
 
 - added a basic kometa yml file generator. It's at the point of working, but you will need to make edits with variables if you check a lot of boxes for collections. I will be improving this in the coming weeks.
@@ -186,7 +213,7 @@ This release has a lot of bugfixes, changes and many tweaks to improve speed and
 - added a notice to update if available
 
 
-1.0.2
+v1.0.2
 - added Login | Register for login screen to make it more clear
 - many small bugfixes
 - fixed ignore users history for recommendations
