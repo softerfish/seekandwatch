@@ -130,7 +130,8 @@ docker run -d \
 v1.3.0
 - finished one click updates for non-unraid app installs. unraid users will have to use appstore updates when the app is approved
 - users can import backup files now
-- many small Smart Discovery improvements not limited to, but including: parallelize TMDB recommendation fetches, cache plex history for 1 hour, and instead of pure shuffle for review, we now score items by vote average × vote count and keep shuffle as a tie‑breaker 
+- many small Smart Discovery improvements not limited to, but including: parallelize TMDB recommendation fetches, cache plex history for 1 hour, and instead of pure shuffle for review, we now score items by vote average × vote count and keep shuffle as a tie‑breaker
+- fixed checkmark that will remove titles from influence recommendations
 
 <details>
   <summary><b>Past Changelog</b></summary>
@@ -242,4 +243,5 @@ This product uses the TMDB API but is not endorsed or certified by TMDB.
 
 
 </details>
+
 
