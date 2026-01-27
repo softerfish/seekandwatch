@@ -209,6 +209,82 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .text-muted, .form-text, small { color: #cccccc !important; }
 .fw-bold { font-weight: bold; }
 
+/* Dismissible setup notice */
+.setup-notice {
+    max-width: 800px;
+    margin: 0 auto 30px auto;
+    background: var(--warning-bg);
+    border-left: 4px solid var(--warning-border);
+    padding: 12px 14px;
+    text-align: left;
+    border-radius: 4px;
+}
+.setup-notice--center {
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* Playlists page alignment */
+.playlists-center {
+    text-align: center;
+}
+.playlists-center .media-sub {
+    text-align: center;
+}
+.playlists-center .stats-bar {
+    margin-left: auto;
+    margin-right: auto;
+}
+.playlists-center .action-bar {
+    text-align: center;
+}
+.playlists-center .type-toggle-group {
+    text-align: center;
+}
+
+.schedule-card h5 {
+    color: var(--text-color);
+    margin-bottom: 8px;
+}
+.schedule-card .text-muted,
+.schedule-card small {
+    color: var(--text-color);
+}
+.setup-notice__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    color: #f39c12;
+    font-weight: 700;
+}
+.setup-notice__toggle {
+    background: transparent;
+    border: 1px solid #f39c12;
+    color: #f39c12;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 0.8em;
+    cursor: pointer;
+}
+.setup-notice__body {
+    color: #ccc;
+    font-size: 0.95em;
+    line-height: 1.5;
+    margin-top: 6px;
+}
+.setup-notice__body a {
+    text-decoration: underline;
+    color: white;
+    font-weight: bold;
+}
+.setup-notice.is-collapsed {
+    padding: 8px 12px;
+}
+.setup-notice.is-collapsed .setup-notice__body {
+    display: none;
+}
+
 /* Flash Messages */
 .flash { padding: 15px; margin-bottom: 20px; border-radius: 8px; text-align: center; font-weight: bold; }
 .flash.success { background: rgba(46, 204, 113, 0.2); border: 1px solid #2ecc71; color: #2ecc71; }
@@ -1244,6 +1320,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .playlist-icon {
     font-size: 3em;
     margin-bottom: 10px;
+    color: var(--text-color);
 }
 .playlist-title {
     margin: 0;
