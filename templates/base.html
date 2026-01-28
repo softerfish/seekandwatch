@@ -9,6 +9,13 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    
+    <style>
+        /* Hide any injected CSS from Buy Me a Coffee that might display as text */
+        body > style:not([data-injected="true"]) {
+            display: none !important;
+        }
+    </style>
 
 </head>
 <body>
@@ -41,18 +48,15 @@
                             <i class="fas fa-puzzle-piece"></i> Kometa
                         </a>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link {% if request.endpoint == 'settings' %}active{% endif %}" href="{{ url_for('settings') }}">
-                            <i class="fas fa-cog"></i> Settings
-                        </a>
-                    </li>
                 </ul>
                 
                 <div class="d-flex align-items-center">
                     <div class="nav-icon-group">
-                        
+                        <a href="https://www.buymeacoffee.com/softerfish" target="_blank" title="Buy Me A Coffee">
+                            <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 30px !important;width: 100px !important;">
+                        </a>
                         <a href="https://www.reddit.com/r/SeekAndWatch/" target="_blank" class="nav-mini-icon" title="Join us on Reddit" style="color: #ff4500;">
-                            <i class="fab fa-reddit"></i>
+                            <i class="fas fa-comments"></i>
                         </a>
                         
                         <a href="https://github.com/softerfish/seekandwatch" target="_blank" class="text-white nav-mini-icon" title="Star on GitHub" style="gap: 4px;">
@@ -67,9 +71,14 @@
 
                     </div>
 
-                    <a href="{{ url_for('logout') }}" class="btn btn-outline-danger btn-sm">
-                        <i class="fas fa-sign-out-alt"></i> Logout
-                    </a>
+                    <div class="d-flex align-items-center" style="gap: 10px;">
+                        <a href="{{ url_for('settings') }}" class="nav-mini-icon" title="Settings" style="color: #888;">
+                            <i class="fas fa-cog"></i>
+                        </a>
+                        <a href="{{ url_for('logout') }}" class="nav-mini-icon" title="Logout" style="color: #e74c3c;">
+                            <i class="fas fa-sign-out-alt"></i>
+                        </a>
+                    </div>
                 </div>
             </div>
             {% endif %}
@@ -366,6 +375,7 @@
                 });
             }
         });
+
     });
 </script>
 </body>

@@ -25,40 +25,45 @@
     </div>
 
 <div class="section-title" style="margin-top: 30px;">
-        <i class="fas fa-fire"></i> Trending on Server
+        <i class="fas fa-fire"></i> Tautulli - Trending on Server
     </div>
-    {% if not (settings.tautulli_url and settings.tautulli_api_key) %}
-        <div class="tautulli-banner">
-            <div>
-                <strong style="color: #e74c3c; font-size: 1.1em; display:block; margin-bottom:5px;">📊 Connect Tautulli</strong>
-                <span style="color: #ccc; font-size: 0.9em; line-height: 1.4;">
-                    Link your Tautulli API in Settings to see what's popular on your server and generate recommendations based on what your friends are watching!
-                </span>
+        {% if not (settings.tautulli_url and settings.tautulli_api_key) %}
+            <div class="tautulli-banner">
+                <div>
+                    <strong style="color: #e74c3c; font-size: 1.1em; display:block; margin-bottom:5px;">📊 Connect Tautulli</strong>
+                    <span style="color: #ccc; font-size: 0.9em; line-height: 1.4;">
+                        Link your Tautulli API in Settings to see what's popular on your server and generate recommendations based on what your friends are watching!
+                    </span>
+                </div>
+                <a href="{{ url_for('settings') }}" class="btn-secondary" style="font-size:0.9em; white-space:nowrap; padding: 8px 15px;">Go to Settings ↗</a>
             </div>
-            <a href="{{ url_for('settings') }}" class="btn-secondary" style="font-size:0.9em; white-space:nowrap; padding: 8px 15px;">Go to Settings ↗</a>
-        </div>
-    {% else %}
-        <div class="card" style="margin-bottom: 40px; max-width: 950px; margin-left: auto; margin-right: auto;">
-            <div class="trending-header">
-                <div style="display:flex; align-items:center; gap:15px;">
-                    <h3 style="margin:0; font-size:1.2em;">Top 5</h3>
-                    <div class="trending-tabs">
-                        <button class="t-tab active" onclick="loadTrending('movie')" id="tab-movie">Movies</button>
-                        <button class="t-tab" onclick="loadTrending('tv')" id="tab-tv">TV Shows</button>
+        {% else %}
+            <div class="card" style="margin-bottom: 40px; max-width: 700px; margin-left: auto; margin-right: auto;">
+                <div class="trending-header">
+                    <div style="display:flex; align-items:center; gap:15px;">
+                        <h3 style="margin:0; font-size:1.2em;">Top 5</h3>
+                        <div class="trending-tabs">
+                            <button class="t-tab active" onclick="loadTrending('movie')" id="tab-movie">Movies</button>
+                            <button class="t-tab" onclick="loadTrending('tv')" id="tab-tv">TV Shows</button>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:8px; margin-left:10px;">
+                            <label style="color: #888; font-size: 0.85em; white-space: nowrap;">Last</label>
+                            <input type="number" id="trending-days" value="30" min="1" max="365" style="width: 60px; padding: 4px 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--card-bg); color: var(--text-color); font-size: 0.9em;" onchange="loadTrending(document.querySelector('.t-tab.active')?.id === 'tab-tv' ? 'tv' : 'movie')">
+                            <label style="color: #888; font-size: 0.85em; white-space: nowrap;">days</label>
+                        </div>
+                    </div>
+                    <button class="btn-find-similar" onclick="findSimilarToTrending()" title="Get recommendations based on these items">
+                        <span>🔍 Find Similar</span>
+                    </button>
+                </div>
+                
+                <div id="trending-grid" class="trending-grid">
+                    <div style="grid-column:1/-1; text-align:center; padding:50px; color:#666;">
+                        Loading stats from Tautulli...
                     </div>
                 </div>
-                <button class="btn-find-similar" onclick="findSimilarToTrending()" title="Get recommendations based on these items">
-                    <span>🔍 Find Similar</span>
-                </button>
             </div>
-            
-            <div id="trending-grid" class="trending-grid">
-                <div style="grid-column:1/-1; text-align:center; padding:50px; color:#666;">
-                    Loading stats from Tautulli...
-                </div>
-            </div>
-        </div>
-    {% endif %}
+        {% endif %}
 
     <div class="card discovery-card">
         <h3 style="margin-top: 0; color: var(--accent-color); text-align: center;">🎬 Smart Discovery</h3>
@@ -66,11 +71,12 @@
         <div class="info-box">
             <strong style="color: white; display: block; margin-bottom: 5px;">💡 How it works:</strong>
             <ul style="margin: 0; padding-left: 20px;">
-                <li><strong>Scanning:</strong> We analyze your last <b>5000 Plex history entries</b>.</li>
-                <li><strong>Curation:</strong> You can set how many unique titles to pull from history.</li>
-                <li><strong>Filtering:</strong> Ignored profiles are skipped.</li>
-                <li><strong>Variety:</strong> Results change every time because we shuffle your history and randomize the discovery path to keep recommendations fresh.</li>
-                <li><strong>🍀 Lucky Mode:</strong> Instantly picks a random favorite from your history and finds a top-rated match.</li>
+                <li>Scans your last <b>5000 Plex history entries</b> and finds similar recommendations.</li>
+                <li>Set how many titles to pull from history (lower = faster).</li>
+                <li><strong>🚀 Future Releases:</strong> Only shows movies/shows not yet released.</li>
+                <li><strong>🌍 International & Obscure:</strong> Includes foreign films and lesser-known titles.</li>
+                <li>Results shuffle each time for fresh recommendations.</li>
+                <li><strong>🍀 Lucky Mode:</strong> Instantly finds a top-rated match from a random favorite.</li>
             </ul>
         </div>
 
@@ -106,16 +112,14 @@
             }
             </script>
             {% endif %}
-            <div style="margin-bottom: 20px; text-align: center;">
-                <label class="critic-label" style="background: rgba(52, 152, 219, 0.1); border-color: #3498db; color: #3498db;">
+            <div style="margin-bottom: 20px; display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;">
+                <label class="critic-label" style="background: rgba(52, 152, 219, 0.1); border-color: #3498db; color: #3498db; flex: 0 1 auto; min-width: 0;">
                     <input type="checkbox" name="future_mode" value="true" style="width: 16px; height: 16px; accent-color: #3498db;">
-                    <span>🚀 Search Future Releases Only</span>
+                    <span style="font-size: 0.9em; white-space: nowrap;">🚀 Search Future Releases Only</span>
                 </label>
-            </div>
-            <div style="margin-bottom: 20px; text-align: center;">
-                <label class="critic-label" style="background: rgba(155, 89, 182, 0.1); border-color: #9b59b6; color: #9b59b6;">
+                <label class="critic-label" style="background: rgba(155, 89, 182, 0.1); border-color: #9b59b6; color: #9b59b6; flex: 0 1 auto; min-width: 0;">
                     <input type="checkbox" name="include_obscure" value="true" style="width: 16px; height: 16px; accent-color: #9b59b6;">
-                    <span>🌍 Include International & Obscure</span>
+                    <span style="font-size: 0.9em; white-space: nowrap;">🌍 Include International & Obscure</span>
                 </label>
             </div>
             {% if plex_libraries %}
@@ -263,7 +267,10 @@ let currentTrendingType = 'movie';
 
         grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:50px; color:#666;">Loading Tautulli stats...</div>';
         
-        fetch('/get_local_trending?type=' + type)
+        const daysInput = document.getElementById('trending-days');
+        const days = daysInput ? parseInt(daysInput.value) || 30 : 30;
+        
+        fetch('/get_local_trending?type=' + type + '&days=' + days)
         .then(r => r.json())
         .then(data => {
             if(data.status === 'success' && data.items.length > 0) {

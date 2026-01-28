@@ -2,39 +2,56 @@
 {% block content %}
 
 <div class="intro-box">
-    <h3>🚀 Kometa Config Builder (v1.0.1 Beta)</h3>
+    <h3>🚀 Kometa Config Builder</h3>
     <p>
-        This tool generates a <strong>foundational</strong> configuration. For a full list of available collections, customization options, and advanced features, please consult the official 
-        <a href="https://kometa.wiki/en/latest/defaults/collections/" target="_blank" style="color:white; text-decoration:underline; font-weight:bold;">Kometa Defaults Documentation ↗</a>.
+        This tool generates a <strong>foundational</strong> configuration. For help using this builder, see the 
+        <a href="https://github.com/softerfish/seekandwatch/wiki/Kometa-Visual-Builder" target="_blank">SeekAndWatch Help Wiki ↗</a>. 
+        For a full list of available collections, customization options, and advanced features, please consult the official 
+        <a href="https://kometa.wiki/en/latest/defaults/collections/" target="_blank">Kometa Defaults Documentation ↗</a>.
     </p>
     
-    <div style="margin: 15px 0; background: rgba(0,0,0,0.2); padding: 15px; border-radius: 6px;">
-        <h4 style="color: #f39c12; margin-top: 0; border: none; font-size: 1em;">🛠️ How to use this tool:</h4>
-        <ol style="margin: 0; padding-left: 20px; line-height: 1.6; color: #ddd; font-size: 0.9em;">
+    <div class="intro-tip-box">
+        <h4>🛠️ How to use this tool:</h4>
+        <ol>
             <li><strong>Connect:</strong> Enter your Plex & TMDb details in Tab 1 to enable scanning.</li>
             <li><strong>Select:</strong> Toggle the collections you want in Tab 3.</li>
             <li><strong>Customize (⚙️):</strong> Click the Gear Icon next to any item to refine it.</li>
         </ol>
         
-        <p style="margin-top: 12px; color: #ccc; font-size: 0.9em; margin-bottom: 0;">
+        <p>
             <strong>💡 Power Tip:</strong> Use the gear icon to filter huge lists.<br>
             <em>Example:</em> Enable <strong>Streaming Services</strong>, click the ⚙️ Gear, and add <code>Netflix, Disney+</code> to the <strong>Include</strong> field. Instead of generating 100+ collections for every service under the sun, Kometa will now only create two! <br><br>
             <strong>Remember</strong> to click Save Progress often
         </p>
     </div>
 
-    <span class="intro-warning">⚠️ Warning: Selecting too many categories without custom filtering variables can result in HUNDREDS of collections. Start small!</span>
-    <p style="margin-top: 15px; font-weight: bold; color: white; border-top: 1px solid #444; padding-top: 10px;">
-        📝 Instructions: Copy the YAML code on the right, save it as <code>config.yml</code>, and place it in your Kometa config folder.
-    </p>
 </div>
 
-<div class="header-row" style="margin-bottom: 25px; display: flex; justify-content: space-between; align-items: center;">
+<div class="header-row">
     <div>
         <h2>🧩 Kometa Config Builder</h2>
         <p class="text-muted">Generate a clean <code>config.yml</code> file.</p>
     </div>
-    <button onclick="saveProgress()" class="btn-primary" style="padding: 10px 20px; font-weight: bold;">💾 Save Progress</button>
+    <div class="header-actions">
+        <a href="https://github.com/softerfish/seekandwatch/wiki/Kometa-Visual-Builder" target="_blank" class="btn-secondary btn-header">❓ Help</a>
+        <button onclick="showImportModal()" class="btn-secondary btn-header">📥 Import Config</button>
+        <button onclick="showTemplatesModal()" class="btn-secondary btn-header">📚 Templates</button>
+        <button onclick="showComparison()" class="btn-secondary btn-header">🔍 Compare</button>
+        <button onclick="undoAction()" class="btn-secondary btn-header" id="btn-undo" disabled>↶ Undo</button>
+        <button onclick="redoAction()" class="btn-secondary btn-header" id="btn-redo" disabled>↷ Redo</button>
+        <button onclick="saveProgress()" class="btn-primary btn-header-save">💾 Save Progress</button>
+    </div>
+</div>
+
+<div id="performance-indicator">
+    <div class="perf-content">
+        <div>
+            <strong style="color: #3498db;">📊 Performance Estimate: <span class="info-icon" title="Calculation: (Collections × 3s) + (Overlays × 1.5s). Multipliers: Genre=20, Actor=50, Director=30, Streaming=20, Studio=25, Year=30, Decade=10, Franchise=15, Universe=10, Rating=6. Estimates vary by library content.">ℹ️</span></strong>
+            <span id="perf-collections" class="perf-text"></span>
+            <span id="perf-runtime" class="perf-text"></span>
+        </div>
+        <button onclick="document.getElementById('performance-indicator').style.display='none'" class="perf-close-btn">×</button>
+    </div>
 </div>
 
 <div class="k-container">
@@ -335,6 +352,7 @@
 
 <div id="var-modal" class="modal-overlay">
     <div class="modal-box">
+        <button type="button" class="modal-close-btn" onclick="closeModal()" aria-label="Close">×</button>
         <h3 style="margin-top:0;">🔧 Customize: <span id="modal-title" style="color:var(--accent-color)"></span></h3>
         <p style="font-size:0.85em; color:#aaa; margin-bottom:15px; border-bottom:1px solid #333; padding-bottom:10px;">
             See available variables at <a href="https://kometa.wiki/en/latest/defaults/collections/" target="_blank" style="color:var(--accent-color); font-weight:bold;">Kometa Wiki ↗</a>.<br>
@@ -436,22 +454,203 @@
     </div>
 </div>
 
-<script>
-// Load saved config (handles the legacy array format too).
-const savedConfig = JSON.parse({{ settings.kometa_config|tojson if settings.kometa_config else 'null' }});let libraries = [];
-let globalSettings = {};
-let templateVars = {}; // Stores variables: { 'genre': { limit: 10 }, 'tmdb': { ... } }
+<!-- Import Config Modal -->
+<div id="import-modal" class="modal-overlay">
+    <div class="modal-box import-modal">
+        <button type="button" class="modal-close-btn" onclick="closeImportModal()" aria-label="Close">×</button>
+        <h3>📥 Import Config</h3>
+        <p>
+            Import a Kometa config from a URL or paste YAML directly.
+        </p>
+        
+        <!-- Tabs for URL vs Paste -->
+        <div class="import-tab-container">
+            <button id="import-tab-url" class="import-tab-btn active" onclick="switchImportTab('url')">From URL</button>
+            <button id="import-tab-paste" class="import-tab-btn" onclick="switchImportTab('paste')">Paste YAML</button>
+        </div>
+        
+        <!-- URL Import -->
+        <div id="import-url-section" class="import-section active">
+            <div class="k-input-row">
+                <label>Config URL</label>
+                <input type="text" id="import-url" placeholder="https://raw.githubusercontent.com/user/repo/config.yml">
+            </div>
+        </div>
+        
+        <!-- Paste Import -->
+        <div id="import-paste-section" class="import-section">
+            <div class="k-input-row">
+                <label>Paste YAML Config</label>
+                <textarea id="import-paste" placeholder="Paste your YAML config here..."></textarea>
+            </div>
+        </div>
+        
+        <div class="modal-actions">
+            <button class="btn-secondary" onclick="closeImportModal()">Cancel</button>
+            <button class="btn-primary" onclick="importConfig()">Import</button>
+        </div>
+    </div>
+</div>
 
-if (Array.isArray(savedConfig)) {
-    // Legacy format
-    libraries = savedConfig;
-} else if (savedConfig) {
-    // Current format
-    libraries = savedConfig.libraries || [];
-    globalSettings = savedConfig.settings || {};
+<!-- Library Templates Modal -->
+<div id="templates-modal" class="modal-overlay" style="display: none;">
+    <div class="modal-box" style="max-width: 700px;">
+        <h3 style="margin-top:0;">📚 Library Templates</h3>
+        <p style="font-size:0.85em; color:#aaa; margin-bottom:15px;">
+            Save library configurations as reusable templates. Apply them to other libraries with one click.
+        </p>
+        
+        <div style="margin-bottom: 20px;">
+            <h4 style="margin-bottom: 10px;">Save Current Library as Template</h4>
+            <div class="k-input-row">
+                <label>Template Name</label>
+                <input type="text" id="template-name" placeholder="e.g. Movies - Full Setup" style="width: 100%;">
+            </div>
+            <button class="btn-primary" onclick="saveAsTemplate()" style="width: 100%; margin-top: 10px;">💾 Save Template</button>
+        </div>
+        
+        <div style="border-top: 1px solid #333; padding-top: 20px;">
+            <h4 style="margin-bottom: 10px;">Saved Templates</h4>
+            <div id="templates-list" style="max-height: 300px; overflow-y: auto;">
+                <div style="text-align: center; color: #555; padding: 20px;">No templates saved yet.</div>
+            </div>
+        </div>
+        
+        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
+            <button class="btn-secondary" onclick="document.getElementById('templates-modal').style.display='none'">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- Comparison Modal -->
+<div id="comparison-modal" class="modal-overlay">
+    <div class="modal-box comparison-modal">
+        <button type="button" class="modal-close-btn" onclick="closeComparisonModal()" aria-label="Close">×</button>
+        <h3>🔍 Config Comparison</h3>
+        <p class="comparison-desc">
+            Compare your current configuration with the saved version.
+        </p>
+        <div class="comparison-grid">
+            <div>
+                <h4 class="comparison-header-current">Current config.yml Output</h4>
+                <div class="yaml-box comparison-box" id="comparison-current"></div>
+            </div>
+            <div>
+                <h4 class="comparison-header-saved">Saved Config</h4>
+                <div class="yaml-box comparison-box" id="comparison-saved"></div>
+            </div>
+        </div>
+        <div class="modal-actions">
+            <button class="btn-secondary" onclick="closeComparisonModal()">Close</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// load saved config (handles the legacy array format too). Updated in-memory on save so Compare shows latest.
+let savedConfig = JSON.parse({{ settings.kometa_config|tojson if settings.kometa_config else 'null' }});
+let libraries = [];
+let globalSettings = {};
+let templateVars = {}; // stores variables: { 'genre': { limit: 10 }, 'tmdb': { ... } }
+let libraryTemplateVars = {}; // stores per-library vars: { 'Movies': { use_separator: true } }
+let inlineComments = {};
+if (savedConfig && !Array.isArray(savedConfig) && savedConfig.inlineComments) {
+    inlineComments = savedConfig.inlineComments;
+} else {
+    inlineComments = {
+        plex: {},
+        tmdb: {},
+        settings: {},
+        templateVars: {},
+        libraryTemplateVars: {},
+        libraryDefaults: {}
+    };
 }
 
-// Map overlay keys to quick settings fields.
+if (Array.isArray(savedConfig)) {
+    // legacy format
+    libraries = savedConfig;
+} else if (savedConfig) {
+    // current format
+    libraries = savedConfig.libraries || [];
+    globalSettings = savedConfig.settings || {};
+    if (savedConfig.templateVars) {
+        templateVars = savedConfig.templateVars;
+    }
+    if (savedConfig.libraryTemplateVars) {
+        libraryTemplateVars = savedConfig.libraryTemplateVars;
+    }
+}
+
+// undo/redo system
+let historyStack = [];
+let historyIndex = -1;
+const MAX_HISTORY = 50;
+
+// library templates (stored in database)
+let libraryTemplates = [];
+
+// save state to history
+function saveToHistory() {
+    const state = {
+        libraries: JSON.parse(JSON.stringify(libraries)),
+        globalSettings: JSON.parse(JSON.stringify(globalSettings)),
+        templateVars: JSON.parse(JSON.stringify(templateVars))
+    };
+    
+    // remove any future history if we're not at the end
+    if (historyIndex < historyStack.length - 1) {
+        historyStack = historyStack.slice(0, historyIndex + 1);
+    }
+    
+    historyStack.push(state);
+    if (historyStack.length > MAX_HISTORY) {
+        historyStack.shift();
+    } else {
+        historyIndex++;
+    }
+    
+    updateUndoRedoButtons();
+}
+
+// restore state from history
+function restoreFromHistory(index) {
+    if (index < 0 || index >= historyStack.length) return;
+    
+    const state = historyStack[index];
+    libraries = JSON.parse(JSON.stringify(state.libraries));
+    globalSettings = JSON.parse(JSON.stringify(state.globalSettings));
+    templateVars = JSON.parse(JSON.stringify(state.templateVars));
+    
+    // reload ui
+    renderLibs();
+    gen();
+    updateUndoRedoButtons();
+}
+
+function undoAction() {
+    if (historyIndex > 0) {
+        historyIndex--;
+        restoreFromHistory(historyIndex);
+    }
+}
+
+function redoAction() {
+    if (historyIndex < historyStack.length - 1) {
+        historyIndex++;
+        restoreFromHistory(historyIndex);
+    }
+}
+
+function updateUndoRedoButtons() {
+    document.getElementById('btn-undo').disabled = historyIndex <= 0;
+    document.getElementById('btn-redo').disabled = historyIndex >= historyStack.length - 1;
+}
+
+// initialize history with current state
+saveToHistory();
+
+// map overlay keys to quick settings fields
 const overlaySettingsMap = {
     'content_rating_au': ['builder_level', 'addon_position'],
     'commonsense': ['builder_level', 'addon_position'],
@@ -465,7 +664,7 @@ const overlaySettingsMap = {
     'language_count': ['builder_level', 'minimum', 'style']
 };
 
-// Tab switching
+// tab switching
 function switchTab(t) {
     document.querySelectorAll('.k-section').forEach(el => el.classList.remove('active'));
     document.querySelectorAll('.k-tab').forEach(el => el.classList.remove('active'));
@@ -473,7 +672,7 @@ function switchTab(t) {
     event.target.classList.add('active');
 }
 
-// Lock options until a library is selected.
+// lock options until a library is selected
 function toggleOptions() {
     const libName = document.getElementById('temp_lib_name').value;
     const wrapper = document.getElementById('options-lock-wrapper');
@@ -488,25 +687,25 @@ function toggleOptions() {
     }
 }
 
-// Variable modal
+// variable modal
 let currentEditKey = null;
 
 function editVars(key, e) {
     if(e) e.stopPropagation(); 
     
-    // Prefer the checkbox next to the clicked gear icon to avoid duplicates.
+    // prefer the checkbox next to the clicked gear icon to avoid duplicates
     let checkbox = null;
     if (e && e.target) {
         const parent = e.target.closest('.k-check-item');
         if (parent) checkbox = parent.querySelector('input[type="checkbox"]');
     }
 
-    // Fall back to a selector if we lose event context.
+    // fall back to a selector if we lose event context
     if (!checkbox) {
         checkbox = document.querySelector(`.t-opt[value="${key}"]`);
     }
 
-    // Auto-check the box if it wasn't already selected.
+    // auto-check the box if it wasn't already selected
     if(checkbox && !checkbox.checked) {
         checkbox.checked = true;
         gen();
@@ -515,60 +714,64 @@ function editVars(key, e) {
     currentEditKey = key;
     document.getElementById('modal-title').innerText = key;
     document.getElementById('var-modal').style.display = 'flex';
+    lockBodyScroll();
+    lockBodyScroll();
     
-    // Detect overlay vs collection.
+    // detect overlay vs collection
     const isOverlay = checkbox && checkbox.classList.contains('ovl');
     
     const qsHeader = document.getElementById('qs-header');
     const qsContainer = document.getElementById('qs-container');
 
-    // Reset quick settings visibility.
+    // reset quick settings visibility
     document.querySelectorAll('.qs-col').forEach(el => el.style.display = 'none');
     qsHeader.style.display = 'block';
     qsContainer.style.display = 'grid';
 
     if (isOverlay) {
-        // Overlays only show the allowed quick settings.
+        // overlays only show the allowed quick settings
         const allowedFields = overlaySettingsMap[key];
         
         if (allowedFields && allowedFields.length > 0) {
             allowedFields.forEach(field => {
-                // Convert underscores to dashes (e.g. builder_level -> wrapper-qs-builder-level).
+                // convert underscores to dashes (e.g. builder_level -> wrapper-qs-builder-level)
                 const id = 'wrapper-qs-' + field.replace(/_/g, '-');
                 const el = document.getElementById(id);
                 if(el) el.style.display = 'block';
             });
         } else {
-            // No fields for this overlay, hide quick settings.
+            // no fields for this overlay, hide quick settings
             qsHeader.style.display = 'none';
             qsContainer.style.display = 'none';
         }
     } else {
-        // Collections show the standard quick settings.
+        // collections show the standard quick settings
         ['limit', 'sort', 'coll-mode', 'sync-mode', 'include', 'exclude'].forEach(f => {
              const el = document.getElementById('wrapper-qs-' + f);
              if(el) el.style.display = 'block';
         });
     }
     
-    // Load existing vars (or empty).
+    // load existing vars (or empty)
     const vars = templateVars[key] || {};
     
-    // Populate values.
+    // populate values
     const setVal = (id, val) => { if(document.getElementById(id)) document.getElementById(id).value = val || ''; };
     setVal('qs-limit', vars.limit);
     setVal('qs-sort', vars.sort_by);
     setVal('qs-coll-mode', vars.collection_mode);
     setVal('qs-sync-mode', vars.sync_mode);
-    setVal('qs-include', vars.include);
-    setVal('qs-exclude', vars.exclude);
+    const includeVal = Array.isArray(vars.include) ? vars.include.join(', ') : vars.include;
+    const excludeVal = Array.isArray(vars.exclude) ? vars.exclude.join(', ') : vars.exclude;
+    setVal('qs-include', includeVal);
+    setVal('qs-exclude', excludeVal);
     setVal('qs-builder-level', vars.builder_level);
     setVal('qs-addon-position', vars.addon_position);
     setVal('qs-style', vars.style);
     setVal('qs-minimum', vars.minimum);
     setVal('qs-use-subtitles', vars.use_subtitles);
 
-    // Populate custom vars.
+    // populate custom vars
     const container = document.getElementById('var-container');
     container.innerHTML = '';
     
@@ -600,10 +803,10 @@ function addVarRow(k = '', v = '') {
 function saveModal() {
     let data = {};
 
-    // Capture quick settings (only when visible).
+    // capture quick settings (only when visible)
     const captureIfVisible = (id, key, isNum=false) => {
         const el = document.getElementById(id);
-        // Only save visible fields with values.
+        // only save visible fields with values
         if(el && el.parentElement.style.display !== 'none' && el.value) {
             data[key] = isNum ? Number(el.value) : el.value;
         }
@@ -621,12 +824,12 @@ function saveModal() {
     captureIfVisible('qs-minimum', 'minimum', true);
     captureIfVisible('qs-use-subtitles', 'use_subtitles');
 
-    // Capture custom rows.
+    // capture custom rows
     const rows = document.querySelectorAll('.var-row');
     rows.forEach(r => {
         const k = r.querySelector('.key').value.trim();
         const v = r.querySelector('.val').value.trim();
-        if(k) data[k] = isNaN(v) || v === "" ? v : Number(v); // Auto-convert numbers.
+        if(k) data[k] = isNaN(v) || v === "" ? v : Number(v); // auto-convert numbers
     });
 
     if(Object.keys(data).length > 0) {
@@ -636,51 +839,55 @@ function saveModal() {
     }
 
     closeModal();
-    gen(); // Regenerate YAML
+    saveToHistory();
+        gen(); // regenerate yaml
+    updatePerformanceIndicator();
 }
 
 function closeModal() {
     document.getElementById('var-modal').style.display = 'none';
     currentEditKey = null;
+    unlockBodyScroll();
 }
 
-// YAML generation
+// yaml generation
 function gen() {
+    updatePerformanceIndicator();
     let y = "";
 
-    // Core settings
+    // core settings
     y += `plex:\n`;
-    y += `  url: ${esc(document.getElementById('plex_url').value)}\n`;
-    y += `  token: ${esc(document.getElementById('plex_token').value)}\n`;
+    y += `  url: ${esc(document.getElementById('plex_url').value)}${formatInlineComment(inlineComments.plex?.url)}\n`;
+    y += `  token: ${esc(document.getElementById('plex_token').value)}${formatInlineComment(inlineComments.plex?.token)}\n`;
     y += `  timeout: 60\n  clean_bundles: false\n  empty_trash: false\n  optimize: false\n\n`;
 
     y += `tmdb:\n`;
-    y += `  apikey: ${esc(document.getElementById('tmdb_key').value)}\n`;
+    y += `  apikey: ${esc(document.getElementById('tmdb_key').value)}${formatInlineComment(inlineComments.tmdb?.apikey)}\n`;
     y += `  language: en\n  cache_expiration: 60\n  region: US\n\n`;
 
-    // Global settings
+    // global settings
     y += `settings:\n`;
-    y += `  cache: ${val('s_cache')}\n`;
-    y += `  cache_expiration: ${val('s_cache_expiration')}\n`;
-    y += `  asset_folders: ${val('s_asset_folders')}\n`;
-    y += `  show_missing_assets: ${val('s_show_missing')}\n`;
-    y += `  sync_mode: ${val('s_sync_mode')}\n`;
-    y += `  minimum_items: ${val('s_minimum_items')}\n`;
-    y += `  delete_below_minimum: ${val('s_delete_below_min')}\n`;
-    y += `  overlay_artwork_quality: ${val('s_artwork_quality')}\n`;
+    y += `  cache: ${val('s_cache')}${formatInlineComment(inlineComments.settings?.cache)}\n`;
+    y += `  cache_expiration: ${val('s_cache_expiration')}${formatInlineComment(inlineComments.settings?.cache_expiration)}\n`;
+    y += `  asset_folders: ${val('s_asset_folders')}${formatInlineComment(inlineComments.settings?.asset_folders)}\n`;
+    y += `  show_missing_assets: ${val('s_show_missing')}${formatInlineComment(inlineComments.settings?.show_missing_assets || inlineComments.settings?.show_missing)}\n`;
+    y += `  sync_mode: ${val('s_sync_mode')}${formatInlineComment(inlineComments.settings?.sync_mode)}\n`;
+    y += `  minimum_items: ${val('s_minimum_items')}${formatInlineComment(inlineComments.settings?.minimum_items)}\n`;
+    y += `  delete_below_minimum: ${val('s_delete_below_min')}${formatInlineComment(inlineComments.settings?.delete_below_minimum || inlineComments.settings?.delete_below_min)}\n`;
+    y += `  overlay_artwork_quality: ${val('s_artwork_quality')}${formatInlineComment(inlineComments.settings?.overlay_artwork_quality || inlineComments.settings?.artwork_quality)}\n`;
     
-    // Defaults that Kometa expects.
+    // defaults that kometa expects
     y += `  asset_directory: config/assets\n  run_order:\n`;
     if(val('s_run_order') === 'collections_first') {
-        y += `    - collections\n    - overlays\n    - metadata\n    - operations\n\n`;
+        y += `  - collections\n  - overlays\n  - metadata\n  - operations\n\n`;
     } else {
-        y += `    - operations\n    - metadata\n    - collections\n    - overlays\n\n`;
+        y += `  - operations\n  - metadata\n  - collections\n  - overlays\n\n`;
     }
 
-    // Libraries
+    // libraries
     y += `libraries:\n`;
     
-    // Merge saved libs with current preview.
+    // merge saved libs with current preview
     let allLibs = JSON.parse(JSON.stringify(libraries)); 
     const currentName = document.getElementById('temp_lib_name')?.value;
 
@@ -694,9 +901,13 @@ function gen() {
             }
         });
 
-        if (currentCols.length > 0 || currentOvls.length > 0) {
-            const idx = allLibs.findIndex(l => l.name === currentName);
-            const newObj = { name: currentName, cols: currentCols, ovls: currentOvls };
+        const idx = allLibs.findIndex(l => l.name === currentName);
+        const existing = idx > -1 ? allLibs[idx] : null;
+        const mergedCols = mergeUnknownOptions(currentCols, existing ? existing.cols : []);
+        const mergedOvls = mergeUnknownOptions(currentOvls, existing ? existing.ovls : []);
+
+        if (mergedCols.length > 0 || mergedOvls.length > 0) {
+            const newObj = { name: currentName, cols: mergedCols, ovls: mergedOvls };
             if (idx > -1) allLibs[idx] = newObj;
             else allLibs.push(newObj);
         }
@@ -707,49 +918,34 @@ function gen() {
     } else {
         allLibs.forEach(l => {
             y += `  ${l.name}:\n`;
+            const libVars = libraryTemplateVars[l.name];
+            if (libVars && Object.keys(libVars).length > 0) {
+                y += `    template_variables:\n`;
+                y += writeTemplateVars(libVars, 6, inlineComments.libraryTemplateVars?.[l.name]);
+            }
             if (l.cols.length > 0) {
                 y += `    collection_files:\n`;
                 l.cols.forEach(c => {
+                    const colComment = inlineComments.libraryDefaults?.[l.name]?.collections?.[c];
                     if (templateVars[c] && Object.keys(templateVars[c]).length > 0) {
-                        y += `      - default: ${c}\n`;
-                        y += `        template_variables:\n`;
-                        Object.entries(templateVars[c]).forEach(([k, v]) => {
-                            // Special handling for list-based variables.
-                            if (k === 'include' || k === 'exclude') {
-                                y += `          ${k}:\n`;
-                                // Ensure value is treated as a list.
-                                String(v).split(',').forEach(item => {
-                                    const val = item.trim();
-                                    if(val) y += `            - ${val}\n`;
-                                });
-                            } else {
-                                y += `          ${k}: ${v}\n`;
-                            }
-                        });
+                        y += `    - default: ${c}${formatInlineComment(colComment)}\n`;
+                        y += `      template_variables:\n`;
+                        y += writeTemplateVars(templateVars[c], 8, inlineComments.templateVars?.[c]);
                     } else {
-                        y += `      - default: ${c}\n`;
+                        y += `    - default: ${c}${formatInlineComment(colComment)}\n`;
                     }
                 });
             }
             if (l.ovls.length > 0) {
                 y += `    overlay_files:\n`;
                 l.ovls.forEach(o => {
+                    const ovlComment = inlineComments.libraryDefaults?.[l.name]?.overlays?.[o];
                     if (templateVars[o] && Object.keys(templateVars[o]).length > 0) {
-                        y += `      - default: ${o}\n`;
-                        y += `        template_variables:\n`;
-                        Object.entries(templateVars[o]).forEach(([k, v]) => {
-                            if (k === 'include' || k === 'exclude') {
-                                y += `          ${k}:\n`;
-                                String(v).split(',').forEach(item => {
-                                    const val = item.trim();
-                                    if(val) y += `            - ${val}\n`;
-                                });
-                            } else {
-                                y += `          ${k}: ${v}\n`;
-                            }
-                        });
+                        y += `    - default: ${o}${formatInlineComment(ovlComment)}\n`;
+                        y += `      template_variables:\n`;
+                        y += writeTemplateVars(templateVars[o], 8, inlineComments.templateVars?.[o]);
                     } else {
-                        y += `      - default: ${o}\n`;
+                        y += `    - default: ${o}${formatInlineComment(ovlComment)}\n`;
                     }
                 });
             }
@@ -759,21 +955,57 @@ function gen() {
     document.getElementById('output').innerHTML = y;
 }
 
-// Small helpers
+// small helpers
 function esc(str) { return str ? str : "INSERT_HERE"; }
 function val(id) { 
     const el = document.getElementById(id);
     return el ? el.value : ''; 
 }
 
-// Save progress
+function hasOption(value) {
+    return !!document.querySelector(`.t-opt[value="${value}"]`);
+}
+
+function mergeUnknownOptions(selected, existing) {
+    const extras = (existing || []).filter(v => !hasOption(v));
+    return [...new Set([...(selected || []), ...extras])];
+}
+
+function writeTemplateVars(vars, indent, commentMap = {}) {
+    if (!vars || Object.keys(vars).length === 0) return '';
+    const pad = ' '.repeat(indent);
+    const listPad = ' '.repeat(indent + 2);
+    let out = '';
+    Object.entries(vars).forEach(([k, v]) => {
+        if (v === undefined || v === null || v === '') return;
+        const comment = commentMap && commentMap[k] ? formatInlineComment(commentMap[k]) : '';
+        if (Array.isArray(v)) {
+            out += `${pad}${k}:${comment}\n`;
+            v.forEach(item => {
+                const val = String(item).trim();
+                if (val) out += `${listPad}- ${val}\n`;
+            });
+        } else if ((k === 'include' || k === 'exclude') && typeof v === 'string' && v.includes(',')) {
+            out += `${pad}${k}:${comment}\n`;
+            v.split(',').forEach(item => {
+                const val = item.trim();
+                if (val) out += `${listPad}- ${val}\n`;
+            });
+        } else {
+            out += `${pad}${k}: ${v}${comment}\n`;
+        }
+    });
+    return out;
+}
+
+// save progress
 function saveProgress() {
     const btn = document.querySelector('button[onclick="saveProgress()"]');
     const oldText = btn.innerText;
     btn.innerText = "Saving...";
     btn.disabled = true;
 
-    // Capture settings inputs.
+    // capture settings inputs
     const currentSettings = {
         cache: val('s_cache'),
         cache_expiration: val('s_cache_expiration'),
@@ -788,7 +1020,10 @@ function saveProgress() {
 
     const payload = {
         libraries: libraries,
-        settings: currentSettings, // Save the new settings object.
+        settings: currentSettings, // save the new settings object
+        templateVars: templateVars, // save template variables
+        libraryTemplateVars: libraryTemplateVars, // save per-library template vars
+        inlineComments: inlineComments, // keep inline yaml comments
         plex_url: document.getElementById('plex_url').value,
         plex_token: document.getElementById('plex_token').value,
         tmdb_key: document.getElementById('tmdb_key').value
@@ -801,6 +1036,19 @@ function saveProgress() {
     })
     .then(r => r.json())
     .then(data => {
+        if (data && data.status === 'success') {
+            // update in-memory saved config so Compare shows this state immediately
+            savedConfig = {
+                libraries: payload.libraries,
+                settings: payload.settings,
+                templateVars: payload.templateVars,
+                libraryTemplateVars: payload.libraryTemplateVars,
+                inlineComments: payload.inlineComments,
+                plex_url: payload.plex_url,
+                plex_token: payload.plex_token,
+                tmdb_key: payload.tmdb_key
+            };
+        }
         btn.innerText = "Saved ✅";
         setTimeout(() => { btn.innerText = oldText; btn.disabled = false; }, 2000);
     })
@@ -811,7 +1059,7 @@ function saveProgress() {
     });
 }
 
-// Fetch libraries
+// fetch libraries
 function fetchLibs() {
     const select = document.getElementById('temp_lib_name');
     select.innerHTML = '<option disabled selected>Loading...</option>';
@@ -870,14 +1118,19 @@ function addLibrary() {
     });
 
     const existingIdx = libraries.findIndex(l => l.name === name);
+    const existing = existingIdx > -1 ? libraries[existingIdx] : null;
+    const mergedCols = mergeUnknownOptions(cols, existing ? existing.cols : []);
+    const mergedOvls = mergeUnknownOptions(ovls, existing ? existing.ovls : []);
     if (existingIdx > -1) {
-        libraries[existingIdx] = { name, type, cols, ovls };
+        libraries[existingIdx] = { name, type, cols: mergedCols, ovls: mergedOvls };
     } else {
-        libraries.push({ name, type, cols, ovls });
+        libraries.push({ name, type, cols: mergedCols, ovls: mergedOvls });
     }
 
+    saveToHistory();
     renderLibs();
     gen();
+    updatePerformanceIndicator();
     
     document.getElementById('temp_lib_name').value = "";
     document.querySelectorAll('.t-opt').forEach(cb => cb.checked = false);
@@ -915,8 +1168,10 @@ function editLib(idx) {
 function removeLib(idx) {
     if(confirm("Remove this library?")) {
         libraries.splice(idx, 1);
+        saveToHistory();
         renderLibs();
         gen();
+        updatePerformanceIndicator();
     }
 }
 
@@ -956,9 +1211,1062 @@ function copyYaml() {
     document.body.removeChild(textArea);
 }
 
-// Bootstrapping
+// library templates
+function showTemplatesModal() {
+    document.getElementById('templates-modal').style.display = 'flex';
+    loadTemplates();
+}
+
+function saveAsTemplate() {
+    const name = document.getElementById('template-name').value.trim();
+    if (!name) {
+        alert('Please enter a template name');
+        return;
+    }
+    
+    const currentName = document.getElementById('temp_lib_name')?.value;
+    if (!currentName) {
+        alert('Please select a library first');
+        return;
+    }
+    
+    let cols = [];
+    let ovls = [];
+    document.querySelectorAll('.t-opt:checked').forEach(cb => {
+        if (!cb.parentElement.parentElement.classList.contains('hidden')) {
+            if(cb.classList.contains('ovl')) ovls.push(cb.value);
+            else cols.push(cb.value);
+        }
+    });
+    
+    // get template vars for this library's collections/overlays
+    const libTemplateVars = {};
+    [...cols, ...ovls].forEach(key => {
+        if (templateVars[key]) {
+            libTemplateVars[key] = templateVars[key];
+        }
+    });
+    
+    const templateData = {
+        name: name,
+        type: document.getElementById('temp_lib_type').value,
+        cols: cols,
+        ovls: ovls,
+        templateVars: libTemplateVars
+    };
+    
+    fetch('/api/kometa_templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(templateData)
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.status === 'success') {
+            document.getElementById('template-name').value = '';
+            loadTemplates();
+            alert('Template saved!');
+        } else {
+            alert('Failed to save template: ' + (data.message || 'Unknown error'));
+        }
+    })
+    .catch(e => {
+        alert('Error saving template: ' + e.message);
+    });
+}
+
+function loadTemplates() {
+    fetch('/api/kometa_templates')
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'success') {
+                libraryTemplates = data.templates;
+                renderTemplatesList();
+            }
+        })
+        .catch(e => {
+            console.error('Failed to load templates:', e);
+            libraryTemplates = [];
+            renderTemplatesList();
+        });
+}
+
+function renderTemplatesList() {
+    const container = document.getElementById('templates-list');
+    if (libraryTemplates.length === 0) {
+        container.innerHTML = '<div style="text-align: center; color: #555; padding: 20px;">No templates saved yet.</div>';
+        return;
+    }
+    
+    let html = '';
+    libraryTemplates.forEach((t, idx) => {
+        html += `<div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; background: rgba(255,255,255,0.05); border: 1px solid #333; border-radius: 4px; margin-bottom: 8px;">
+            <div>
+                <strong>${t.name}</strong>
+                <small style="color: #888; display: block;">${t.type} • ${t.cols.length} collections • ${t.ovls.length} overlays</small>
+            </div>
+            <div style="display: flex; gap: 5px;">
+                <button class="btn-secondary" onclick="applyTemplate(${idx})" style="padding: 5px 10px; font-size: 0.85em;">Apply</button>
+                <button class="btn-remove" onclick="deleteTemplate(${t.id})" style="padding: 5px 10px; font-size: 0.85em;">Delete</button>
+            </div>
+        </div>`;
+    });
+    container.innerHTML = html;
+}
+
+function applyTemplate(idx) {
+    const template = libraryTemplates[idx];
+    document.getElementById('temp_lib_type').value = template.type;
+    filterOpts();
+    
+    // uncheck all first
+    document.querySelectorAll('.t-opt').forEach(cb => cb.checked = false);
+    
+    // check template's collections and overlays
+    [...template.cols, ...template.ovls].forEach(val => {
+        const cb = document.querySelector(`.t-opt[value="${val}"]`);
+        if (cb) cb.checked = true;
+    });
+    
+    // apply template vars
+    Object.keys(template.templateVars || {}).forEach(key => {
+        templateVars[key] = template.templateVars[key];
+    });
+    
+    saveToHistory();
+    gen();
+    updatePerformanceIndicator();
+    document.getElementById('templates-modal').style.display = 'none';
+}
+
+function deleteTemplate(templateId) {
+    if (!confirm('Delete this template?')) return;
+    
+    fetch(`/api/kometa_templates/${templateId}`, {
+        method: 'DELETE'
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.status === 'success') {
+            loadTemplates();
+        } else {
+            alert('Failed to delete template: ' + (data.message || 'Unknown error'));
+        }
+    })
+    .catch(e => {
+        alert('Error deleting template: ' + e.message);
+    });
+}
+
+// import config (url or paste)
+function showImportModal() {
+    resetImportModal();
+    const modal = document.getElementById('import-modal');
+    modal.classList.add('is-open');
+    modal.style.display = 'flex';
+    modal.style.visibility = 'visible';
+    modal.style.pointerEvents = 'auto';
+    const box = modal.querySelector('.modal-box');
+    if (box) {
+        box.style.display = 'block';
+        box.style.opacity = '1';
+        box.style.visibility = 'visible';
+    }
+    lockBodyScroll();
+}
+
+function switchImportTab(tab) {
+    // update button active states
+    document.getElementById('import-tab-url').classList.toggle('active', tab === 'url');
+    document.getElementById('import-tab-paste').classList.toggle('active', tab === 'paste');
+    
+    // show/hide sections
+    document.getElementById('import-url-section').classList.toggle('active', tab === 'url');
+    document.getElementById('import-paste-section').classList.toggle('active', tab === 'paste');
+}
+
+function resetImportModal() {
+    document.getElementById('import-url').value = '';
+    document.getElementById('import-paste').value = '';
+    switchImportTab('url');
+}
+
+function closeImportModal() {
+    const modal = document.getElementById('import-modal');
+    modal.classList.remove('is-open');
+    modal.style.display = 'none';
+    modal.style.visibility = 'hidden';
+    modal.style.pointerEvents = 'none';
+    const box = modal.querySelector('.modal-box');
+    if (box) {
+        box.style.display = 'none';
+        box.style.opacity = '0';
+        box.style.visibility = 'hidden';
+    }
+    resetImportModal();
+    unlockBodyScroll();
+}
+
+function lockBodyScroll() {
+    document.body.classList.add('modal-open');
+}
+
+function unlockBodyScroll() {
+    const hasOpenOverlay = document.querySelector('.modal-overlay.is-open');
+    const varModal = document.getElementById('var-modal');
+    if (hasOpenOverlay) return;
+    if (varModal && varModal.style.display === 'flex') return;
+    document.body.classList.remove('modal-open');
+}
+
+function formatInlineComment(comment) {
+    return comment ? ` ${comment}` : '';
+}
+
+function splitInlineComment(text) {
+    if (!text) return { value: '', comment: '' };
+    let inSingle = false;
+    let inDouble = false;
+    for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        if (ch === "'" && !inDouble) inSingle = !inSingle;
+        if (ch === '"' && !inSingle) inDouble = !inDouble;
+        if (ch === '#' && !inSingle && !inDouble) {
+            return {
+                value: text.slice(0, i).trimEnd(),
+                comment: text.slice(i).trim()
+            };
+        }
+    }
+    return { value: text.trimEnd(), comment: '' };
+}
+
+function ensureLibraryCommentBucket(libName) {
+    if (!inlineComments.libraryDefaults[libName]) {
+        inlineComments.libraryDefaults[libName] = { collections: {}, overlays: {} };
+    }
+    if (!inlineComments.libraryTemplateVars[libName]) {
+        inlineComments.libraryTemplateVars[libName] = {};
+    }
+}
+
+function validateYamlSecurity(yamlText) {
+    // security validation to prevent malicious content
+    const maxSize = 500 * 1024; // 500KB max
+    if (yamlText.length > maxSize) {
+        throw new Error('Config file is too large (max 500KB)');
+    }
+    
+    // block dangerous command execution patterns (but allow yaml structure)
+    const dangerousPatterns = [
+        // command execution attempts (in actual values, not yaml structure)
+        /\beval\s*\(/i,
+        /\bexec\s*\(/i,
+        /\bsystem\s*\(/i,
+        /\bsubprocess\s*\./i,
+        /\bos\.system/i,
+        /\bshell_exec\s*\(/i,
+        /\bpassthru\s*\(/i,
+        /\bproc_open\s*\(/i,
+        /\bpopen\s*\(/i,
+        /\bexec\s*\(/i,
+        
+        // sql injection patterns (in string values)
+        /['"]\s*(union|select|insert|update|delete|drop|create|alter|exec|execute)\s+.*from/i,
+        /;\s*(drop|delete|truncate)\s*['"]/i,
+        
+        // file system manipulation commands
+        /\brm\s+-rf/i,
+        /\bdel\s+\/s/i,
+        /\bformat\s+[a-z]:/i,
+        /\brmdir\s+\/s/i,
+        
+        // path traversal attempts (but allow normal paths)
+        /\.\.\/\.\.\/\.\.\/\.\.\//,  // multiple parent directory traversals
+        /\.\.\\\.\.\\\.\.\\/,  // windows path traversal
+        
+        // script injection
+        /<script[^>]*>/i,
+        /javascript\s*:/i,
+        /on\w+\s*=\s*["']/i,  // event handlers in strings
+        
+        // database operations (in string values)
+        /['"]\s*db\.(drop|delete|remove)/i,
+        /['"]\s*database\.(drop|delete)/i,
+        
+        // shell command injection
+        /\$\s*\(/,
+        /`[^`]*\$\{/,
+        /`[^`]*\$\(/,
+    ];
+    
+    // check for dangerous patterns in content (not in yaml structure)
+    const lines = yamlText.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const trimmed = line.trim();
+        
+        if (!trimmed) continue;
+        const { value: safeLine } = splitInlineComment(trimmed);
+        if (!safeLine) continue;
+        
+        // extract the value part (after the colon for key-value pairs)
+        let valuePart = safeLine;
+        const colonIndex = safeLine.indexOf(':');
+        if (colonIndex > 0) {
+            valuePart = safeLine.substring(colonIndex + 1).trim();
+        }
+        
+        // check for dangerous patterns in the value part
+        for (const pattern of dangerousPatterns) {
+            if (pattern.test(valuePart)) {
+                throw new Error(`Security validation failed: Potentially dangerous content detected at line ${i + 1}`);
+            }
+        }
+    }
+    
+    // validate it looks like yaml (must have at least one key-value pair or list)
+    if (!yamlText.match(/^\s*\w+:/m) && !yamlText.match(/^\s*-\s+/m)) {
+        throw new Error('Invalid YAML format: File does not appear to be valid YAML');
+    }
+    
+    // block if it contains executable code patterns (at start of lines, indicating code files)
+    const codePatterns = [
+        /^import\s+\w+/m,
+        /^from\s+\w+\s+import/m,
+        /^require\s*\(['"]/m,
+        /^const\s+\w+\s*=\s*require\s*\(/m,
+        /^function\s+\w+\s*\(/m,
+        /^def\s+\w+\s*\(/m,
+        /^class\s+\w+/m,
+        /^#!\s*\/bin\//m,  // shebang
+    ];
+    
+    for (const pattern of codePatterns) {
+        if (pattern.test(yamlText)) {
+            throw new Error('Security validation failed: Code execution patterns detected');
+        }
+    }
+    
+    // block if it contains suspicious file operations
+    const fileOps = [
+        /\bfs\.(unlink|rmdir|rm)/i,
+        /\bfile_put_contents\s*\(/i,
+        /\bfwrite\s*\(/i,
+        /\bfopen\s*\([^)]*['"]w/i,
+    ];
+    
+    for (const pattern of fileOps) {
+        if (pattern.test(yamlText)) {
+            throw new Error('Security validation failed: Suspicious file operations detected');
+        }
+    }
+    
+    return true;
+}
+
+function validateUrl(url) {
+    // basic url validation to prevent malicious urls
+    try {
+        const urlObj = new URL(url);
+        
+        // only allow http and https
+        if (!['http:', 'https:'].includes(urlObj.protocol)) {
+            throw new Error('Only HTTP and HTTPS URLs are allowed');
+        }
+        
+        // block localhost and private IPs (basic check)
+        const hostname = urlObj.hostname.toLowerCase();
+        if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '0.0.0.0') {
+            throw new Error('Local URLs are not allowed for security');
+        }
+        
+        // block private IP ranges (basic regex check)
+        if (/^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)/.test(hostname)) {
+            throw new Error('Private IP addresses are not allowed');
+        }
+        
+        // block file:// and other dangerous protocols
+        if (urlObj.protocol === 'file:' || urlObj.protocol === 'javascript:') {
+            throw new Error('Dangerous URL protocol detected');
+        }
+        
+        return true;
+    } catch (e) {
+        if (e instanceof TypeError) {
+            throw new Error('Invalid URL format');
+        }
+        throw e;
+    }
+}
+
+async function importConfig() {
+    const urlSection = document.getElementById('import-url-section');
+    const isUrlMode = urlSection.classList.contains('active');
+    
+    let yamlText = '';
+    
+    if (isUrlMode) {
+        const url = document.getElementById('import-url').value.trim();
+        if (!url) {
+            alert('Please enter a URL');
+            return;
+        }
+        
+        // validate url format and security
+        try {
+            validateUrl(url);
+        } catch (error) {
+            alert('URL validation failed: ' + error.message);
+            return;
+        }
+        
+        // fetch with timeout
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+            
+            const response = await fetch(url, {
+                signal: controller.signal,
+                method: 'GET',
+                headers: {
+                    'Accept': 'text/plain, text/yaml, application/yaml, text/x-yaml'
+                }
+            });
+            
+            clearTimeout(timeoutId);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            // check content type (optional, but helpful)
+            const contentType = response.headers.get('content-type') || '';
+            if (contentType && !contentType.includes('text') && !contentType.includes('yaml') && !contentType.includes('plain')) {
+                console.warn('Unexpected content type:', contentType);
+            }
+            
+            yamlText = await response.text();
+            
+            // limit response size (additional check)
+            if (yamlText.length > 500 * 1024) {
+                throw new Error('Response too large (max 500KB)');
+            }
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                alert('Request timed out. Please try again or use a faster server.');
+            } else {
+                alert('Failed to import from URL: ' + error.message);
+            }
+            return;
+        }
+    } else {
+        yamlText = document.getElementById('import-paste').value.trim();
+        if (!yamlText) {
+            alert('Please paste YAML content');
+            return;
+        }
+    }
+    
+    // security validation
+    try {
+        validateYamlSecurity(yamlText);
+    } catch (error) {
+        alert('Security validation failed: ' + error.message);
+        return;
+    }
+    
+    // parse and import
+    try {
+        parseYamlConfig(yamlText);
+        closeImportModal();
+        alert('Config imported! Review and customize as needed.');
+    } catch (error) {
+        alert('Failed to parse config: ' + error.message);
+    }
+}
+
+function parseYamlConfig(yamlText) {
+    // parse yaml and map the bits this builder supports
+    const lines = yamlText.split('\n');
+    
+    libraries = [];
+    templateVars = {};
+    libraryTemplateVars = {};
+    inlineComments = {
+        plex: {},
+        tmdb: {},
+        settings: {},
+        templateVars: {},
+        libraryTemplateVars: {},
+        libraryDefaults: {}
+    };
+    
+    const parsedPlex = {};
+    const parsedTmdb = {};
+    const parsedSettings = {};
+    let parsedRunOrder = [];
+    
+    let section = null;
+    let currentLib = null;
+    let currentCollection = null;
+    let inTemplateVars = false;
+    let templateVarIndent = 0;
+    let inLibraryTemplateVars = false;
+    let libraryTemplateIndent = 0;
+    let currentTemplateListVar = null;
+    let currentLibraryListVar = null;
+    let currentSettingsListVar = null;
+    let collectionIndent = null;
+    let overlayIndent = null;
+    let currentListSection = null;
+    
+    const parseValue = (raw) => {
+        if (raw === undefined || raw === null) return '';
+        let val = raw.trim();
+        if (val === '') return '';
+        const isQuoted = (val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"));
+        if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+            val = val.slice(1, -1);
+        }
+        if (val === 'true') return true;
+        if (val === 'false') return false;
+        if (!isNaN(val) && val !== '') return Number(val);
+        return val;
+    };
+    
+    const setField = (id, value) => {
+        const el = document.getElementById(id);
+        if (el && value !== undefined && value !== null && value !== '') {
+            el.value = String(value);
+        }
+    };
+    
+    lines.forEach((line) => {
+        const trimmed = line.trim();
+        if (!trimmed) return;
+        const { value: cleaned, comment: lineComment } = splitInlineComment(trimmed);
+        if (!cleaned) return;
+        
+        const indent = line.length - line.trimStart().length;
+        
+        if (indent === 0 && cleaned.endsWith(':')) {
+            section = cleaned.replace(':', '');
+            if (section !== 'libraries') {
+                currentLib = null;
+                currentCollection = null;
+                inTemplateVars = false;
+                inLibraryTemplateVars = false;
+                collectionIndent = null;
+                overlayIndent = null;
+                currentListSection = null;
+            }
+            return;
+        }
+        
+        if (section === 'plex' && indent === 2) {
+            const [k, ...rest] = cleaned.split(':');
+            const rawVal = rest.join(':');
+            parsedPlex[k] = parseValue(rawVal);
+            if (lineComment) inlineComments.plex[k] = lineComment;
+            return;
+        }
+        
+        if (section === 'tmdb' && indent === 2) {
+            const [k, ...rest] = cleaned.split(':');
+            const rawVal = rest.join(':');
+            parsedTmdb[k] = parseValue(rawVal);
+            if (lineComment) inlineComments.tmdb[k] = lineComment;
+            return;
+        }
+        
+        if (section === 'settings') {
+            if (indent === 2 && cleaned.endsWith(':')) {
+                const key = cleaned.replace(':', '');
+                if (key === 'run_order') {
+                    parsedRunOrder = [];
+                    parsedSettings.run_order = parsedRunOrder;
+                    currentSettingsListVar = 'run_order';
+                } else {
+                    parsedSettings[key] = '';
+                }
+                return;
+            }
+            
+            if (indent === 2 && cleaned.includes(':')) {
+                const [k, ...rest] = cleaned.split(':');
+                const rawVal = rest.join(':');
+                parsedSettings[k] = parseValue(rawVal);
+                if (lineComment) inlineComments.settings[k] = lineComment;
+                currentSettingsListVar = null;
+                return;
+            }
+            
+            if (currentSettingsListVar === 'run_order' && cleaned.startsWith('- ') && indent >= 2) {
+                parsedRunOrder.push(cleaned.substring(2).trim());
+                return;
+            }
+        }
+        
+        if (section === 'libraries') {
+            const libMatch = cleaned.match(/^(.+):\s*$/);
+            if (libMatch && indent === 2) {
+                if (currentLib) {
+                    libraries.push(currentLib);
+                }
+                currentLib = { name: libMatch[1], type: 'movie', cols: [], ovls: [] };
+                currentCollection = null;
+                inTemplateVars = false;
+                inLibraryTemplateVars = false;
+                collectionIndent = null;
+                overlayIndent = null;
+                return;
+            }
+            
+            if (!currentLib) return;
+            
+            if (cleaned === 'template_variables:' && indent === 4) {
+                inLibraryTemplateVars = true;
+                libraryTemplateIndent = indent;
+                if (!libraryTemplateVars[currentLib.name]) {
+                    libraryTemplateVars[currentLib.name] = {};
+                }
+                currentLibraryListVar = null;
+                return;
+            }
+            
+            if (inLibraryTemplateVars && indent > libraryTemplateIndent) {
+                if (cleaned.startsWith('- ') && currentLibraryListVar) {
+                    const listItem = cleaned.substring(2).trim().replace(/^["']|["']$/g, '');
+                    if (!Array.isArray(libraryTemplateVars[currentLib.name][currentLibraryListVar])) {
+                        libraryTemplateVars[currentLib.name][currentLibraryListVar] = [];
+                    }
+                    libraryTemplateVars[currentLib.name][currentLibraryListVar].push(listItem);
+                    return;
+                }
+                
+                if (cleaned.includes(':')) {
+                    const [k, ...rest] = cleaned.split(':');
+                    const rawVal = rest.join(':');
+                    if (rawVal.trim() === '') {
+                        currentLibraryListVar = k.trim();
+                        libraryTemplateVars[currentLib.name][currentLibraryListVar] = [];
+                        if (lineComment) {
+                            ensureLibraryCommentBucket(currentLib.name);
+                            inlineComments.libraryTemplateVars[currentLib.name][k.trim()] = lineComment;
+                        }
+                    } else {
+                        currentLibraryListVar = null;
+                        libraryTemplateVars[currentLib.name][k.trim()] = parseValue(rawVal);
+                        if (lineComment) {
+                            ensureLibraryCommentBucket(currentLib.name);
+                            inlineComments.libraryTemplateVars[currentLib.name][k.trim()] = lineComment;
+                        }
+                    }
+                    return;
+                }
+            }
+            
+            if (inLibraryTemplateVars && indent <= libraryTemplateIndent) {
+                inLibraryTemplateVars = false;
+                currentLibraryListVar = null;
+            }
+            
+            if (cleaned.includes('collection_files:') && indent === 4) {
+                collectionIndent = indent;
+                overlayIndent = null;
+                currentListSection = 'collections';
+                currentCollection = null;
+                inTemplateVars = false;
+                return;
+            }
+            
+            if (cleaned.includes('overlay_files:') && indent === 4) {
+                overlayIndent = indent;
+                collectionIndent = null;
+                currentListSection = 'overlays';
+                currentCollection = null;
+                inTemplateVars = false;
+                return;
+            }
+            
+            const defaultMatch = cleaned.match(/^- default:\s*(.+)$/);
+            if (defaultMatch && (indent === 4 || indent === 6)) {
+                const val = defaultMatch[1].trim().replace(/^["']|["']$/g, '');
+                currentCollection = val;
+                inTemplateVars = false;
+                
+                if (currentListSection === 'overlays' || Object.keys(overlaySettingsMap).includes(val)) {
+                    if (!currentLib.ovls.includes(val)) {
+                        currentLib.ovls.push(val);
+                    }
+                    if (lineComment) {
+                        ensureLibraryCommentBucket(currentLib.name);
+                        inlineComments.libraryDefaults[currentLib.name].overlays[val] = lineComment;
+                    }
+                } else {
+                    if (!currentLib.cols.includes(val)) {
+                        currentLib.cols.push(val);
+                    }
+                    if (lineComment) {
+                        ensureLibraryCommentBucket(currentLib.name);
+                        inlineComments.libraryDefaults[currentLib.name].collections[val] = lineComment;
+                    }
+                }
+                return;
+            }
+            
+            if (cleaned === 'template_variables:' && indent >= 6) {
+                inTemplateVars = true;
+                templateVarIndent = indent;
+                if (currentCollection && !templateVars[currentCollection]) {
+                    templateVars[currentCollection] = {};
+                }
+                currentTemplateListVar = null;
+                return;
+            }
+            
+            if (inTemplateVars && currentCollection && indent > templateVarIndent) {
+                if (cleaned.startsWith('- ') && indent >= templateVarIndent + 2 && currentTemplateListVar) {
+                    const listItem = cleaned.substring(2).trim();
+                    const cleanItem = listItem.replace(/^["']|["']$/g, '');
+                    if (!Array.isArray(templateVars[currentCollection][currentTemplateListVar])) {
+                        templateVars[currentCollection][currentTemplateListVar] = [];
+                    }
+                    templateVars[currentCollection][currentTemplateListVar].push(cleanItem);
+                    return;
+                }
+                
+                const varMatch = cleaned.match(/^([^\s:]+):\s*(.*)$/);
+                if (varMatch) {
+                    const varName = varMatch[1];
+                    let varValue = varMatch[2];
+                    
+                    if (varName === 'include' || varName === 'exclude') {
+                        templateVars[currentCollection][varName] = [];
+                        currentTemplateListVar = varName;
+                        if (varValue) {
+                            varValue.split(',').forEach(item => {
+                                const cleaned = item.trim().replace(/^["']|["']$/g, '');
+                                if (cleaned) templateVars[currentCollection][varName].push(cleaned);
+                            });
+                        }
+                    } else if (varValue.trim() === '') {
+                        currentTemplateListVar = varName;
+                        templateVars[currentCollection][varName] = [];
+                    } else {
+                        currentTemplateListVar = null;
+                        templateVars[currentCollection][varName] = parseValue(varValue);
+                    }
+                    if (lineComment) {
+                        if (!inlineComments.templateVars[currentCollection]) {
+                            inlineComments.templateVars[currentCollection] = {};
+                        }
+                        inlineComments.templateVars[currentCollection][varName] = lineComment;
+                    }
+                    return;
+                }
+            }
+            
+            if (inTemplateVars && indent <= templateVarIndent) {
+                inTemplateVars = false;
+                currentTemplateListVar = null;
+            }
+        }
+    });
+    
+    if (currentLib) {
+        libraries.push(currentLib);
+    }
+    
+    Object.keys(templateVars).forEach(key => {
+        Object.keys(templateVars[key]).forEach(varKey => {
+            if ((varKey === 'include' || varKey === 'exclude') && Array.isArray(templateVars[key][varKey])) {
+                templateVars[key][varKey] = templateVars[key][varKey].join(', ');
+            }
+        });
+    });
+    
+    if (parsedPlex.url) setField('plex_url', parsedPlex.url);
+    if (parsedPlex.token) setField('plex_token', parsedPlex.token);
+    if (parsedTmdb.apikey) setField('tmdb_key', parsedTmdb.apikey);
+    
+    if (parsedSettings.cache !== undefined) setField('s_cache', parsedSettings.cache);
+    if (parsedSettings.cache_expiration !== undefined) setField('s_cache_expiration', parsedSettings.cache_expiration);
+    if (parsedSettings.asset_folders !== undefined) setField('s_asset_folders', parsedSettings.asset_folders);
+    if (parsedSettings.show_missing_assets !== undefined) setField('s_show_missing', parsedSettings.show_missing_assets);
+    if (parsedSettings.show_missing !== undefined) setField('s_show_missing', parsedSettings.show_missing);
+    if (parsedSettings.sync_mode !== undefined) setField('s_sync_mode', parsedSettings.sync_mode);
+    if (parsedSettings.minimum_items !== undefined) setField('s_minimum_items', parsedSettings.minimum_items);
+    if (parsedSettings.delete_below_minimum !== undefined) setField('s_delete_below_min', parsedSettings.delete_below_minimum);
+    if (parsedSettings.overlay_artwork_quality !== undefined) setField('s_artwork_quality', parsedSettings.overlay_artwork_quality);
+    
+    if (parsedRunOrder.length > 0) {
+        const first = parsedRunOrder[0];
+        setField('s_run_order', first === 'collections' ? 'collections_first' : 'operations_first');
+    }
+    
+    saveToHistory();
+    renderLibs();
+    
+    if (libraries.length > 0) {
+        const firstLib = libraries[0];
+        const select = document.getElementById('temp_lib_name');
+        let optionExists = false;
+        for (let i = 0; i < select.options.length; i++) {
+            if (select.options[i].value === firstLib.name) {
+                optionExists = true;
+                break;
+            }
+        }
+        if (!optionExists) {
+            const opt = document.createElement('option');
+            opt.value = firstLib.name;
+            opt.text = firstLib.name + " (Imported)";
+            opt.setAttribute('data-type', firstLib.type);
+            select.add(opt);
+        }
+        editLib(0);
+    }
+    
+    gen();
+    updatePerformanceIndicator();
+}
+
+// comparison mode
+function showComparison() {
+    // regenerate current output to ensure it's up to date
+    gen();
+    
+    // get the current yaml from the output box (what's shown right now)
+    const currentYaml = document.getElementById('output').innerText;
+    const savedYaml = generateYamlFromSaved();
+    
+    // build aligned diffs (so lines stay together unless they diverge)
+    const diff = buildComparisonDiff(currentYaml, savedYaml);
+    
+    document.getElementById('comparison-current').innerHTML = diff.leftHtml;
+    document.getElementById('comparison-saved').innerHTML = diff.rightHtml;
+    document.getElementById('comparison-modal').classList.add('is-open');
+    lockBodyScroll();
+}
+
+function closeComparisonModal() {
+    const modal = document.getElementById('comparison-modal');
+    modal.classList.remove('is-open');
+    unlockBodyScroll();
+}
+
+
+function buildComparisonDiff(leftText, rightText) {
+    const leftLines = leftText.split('\n');
+    const rightLines = rightText.split('\n');
+    const ops = diffLines(leftLines, rightLines);
+    
+    const leftRows = [];
+    const rightRows = [];
+    
+    ops.forEach(op => {
+        if (op.type === 'equal') {
+            leftRows.push({ line: leftLines[op.a], className: 'diff-unchanged' });
+            rightRows.push({ line: rightLines[op.b], className: 'diff-unchanged' });
+        } else if (op.type === 'delete') {
+            leftRows.push({ line: leftLines[op.a], className: 'diff-added' });
+            rightRows.push({ line: '', className: 'diff-blank' });
+        } else if (op.type === 'add') {
+            leftRows.push({ line: '', className: 'diff-blank' });
+            rightRows.push({ line: rightLines[op.b], className: 'diff-removed' });
+        }
+    });
+    
+    return {
+        leftHtml: renderDiffLines(leftRows),
+        rightHtml: renderDiffLines(rightRows)
+    };
+}
+
+function diffLines(leftLines, rightLines) {
+    const n = leftLines.length;
+    const m = rightLines.length;
+    const dp = Array.from({ length: n + 1 }, () => Array(m + 1).fill(0));
+    
+    for (let i = n - 1; i >= 0; i--) {
+        for (let j = m - 1; j >= 0; j--) {
+            if (leftLines[i] === rightLines[j]) {
+                dp[i][j] = dp[i + 1][j + 1] + 1;
+            } else {
+                dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);
+            }
+        }
+    }
+    
+    const ops = [];
+    let i = 0;
+    let j = 0;
+    
+    while (i < n && j < m) {
+        if (leftLines[i] === rightLines[j]) {
+            ops.push({ type: 'equal', a: i, b: j });
+            i++;
+            j++;
+        } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+            ops.push({ type: 'delete', a: i });
+            i++;
+        } else {
+            ops.push({ type: 'add', b: j });
+            j++;
+        }
+    }
+    
+    while (i < n) {
+        ops.push({ type: 'delete', a: i });
+        i++;
+    }
+    
+    while (j < m) {
+        ops.push({ type: 'add', b: j });
+        j++;
+    }
+    
+    return ops;
+}
+
+function renderDiffLines(rows) {
+    return rows.map(row => {
+        const text = row.line === '' ? '&nbsp;' : escapeHtml(row.line);
+        const cls = row.className ? `diff-line ${row.className}` : 'diff-line';
+        return `<span class="${cls}">${text}</span>`;
+    }).join('');
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function generateYamlFromSaved() {
+    // generate yaml from saved config (similar to gen() but using saved data)
+    if (!savedConfig || Array.isArray(savedConfig)) return '# No saved config';
+    
+    const savedSettings = savedConfig.settings || {};
+    const savedTemplateVars = savedConfig.templateVars || {};
+    const savedLibraryTemplateVars = savedConfig.libraryTemplateVars || {};
+    const savedComments = savedConfig.inlineComments || {};
+    
+    let y = "";
+    y += `plex:\n`;
+    y += `  url: ${savedConfig.plex_url || 'INSERT_HERE'}${formatInlineComment(savedComments.plex?.url)}\n`;
+    y += `  token: ${savedConfig.plex_token || 'INSERT_HERE'}${formatInlineComment(savedComments.plex?.token)}\n`;
+    y += `  timeout: 60\n  clean_bundles: false\n  empty_trash: false\n  optimize: false\n\n`;
+    
+    y += `tmdb:\n`;
+    y += `  apikey: ${savedConfig.tmdb_key || 'INSERT_HERE'}${formatInlineComment(savedComments.tmdb?.apikey)}\n`;
+    y += `  language: en\n  cache_expiration: 60\n  region: US\n\n`;
+    
+    y += `settings:\n`;
+    y += `  cache: ${savedSettings.cache ?? true}${formatInlineComment(savedComments.settings?.cache)}\n`;
+    y += `  cache_expiration: ${savedSettings.cache_expiration ?? 60}${formatInlineComment(savedComments.settings?.cache_expiration)}\n`;
+    y += `  asset_folders: ${savedSettings.asset_folders ?? true}${formatInlineComment(savedComments.settings?.asset_folders)}\n`;
+    y += `  show_missing_assets: ${savedSettings.show_missing_assets ?? savedSettings.show_missing ?? true}${formatInlineComment(savedComments.settings?.show_missing_assets || savedComments.settings?.show_missing)}\n`;
+    y += `  sync_mode: ${savedSettings.sync_mode ?? 'append'}${formatInlineComment(savedComments.settings?.sync_mode)}\n`;
+    y += `  minimum_items: ${savedSettings.minimum_items ?? 1}${formatInlineComment(savedComments.settings?.minimum_items)}\n`;
+    y += `  delete_below_minimum: ${savedSettings.delete_below_min ?? false}${formatInlineComment(savedComments.settings?.delete_below_minimum || savedComments.settings?.delete_below_min)}\n`;
+    y += `  overlay_artwork_quality: ${savedSettings.artwork_quality ?? 90}${formatInlineComment(savedComments.settings?.overlay_artwork_quality || savedComments.settings?.artwork_quality)}\n`;
+    
+    y += `  asset_directory: config/assets\n  run_order:\n`;
+    if ((savedSettings.run_order ?? '') === 'collections_first') {
+        y += `  - collections\n  - overlays\n  - metadata\n  - operations\n\n`;
+    } else {
+        y += `  - operations\n  - metadata\n  - collections\n  - overlays\n\n`;
+    }
+    
+    const savedLibs = savedConfig.libraries || [];
+    y += `libraries:\n`;
+    if (savedLibs.length === 0) {
+        y += `  # Add a library in Tab 3 to see config...`;
+    } else {
+        savedLibs.forEach(l => {
+            y += `  ${l.name}:\n`;
+            const libVars = savedLibraryTemplateVars[l.name];
+            if (libVars && Object.keys(libVars).length > 0) {
+                y += `    template_variables:\n`;
+                y += writeTemplateVars(libVars, 6, savedComments.libraryTemplateVars?.[l.name]);
+            }
+            if (l.cols && l.cols.length > 0) {
+                y += `    collection_files:\n`;
+                l.cols.forEach(c => {
+                    const colComment = savedComments.libraryDefaults?.[l.name]?.collections?.[c];
+                    if (savedTemplateVars[c] && Object.keys(savedTemplateVars[c]).length > 0) {
+                        y += `    - default: ${c}${formatInlineComment(colComment)}\n`;
+                        y += `      template_variables:\n`;
+                        y += writeTemplateVars(savedTemplateVars[c], 8, savedComments.templateVars?.[c]);
+                    } else {
+                        y += `    - default: ${c}${formatInlineComment(colComment)}\n`;
+                    }
+                });
+            }
+            if (l.ovls && l.ovls.length > 0) {
+                y += `    overlay_files:\n`;
+                l.ovls.forEach(o => {
+                    const ovlComment = savedComments.libraryDefaults?.[l.name]?.overlays?.[o];
+                    if (savedTemplateVars[o] && Object.keys(savedTemplateVars[o]).length > 0) {
+                        y += `    - default: ${o}${formatInlineComment(ovlComment)}\n`;
+                        y += `      template_variables:\n`;
+                        y += writeTemplateVars(savedTemplateVars[o], 8, savedComments.templateVars?.[o]);
+                    } else {
+                        y += `    - default: ${o}${formatInlineComment(ovlComment)}\n`;
+                    }
+                });
+            }
+        });
+    }
+    
+    return y;
+}
+
+// performance indicators
+function updatePerformanceIndicator() {
+    let totalCollections = 0;
+    let totalOverlays = 0;
+    
+    libraries.forEach(lib => {
+        totalCollections += lib.cols ? lib.cols.length : 0;
+        totalOverlays += lib.ovls ? lib.ovls.length : 0;
+    });
+    
+    // estimate collections (some options create multiple collections)
+    const collectionMultipliers = {
+        'genre': 20, 'franchise': 15, 'universe': 10, 'actor': 50, 'director': 30,
+        'streaming': 20, 'studio': 25, 'year': 30, 'decade': 10, 'content_rating_us': 6
+    };
+    
+    let estimatedCollections = 0;
+    libraries.forEach(lib => {
+        lib.cols.forEach(col => {
+            estimatedCollections += collectionMultipliers[col] || 1;
+        });
+    });
+    
+    // estimate runtime (rough: 1 collection = ~2-5 seconds, 1 overlay = ~1-2 seconds)
+    const estimatedSeconds = (estimatedCollections * 3) + (totalOverlays * 1.5);
+    const minutes = Math.floor(estimatedSeconds / 60);
+    const seconds = Math.floor(estimatedSeconds % 60);
+    
+    const indicator = document.getElementById('performance-indicator');
+    document.getElementById('perf-collections').innerHTML = 
+        `<strong>Estimated Collections:</strong> ${estimatedCollections.toLocaleString()} (${totalCollections} types selected)`;
+    document.getElementById('perf-runtime').innerHTML = 
+        `<strong>Est. Runtime:</strong> ${minutes}m ${seconds}s`;
+    
+    if (totalCollections > 0 || totalOverlays > 0) {
+        indicator.style.display = 'block';
+    }
+}
+
+// bootstrapping
 document.addEventListener('DOMContentLoaded', () => { 
-    // Populate settings from saved state.
+    // populate settings from saved state
     if (globalSettings) {
         const setVal = (id, v) => { if(document.getElementById(id) && v !== undefined) document.getElementById(id).value = v; };
         
@@ -977,6 +2285,37 @@ document.addEventListener('DOMContentLoaded', () => {
     renderLibs();
     gen();
     toggleOptions();
+    updatePerformanceIndicator();
+    loadTemplates(); // load templates from database
+    
+    // watch for changes to update performance indicator
+    document.querySelectorAll('.t-opt, #temp_lib_type').forEach(el => {
+        el.addEventListener('change', () => {
+            setTimeout(updatePerformanceIndicator, 100);
+        });
+    });
+
+    const bindOverlayClose = (id, closeFn) => {
+        const modal = document.getElementById(id);
+        if (!modal) return;
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeFn();
+        });
+    };
+
+    bindOverlayClose('import-modal', closeImportModal);
+    bindOverlayClose('var-modal', closeModal);
+    bindOverlayClose('comparison-modal', closeComparisonModal);
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        const importModal = document.getElementById('import-modal');
+        const varModal = document.getElementById('var-modal');
+        const comparisonModal = document.getElementById('comparison-modal');
+        if (importModal && importModal.classList.contains('is-open')) closeImportModal();
+        if (varModal && varModal.style.display === 'flex') closeModal();
+        if (comparisonModal && comparisonModal.classList.contains('is-open')) closeComparisonModal();
+    });
 });
 </script>
 {% endblock %}
