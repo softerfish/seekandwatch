@@ -28,6 +28,7 @@
         <span title="Your custom created lists">🛠️ <b>{{ custom_presets|length }}</b> Custom</span>
         <span class="stats-label">|</span>
         <span title="Available built-in presets">📚 <b>{{ presets|length }}</b> Presets</span>
+        <span id="schedule-save-feedback" style="display:none; margin-left:12px; color: var(--success, #2ecc71); font-size: 0.9em;"></span>
     </div>
 
     <div class="action-bar">
@@ -36,6 +37,16 @@
         </a>
         <button onclick="openImportModal()" class="btn-import" id="btn-import-open">📋 Import List</button>
     </div>
+
+        <div class="card p-3 mb-4 schedule-card" style="max-width: 400px;">
+            <h5 style="margin-top:0;">Global Schedule Time</h5>
+            <p class="text-muted small" style="margin-bottom: 10px;">All "Daily" collections will run automatically after this time.</p>
+            <div class="d-flex gap-2" style="align-items:center; flex-wrap:wrap;">
+                <input type="time" id="globalTime" class="form-control" value="{{ schedule_time }}" style="max-width: 120px;">
+                <button class="btn btn-primary" onclick="saveGlobalTime()">Save</button>
+                <span id="save-time-feedback" style="display:none; color: var(--success, #2ecc71); font-size: 0.9em;">Saved</span>
+            </div>
+        </div>
 
         <div class="type-toggle-group">
         <button onclick="filterType('movie')" id="btn-movie" class="type-toggle-btn active">Movies 🎬</button>
@@ -55,9 +66,9 @@
         <div id="viewer-grid" class="playlist-grid" style="display:none; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));">
         </div>
     </div>
-<div id="preview-modal" class="import-modal">
+<div id="preview-modal" class="import-modal" onclick="if(event.target===this) closePreviewModal()">
     <div class="import-content wide">
-        <span onclick="document.getElementById('preview-modal').style.display='none'" class="close-btn">&times;</span>
+        <span onclick="closePreviewModal()" class="close-btn">&times;</span>
         <h2 id="preview-title" style="margin-top:0;">👀 Collection Preview</h2>
         <div id="preview-grid" class="preview-grid"></div>
     </div>
@@ -94,28 +105,24 @@
     </div>
 </div>
 
-<div class="card p-3 mb-4 schedule-card">
-    <h5>Global Schedule Time</h5>
-    <p class="text-muted small">All "Daily" collections will run automatically after this time.</p>
-    <div class="d-flex gap-2" style="max-width: 300px;">
-        <input type="time" id="globalTime" class="form-control" value="{{ schedule_time }}">
-        <button class="btn btn-primary" onclick="saveGlobalTime()">Save</button>
-    </div>
-</div>
-
 <script>
 function saveGlobalTime() {
-    let t = document.getElementById('globalTime').value;
+    const t = document.getElementById('globalTime').value;
+    const feedback = document.getElementById('save-time-feedback');
     fetch('/save_schedule_time', {
         method: 'POST',
         headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': '{{ csrf_token() }}'},
-        body: 'time=' + t
+        body: 'time=' + encodeURIComponent(t)
     })
     .then(r => r.json())
     .then(data => {
-        if(data.status === 'success') alert('Time Saved!');
-        else alert(data.message);
-    });
+        if (data.status === 'success') {
+            if (feedback) { feedback.style.display = 'inline'; feedback.textContent = 'Saved'; setTimeout(() => { feedback.style.display = 'none'; }, 2500); }
+        } else {
+            alert(data.message || 'Could not save time');
+        }
+    })
+    .catch(() => alert('Could not save schedule time'));
 }
 </script>
 
@@ -158,10 +165,10 @@ function saveGlobalTime() {
                         </div>
                     </div>
                 </label>
-                {% set saved_mode = playlist.get('sync_mode', 'append') %}
+                {% set sm = (sync_modes or {}).get(key, 'append') %}
                 <select id="sync-{{ key }}" onchange="saveSettings('{{ key }}')" class="control-select">
-                    <option value="append" {% if saved_mode == 'append' %}selected{% endif %}>Append (Grow)</option>
-                    <option value="sync" {% if saved_mode == 'sync' %}selected{% endif %}>Sync (Strict)</option>
+                    <option value="append" {% if sm == 'append' %}selected{% endif %}>Append (Grow)</option>
+                    <option value="sync" {% if sm == 'sync' %}selected{% endif %}>Sync (Strict)</option>
                 </select>
             </div>
 
@@ -226,10 +233,10 @@ function saveGlobalTime() {
                         <input type="hidden" id="sync-{{ key }}" value="sync">
                     </div>
                 {% else %}
-                    {% set saved_mode = playlist.get('sync_mode', 'append') %}
+                    {% set sm = (sync_modes or {}).get(key, 'append') %}
                     <select id="sync-{{ key }}" onchange="saveSettings('{{ key }}')" class="control-select">
-                        <option value="append" {% if saved_mode == 'append' %}selected{% endif %}>Append (Grow)</option>
-                        <option value="sync" {% if saved_mode == 'sync' %}selected{% endif %}>Sync (Strict)</option>
+                        <option value="append" {% if sm == 'append' %}selected{% endif %}>Append (Grow)</option>
+                        <option value="sync" {% if sm == 'sync' %}selected{% endif %}>Sync (Strict)</option>
                     </select>
                 {% endif %}
             </div>
@@ -319,10 +326,10 @@ function checkCacheStatus() {
         } else {
             btns.forEach(b => {
                 if(b.disabled && b.innerText.includes("System Busy")) {
-                    b.innerText = "Run Now 🪄"; // Default label.
-                    if(b.id.startsWith("btn-custom")) b.innerText = "Sync Now 🪄"; // Custom presets get a different label.
-                    b.disabled = false; b.innerText = "Run Now 🪄"; 
-                    b.style.opacity = "1"; b.style.cursor = "pointer";
+                    b.disabled = false;
+                    b.style.opacity = "1";
+                    b.style.cursor = "pointer";
+                    b.innerText = (b.id && b.id.startsWith("btn-custom")) ? "Sync Now 🪄" : "Run Now 🪄";
                 }
             });
             if(importBtn) { importBtn.disabled = false; importBtn.style.opacity = "1"; }
@@ -360,8 +367,9 @@ function previewCollection(key, title) {
     const grid = document.getElementById('preview-grid');
     grid.innerHTML = '<div style="text-align:center; grid-column:1/-1; padding:20px; color:#aaa;">Loading live data from TMDB...</div>';
     document.getElementById('preview-modal').style.display = 'block';
+    document.body.style.overflow = 'hidden';
     
-    fetch('/preview_preset_items/' + key)
+    fetch('/preview_preset_items/' + encodeURIComponent(key))
     .then(r => r.json())
     .then(data => {
         if(data.status === 'success') {
@@ -378,24 +386,39 @@ function previewCollection(key, title) {
             });
             grid.innerHTML = html;
         } else {
-            grid.innerHTML = `<div style="color:var(--error); grid-column:1/-1; text-align:center;">Error: ${data.message}</div>`;
+            grid.innerHTML = `<div style="color:var(--error); grid-column:1/-1; text-align:center;">Error: ${(data.message || 'Unknown error').replace(/</g, '&lt;')}</div>`;
         }
     });
 }
 
-// Delete a custom preset.
+function closePreviewModal() {
+    const modal = document.getElementById('preview-modal');
+    if (modal) { modal.style.display = 'none'; document.body.style.overflow = ''; }
+}
+
+// Delete a custom preset (from SeekAndWatch and Plex).
 function deleteCustom(key) {
-    if (!confirm("Delete from SeekAndWatch AND Plex?")) return;
-    fetch('/delete_custom_collection/' + key, {method: 'POST'})
-    .then(res => res.json()).then(data => { location.reload(); });
+    if (!confirm("Delete this collection from SeekAndWatch AND Plex?")) return;
+    fetch('/delete_custom_collection/' + encodeURIComponent(key), { method: 'POST' })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'success') {
+            alert(data.message || 'Collection deleted.');
+            location.reload();
+        } else {
+            alert(data.message || 'Could not delete collection.');
+        }
+    })
+    .catch(() => alert('Could not delete collection.'));
 }
 
 // Run a preset now.
 function createCollection(key) {
     const btn = document.getElementById('btn-' + key);
+    if (!btn) return;
     const originalText = btn.innerText;
     btn.disabled = true; btn.innerText = "Processing... ⏳"; btn.style.background = "#555";
-    fetch('/create_collection/' + key, {method: 'POST'})
+    fetch('/create_collection/' + encodeURIComponent(key), {method: 'POST'})
     .then(r => r.json()).then(d => {
         if (d.status === 'success') { btn.innerText = "Done! ✅"; btn.style.background = "#2ecc71"; alert(d.message); }
         else { btn.innerText = "Error ❌"; btn.style.background = "#e74c3c"; alert(d.message); }
@@ -409,13 +432,25 @@ function saveSettings(key) {
     const syncEl = document.getElementById('sync-' + key);
     
     const freq = freqEl ? freqEl.value : 'manual';
-    // If sync is locked (Trending), fall back to strict sync.
-    const sync = syncEl ? syncEl.value : 'sync';
+    const sync = (syncEl && syncEl.value) ? syncEl.value : 'sync';
 
-    fetch('/schedule_collection', { // NOTE: keep route in sync with app.py
-        method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: `preset_key=${key}&frequency=${freq}&sync_mode=${sync}`
-    });
+    fetch('/schedule_collection', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': '{{ csrf_token() }}'},
+        body: `preset_key=${encodeURIComponent(key)}&frequency=${encodeURIComponent(freq)}&sync_mode=${encodeURIComponent(sync)}`
+    })
+    .then(r => r.json())
+    .then(data => {
+        const fb = document.getElementById('schedule-save-feedback');
+        if (data.status === 'success' && fb) {
+            fb.textContent = 'Settings saved';
+            fb.style.display = 'inline';
+            setTimeout(() => { fb.style.display = 'none'; }, 2500);
+        } else if (data.message) {
+            alert(data.message);
+        }
+    })
+    .catch(() => alert('Could not save settings'));
 }
 
 // Import modal
@@ -485,5 +520,13 @@ function createImportedCollection() {
         else { alert(data.message); }
     });
 }
+
+document.addEventListener('keydown', function(e) {
+    if (e.key !== 'Escape') return;
+    const preview = document.getElementById('preview-modal');
+    const importModal = document.getElementById('import-modal');
+    if (preview && preview.style.display === 'block') closePreviewModal();
+    else if (importModal && importModal.style.display === 'block') closeImportModal();
+});
 </script>
 {% endblock %}

@@ -249,7 +249,7 @@
                             </p>
                         </div>`, false);
                 } else if (data.action === 'restart_needed') {
-                    showModal("✅ Update Complete", "<p>Files updated successfully.</p><p>Please <b>restart the container</b> to apply changes.</p>", true);
+                    showModal("✅", "Update Complete", "<p>Files updated successfully.</p><p>Please <b>restart the container</b> to apply changes.</p>", false);
                 } else if (data.action === 'manual_instruction') {
                     if (confirm("⬇️ Update Available! Download from GitHub?")) {
                         window.open('https://github.com/softerfish/seekandwatch/releases', '_blank');
