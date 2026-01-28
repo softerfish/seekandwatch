@@ -1,4 +1,4 @@
-"""Shared helpers and background utilities."""
+"""Helper functions and utilities used throughout the app."""
 
 import concurrent.futures
 import datetime
@@ -34,7 +34,7 @@ CACHE_FILE = '/config/plex_cache.json'
 LOCK_FILE = '/config/cache.lock'
 SCANNER_LOG_FILE = '/config/scanner.log'
 
-# Global shared state
+# in-memory caches (also persisted to disk)
 RESULTS_CACHE = {}
 HISTORY_CACHE = {}
 TMDB_REC_CACHE = {}
@@ -148,9 +148,9 @@ def diverse_sample(items, limit, bucket_fn=None):
         keys = next_keys
     return result
 
-# Session helpers
+# session helper functions
 def get_session_filters():
-    """Retrieves filter settings from the current user session."""
+    """Gets all the filter settings from the user's session."""
     try: min_year = int(session.get('min_year', 0))
     except: min_year = 0
     
@@ -166,13 +166,12 @@ def get_session_filters():
     
     return min_year, min_rating, genre_filter, critic_enabled, threshold
 
-# Keyword helpers
+# keyword/tag matching stuff
 
 def prefetch_keywords_parallel(items, api_key):
     """
-    1. Checks DB for keywords.
-    2. Fetches missing ones from API.
-    3. Saves to DB and enforces the limit.
+    Fetches TMDB keywords for items in parallel.
+    Checks DB first, then API for missing ones, saves to DB.
     """
     if not items: return
 
@@ -192,26 +191,26 @@ def prefetch_keywords_parallel(items, api_key):
     except Exception as e:
         print(f"DB Read Error: {e}")
 
-    # Figure out what is missing.
+    # find what's missing from the cache
     for item in items:
         if item['id'] not in cached_map:
             needed.append(item)
     
     if not needed:
-        return  # Everything is already cached.
+        return  # already got everything we need
 
-    # Fetch missing from API (parallel).
+    # fetch the missing ones from TMDB API (in parallel for speed)
     def fetch_tags(item):
         try:
-            # TMDB uses 'keywords' for movies, 'results' for TV keywords.
-            ep = 'keywords'  # Default endpoint suffix.
+            # TMDB endpoint is different for movies vs TV, but both use /keywords
+            ep = 'keywords'  # default endpoint
             url = f"https://api.themoviedb.org/3/{item['media_type']}/{item['id']}/keywords?api_key={api_key}"
             
             r = requests.get(url, timeout=10)
             if r.status_code != 200: return None
             
             data = r.json()
-            # Handle different JSON structures for Movie vs TV
+            # movies return 'keywords', TV returns 'results' - handle both
             raw_tags = data.get('keywords', data.get('results', []))
             tags = [k['name'].lower() for k in raw_tags]
             
@@ -220,7 +219,7 @@ def prefetch_keywords_parallel(items, api_key):
             return None
 
     new_entries = []
-    # 10 workers to prevent timeouts on large batches
+    # use 10 workers so we don't timeout on big batches
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
         results = executor.map(fetch_tags, needed)
         for res in results:
@@ -246,14 +245,14 @@ def prefetch_keywords_parallel(items, api_key):
                     ))
                     count_added += 1
             
-            # Only prune if we actually added data.
+            # only clean up old entries if we actually added new stuff
             if count_added > 0:
                 s = Settings.query.first()
                 limit = s.keyword_cache_size or 2000
                 
                 total = TmdbKeywordCache.query.count()
                 if total > limit:
-                    # Delete oldest entries to maintain limit.
+                    # delete the oldest entries to stay under the limit
                     excess = total - limit
                     subq = db.session.query(TmdbKeywordCache.id).order_by(TmdbKeywordCache.timestamp.asc()).limit(excess).subquery()
                     TmdbKeywordCache.query.filter(TmdbKeywordCache.id.in_(subq)).delete(synchronize_session=False)
@@ -264,18 +263,18 @@ def prefetch_keywords_parallel(items, api_key):
             db.session.rollback()
             
 def item_matches_keywords(item, target_keywords):
-    # If no keywords selected, everything passes.
+    # if no keywords filter, everything matches
     if not target_keywords: return True
     
-    # Prepare search terms.
+    # normalize the search terms
     search_terms = {t.lower() for t in target_keywords}
     
-    # Fast check: title + overview.
+    # quick check: see if keywords are in the title/overview
     text_blob = (item.get('title', '') + ' ' + item.get('name', '') + ' ' + item.get('overview', '')).lower()
     for term in search_terms:
         if term in text_blob: return True
             
-    # Deep check: cached keywords in DB.
+    # deeper check: look at the cached TMDB keywords
     try:
         entry = TmdbKeywordCache.query.filter_by(tmdb_id=item['id']).first()
         api_tags = json.loads(entry.keywords) if entry else []
@@ -289,7 +288,7 @@ def item_matches_keywords(item, target_keywords):
     return False
 
 def prefetch_omdb_parallel(items, api_key):
-    # Fetch RT scores in parallel to reduce per-item latency.
+    # grab rotten tomatoes scores in parallel (way faster than one at a time)
     if not api_key or not items:
         return
 
@@ -322,9 +321,9 @@ def prefetch_omdb_parallel(items, api_key):
 load_results_cache()
 load_history_cache()
     
-# Logging
+# logging functions
 def write_log(level, module, message, app_obj=None):
-    # Handle app context for logging.
+    # need to handle app context since this might be called from background threads
     try:
         if app_obj:
             with app_obj.app_context():
@@ -368,9 +367,9 @@ def _write_log_internal(level, module, message):
                 db.session.commit()
 
 def write_scanner_log(message):
-    """Writes to a local file, rotating if it exceeds the size limit."""
+    """Writes scanner messages to a file, rotates if it gets too big."""
     try:
-        # Local import to avoid circular dependency.
+        # import here to avoid circular dependency issues
         from models import Settings
         s = Settings.query.first()
         limit_mb = s.scanner_log_size if s and s.scanner_log_size is not None else 10
@@ -423,7 +422,7 @@ def normalize_title(title):
     # Strip non-alphanumeric.
     return re.sub(r'[^a-z0-9]', '', t)
 
-# Alias helpers
+# alias/title matching stuff
 def get_tmdb_aliases(tmdb_id, media_type, settings):
     try:
         cached = TmdbAlias.query.filter_by(tmdb_id=tmdb_id, media_type=media_type).first()
@@ -439,11 +438,8 @@ def get_tmdb_aliases(tmdb_id, media_type, settings):
         key = 'titles' if 'titles' in data else 'results'
         aliases = [normalize_title(x['title']) for x in data.get(key, [])]
         
-        try:
-            # Storing aliases is optional; ID presence is the primary check.
-            pass
-        except:
-            pass
+        # could store aliases here but we mainly just need the ID match
+        # (the alias DB handles the rest)
             
         return aliases
     except:
@@ -468,18 +464,18 @@ def run_alias_scan(app_obj):
 
         try:
             with open(cache_path, 'r') as f:
-                # Cache format is now a list of strings.
+                # cache is just a list of normalized titles now
                 owned_titles = json.load(f)
         except: return
 
-        # Map titles -> TMDB IDs.
+        # figure out which titles we haven't scanned yet
         existing_plex_titles = set([row.plex_title for row in TmdbAlias.query.with_entities(TmdbAlias.plex_title).all()])
         to_scan = [t for t in owned_titles if t not in existing_plex_titles]
         
         total = len(to_scan)
         if total == 0:
             write_scanner_log("All items already indexed. Sleeping.")
-            # Update timestamp so we don't loop forever.
+            # update timestamp so we don't keep checking on every run
             s.last_alias_scan = int(time.time())
             db.session.commit()
             return
@@ -493,9 +489,9 @@ def run_alias_scan(app_obj):
         
         for title in current_batch:
             try:
-                # 1. Search Movie
+                # try searching as a movie first
                 search_url = f"https://api.themoviedb.org/3/search/movie?api_key={s.tmdb_key}&query={title}"
-                r = requests.get(search_url).json()
+                r = requests.get(search_url, timeout=10).json()
                 
                 tmdb_id = None
                 media_type = 'movie'
@@ -506,16 +502,16 @@ def run_alias_scan(app_obj):
                     tmdb_id = hit['id']
                 
                 if not tmdb_id:
-                    # 2. Search TV
+                    # no movie match, try TV instead
                     search_url = f"https://api.themoviedb.org/3/search/tv?api_key={s.tmdb_key}&query={title}"
-                    r = requests.get(search_url).json()
+                    r = requests.get(search_url, timeout=10).json()
                     if r.get('results'):
                         hit = r['results'][0]
                         tmdb_id = hit['id']
                         media_type = 'tv'
                         
                 if tmdb_id and hit:
-                    # Store main entry.
+                    # found it! save the mapping
                     main_entry = TmdbAlias(
                         tmdb_id=tmdb_id, media_type=media_type, 
                         plex_title=title, original_title=normalize_title(hit.get('title', hit.get('name'))),
@@ -523,13 +519,13 @@ def run_alias_scan(app_obj):
                     )
                     db.session.add(main_entry)
                 else:
-                    # Not found, store placeholder.
+                    # couldn't find it on TMDB, save a placeholder so we don't keep searching
                     dummy = TmdbAlias(tmdb_id=-1, media_type='unknown', plex_title=title)
                     db.session.add(dummy)
                 
                 processed += 1
-                if processed % 10 == 0: db.session.commit()
-                time.sleep(0.2)
+                if processed % 10 == 0: db.session.commit()  # commit every 10 to avoid losing progress
+                time.sleep(0.2)  # be nice to TMDB API
                 
             except Exception as e:
                 print(f"Scan Error on {title}: {e}")
@@ -538,7 +534,7 @@ def run_alias_scan(app_obj):
         db.session.commit()
         write_scanner_log(f"Batch complete. Processed {processed} items.")
 
-# Lock + cache
+# lock file stuff (prevents multiple operations from running at once)
 def is_system_locked():
     return os.path.exists(LOCK_FILE)
 
@@ -637,7 +633,7 @@ def get_plex_cache(settings):
     except:
         return []
 
-# Collection sync
+# collection syncing logic
 def run_collection_logic(settings, preset, key, app_obj=None):
     if is_system_locked(): return False, "System busy."
     
@@ -650,7 +646,7 @@ def run_collection_logic(settings, preset, key, app_obj=None):
         params['api_key'] = settings.tmdb_key
         tmdb_items = []
 
-        # determine sync rules
+        # figure out if this is a trending collection (needs strict sync)
         category = preset.get('category', '')
         is_trending = 'Trending' in category or 'Trending' in preset.get('title', '')
         
@@ -659,11 +655,11 @@ def run_collection_logic(settings, preset, key, app_obj=None):
         user_mode = preset.get('sync_mode', 'append')
         mode = 'sync' if is_trending else user_mode
 
-        # Fetch from TMDB.
+        # grab items from TMDB
         if 'with_collection_id' in params:
             col_id = params.pop('with_collection_id')
             url = f"https://api.themoviedb.org/3/collection/{col_id}?api_key={settings.tmdb_key}&language=en-US"
-            data = requests.get(url).json()
+            data = requests.get(url, timeout=10).json()
             tmdb_items = data.get('parts', [])
         else:
             url = f"https://api.themoviedb.org/3/discover/{preset['media_type']}"
@@ -679,14 +675,14 @@ def run_collection_logic(settings, preset, key, app_obj=None):
                 for page_items in results:
                     if page_items: tmdb_items.extend(page_items)
 
-        # Safety check: abort if no items to avoid wiping collections.
+        # safety check - don't wipe collections if TMDB returns nothing
         if not tmdb_items: 
             return False, "Aborted: No items returned from TMDB. Possible API outage?"
 
-        # Match items to the Plex library.
+        # get list of what we own in plex
         owned_titles = set(get_plex_cache(settings)) 
         
-        # Load ID mappings from alias DB.
+        # load the alias mappings (TMDB ID -> Plex title)
         id_map = {}
         try:
             rows = TmdbAlias.query.with_entities(TmdbAlias.tmdb_id, TmdbAlias.plex_title).all()
@@ -694,20 +690,21 @@ def run_collection_logic(settings, preset, key, app_obj=None):
                 id_map[r.tmdb_id] = r.plex_title
         except: pass
 
+        # match TMDB items to what we own
         potential_matches = []
         for item in tmdb_items:
-            # Check ID match first (most reliable).
+            # ID match is most reliable (from alias DB)
             if item['id'] in id_map:
                 item['mapped_plex_title'] = id_map[item['id']]
                 potential_matches.append(item)
                 continue
             
-            # Fall back to title match.
+            # fall back to title matching
             norm_title = normalize_title(item.get('title', item.get('name')))
             if norm_title in owned_titles:
                 potential_matches.append(item)
 
-        # Verify matches exist in Plex.
+        # actually search plex to verify these items exist
         target_type = 'movie' if preset['media_type'] == 'movie' else 'show'
         target_lib = next((s for s in plex.library.sections() if s.type == target_type), None)
         if not target_lib: 
@@ -716,19 +713,19 @@ def run_collection_logic(settings, preset, key, app_obj=None):
         found_items = []
         if potential_matches:
             for item in potential_matches:
-                # Use mapped title if available (more reliable).
+                # use the mapped title if we have it (from alias DB)
                 search_title = item.get('mapped_plex_title', item.get('title', item.get('name')))
                 year = int((item.get('release_date') or item.get('first_air_date') or '0000')[:4])
                 
                 try:
                     results = target_lib.search(search_title)
                     for r in results:
-                        # ID match is guaranteed.
+                        # if we have a mapped title, ID match is guaranteed
                         if 'mapped_plex_title' in item:
                              found_items.append(r)
                              break
                         else:
-                            # Text match: verify year.
+                            # title match - verify the year is close (within 1 year)
                             r_year = r.year if r.year else 0
                             if r_year in [year, year-1, year+1]:
                                 found_items.append(r)
@@ -772,8 +769,8 @@ def run_collection_logic(settings, preset, key, app_obj=None):
             return True, msg
 
     except Exception as e:
-        write_log("ERROR", "Sync", str(e), app_obj=app_obj)
-        return False, str(e)
+        write_log("ERROR", "Sync", f"Collection sync failed: {str(e)}", app_obj=app_obj)
+        return False, "Collection sync failed. Please check the logs for details."
     
     finally:
         # Release lock.
@@ -810,27 +807,27 @@ def send_overseerr_request(settings, media_type, tmdb_id, uid=None):
             'mediaId': int(tmdb_id)
         }
         
-        # TV shows need season info; check Overseerr first for requestable seasons.
+        # TV shows are trickier - need to figure out which seasons to request
         if media_type == 'tv':
             seasons = []
             base_url = settings.overseerr_url.rstrip('/')
             
-            # Try Overseerr's media endpoint first.
+            # try overseerr first to see what seasons are available
             try:
                 media_url = f"{base_url}/api/v1/tv/{tmdb_id}"
                 media_resp = requests.get(media_url, headers=headers, timeout=5)
                 if media_resp.status_code == 200:
                     media_data = media_resp.json()
-                    # Overseerr season status: 1=Available, 2=Partial, 3=Unavailable, 4=Requested, 5=Pending.
-                    # Include all seasons that aren't unavailable (status 3).
+                    # overseerr status codes: 1=available, 2=partial, 3=unavailable, 4=requested, 5=pending
+                    # only request seasons that aren't unavailable
                     for season in media_data.get('seasons', []):
                         season_num = season.get('seasonNumber', 0)
                         status = season.get('status', 0)
-                        # Include regular seasons (not specials) that aren't unavailable.
+                        # skip specials (season 0) and unavailable seasons
                         if season_num > 0 and status != 3:
                             seasons.append(season_num)
             except Exception as e:
-                # If Overseerr fails, fall back to TMDB.
+                # if overseerr doesn't have it, fall back to TMDB
                 if settings.tmdb_key:
                     try:
                         url = f"https://api.themoviedb.org/3/tv/{tmdb_id}?api_key={settings.tmdb_key}"
@@ -878,15 +875,16 @@ def send_overseerr_request(settings, media_type, tmdb_id, uid=None):
         return False, f"Overseerr: {error_msg}"
 
     except Exception as e:
-        return False, f"Connection Error: {str(e)}"
+        write_log("ERROR", "Overseerr", f"Connection error: {str(e)}")
+        return False, "Connection error. Please check your Overseerr URL and API key."
         
 def check_for_updates(current_version, url):
     try:
-        # User-Agent is required for GitHub API.
+        # github requires a user-agent header
         resp = requests.get(url, headers={'User-Agent': 'SeekAndWatch'}, timeout=3)
         
         if resp.status_code == 200:
-            # Try GitHub API JSON first.
+            # try parsing as JSON first (github API format)
             try:
                 data = resp.json()
                 if 'tag_name' in data:
@@ -898,7 +896,7 @@ def check_for_updates(current_version, url):
             except:
                 pass
 
-            # Fallback: regex on raw text (older releases).
+            # fallback: regex search in the raw file (for older releases)
             match = re.search(r'VERSION\s*=\s*"([^"]+)"', resp.text)
             if match:
                 remote = match.group(1).lstrip('v').strip()
@@ -915,7 +913,7 @@ def handle_lucky_mode(settings):
     try:
         random_genre = random.choice([28, 35, 18, 878, 27, 53]) 
         url = f"https://api.themoviedb.org/3/discover/movie?api_key={settings.tmdb_key}&with_genres={random_genre}&sort_by=popularity.desc&page={random.randint(1, 10)}"
-        data = requests.get(url).json().get('results', [])
+        data = requests.get(url, timeout=10).json().get('results', [])
         
         random.shuffle(data)
         
@@ -926,7 +924,7 @@ def handle_lucky_mode(settings):
     except: pass
     return None
 
-# Backups
+# backup/restore functions
 def create_backup():
     filename = f"backup_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
     filepath = os.path.join(BACKUP_DIR, filename)
@@ -1025,7 +1023,8 @@ def restore_backup(filename):
     except zipfile.BadZipFile:
         return False, "Invalid or corrupted ZIP file"
     except Exception as e:
-        return False, str(e)
+        write_log("ERROR", "Restore Backup", f"Restore failed: {str(e)}")
+        return False, "Backup restoration failed. Please check the logs for details."
 
 def prune_backups(days=7):
     if not os.path.exists(BACKUP_DIR): return
@@ -1102,7 +1101,8 @@ def validate_url(url):
         return True, "OK"
         
     except Exception as e:
-        return False, f"Validation Error: {str(e)}"
+        write_log("ERROR", "URL Validation", f"Validation error: {str(e)}")
+        return False, "Invalid URL format. Please check your configuration."
         
 def prefetch_tv_states_parallel(items, api_key):
     # Fetch TV show status (ended/returning/canceled).
@@ -1171,7 +1171,7 @@ def prefetch_ratings_parallel(items, api_key):
     for item in items:
         item['content_rating'] = rating_map.get(item['id'], 'NR')
 
-def get_tautulli_trending(media_type='movie'):
+def get_tautulli_trending(media_type='movie', days=30):
     # get top 5 trending from tautulli
     try:
         s = Settings.query.first()
@@ -1180,7 +1180,15 @@ def get_tautulli_trending(media_type='movie'):
 
         stat_id = 'popular_movies' if media_type == 'movie' else 'popular_tv'
         
-        url = f"{s.tautulli_url.rstrip('/')}/api/v2?apikey={s.tautulli_api_key}&cmd=get_home_stats&time_range=30&stats_count=10"
+        # validate days parameter
+        try:
+            days = int(days)
+            if days < 1: days = 1
+            if days > 365: days = 365
+        except:
+            days = 30
+        
+        url = f"{s.tautulli_url.rstrip('/')}/api/v2?apikey={s.tautulli_api_key}&cmd=get_home_stats&time_range={days}&stats_count=10"
         resp = requests.get(url, timeout=5)
         data = resp.json()
 
@@ -1203,7 +1211,7 @@ def get_tautulli_trending(media_type='movie'):
                                 break
                         
                         if tmdb_id:
-                            tmdb_resp = requests.get(f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}?api_key={s.tmdb_key}").json()
+                            tmdb_resp = requests.get(f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}?api_key={s.tmdb_key}", timeout=10).json()
                             trending_items.append({
                                 'title': row.get('title'),
                                 'poster_path': tmdb_resp.get('poster_path'),
@@ -1231,7 +1239,7 @@ def is_docker():
     )
 
 def is_unraid():
-    """Best-effort detection for Unraid-hosted containers."""
+    """Tries to detect if we're running on Unraid (checks env vars and paths)."""
     if os.environ.get('UNRAID_VERSION') or os.environ.get('UNRAID_API_KEY'):
         return True
     if os.path.exists('/etc/unraid-version'):
@@ -1246,7 +1254,7 @@ def is_git_repo():
     return os.path.isdir(os.path.join(app_dir, '.git')) or os.path.isdir('/config/.git')
 
 def get_app_root():
-    """Return the absolute path to the app code directory."""
+    """Figures out where the app code actually lives."""
     env_root = os.environ.get("APP_DIR")
     if env_root and os.path.isdir(env_root):
         return env_root
@@ -1255,48 +1263,168 @@ def get_app_root():
     return os.path.dirname(os.path.abspath(__file__))
 
 def is_app_dir_writable():
-    """True if the app directory can be updated in place."""
+    """Checks if we can write to the app directory (needed for updates)."""
     app_dir = get_app_root()
     return os.path.isdir(app_dir) and os.access(app_dir, os.W_OK)
 
+def _validate_path(path, allowed_dirs, description="path"):
+    """
+    Validate that a path is within allowed directories and doesn't contain traversal.
+    
+    Args:
+        path: Path to validate
+        allowed_dirs: List of allowed directory prefixes
+        description: Description for error messages
+        
+    Returns:
+        tuple: (is_valid: bool, normalized_path: str or None, error_message: str or None)
+    """
+    if not path:
+        return False, None, f"Invalid {description}: path is empty"
+    
+    # make it absolute so we can compare properly
+    abs_path = os.path.abspath(path)
+    
+    # check for .. attempts (path traversal)
+    normalized_path = path.replace('\\', '/')
+    normalized_abs = abs_path.replace('\\', '/')
+    if '..' in normalized_path or '..' in normalized_abs or '/../' in normalized_abs or normalized_abs.endswith('/..'):
+        return False, None, f"Invalid {description}: path traversal detected"
+    
+    # make sure it's actually inside one of the allowed directories
+    for allowed in allowed_dirs:
+        allowed_abs = os.path.abspath(allowed)
+        try:
+            # Check if the path is within the allowed directory
+            common = os.path.commonpath([allowed_abs, abs_path])
+            if common == allowed_abs:
+                return True, abs_path, None
+        except ValueError:
+            # Paths on different drives (Windows) or invalid
+            continue
+    
+    return False, None, f"Invalid {description}: path outside allowed directories"
+
 def _copy_tree(src, dst):
-    for root, dirs, files in os.walk(src):
-        rel = os.path.relpath(root, src)
-        target_dir = dst if rel == "." else os.path.join(dst, rel)
+    """
+    Copies a directory tree safely - validates paths to prevent traversal attacks.
+    """
+    # only allow copying from temp directories (for updates)
+    allowed_src_dirs = []
+    temp_dir = tempfile.gettempdir()
+    if temp_dir:
+        allowed_src_dirs.append(temp_dir)
+    # Add common temp directories if they exist
+    for temp_path in ['/tmp', '/var/tmp']:
+        if os.path.exists(temp_path) and temp_path not in allowed_src_dirs:
+            allowed_src_dirs.append(temp_path)
+    
+    # only allow copying to these directories
+    allowed_dst_dirs = ['/config', '/config/app']
+    app_root = get_app_root()
+    if app_root and app_root not in allowed_dst_dirs:
+        allowed_dst_dirs.append(app_root)
+    
+    # Validate source path
+    src_valid, src_abs, src_error = _validate_path(src, allowed_src_dirs, "source")
+    if not src_valid:
+        raise ValueError(f"Copy tree validation failed: {src_error}")
+    
+    # Validate destination path
+    dst_valid, dst_abs, dst_error = _validate_path(dst, allowed_dst_dirs, "destination")
+    if not dst_valid:
+        raise ValueError(f"Copy tree validation failed: {dst_error}")
+    
+    # Ensure source exists and is a directory
+    if not os.path.isdir(src_abs):
+        raise ValueError(f"Source path is not a directory: {src_abs}")
+    
+    # Perform the copy with additional safety checks
+    for root, dirs, files in os.walk(src_abs):
+        rel = os.path.relpath(root, src_abs)
+        target_dir = dst_abs if rel == "." else os.path.join(dst_abs, rel)
+        
+        # Additional safety: ensure target_dir is still within allowed destination
+        target_abs = os.path.abspath(target_dir)
+        if not any(target_abs.startswith(os.path.abspath(d) + os.sep) or target_abs == os.path.abspath(d) 
+                   for d in allowed_dst_dirs):
+            raise ValueError(f"Path traversal detected in copy operation: {target_dir}")
+        
         os.makedirs(target_dir, exist_ok=True)
         for name in files:
-            shutil.copy2(os.path.join(root, name), os.path.join(target_dir, name))
+            # Validate filename doesn't contain path traversal
+            if '..' in name or '/' in name or '\\' in name:
+                continue  # Skip suspicious filenames
+            src_file = os.path.join(root, name)
+            dst_file = os.path.join(target_dir, name)
+            shutil.copy2(src_file, dst_file)
 
 def perform_git_update():
     """
-    Safely updates Git installs by pulling code AND installing new requirements.
+    Updates a git install - pulls latest code and reinstalls requirements.
+    Has security checks to prevent path traversal attacks.
     """
     try:
-        # Figure out where the repo lives.
+        # only allow updates from these directories
+        allowed_cwd_dirs = ['/config', '/config/app']
+        app_root = get_app_root()
+        if app_root and app_root not in allowed_cwd_dirs:
+            allowed_cwd_dirs.append(app_root)
+        
+        # figure out where the git repo is
         cwd = None
         if os.path.isdir('/config/.git'):
             cwd = '/config'
+        elif app_root and os.path.isdir(os.path.join(app_root, '.git')):
+            cwd = app_root
+        
+        # make sure the directory is safe
+        if cwd:
+            cwd_valid, cwd_abs, cwd_error = _validate_path(cwd, allowed_cwd_dirs, "working directory")
+            if not cwd_valid:
+                return False, f"Security validation failed: {cwd_error}"
+            cwd = cwd_abs
+        
+        # Additional check: ensure .git directory exists in validated path
+        if cwd and not os.path.isdir(os.path.join(cwd, '.git')):
+            return False, "Git repository validation failed: .git directory not found"
             
         # 1) Fetch latest changes.
-        subprocess.check_call(['git', 'fetch'], cwd=cwd)
+        subprocess.check_call(['git', 'fetch'], cwd=cwd, shell=False)
         
         # 2) Hard reset to the remote default branch.
-        subprocess.check_call(['git', 'reset', '--hard', 'origin/main'], cwd=cwd)
+        subprocess.check_call(['git', 'reset', '--hard', 'origin/main'], cwd=cwd, shell=False)
         
         # 3) Reinstall requirements if needed.
         req_path = 'requirements.txt'
-        if cwd: req_path = os.path.join(cwd, 'requirements.txt')
+        if cwd: 
+            req_path = os.path.join(cwd, 'requirements.txt')
         
+        # Validate req_path is within allowed directories and is actually requirements.txt
         if os.path.exists(req_path):
-             subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-r', req_path])
+            req_valid, req_abs, req_error = _validate_path(req_path, allowed_cwd_dirs, "requirements file")
+            if not req_valid:
+                return False, f"Security validation failed: {req_error}"
+            
+            # Ensure it's actually named requirements.txt (not a symlink or renamed file)
+            if os.path.basename(req_abs) != 'requirements.txt':
+                return False, "Security validation failed: requirements file name mismatch"
+            
+            # Ensure it's a regular file (not a directory or symlink)
+            if not os.path.isfile(req_abs):
+                return False, "Security validation failed: requirements path is not a file"
+            
+            subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-r', req_abs], shell=False)
              
         return True, "Update Successful! Restarting..."
     except Exception as e:
-        return False, f"Git Update Failed: {str(e)}"
+        write_log("ERROR", "Git Update", f"Update failed: {str(e)}")
+        return False, "Git update failed. Please check the logs for details."
 
 def perform_release_update():
     """
-    Updates the app by downloading the latest GitHub release archive.
+    Downloads the latest release zip from github and extracts it.
+    Used for non-git installs.
     """
     try:
         app_dir = get_app_root()
@@ -1335,8 +1463,26 @@ def perform_release_update():
 
         req_path = os.path.join(app_dir, "requirements.txt")
         if os.path.exists(req_path):
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", req_path])
+            # Validate requirements.txt path
+            allowed_dirs = ['/config', '/config/app']
+            if app_dir not in allowed_dirs:
+                allowed_dirs.append(app_dir)
+            
+            req_valid, req_abs, req_error = _validate_path(req_path, allowed_dirs, "requirements file")
+            if not req_valid:
+                return False, f"Security validation failed: {req_error}"
+            
+            # Ensure it's actually named requirements.txt
+            if os.path.basename(req_abs) != 'requirements.txt':
+                return False, "Security validation failed: requirements file name mismatch"
+            
+            # Ensure it's a regular file
+            if not os.path.isfile(req_abs):
+                return False, "Security validation failed: requirements path is not a file"
+            
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", req_abs], shell=False)
 
         return True, "Release Update Successful! Restarting..."
     except Exception as e:
-        return False, f"Release Update Failed: {str(e)}"
+        write_log("ERROR", "Release Update", f"Update failed: {str(e)}")
+        return False, "Release update failed. Please check the logs for details."

@@ -1,5 +1,5 @@
 # 🚀 SeekAndWatch
-![Version](https://img.shields.io/badge/version-1.3.0-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) (coming soon) ![License](https://img.shields.io/badge/License-MIT-green.svg)
+![Version](https://img.shields.io/badge/version-1.3.1-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) (coming soon) ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
 ⭐ **If this saves you from endless scrolling, a star helps a ton.**
 
@@ -127,14 +127,30 @@ docker run -d \
 ---
 
 ## Changelog
+v1.3.1
+- fixes for GitHub CodeQL findings
+- changed header icons around a bit
+- removed stats.html page for Tautulli stats. This page does not seem to be needed
+- added custom search range for Tautulli most popular on server
+- rewrote how it works on Smart Discovery
+- fixed Tatulli spacing for run_order form 4 to 2
+
+Kometa updates added: 
+library templates -> save library configurations as reusable templates
+undo/redo -> track changes for undo/redo
+comparison mode -> compare current config vs saved config
+performance indicators -> estimate run time based on selected options
+
+- started the Wiki https://github.com/softerfish/seekandwatch/wiki
+
+<details>
+  <summary><b>Past Changelog</b></summary>
 v1.3.0
 - finished one click updates for non-unraid app installs. unraid users will have to use appstore updates when the app is approved
 - users can import backup files now
 - many small Smart Discovery improvements not limited to, but including: parallelize TMDB recommendation fetches, cache plex history for 1 hour, and instead of pure shuffle for review, we now score items by vote average × vote count and keep shuffle as a tie‑breaker
 - fixed checkmark that will remove titles from influence recommendations
 
-<details>
-  <summary><b>Past Changelog</b></summary>
 v1.2.4
 - I accidently broke TV requests in v1.2.3. Quick repair to get that going again
 - added search by future releases
@@ -243,5 +259,3 @@ This product uses the TMDB API but is not endorsed or certified by TMDB.
 
 
 </details>
-
-

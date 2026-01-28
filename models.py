@@ -1,4 +1,4 @@
-"""Database models for SeekAndWatch."""
+"""Database models - user accounts, settings, blocklists, etc."""
 
 from datetime import datetime
 
@@ -98,3 +98,16 @@ class TmdbKeywordCache(db.Model):
     media_type = db.Column(db.String(10))
     keywords = db.Column(db.Text)
     timestamp = db.Column(db.DateTime, default=datetime.now)
+
+class KometaTemplate(db.Model):
+    __table_args__ = {'extend_existing': True}
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    name = db.Column(db.String(200), nullable=False)
+    type = db.Column(db.String(20))  # movie, tv, anime
+    cols = db.Column(db.Text)  # JSON array of collection names
+    ovls = db.Column(db.Text)  # JSON array of overlay names
+    template_vars = db.Column(db.Text)  # JSON object of template variables
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    
+    user = db.relationship('User', backref='kometa_templates')

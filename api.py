@@ -1,4 +1,4 @@
-"""API routes for async UI actions and background helpers."""
+"""API endpoints for async stuff - AJAX calls, background tasks, etc."""
 
 import datetime
 import json
@@ -9,10 +9,12 @@ import threading
 import time
 import tempfile
 import zipfile
+from datetime import timedelta
 
 import requests
 from flask import Blueprint, request, jsonify, session, send_from_directory, current_app
 from flask_login import login_required, current_user
+from flask_limiter.util import get_remote_address
 from plexapi.server import PlexServer
 from markupsafe import escape
 from werkzeug.utils import secure_filename
@@ -50,8 +52,19 @@ from utils import (
 )
 from presets import PLAYLIST_PRESETS
 
-# Blueprint setup.
+# set up the API blueprint
 api_bp = Blueprint('api', __name__)
+
+# rate limiter gets set from app.py after registration
+limiter = None
+
+def rate_limit_decorator(limit_str):
+    """Decorator for rate limiting API endpoints."""
+    def decorator(func):
+        if limiter:
+            return limiter.limit(limit_str, key_func=get_remote_address)(func)
+        return func
+    return decorator
 
 def _log_api_exception(context, exc):
     try:
@@ -75,12 +88,12 @@ def _safe_backup_path(filename):
         return None
     return full
 
-# Generation + filters
+# recommendation loading and filtering
 
 @api_bp.route('/load_more_recs')
 @login_required
 def load_more_recs():
-    # No cached results yet.
+    # nothing cached yet, return empty
     if current_user.id not in RESULTS_CACHE: return jsonify([])
     
     cache = RESULTS_CACHE[current_user.id]
@@ -97,19 +110,19 @@ def load_more_recs():
     s = current_user.settings
     min_year, min_rating, genre_filter, critic_enabled, threshold = get_session_filters()
     
-    # Grab allowed ratings (G, PG, etc.) from session.
+    # get content rating filter from session (G, PG, etc)
     allowed_ratings = session.get('rating_filter', [])
-    # If empty or 'all', ignore the filter.
+    # if empty or 'all', don't filter by rating
     if not allowed_ratings or 'all' in allowed_ratings: allowed_ratings = None
     
-    # Parse keywords from the pipe-separated string.
+    # parse keywords (pipe-separated)
     raw_keywords = session.get('keywords', '')
     target_keywords = [k.strip() for k in raw_keywords.split('|') if k.strip()]
     
     batch_end = min(start_idx + 100, len(candidates))
     
     batch_items = candidates[start_idx:batch_end]
-    # Prefetch ratings now so UI doesn't lag.
+    # prefetch ratings so the UI doesn't lag when rendering
     prefetch_ratings_parallel(batch_items, s.tmdb_key)
     if s.omdb_key and critic_enabled:
         prefetch_omdb_parallel(batch_items, s.omdb_key)
@@ -117,7 +130,7 @@ def load_more_recs():
     if target_keywords:
         prefetch_keywords_parallel(batch_items, s.tmdb_key)
     else:
-        # Keywords not needed immediately; do it async.
+        # keywords not critical, fetch them in background
         from flask import current_app
         def async_prefetch(app_obj, items, key):
             with app_obj.app_context():
@@ -129,16 +142,16 @@ def load_more_recs():
     final_list = []
     idx = start_idx
     
-    # Keep going until we have 30 or run out.
+    # keep filtering until we have 30 items or run out
     while len(final_list) < 30 and idx < len(candidates):
         item = candidates[idx]
         idx += 1
         
-        # Basic filters first.
+        # basic filters
         if item['year'] < min_year: continue
         if item.get('vote_average', 0) < min_rating: continue
         
-        # Content rating check (kid mode).
+        # content rating filter (for kid-friendly mode)
         if allowed_ratings:
             c_rate = item.get('content_rating', 'NR')
             if str(c_rate) not in allowed_ratings: continue
@@ -156,7 +169,7 @@ def load_more_recs():
             if not item_matches_keywords(item, target_keywords):
                 continue
 
-        # Check RT score if OMDb key exists.
+        # grab rotten tomatoes score if we have OMDB key
         item['rt_score'] = None
         if s.omdb_key:
             if item.get('rt_score') is None and critic_enabled:
@@ -250,35 +263,35 @@ def tmdb_search_proxy():
     # Normalize response format for frontend.
     return {'results': [{'title': i.get('name') if request.args.get('type') == 'tv' else i.get('title'), 'year': (i.get('first_air_date') or i.get('release_date') or '')[:4], 'poster': i.get('poster_path')} for i in res]}
 
-# Metadata + actions
+# metadata and actions
 
 @api_bp.route('/get_metadata/<media_type>/<int:tmdb_id>')
 @login_required
 def get_metadata(media_type, tmdb_id):
     s = current_user.settings
     try:
-        # Get everything in one call.
+        # get everything in one API call (faster)
         url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}?api_key={s.tmdb_key}&append_to_response=credits,videos,watch/providers"
         data = requests.get(url, timeout=5).json()
         
-        # Top 5 cast is enough.
+        # just grab top 5 cast members
         cast = [c['name'] for c in data.get('credits', {}).get('cast', [])[:5]]
         
-        # Find trailer (prefer official).
+        # find a trailer (prefer official ones)
         trailer = None
         for v in data.get('videos', {}).get('results', []):
             if v['type'] == 'Trailer' and v['site'] == 'YouTube':
                 trailer = v['key']
                 break
         
-        # Fallback to any YouTube video.
+        # if no official trailer, any youtube video works
         if not trailer:
              for v in data.get('videos', {}).get('results', []):
                 if v['site'] == 'YouTube':
                     trailer = v['key']
                     break
                 
-        # Streaming providers; default to US.
+        # streaming providers (default to US region)
         reg = (s.tmdb_region or 'US').split(',')[0]
         prov = data.get('watch/providers', {}).get('results', {}).get(reg, {}).get('flatrate', [])
         
@@ -303,12 +316,12 @@ def get_trailer(media_type, tmdb_id):
         url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}/videos?api_key={s.tmdb_key}&language=en-US"
         results = requests.get(url, timeout=5).json().get('results', [])
         
-        # Official trailers first.
+        # look for official trailers first
         for vid in results:
             if vid['site'] == 'YouTube' and vid['type'] == 'Trailer':
                 return jsonify({'status': 'success', 'key': vid['key']})
         
-        # Any YouTube video works.
+        # fallback to any youtube video
         for vid in results:
             if vid['site'] == 'YouTube':
                 return jsonify({'status': 'success', 'key': vid['key']})
@@ -339,7 +352,7 @@ def request_media():
              else:
                  return jsonify({'status': 'error', 'message': last_error or "All requests failed"})
         
-        # Single request.
+        # single item request
         else:
              success, msg = send_overseerr_request(s, data['media_type'], data['tmdb_id'])
              if success:
@@ -367,12 +380,12 @@ def block_movie():
 @api_bp.route('/unblock_movie/<int:id>', methods=['POST'])
 @login_required
 def unblock_movie(id):
-    # Ensure users can only delete their own blocks.
+    # make sure users can only delete their own blocklist items
     Blocklist.query.filter_by(id=id, user_id=current_user.id).delete()
     db.session.commit()
     return {'status': 'success'}
 
-# Import lists + collections
+# list import and collection stuff
 
 @api_bp.route('/get_plex_libraries')
 @login_required
@@ -380,7 +393,7 @@ def get_plex_libraries():
     s = current_user.settings
     try:
         plex = PlexServer(s.plex_url, s.plex_token)
-        # Only video libraries.
+        # only grab movie/TV libraries (ignore music, photos, etc)
         libs = [{'title': sec.title, 'type': sec.type, 'name': sec.title} for sec in plex.library.sections() if sec.type in ['movie', 'show']]
         return jsonify({'status': 'success', 'libraries': libs})
     except Exception as e:
@@ -449,7 +462,7 @@ def match_bulk_titles():
             final_title = t
             
             try:
-                # TODO: add fuzzy matching for better results.
+                # todo: add fuzzy matching for better results
                 hits = lib.search(t)
                 if hits:
                     found = True
@@ -475,16 +488,16 @@ def create_bulk_collection():
         keys = data['rating_keys']
         if not keys: return jsonify({'status': 'error', 'message': 'No items.'})
         
-        # Create collection from first item.
+        # create collection using the first item
         first = lib.fetchItem(keys[0])
         col = first.addCollection(data['collection_title'])
         
-        # Add remaining items.
+        # add the rest of the items
         for k in keys[1:]:
             try: lib.fetchItem(k).addCollection(data['collection_title'])
             except: pass
             
-        # Save as custom preset so it shows in UI.
+        # save it as a custom preset so it shows up in the UI
         key = f"custom_import_{int(time.time())}"
         config = {'title': data['collection_title'], 'description': f"Imported Static List ({len(keys)} items)", 'media_type': 'movie', 'icon': '📋'}
         
@@ -603,16 +616,16 @@ def schedule_collection():
     db.session.commit()
     return jsonify({'status': 'success', 'message': 'Schedule updated.'})
 
-# Custom builder
+# custom collection builder
 
 @api_bp.route('/preview_custom_collection', methods=['POST'])
 @login_required
 def preview_custom_collection():
-    # Test filters before saving.
+    # test the filters before actually saving the collection
     s = current_user.settings
     data = request.json
     
-    # Map UI fields to TMDB params.
+    # convert UI form fields to TMDB API parameters
     params = {
         'api_key': s.tmdb_key,
         'sort_by': data['sort_by'],
@@ -691,7 +704,7 @@ def delete_custom_collection(key):
     db.session.commit()
     return jsonify({'status': 'success'})
 
-# System + settings
+# system and settings stuff
 
 @api_bp.route('/test_connection', methods=['POST'])
 @login_required
@@ -699,14 +712,14 @@ def test_connection():
     data = request.json
     service = data.get('service')
     
-    # SSRF protection
+    # validate URL to prevent SSRF attacks
     if 'url' in data and data['url']:
         is_safe, msg = validate_url(data['url'])
         if not is_safe:
             return jsonify({'status': 'error', 'message': f"Security Block: {msg}", 'msg': f"Security Block: {msg}"})
 
     try:
-        # Test logic for each service type.
+        # test each service type
         if service == 'plex':
             p = PlexServer(data['url'], data['token'], timeout=5)
             return jsonify({'status': 'success', 'message': f"Connected: {p.friendlyName}", 'msg': f"Connected: {p.friendlyName}"})
@@ -762,32 +775,6 @@ def update_ignore_list():
     db.session.commit()
     return jsonify({'status': 'success'})
 
-@api_bp.route('/api/tautulli_data')
-@login_required
-def tautulli_data():
-    s = current_user.settings
-    if not s.tautulli_url or not s.tautulli_api_key: return jsonify({'error': 'Not Configured'})
-    
-    days = request.args.get('days', 30)
-    stat_type = request.args.get('type', '0')
-    
-    try:
-        base_url = s.tautulli_url.rstrip('/')
-        url = f"{base_url}/api/v2?apikey={s.tautulli_api_key}&cmd=get_home_stats&time_range={days}&stats_type={stat_type}"
-        
-        resp = requests.get(url, timeout=10)
-        if resp.status_code != 200: return jsonify({"error": f"Tautulli Error {resp.status_code}"})
-        
-        try: data = resp.json()
-        except: return jsonify({"error": "Invalid JSON response"})
-        
-        if data.get('response', {}).get('result') == 'success': return jsonify(data['response']['data'])
-        return jsonify({"error": f"Tautulli Error: {data.get('response', {}).get('message')}"})
-        
-    except Exception as e:
-        _log_api_exception("tautulli_data", e)
-        return _error_payload("Connection failed")
-
 # Backups
 
 @api_bp.route('/api/backups')
@@ -795,6 +782,7 @@ def tautulli_data():
 def get_backups_api(): return jsonify(list_backups())
 
 @api_bp.route('/api/backup/create', methods=['POST'])
+@rate_limit_decorator("10 per hour")
 @login_required
 def trigger_backup():
     if not current_user.is_admin:
@@ -825,6 +813,7 @@ def delete_backup_api(filename):
     return jsonify({'status': 'success'})
 
 @api_bp.route('/api/backup/restore/<filename>', methods=['POST'])
+@rate_limit_decorator("5 per hour")
 @login_required
 def run_restore(filename):
     if not current_user.is_admin:
@@ -837,6 +826,7 @@ def run_restore(filename):
     return jsonify({'status': 'success' if success else 'error', 'message': msg})
 
 @api_bp.route('/api/backup/upload', methods=['POST'])
+@rate_limit_decorator("5 per hour")
 @login_required
 def upload_backup():
     if not current_user.is_admin:
@@ -931,7 +921,7 @@ def upload_backup():
             except Exception:
                 pass
 
-# Cache + scanner
+# cache and scanner settings
 
 @api_bp.route('/save_cache_settings', methods=['POST'])
 @login_required
@@ -986,7 +976,7 @@ def save_scanner_settings():
 @api_bp.route('/api/scanner/reset', methods=['POST'])
 @login_required
 def reset_scanner():
-    # Wipe everything and start over.
+    # nuke the alias database and start fresh
     TmdbAlias.query.delete()
     s = current_user.settings
     s.last_alias_scan = 0
@@ -1004,10 +994,78 @@ def stream_scanner_logs():
 
 @api_bp.route('/save_kometa_config', methods=['POST'])
 @login_required
+@rate_limit_decorator("30 per minute")  # rate limit saves
 def save_kometa_config():
     s = current_user.settings
     data = request.json
-    s.kometa_config = json.dumps(data)
+    
+    if not data:
+        return jsonify({'status': 'error', 'message': 'No data provided'}), 400
+    
+    # validate data structure - ensure it's a dict and has expected keys
+    if not isinstance(data, dict):
+        return jsonify({'status': 'error', 'message': 'Invalid data format'}), 400
+    
+    # validate and sanitize libraries array
+    if 'libraries' in data:
+        if not isinstance(data['libraries'], list):
+            return jsonify({'status': 'error', 'message': 'Libraries must be a list'}), 400
+        # limit number of libraries (reasonable limit)
+        if len(data['libraries']) > 100:
+            return jsonify({'status': 'error', 'message': 'Too many libraries (max 100)'}), 400
+        # validate each library structure
+        for lib in data['libraries']:
+            if not isinstance(lib, dict):
+                return jsonify({'status': 'error', 'message': 'Invalid library structure'}), 400
+            if 'name' not in lib or not isinstance(lib.get('name'), str):
+                return jsonify({'status': 'error', 'message': 'Library name is required'}), 400
+            # limit name length
+            if len(lib['name']) > 200:
+                return jsonify({'status': 'error', 'message': 'Library name too long'}), 400
+            # validate cols and ovls are lists
+            if 'cols' in lib and not isinstance(lib['cols'], list):
+                lib['cols'] = []
+            if 'ovls' in lib and not isinstance(lib['ovls'], list):
+                lib['ovls'] = []
+            # limit collection/overlay counts per library
+            if len(lib.get('cols', [])) > 500 or len(lib.get('ovls', [])) > 500:
+                return jsonify({'status': 'error', 'message': 'Too many collections/overlays per library'}), 400
+    
+    # validate templateVars structure
+    if 'templateVars' in data and not isinstance(data['templateVars'], dict):
+        data['templateVars'] = {}
+    
+    if 'libraryTemplateVars' in data and not isinstance(data['libraryTemplateVars'], dict):
+        data['libraryTemplateVars'] = {}
+    
+    # validate inlineComments structure
+    if 'inlineComments' in data and not isinstance(data['inlineComments'], dict):
+        data['inlineComments'] = {}
+    
+    # validate settings structure
+    if 'settings' in data and not isinstance(data['settings'], dict):
+        data['settings'] = {}
+    
+    # sanitize string fields (limit length, basic validation)
+    string_fields = ['plex_url', 'plex_token', 'tmdb_key']
+    for field in string_fields:
+        if field in data and data[field]:
+            if not isinstance(data[field], str):
+                data[field] = str(data[field])
+            # limit length
+            if len(data[field]) > 1000:
+                return jsonify({'status': 'error', 'message': f'{field} is too long'}), 400
+    
+    # limit total config size (prevent huge payloads)
+    config_json = json.dumps(data)
+    if len(config_json) > 2 * 1024 * 1024:  # 2MB max
+        return jsonify({'status': 'error', 'message': 'Config too large (max 2MB)'}), 400
+    
+    # Include templateVars in saved config (ensure it exists)
+    if 'templateVars' not in data:
+        data['templateVars'] = {}
+    
+    s.kometa_config = config_json
     
     # Sync these settings with main config if user changed them here.
     if data.get('plex_url'): s.plex_url = data['plex_url']
@@ -1016,6 +1074,158 @@ def save_kometa_config():
     
     db.session.commit()
     return jsonify({'status': 'success'})
+
+@api_bp.route('/api/kometa_templates', methods=['GET'])
+@login_required
+def get_kometa_templates():
+    """Get all Kometa templates for the current user."""
+    from models import KometaTemplate
+    templates = KometaTemplate.query.filter_by(user_id=current_user.id).order_by(KometaTemplate.created_at.desc()).all()
+    result = []
+    for t in templates:
+        result.append({
+            'id': t.id,
+            'name': t.name,
+            'type': t.type,
+            'cols': json.loads(t.cols) if t.cols else [],
+            'ovls': json.loads(t.ovls) if t.ovls else [],
+            'templateVars': json.loads(t.template_vars) if t.template_vars else {},
+            'created_at': t.created_at.isoformat() if t.created_at else None
+        })
+    return jsonify({'status': 'success', 'templates': result})
+
+@api_bp.route('/api/kometa_templates', methods=['POST'])
+@login_required
+def save_kometa_template():
+    """Save a Kometa template."""
+    from models import KometaTemplate
+    data = request.json
+    
+    if not data.get('name') or not data.get('name').strip():
+        return jsonify({'status': 'error', 'message': 'Template name is required'}), 400
+    
+    # Validate and sanitize input
+    name = data['name'].strip()[:200]  # Limit length
+    template_type = data.get('type', 'movie')
+    cols = data.get('cols', [])
+    ovls = data.get('ovls', [])
+    template_vars = data.get('templateVars', {})
+    
+    # Validate type
+    if template_type not in ['movie', 'tv', 'anime']:
+        template_type = 'movie'
+    
+    # Validate cols/ovls are arrays
+    if not isinstance(cols, list):
+        cols = []
+    if not isinstance(ovls, list):
+        ovls = []
+    if not isinstance(template_vars, dict):
+        template_vars = {}
+    
+    template = KometaTemplate(
+        user_id=current_user.id,
+        name=name,
+        type=template_type,
+        cols=json.dumps(cols),
+        ovls=json.dumps(ovls),
+        template_vars=json.dumps(template_vars)
+    )
+    
+    db.session.add(template)
+    db.session.commit()
+    
+    return jsonify({'status': 'success', 'id': template.id})
+
+@api_bp.route('/api/kometa_templates/<int:template_id>', methods=['DELETE'])
+@login_required
+def delete_kometa_template(template_id):
+    """Delete a Kometa template."""
+    from models import KometaTemplate
+    template = KometaTemplate.query.filter_by(id=template_id, user_id=current_user.id).first()
+    
+    if not template:
+        return jsonify({'status': 'error', 'message': 'Template not found'}), 404
+    
+    db.session.delete(template)
+    db.session.commit()
+    
+    return jsonify({'status': 'success'})
+
+@api_bp.route('/api/import_kometa_config', methods=['POST'])
+@login_required
+@rate_limit_decorator("10 per minute")  # Rate limit imports
+def import_kometa_config():
+    """Securely import Kometa config from URL."""
+    import re
+    from urllib.parse import urlparse
+    import requests
+    from requests.exceptions import RequestException, Timeout
+    
+    data = request.json
+    url = data.get('url', '').strip()
+    
+    if not url:
+        return jsonify({'status': 'error', 'message': 'URL is required'}), 400
+    
+    # Validate URL format
+    try:
+        parsed = urlparse(url)
+        if not parsed.scheme or not parsed.netloc:
+            return jsonify({'status': 'error', 'message': 'Invalid URL format'}), 400
+        
+        # Only allow http/https
+        if parsed.scheme not in ['http', 'https']:
+            return jsonify({'status': 'error', 'message': 'Only HTTP and HTTPS URLs are allowed'}), 400
+        
+        # Block local/private IPs and localhost
+        hostname = parsed.hostname.lower()
+        if hostname in ['localhost', '127.0.0.1', '0.0.0.0']:
+            return jsonify({'status': 'error', 'message': 'Local URLs are not allowed'}), 400
+        
+        # Block private IP ranges
+        if re.match(r'^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)', hostname):
+            return jsonify({'status': 'error', 'message': 'Private IP addresses are not allowed'}), 400
+        
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': 'Invalid URL'}), 400
+    
+    # Fetch the file with security measures
+    try:
+        response = requests.get(
+            url,
+            timeout=10,  # 10 second timeout
+            max_redirects=5,  # Limit redirects
+            allow_redirects=True,
+            headers={'User-Agent': 'SeekAndWatch/1.0'}
+        )
+        response.raise_for_status()
+        
+        # Check content size (max 1MB)
+        if len(response.content) > 1024 * 1024:
+            return jsonify({'status': 'error', 'message': 'File too large (max 1MB)'}), 400
+        
+        # Check content type (should be text)
+        content_type = response.headers.get('content-type', '').lower()
+        if 'text' not in content_type and 'yaml' not in content_type and 'yml' not in content_type:
+            # Warn but don't block - some servers don't set content-type correctly
+            pass
+        
+        yaml_text = response.text
+        
+        # Basic validation - check if it looks like YAML
+        if not yaml_text.strip():
+            return jsonify({'status': 'error', 'message': 'Empty file'}), 400
+        
+        # Return the YAML text for client-side parsing
+        return jsonify({'status': 'success', 'yaml': yaml_text})
+        
+    except Timeout:
+        return jsonify({'status': 'error', 'message': 'Request timed out'}), 408
+    except RequestException as e:
+        return jsonify({'status': 'error', 'message': f'Failed to fetch URL: {str(e)}'}), 400
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': 'Import failed'}), 500
 
 @api_bp.route('/api/sync_aliases', methods=['POST'])
 @login_required
@@ -1027,7 +1237,7 @@ def manual_alias_sync():
     except: total = 0
     return jsonify({'status': status, 'message': msg, 'count': total})
     
-# Admin user management
+# admin user management stuff
 
 @api_bp.route('/api/admin/users')
 @login_required
@@ -1047,6 +1257,7 @@ def get_all_users():
     return jsonify(user_list)
 
 @api_bp.route('/api/admin/toggle_role', methods=['POST'])
+@rate_limit_decorator("20 per hour")
 @login_required
 def toggle_user_role():
     if not current_user.is_admin:
@@ -1069,6 +1280,7 @@ def toggle_user_role():
     return jsonify({'status': 'success', 'message': f"User {user.username} is now: {status_str}"})
 
 @api_bp.route('/api/admin/delete_user', methods=['POST'])
+@rate_limit_decorator("10 per hour")
 @login_required
 def admin_delete_user():
     if not current_user.is_admin:
@@ -1077,12 +1289,13 @@ def admin_delete_user():
     data = request.json
     target_id = data.get('user_id')
     
+    # can't delete yourself (obviously)
     if target_id == current_user.id:
         return jsonify({'status': 'error', 'message': 'Cannot delete yourself.'})
         
     user = User.query.get(target_id)
     if user:
-        # Cascade delete settings/blocklists to avoid orphaned rows
+        # delete their settings and blocklist too (cleanup)
         Settings.query.filter_by(user_id=user.id).delete()
         Blocklist.query.filter_by(user_id=user.id).delete()
         db.session.delete(user)

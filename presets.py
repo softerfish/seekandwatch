@@ -1,4 +1,4 @@
-"""Collection presets used by the auto manager."""
+"""Collection presets - predefined lists users can sync to plex."""
 
 PLAYLIST_PRESETS = {
 

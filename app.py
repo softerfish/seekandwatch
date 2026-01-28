@@ -1,4 +1,4 @@
-"""Main Flask application for SeekAndWatch."""
+"""Main Flask app - handles routing, auth, and the main UI stuff."""
 
 import time
 import os
@@ -35,9 +35,9 @@ from utils import (normalize_title, is_duplicate, fetch_omdb_ratings, send_overs
                    score_recommendation, diverse_sample, get_tmdb_rec_cache, set_tmdb_rec_cache)
 from presets import PLAYLIST_PRESETS
 
-# App config
+# basic app setup stuff
 
-VERSION = "1.3.0"
+VERSION = "1.3.1"
 
 UPDATE_CACHE = {
     'version': None,
@@ -45,26 +45,27 @@ UPDATE_CACHE = {
 }
 
 def get_persistent_key():
-    """Load or generate a persistent SECRET_KEY."""
-    # Prefer env var (common in containers).
+    """Gets the secret key from env or file, or makes a new one if needed."""
+    # check env first (docker usually sets this)
     env_key = os.environ.get('SECRET_KEY')
     if env_key: 
         return env_key
     
-    # Fall back to a key file in /config.
+    # otherwise look for a saved key file
     key_path = '/config/secret.key'
     try:
         if os.path.exists(key_path):
             with open(key_path, 'r') as f:
                 return f.read().strip()
         else:
-            # Generate and persist a new key.
+            # no key found, make a new one and save it
             new_key = secrets.token_hex(32)
             with open(key_path, 'w') as f:
                 f.write(new_key)
             return new_key
     except:
-        # Fallback if the file system is read-only.
+        # if we can't write to disk (read-only fs), just return a temp key
+        # not ideal but better than crashing
         return secrets.token_hex(32)
 
 app = Flask(__name__)
@@ -91,19 +92,19 @@ login_manager = LoginManager()
 login_manager.login_view = 'login'
 login_manager.init_app(app)
 
-# Database migrations
+# database migration stuff - adds new columns and fixes admin issues
 
 def run_migrations():
-    """Add missing columns and ensure at least one admin exists."""
+    """Adds any missing DB columns and makes sure there's always at least one admin."""
     with app.app_context():
         try: db.create_all()
         except: pass
         
-        # Schema migrations.
+        # add any missing columns to existing tables
         try:
             inspector = sqlalchemy.inspect(db.engine)
             
-            # User table.
+            # check user table
             user_columns = [c['name'] for c in inspector.get_columns('user')]
             with db.engine.connect() as conn:
                 if 'is_admin' not in user_columns:
@@ -140,11 +141,30 @@ def run_migrations():
                     print("--- [Migration] Adding 'ignored_libraries' column ---")
                     conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN ignored_libraries VARCHAR(500)"))
                 
+                # Check if kometa_template table exists
+                try:
+                    conn.execute(sqlalchemy.text("SELECT 1 FROM kometa_template LIMIT 1"))
+                except Exception:
+                    # Create kometa_template table
+                    conn.execute(sqlalchemy.text("""
+                        CREATE TABLE IF NOT EXISTS kometa_template (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            user_id INTEGER NOT NULL,
+                            name VARCHAR(200) NOT NULL,
+                            type VARCHAR(20),
+                            cols TEXT,
+                            ovls TEXT,
+                            template_vars TEXT,
+                            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                            FOREIGN KEY (user_id) REFERENCES user(id)
+                        )
+                    """))
                     
         except Exception as e:
             print(f"Migration Warning: {e}")
 
-        # Auto-promote the first user to admin if none exist.
+        # if somehow there are no admins, make the first user an admin
+        # (shouldn't happen but better safe than sorry)
         try:
             with db.engine.connect() as conn:
                 result = conn.execute(sqlalchemy.text("SELECT COUNT(*) FROM user WHERE is_admin = 1")).scalar()
@@ -160,7 +180,7 @@ def run_migrations():
         except Exception as e:
             print(f"Admin Auto-Fix Error: {e}")
 
-        # Create missing tables.
+        # create tables if they don't exist yet
         try: Blocklist.__table__.create(db.engine)
         except: pass
         try: CollectionSchedule.__table__.create(db.engine)
@@ -176,7 +196,7 @@ def load_user(user_id):
     
 run_migrations()
 
-# Clear any stuck locks on startup.
+# clear any leftover lock files from crashes/restarts
 print("--- BOOT SEQUENCE: CLEARING LOCKS ---", flush=True)
 try:
     reset_stuck_locks()
@@ -191,7 +211,7 @@ github_cache = {
 }
 
 def update_github_stats():
-    """Fetch stars and latest version once per hour."""
+    """Grabs github stars and latest version, runs every hour in the background."""
     while True:
         try:
             headers = {"User-Agent": "SeekAndWatch-App"}
@@ -225,11 +245,12 @@ def inject_github_data():
         current_version=VERSION
     )
 
-# Page routes
+# main page routes
 
-# One-click updater
+# one-click updater for git/release installs
 @app.route('/trigger_update', methods=['POST'])
 @csrf.exempt
+@limiter.limit("10 per hour")
 @login_required
 def trigger_update_route():
     import json
@@ -251,7 +272,7 @@ def trigger_update_route():
         if not latest and not force_update:
              return Response(json.dumps({'status': 'success', 'message': 'Up to date', 'action': 'none'}), mimetype='application/json')
 
-        # Unraid installs must update via the Unraid UI.
+        # unraid users have to update through the app store, can't do it here
         if is_unraid():
             return Response(json.dumps({
                 'status': 'success',
@@ -286,7 +307,7 @@ def trigger_update_route():
                 'version': str(latest)
             }), mimetype='application/json')
 
-        # Prefer git updates when a repo is available.
+        # git updates are preferred if available
         if is_git_repo():
             print(f"--- Git Update Triggered (Force: {force_update}) ---", flush=True)
             success, msg = perform_git_update()
@@ -378,7 +399,7 @@ def logout():
 def dashboard():
     s = Settings.query.order_by(Settings.id.asc()).first()
     
-    # check for updates (every 4 hours)
+    # check for new versions every 4 hours (don't spam github)
     now = time.time()
     if UPDATE_CACHE['version'] is None or (now - UPDATE_CACHE['last_check'] > 14400):
         try:
@@ -413,7 +434,14 @@ def dashboard():
 def get_local_trending():
     from utils import get_tautulli_trending
     m_type = request.args.get('type', 'movie')
-    items = get_tautulli_trending(m_type)
+    days = request.args.get('days', '30')
+    try:
+        days = int(days)
+        if days < 1: days = 1
+        if days > 365: days = 365
+    except:
+        days = 30
+    items = get_tautulli_trending(m_type, days=days)
     return jsonify({'status': 'success', 'items': items})
 
 @app.route('/recommend_from_trending')
@@ -423,7 +451,7 @@ def recommend_from_trending():
     
     m_type = request.args.get('type', 'movie')
     
-    # get trending from tautulli
+    # grab trending stuff from tautulli
     trending = get_tautulli_trending(m_type)
     if not trending:
         flash("No trending data found to base recommendations on.", "error")
@@ -431,14 +459,14 @@ def recommend_from_trending():
         
     seed_ids = [str(x['tmdb_id']) for x in trending]
     
-    # fetch recommendations for each trending item
+    # fetch TMDB recommendations for each trending item (in parallel)
     final_recs = []
     s = Settings.query.order_by(Settings.id.asc()).first()
     
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         futures = []
         for tid in seed_ids:
-            for p in [1, 2]: # 2 pages per item
+            for p in [1, 2]:  # grab 2 pages per item
                 url = f"https://api.themoviedb.org/3/{m_type}/{tid}/recommendations?api_key={s.tmdb_key}&language=en-US&page={p}"
                 futures.append(executor.submit(requests.get, url))
             
@@ -448,14 +476,14 @@ def recommend_from_trending():
                 final_recs.extend(data.get('results', []))
             except: pass
 
-    # dedupe and filter owned
+    # remove duplicates and filter out stuff we already own
     seen = set()
     unique_recs = []
     owned_keys = get_plex_cache(s)
     
     for r in final_recs:
         if r['id'] not in seen:
-            # normalize year/type to prevent errors
+            # normalize the year so we don't crash on weird dates
             date = r.get('release_date') or r.get('first_air_date')
             r['year'] = int(date[:4]) if date else 0
             r['media_type'] = m_type
@@ -468,7 +496,7 @@ def recommend_from_trending():
             
     random.shuffle(unique_recs)
     
-    # cache for load more
+    # save to cache so "load more" works
     RESULTS_CACHE[current_user.id] = {
         'candidates': unique_recs,
         'next_index': 40
@@ -476,7 +504,7 @@ def recommend_from_trending():
     genres = []
     try:
         g_url = f"https://api.themoviedb.org/3/genre/{m_type}/list?api_key={s.tmdb_key}"
-        genres = requests.get(g_url).json().get('genres', [])
+        genres = requests.get(g_url, timeout=10).json().get('genres', [])
     except: pass
             
     return render_template('results.html', movies=unique_recs[:40], 
@@ -485,7 +513,7 @@ def recommend_from_trending():
 @app.route('/review_history', methods=['POST'])
 @login_required
 def review_history():
-    # scan plex history for recommendations
+    # scan plex watch history to find stuff for recommendations
     s = Settings.query.order_by(Settings.id.asc()).first()
     
     ignored_libs = [l.strip().lower() for l in request.form.getlist('ignored_libraries')]
@@ -494,7 +522,7 @@ def review_history():
     manual_query = request.form.get('manual_query')
     limit = int(request.form.get('history_limit', 20))
     
-    # Session defaults
+    # save filter preferences to session
     session['critic_filter'] = 'true' if request.form.get('critic_filter') else 'false'
     session['critic_threshold'] = request.form.get('critic_threshold', 70)
     
@@ -507,7 +535,7 @@ def review_history():
         # manual search
         if manual_query:
             url = f"https://api.themoviedb.org/3/search/{media_type}?api_key={s.tmdb_key}&query={manual_query}"
-            res = requests.get(url).json().get('results', [])
+            res = requests.get(url, timeout=10).json().get('results', [])
             if res:
                 item = res[0]
                 candidates.append({
@@ -517,7 +545,7 @@ def review_history():
                     'poster_path': item.get('poster_path')
                 })
 
-        # plex history scan
+        # scan actual plex watch history
         elif s.plex_url and s.plex_token:
             plex = PlexServer(s.plex_url, s.plex_token)
             # convert library names to IDs
@@ -531,7 +559,7 @@ def review_history():
                             ignored_lib_ids.append(str(section.key))
                 except: pass
             
-            # map user IDs to names
+            # build a map of plex user IDs to their display names
             user_map = {}
             try:
                 for acct in plex.systemAccounts():
@@ -579,7 +607,7 @@ def review_history():
                     if user_name.lower() in ignored:
                         continue
 
-                    # check library ignore list
+                    # also skip if the library is ignored
                     if hasattr(h, 'librarySectionID') and h.librarySectionID:
                         if str(h.librarySectionID) in ignored_lib_ids:
                             continue
@@ -599,7 +627,7 @@ def review_history():
                     if not title:
                         continue
 
-                    # Track frequency + recency for scoring.
+                    # track how often and recently this was watched (for scoring)
                     viewed_at = getattr(h, 'viewedAt', None)
                     if isinstance(viewed_at, datetime.datetime):
                         viewed_ts = viewed_at.timestamp()
@@ -637,7 +665,7 @@ def review_history():
                     })
                     seen_titles.add(title)
 
-                # Score for recency + frequency (history relevance).
+                # score items based on how often and recently they were watched
                 for c in candidates:
                     stats = title_stats.get(c['title'], {})
                     count = stats.get('count', 1)
@@ -651,7 +679,8 @@ def review_history():
                 set_history_cache(cache_key, candidates)
 
     except Exception as e:
-        flash(f"Scan failed: {str(e)}", "error")
+        write_log("ERROR", "Review History", f"Scan failed: {str(e)}")
+        flash("Scan failed. Please check your Plex connection and try again.", "error")
         return redirect(url_for('dashboard'))
         
     # get providers and genres for filters
@@ -659,14 +688,14 @@ def review_history():
     try:
         reg = s.tmdb_region.split(',')[0] if s.tmdb_region else 'US'
         p_url = f"https://api.themoviedb.org/3/watch/providers/{media_type}?api_key={s.tmdb_key}&watch_region={reg}"
-        p_data = requests.get(p_url).json().get('results', [])
+        p_data = requests.get(p_url, timeout=10).json().get('results', [])
         providers = sorted(p_data, key=lambda x: x.get('display_priority', 999))[:30]
     except: pass
 
     genres = []
     try:
         g_url = f"https://api.themoviedb.org/3/genre/{media_type}/list?api_key={s.tmdb_key}"
-        genres = requests.get(g_url).json().get('genres', [])
+        genres = requests.get(g_url, timeout=10).json().get('genres', [])
     except: pass
 
     return render_template('review.html', 
@@ -683,7 +712,7 @@ def generate():
     s = Settings.query.filter_by(user_id=current_user.id).first()
     owned_keys = get_plex_cache(s)
     
-    # lucky mode - random picks
+    # "I'm feeling lucky" mode - just grab random popular stuff
     if request.form.get('lucky_mode') == 'true':
         raw_candidates = handle_lucky_mode(s)
         if not raw_candidates:
@@ -708,7 +737,7 @@ def generate():
         genres = []
         try:
             g_url = f"https://api.themoviedb.org/3/genre/movie/list?api_key={s.tmdb_key}"
-            genres = requests.get(g_url).json().get('genres', [])
+            genres = requests.get(g_url, timeout=10).json().get('genres', [])
         except: pass
 
         RESULTS_CACHE[current_user.id] = {'candidates': lucky_result, 'next_index': len(lucky_result)}
@@ -749,7 +778,7 @@ def generate():
     for title in selected_titles:
         try:
             search_url = f"https://api.themoviedb.org/3/search/{media_type}?api_key={s.tmdb_key}&query={title}"
-            r = requests.get(search_url).json()
+            r = requests.get(search_url, timeout=10).json()
             if r.get('results'):
                 seed_ids.append(r['results'][0]['id'])
         except: pass
@@ -767,7 +796,7 @@ def generate():
         try:
             if future_mode:
                 details_url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}?api_key={s.tmdb_key}"
-                details = requests.get(details_url).json()
+                details = requests.get(details_url, timeout=10).json()
                 genres = [str(g['id']) for g in details.get('genres', [])[:3]]
                 genre_str = "|".join(genres)
 
@@ -797,7 +826,7 @@ def generate():
                 results = []
                 for page_num in range(1, 3):
                     rec_url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}/recommendations?api_key={s.tmdb_key}&language=en-US&page={page_num}"
-                    page_data = requests.get(rec_url).json()
+                    page_data = requests.get(rec_url, timeout=10).json()
                     results.extend(page_data.get('results', []))
 
             set_tmdb_rec_cache(cache_key, results)
@@ -810,12 +839,12 @@ def generate():
             for item in results:
                 if item['id'] in seen_ids: continue
                 
-                # quality filters (skip if obscure mode)
+                # filter out low-quality stuff (unless user wants obscure content)
                 if not include_obscure:
-                    # english only
+                    # only english-language content in standard mode
                     if item.get('original_language') != 'en': continue
                     
-                    # minimum vote count (standard mode only)
+                    # skip stuff with very few votes (probably not great)
                     if not future_mode and item.get('vote_count', 0) < 20: continue
                 
                 item['media_type'] = media_type
@@ -835,8 +864,10 @@ def generate():
                 recommendations.append(item)
                 seen_ids.add(item['id'])
             
+    # sort by score (popularity + votes)
     recommendations.sort(key=lambda x: x.get('score', 0), reverse=True)
     if include_obscure:
+        # if user wants diverse/obscure stuff, mix it up by genre and decade
         def bucket_fn(item):
             genre_ids = item.get('genre_ids') or []
             if genre_ids:
@@ -845,7 +876,7 @@ def generate():
             return year // 10
         recommendations = diverse_sample(recommendations, len(recommendations), bucket_fn=bucket_fn)
     
-    # final dedupe
+    # one more dedupe pass just to be safe
     unique_recs = []
     seen_final = set()
     for item in recommendations:
@@ -901,10 +932,11 @@ def generate():
                 if not any(gid in allowed_ids for gid in item_genres): continue
             except: pass
             
+        # check if it matches the keyword filter
         if target_keywords:
             if not item_matches_keywords(item, target_keywords): continue
 
-        # get RT score
+        # grab rotten tomatoes score if we have OMDB key
         item['rt_score'] = None
         if s.omdb_key:
             if item.get('rt_score') is None and critic_enabled:
@@ -928,7 +960,7 @@ def generate():
     save_results_cache()
     
     g_url = f"https://api.themoviedb.org/3/genre/{media_type}/list?api_key={s.tmdb_key}"
-    try: genres = requests.get(g_url).json().get('genres', [])
+    try: genres = requests.get(g_url, timeout=10).json().get('genres', [])
     except: genres = []
 
     return render_template('results.html', 
@@ -1073,13 +1105,6 @@ def logs_page():
     s = Settings.query.filter_by(user_id=current_user.id).first()
     return render_template('logs.html', logs=logs, settings=s)
 
-@app.route('/stats')
-@login_required
-def stats():
-    s = Settings.query.filter_by(user_id=current_user.id).first()
-    has_tautulli = bool(s.tautulli_url and s.tautulli_api_key)
-    return render_template('stats.html', has_tautulli=has_tautulli, tautulli_active=has_tautulli)
-
 @app.route('/delete_profile', methods=['POST'])
 @login_required
 def delete_profile():
@@ -1097,7 +1122,7 @@ def builder():
     s = Settings.query.filter_by(user_id=current_user.id).first()
     try:
         g_url = f"https://api.themoviedb.org/3/genre/movie/list?api_key={s.tmdb_key}"
-        genres = requests.get(g_url).json().get('genres', [])
+        genres = requests.get(g_url, timeout=10).json().get('genres', [])
     except: genres = []
     return render_template('builder.html', genres=genres)
 
@@ -1113,10 +1138,10 @@ def kometa():
     s = Settings.query.filter_by(user_id=current_user.id).first()
     return render_template('kometa.html', settings=s)
 
-# background scheduler
+# background scheduler - runs collections, cache refreshes, etc on a schedule
 
 def run_scan_wrapper(app_ref):
-    # wrap scanner with app context
+    # need app context for the scanner to work
     with app_ref.app_context():
         from utils import run_alias_scan
         run_alias_scan(app_ref)
@@ -1139,7 +1164,7 @@ def scheduled_tasks():
                      print("Scheduler: Starting Cache Refresh...")
                      refresh_plex_cache(app)
 
-        # collection schedules
+        # check if any collections need to run
         try:
             target_hour, target_minute = map(int, (s.schedule_time or "04:00").split(':'))
         except:
@@ -1153,7 +1178,7 @@ def scheduled_tasks():
             should_run = False
             last = sch.last_run
             
-            # daily: run once per day after target time
+            # daily collections run once per day after the target time
             if sch.frequency == 'daily':
                 run_today = False
                 if last and last.date() == now.date():
@@ -1195,7 +1220,7 @@ def scheduled_tasks():
                         sch.last_run = now
                         db.session.commit()
 
-        # background alias scanner
+        # background alias scanner (finds alternative titles to avoid duplicates)
         if s.scanner_enabled:
             last = s.last_alias_scan or 0
             now_ts = int(time.time())
@@ -1208,8 +1233,18 @@ def scheduled_tasks():
 
 scheduler.add_job(id='master_task', func=scheduled_tasks, trigger='interval', minutes=1)
 
-from api import api_bp
-app.register_blueprint(api_bp)
+# Import API blueprint - must be after app creation
+try:
+    from api import api_bp
+    app.register_blueprint(api_bp)
+    # Make limiter available to blueprint
+    import api
+except ImportError as e:
+    print(f"ERROR: Failed to import api module: {e}")
+    print(f"Current working directory: {os.getcwd()}")
+    print(f"Files in current directory: {os.listdir('.')}")
+    raise
+api.limiter = limiter
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)

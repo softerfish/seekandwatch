@@ -67,11 +67,19 @@ if [ ! -f "$CLEANUP_FLAG" ]; then
     touch "$CLEANUP_FLAG"
 fi
 
-# Always remove any legacy app files left in /config (safe list only).
+# Always move any app files from /config root to /config/app, then remove from root
 if [ -d "/config/app" ]; then
     for path in api.py app.py utils.py models.py presets.py requirements.txt README.md docker-compose.yml Dockerfile entrypoint.sh icon.png templates static images .gitignore; do
         if [ -e "/config/$path" ]; then
-            rm -rf "/config/$path"
+            # Move to /config/app if it doesn't exist there, or if it's newer
+            if [ ! -e "/config/app/$path" ] || [ "/config/$path" -nt "/config/app/$path" ]; then
+                echo "Moving $path from /config to /config/app..."
+                mkdir -p "/config/app/$(dirname "$path")"
+                mv "/config/$path" "/config/app/$path"
+            else
+                # File exists in app and is newer or same, just remove from root
+                rm -rf "/config/$path"
+            fi
         fi
     done
 fi
@@ -90,6 +98,20 @@ fi
 if [ -d "$APP_DIR" ]; then
     echo "Ensuring /config/app has all required files..."
     cp -an /app/. "$APP_DIR/" 2>/dev/null || true
+    
+    # Ensure critical files exist - check both image and fail if missing
+    CRITICAL_FILES="api.py utils.py models.py presets.py"
+    for file in $CRITICAL_FILES; do
+        if [ ! -f "$APP_DIR/$file" ]; then
+            if [ -f "/app/$file" ]; then
+                echo "WARNING: $file missing, copying from image..."
+                cp "/app/$file" "$APP_DIR/$file"
+            else
+                echo "ERROR: $file not found in image or /config/app! This file is required."
+                echo "Please ensure $file is in your source files when copying to the NAS."
+            fi
+        fi
+    done
 fi
 
 chown -R appuser:appuser "$APP_DIR"
