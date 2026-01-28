@@ -246,11 +246,11 @@ def tmdb_search_proxy():
     q = request.args.get('query', '').strip()
     search_type = request.args.get('type', 'movie')
     if not q:
-        return {'results': []}
+        return jsonify({'results': []})
     if len(q) > 100:
-        return {'results': []}
+        return jsonify({'results': []})
     if search_type not in ['movie', 'tv', 'keyword']:
-        return {'results': []}
+        return jsonify({'results': []})
     
     if search_type == 'keyword':
         # URL encode query to prevent injection
@@ -258,8 +258,9 @@ def tmdb_search_proxy():
         url = f"https://api.themoviedb.org/3/search/keyword?query={safe_query}&api_key={s.tmdb_key}"
         try:
             res = requests.get(url, timeout=5).json().get('results', [])[:10]
-            return {'results': [{'id': k['id'], 'name': k['name']} for k in res]}
-        except: return {'results': []}
+            # Return as JSON (jsonify automatically escapes for JSON safety)
+            return jsonify({'results': [{'id': k['id'], 'name': str(k.get('name', ''))} for k in res]})
+        except: return jsonify({'results': []})
         
     ep = 'search/tv' if search_type == 'tv' else 'search/movie'
     # URL encode query to prevent injection
@@ -267,8 +268,13 @@ def tmdb_search_proxy():
     res = requests.get(f"https://api.themoviedb.org/3/{ep}?query={safe_query}&api_key={s.tmdb_key}", timeout=5).json().get('results', [])[:5]
     
     # Normalize response format for frontend (validate search_type to prevent XSS)
+    # Return as JSON (jsonify automatically escapes for JSON safety)
     safe_type = 'tv' if search_type == 'tv' else 'movie'
-    return {'results': [{'title': i.get('name') if safe_type == 'tv' else i.get('title'), 'year': (i.get('first_air_date') or i.get('release_date') or '')[:4], 'poster': i.get('poster_path')} for i in res]}
+    return jsonify({'results': [{
+        'title': str(i.get('name', '') if safe_type == 'tv' else i.get('title', '')),
+        'year': str((i.get('first_air_date') or i.get('release_date') or '')[:4]),
+        'poster': str(i.get('poster_path', ''))
+    } for i in res]})
 
 # metadata and actions
 
@@ -1258,10 +1264,19 @@ def import_kometa_config():
     except (socket.gaierror, socket.herror, OSError):
         return jsonify({'status': 'error', 'message': 'Could not resolve hostname'}), 400
     
+    # Reconstruct URL from validated components to prevent SSRF via malformed URL
+    safe_url = f"{parsed.scheme}://{parsed.netloc}"
+    if parsed.path:
+        safe_url += parsed.path
+    if parsed.query:
+        safe_url += f"?{parsed.query}"
+    if parsed.fragment:
+        safe_url += f"#{parsed.fragment}"
+    
     # Fetch the file with security measures
     try:
         response = requests.get(
-            url,
+            safe_url,
             timeout=10,  # 10 second timeout
             max_redirects=5,  # Limit redirects
             allow_redirects=True,
