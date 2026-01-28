@@ -901,7 +901,7 @@ function gen() {
             }
         });
 
-        const idx = allLibs.findIndex(l => l.name === currentName);
+            const idx = allLibs.findIndex(l => l.name === currentName);
         const existing = idx > -1 ? allLibs[idx] : null;
         const mergedCols = mergeUnknownOptions(currentCols, existing ? existing.cols : []);
         const mergedOvls = mergeUnknownOptions(currentOvls, existing ? existing.ovls : []);
@@ -931,7 +931,7 @@ function gen() {
                         y += `    - default: ${c}${formatInlineComment(colComment)}\n`;
                         y += `      template_variables:\n`;
                         y += writeTemplateVars(templateVars[c], 8, inlineComments.templateVars?.[c]);
-                    } else {
+                            } else {
                         y += `    - default: ${c}${formatInlineComment(colComment)}\n`;
                     }
                 });
@@ -944,7 +944,7 @@ function gen() {
                         y += `    - default: ${o}${formatInlineComment(ovlComment)}\n`;
                         y += `      template_variables:\n`;
                         y += writeTemplateVars(templateVars[o], 8, inlineComments.templateVars?.[o]);
-                    } else {
+                            } else {
                         y += `    - default: ${o}${formatInlineComment(ovlComment)}\n`;
                     }
                 });
