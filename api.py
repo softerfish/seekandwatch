@@ -12,6 +12,8 @@ import zipfile
 from datetime import timedelta
 
 import requests
+import socket
+from urllib.parse import urlparse, quote
 from flask import Blueprint, request, jsonify, session, send_from_directory, current_app
 from flask_login import login_required, current_user
 from flask_limiter.util import get_remote_address
@@ -251,17 +253,22 @@ def tmdb_search_proxy():
         return {'results': []}
     
     if search_type == 'keyword':
-        url = f"https://api.themoviedb.org/3/search/keyword?query={q}&api_key={s.tmdb_key}"
+        # URL encode query to prevent injection
+        safe_query = quote(q[:100])  # Limit length and encode
+        url = f"https://api.themoviedb.org/3/search/keyword?query={safe_query}&api_key={s.tmdb_key}"
         try:
             res = requests.get(url, timeout=5).json().get('results', [])[:10]
             return {'results': [{'id': k['id'], 'name': k['name']} for k in res]}
         except: return {'results': []}
         
     ep = 'search/tv' if search_type == 'tv' else 'search/movie'
-    res = requests.get(f"https://api.themoviedb.org/3/{ep}?query={q}&api_key={s.tmdb_key}", timeout=5).json().get('results', [])[:5]
+    # URL encode query to prevent injection
+    safe_query = quote(q[:100])  # Limit length and encode
+    res = requests.get(f"https://api.themoviedb.org/3/{ep}?query={safe_query}&api_key={s.tmdb_key}", timeout=5).json().get('results', [])[:5]
     
-    # Normalize response format for frontend.
-    return {'results': [{'title': i.get('name') if request.args.get('type') == 'tv' else i.get('title'), 'year': (i.get('first_air_date') or i.get('release_date') or '')[:4], 'poster': i.get('poster_path')} for i in res]}
+    # Normalize response format for frontend (validate search_type to prevent XSS)
+    safe_type = 'tv' if search_type == 'tv' else 'movie'
+    return {'results': [{'title': i.get('name') if safe_type == 'tv' else i.get('title'), 'year': (i.get('first_air_date') or i.get('release_date') or '')[:4], 'poster': i.get('poster_path')} for i in res]}
 
 # metadata and actions
 
@@ -497,9 +504,15 @@ def create_bulk_collection():
             try: lib.fetchItem(k).addCollection(data['collection_title'])
             except: pass
             
-        # save it as a custom preset so it shows up in the UI
+        # save it as a custom preset so it shows up in the UI (store target_library for delete-from-Plex)
         key = f"custom_import_{int(time.time())}"
-        config = {'title': data['collection_title'], 'description': f"Imported Static List ({len(keys)} items)", 'media_type': 'movie', 'icon': '📋'}
+        config = {
+            'title': data['collection_title'],
+            'description': f"Imported Static List ({len(keys)} items)",
+            'media_type': 'movie',
+            'icon': '📋',
+            'target_library': data.get('target_library', '')
+        }
         
         db.session.add(CollectionSchedule(preset_key=key, frequency='manual', configuration=json.dumps(config)))
         db.session.commit()
@@ -700,9 +713,50 @@ def save_custom_collection():
 @api_bp.route('/delete_custom_collection/<key>', methods=['POST'])
 @login_required
 def delete_custom_collection(key):
+    job = CollectionSchedule.query.filter_by(preset_key=key).first()
+    if not job:
+        return jsonify({'status': 'error', 'message': 'Collection not found'}), 404
+
+    # Load config before deleting from DB so we can remove from Plex
+    config = {}
+    if job.configuration:
+        try:
+            config = json.loads(job.configuration)
+        except Exception:
+            pass
+
+    title = config.get('title') or 'Unknown'
+    media_type = config.get('media_type', 'movie')
+    target_library = config.get('target_library')  # set for imported lists
+
+    # Delete from Plex if we have title and connection
+    s = current_user.settings
+    if s.plex_url and s.plex_token and title:
+        try:
+            plex = PlexServer(s.plex_url, s.plex_token, timeout=10)
+            target_type = 'movie' if media_type == 'movie' else 'show'
+            section = None
+            if target_library:
+                try:
+                    section = plex.library.section(target_library)
+                except Exception:
+                    pass
+            if not section:
+                section = next((sec for sec in plex.library.sections() if sec.type == target_type), None)
+            if section:
+                try:
+                    results = section.search(title=title, libtype='collection')
+                    if results:
+                        results[0].delete()
+                except Exception as e:
+                    _log_api_exception("delete_custom_collection_plex", e)
+                    # still delete from DB; Plex failure is non-fatal
+        except Exception as e:
+            _log_api_exception("delete_custom_collection_plex_connect", e)
+
     CollectionSchedule.query.filter_by(preset_key=key).delete()
     db.session.commit()
-    return jsonify({'status': 'success'})
+    return jsonify({'status': 'success', 'message': 'Collection removed from SeekAndWatch and Plex'})
 
 # system and settings stuff
 
@@ -1158,8 +1212,6 @@ def delete_kometa_template(template_id):
 def import_kometa_config():
     """Securely import Kometa config from URL."""
     import re
-    from urllib.parse import urlparse
-    import requests
     from requests.exceptions import RequestException, Timeout
     
     data = request.json
@@ -1183,12 +1235,28 @@ def import_kometa_config():
         if hostname in ['localhost', '127.0.0.1', '0.0.0.0']:
             return jsonify({'status': 'error', 'message': 'Local URLs are not allowed'}), 400
         
-        # Block private IP ranges
+        # Block private IP ranges in hostname
         if re.match(r'^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)', hostname):
             return jsonify({'status': 'error', 'message': 'Private IP addresses are not allowed'}), 400
         
-    except Exception as e:
+        # Block IPv6 localhost variants
+        if hostname in ['::1', '[::1]', 'ip6-localhost', 'ip6-loopback']:
+            return jsonify({'status': 'error', 'message': 'Local URLs are not allowed'}), 400
+        
+    except Exception:
         return jsonify({'status': 'error', 'message': 'Invalid URL'}), 400
+    
+    # Resolve DNS and check actual IP to prevent DNS rebinding attacks
+    try:
+        resolved_ip = socket.gethostbyname(parsed.hostname)
+        # Block private/local IPs at resolved IP level
+        if resolved_ip in ['127.0.0.1', '0.0.0.0']:
+            return jsonify({'status': 'error', 'message': 'Local URLs are not allowed'}), 400
+        # Block private IP ranges (10.x, 172.16-31.x, 192.168.x)
+        if re.match(r'^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)', resolved_ip):
+            return jsonify({'status': 'error', 'message': 'Private IP addresses are not allowed'}), 400
+    except (socket.gaierror, socket.herror, OSError):
+        return jsonify({'status': 'error', 'message': 'Could not resolve hostname'}), 400
     
     # Fetch the file with security measures
     try:
@@ -1222,9 +1290,9 @@ def import_kometa_config():
         
     except Timeout:
         return jsonify({'status': 'error', 'message': 'Request timed out'}), 408
-    except RequestException as e:
-        return jsonify({'status': 'error', 'message': f'Failed to fetch URL: {str(e)}'}), 400
-    except Exception as e:
+    except RequestException:
+        return jsonify({'status': 'error', 'message': 'Failed to fetch URL'}), 400
+    except Exception:
         return jsonify({'status': 'error', 'message': 'Import failed'}), 500
 
 @api_bp.route('/api/sync_aliases', methods=['POST'])

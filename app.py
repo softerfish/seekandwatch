@@ -72,6 +72,8 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = get_persistent_key()
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////config/seekandwatch.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+# Limit request body size (mitigates CVE-2024-49767 / multipart exhaustion)
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB
 csrf = CSRFProtect(app)
 
 # Rate limiting to prevent abuse.
@@ -982,8 +984,8 @@ def reset_alias_db():
         s.last_alias_scan = 0
         db.session.commit()
         return "<h1>Alias DB Wiped.</h1><p>The scanner will now restart from scratch. Please wait 10 minutes and check logs.</p><a href='/dashboard'>Back</a>"
-    except Exception as e:
-        return f"Error: {e}"
+    except Exception:
+        return "<h1>Error</h1><p>An error occurred while wiping the alias database.</p><a href='/dashboard'>Back</a>"
 
 @app.route('/playlists')
 @login_required
@@ -992,23 +994,35 @@ def playlists():
     current_time = s.schedule_time if s and s.schedule_time else "04:00"
 
     schedules = {}
+    sync_modes = {}
     for sch in CollectionSchedule.query.all():
         schedules[sch.preset_key] = sch.frequency
-        
+        if sch.configuration:
+            try:
+                config = json.loads(sch.configuration)
+                sync_modes[sch.preset_key] = config.get('sync_mode', 'append')
+            except Exception:
+                sync_modes[sch.preset_key] = 'append'
+
     custom_presets = {}
     for sch in CollectionSchedule.query.filter(CollectionSchedule.preset_key.like('custom_%')).all():
         if sch.configuration:
-            config = json.loads(sch.configuration)
-            custom_presets[sch.preset_key] = {
-                'title': config.get('title', 'Untitled'),
-                'description': config.get('description', 'Custom Builder Collection'),
-                'media_type': config.get('media_type', 'movie'),
-                'icon': config.get('icon', '🛠️')
-            }
+            try:
+                config = json.loads(sch.configuration)
+                custom_presets[sch.preset_key] = {
+                    'title': config.get('title', 'Untitled'),
+                    'description': config.get('description', 'Custom Builder Collection'),
+                    'media_type': config.get('media_type', 'movie'),
+                    'icon': config.get('icon', '🛠️'),
+                    'sync_mode': config.get('sync_mode', 'append')
+                }
+            except Exception:
+                pass
 
     return render_template('playlists.html', 
                            presets=PLAYLIST_PRESETS, 
                            schedules=schedules, 
+                           sync_modes=sync_modes,
                            custom_presets=custom_presets,
                            schedule_time=current_time)
                            

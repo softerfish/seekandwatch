@@ -127,6 +127,11 @@ docker run -d \
 ---
 
 ## Changelog
+v1.3.2
+- finished last of the security updates
+
+<details>
+  <summary><b>Past Changelog</b></summary>
 v1.3.1
 - fixes for GitHub CodeQL findings
 - changed header icons around a bit
@@ -143,8 +148,6 @@ performance indicators -> estimate run time based on selected options
 
 - started the Wiki https://github.com/softerfish/seekandwatch/wiki
 
-<details>
-  <summary><b>Past Changelog</b></summary>
 v1.3.0
 - finished one click updates for non-unraid app installs. unraid users will have to use appstore updates when the app is approved
 - users can import backup files now

@@ -1,10 +1,12 @@
-Flask>=3.0.0,<4.0.0
+# Pinned to address Dependabot/CodeQL critical/high CVEs (see documentation/SECURITY_UPDATES.md)
+Flask>=3.1.1,<4.0.0
+Jinja2>=3.1.6
+werkzeug>=3.0.6,<4.0.0
+requests>=2.32.4,<3.0.0
 Flask-SQLAlchemy>=3.1.0,<4.0.0
 Flask-Login>=0.6.3,<1.0.0
 plexapi>=4.15.0,<5.0.0
-requests>=2.31.0,<3.0.0
-gunicorn>=21.2.0,<22.0.0
-werkzeug>=3.0.0,<4.0.0
+gunicorn>=22.0.0,<24.0.0
 Flask-APScheduler>=1.13.0,<2.0.0
 Flask-WTF>=1.2.0,<2.0.0
 Flask-Limiter>=3.5.0,<4.0.0
