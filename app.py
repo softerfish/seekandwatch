@@ -37,7 +37,7 @@ from presets import PLAYLIST_PRESETS
 
 # basic app setup stuff
 
-VERSION = "1.3.1"
+VERSION = "1.3.2"
 
 UPDATE_CACHE = {
     'version': None,
