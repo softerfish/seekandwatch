@@ -129,6 +129,7 @@ docker run -d \
 ## Changelog
 v1.3.2
 - finished last of the security updates
+- finished Kometa import config files -> copy and paste or by URL
 
 <details>
   <summary><b>Past Changelog</b></summary>
@@ -259,6 +260,7 @@ This product uses the TMDB API but is not endorsed or certified by TMDB.
 | Plex Collections | Custom Builder |
 | :---: | :---: |
 | <img src="images/plexcollections.png" alt="Plex Collections" width="800"> | <img src="images/custom-builder.png" alt="Custom Builder" width="400"> |
+
 
 
 </details>
