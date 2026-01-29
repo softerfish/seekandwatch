@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% block page_title %}Logs{% endblock %}
 {% block content %}
 
 <div class="playlist-header">
@@ -14,6 +15,15 @@
                 </span>
             </label>
 
+            <label class="switch-container">
+                <input type="checkbox" id="hide-errors-toggle" onchange="filterLogs()">
+                <span class="switch-label">Hide Errors 👁️</span>
+            </label>
+            <label class="switch-container">
+                <input type="checkbox" id="show-only-errors-toggle" onchange="filterLogs()">
+                <span class="switch-label">Errors Only ⚠️</span>
+            </label>
+
             <button onclick="clearLogs()" class="btn-delete" style="padding: 8px 15px; font-size:0.9em;">Clear Logs 🗑️</button>
             <button onclick="location.reload()" class="btn-preview" style="padding: 8px 15px; font-size:0.9em;">Refresh 🔄</button>
         </div>
@@ -21,44 +31,81 @@
     <p class="media-sub">Track collection syncs, cache updates, and system errors.</p>
 </div>
 
+{% if error_count > 0 or recent_error_count > 0 %}
+<div class="card" style="margin-bottom: 20px; border-left: 4px solid #e74c3c;">
+    <div class="d-flex flex-between mb-10" style="align-items:center;">
+        <div>
+            <h3 class="m-0 text-error">⚠️ Error Summary</h3>
+            <p class="text-muted fs-small mb-0 mt-5">
+                Total Errors: <strong class="text-error">{{ error_count }}</strong> | 
+                Last 7 Days: <strong class="text-error">{{ recent_error_count }}</strong>
+            </p>
+        </div>
+        <button onclick="document.getElementById('show-only-errors-toggle').checked = true; filterLogs();" class="btn-secondary fs-small">
+            View All Errors
+        </button>
+    </div>
+</div>
+{% endif %}
+
 <div class="card logs-table-container">
-    <div style="overflow-x: auto;">
-        <table class="logs-table">
-            <thead>
-                <tr>
-                    <th style="width: 180px;">Timestamp</th>
-                    <th style="width: 100px;">Module</th>
-                    <th style="width: 100px;">Level</th>
-                    <th>Message</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for log in logs %}
-                <tr>
-                    <td style="color: #888;">{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
-                    <td><code>{{ log.module }}</code></td>
-                    <td>
-                        {% if log.level == 'INFO' %}
-                            <span class="log-badge info">INFO</span>
-                        {% elif log.level == 'SUCCESS' %}
-                            <span class="log-badge success">SUCCESS</span>
-                        {% elif log.level == 'WARNING' %}
-                            <span class="log-badge warning">WARN</span>
-                        {% elif log.level == 'ERROR' %}
-                            <span class="log-badge error">ERROR</span>
-                        {% else %}
-                            <span class="log-badge default">{{ log.level }}</span>
-                        {% endif %}
-                    </td>
-                    <td style="line-height: 1.4;">{{ log.message }}</td>
-                </tr>
-                {% else %}
-                <tr>
-                    <td colspan="4" class="text-center" style="padding: 30px; color: #666;">No logs found.</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+    <table class="logs-table">
+        <thead>
+            <tr>
+                <th style="width: 180px;">Timestamp</th>
+                <th style="width: 100px;">Module</th>
+                <th style="width: 100px;">Level</th>
+                <th>Message</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for log in logs %}
+            <tr class="log-row" data-level="{{ log.level }}">
+                <td style="color: #888;">{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                <td><code>{{ log.category }}</code></td>
+                <td>
+                    {% if log.level|lower == 'info' %}
+                        <span class="log-badge info">info</span>
+                    {% elif log.level|lower == 'success' %}
+                        <span class="log-badge success">success</span>
+                    {% elif log.level|lower == 'warning' or log.level|lower == 'warn' %}
+                        <span class="log-badge warning">warning</span>
+                    {% elif log.level|lower == 'error' %}
+                        <span class="log-badge error">error</span>
+                    {% else %}
+                        <span class="log-badge default">{{ log.level }}</span>
+                    {% endif %}
+                </td>
+                <td style="line-height: 1.4;">{{ log.message }}</td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="4" class="text-center" style="padding: 30px; color: #666;">No logs found.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="card" style="margin-top: 20px; border-top: 4px solid #34495e;">
+    <div class="d-flex flex-between mb-10" style="align-items:center;">
+        <h3 class="m-0">📟 Live Scanner Output</h3>
+        <div class="d-flex gap-10" style="align-items:center;">
+            <div class="input-group m-0" style="width:auto; display:flex; align-items:center; gap:5px;">
+                <span class="fs-small text-muted">Limit (MB):</span>
+                <input type="number" id="scanner-log-size" value="{{ settings.scanner_log_size or 10 }}" min="1" max="100" style="width:60px; padding:5px; background:#111; border:1px solid #444; color:white; border-radius:4px; text-align:center;" onchange="updateScannerLogSize()">
+            </div>
+        </div>
+    </div>
+    
+    <p class="text-muted fs-normal mb-15">
+        Real-time feed of the background worker. Auto-refreshes every 2 seconds.
+    </p>
+
+    <div id="scanner-terminal">Waiting for logs...</div>
+
+    <div class="text-right mt-10">
+        <button type="button" onclick="refreshScannerLogs()" class="btn-secondary fs-small">🔄 Refresh Now</button>
     </div>
 </div>
 
@@ -85,6 +132,76 @@ function clearLogs() {
         else alert("Error: " + d.message);
     });
 }
+
+// Scanner log polling
+let scannerLogInterval;
+
+function refreshScannerLogs() {
+    fetch('/api/scanner/logs_stream')
+    .then(r => r.json())
+    .then(data => {
+        const term = document.getElementById('scanner-terminal');
+        if(term) {
+            term.innerText = data.logs;
+            term.scrollTop = term.scrollHeight;
+        }
+    });
+}
+
+function updateScannerLogSize() {
+    const size = document.getElementById('scanner-log-size').value;
+    fetch('/api/scanner/log_size', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({scanner_log_size: parseInt(size)})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if(data.status === 'success') {
+            refreshScannerLogs();
+        } else {
+            alert('Error updating log size: ' + (data.message || 'Unknown error'));
+        }
+    })
+    .catch(err => {
+        alert('Error updating log size: ' + err.message);
+    });
+}
+
+function filterLogs() {
+    const hideErrors = document.getElementById('hide-errors-toggle').checked;
+    const showOnlyErrors = document.getElementById('show-only-errors-toggle').checked;
+    const rows = document.querySelectorAll('.log-row');
+    
+    rows.forEach(row => {
+        const level = row.getAttribute('data-level');
+        
+        if (showOnlyErrors) {
+            row.style.display = (level && level.toLowerCase() === 'error') ? '' : 'none';
+        } else if (hideErrors) {
+            row.style.display = (level && level.toLowerCase() === 'error') ? 'none' : '';
+        } else {
+            // Show all
+            row.style.display = '';
+        }
+    });
+}
+
+// Start polling when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    filterLogs(); // Apply initial filter
+    refreshScannerLogs(); // Initial load
+    scannerLogInterval = setInterval(function() {
+        refreshScannerLogs();
+    }, 2000);
+    
+    // Cleanup on page unload
+    window.addEventListener('beforeunload', function() {
+        if(scannerLogInterval) {
+            clearInterval(scannerLogInterval);
+        }
+    });
+});
 </script>
 
 {% endblock %}

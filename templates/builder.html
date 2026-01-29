@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% block page_title %}Collection Builder{% endblock %}
 {% block content %}
 <div class="builder-container">
     <h2>Custom Collection Builder</h2>
@@ -37,43 +38,43 @@
             </div>
             <div class="input-group form-col">
                 <label class="input-label">Year Range</label>
-                <div style="display: flex; gap: 10px;">
+                <div class="d-flex gap-10">
                     <input type="number" id="c_year_start" placeholder="1980">
                     <input type="number" id="c_year_end" placeholder="1990">
                 </div>
             </div>
         </div>
 
-        <div class="input-group" style="margin-bottom: 20px;">
+        <div class="input-group mb-20">
             <label class="input-label">Smart Tags (Specific Themes)</label>
             <input type="text" id="keyword-search" placeholder="Type to search tags (e.g. 'aliens', 'time travel')...">
             
             <div id="keyword-results" class="keyword-dropdown"></div>
             
-            <div id="selected-keywords" class="tag-container" style="margin-bottom: 10px;"></div>
+            <div id="selected-keywords" class="tag-container mb-10"></div>
             
-            <div class="text-muted small" style="display: block; margin-top: 5px;">
+            <div class="text-muted small d-block mt-5">
                 <strong>💡 Pro Tip:</strong> Add multiple similar tags (e.g., "alien" and "aliens").
             </div>
         </div>
 
         <div class="input-group">
-            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 10px;">
-                <label class="input-label" style="margin: 0;">Min TMDB Rating (0-10)</label>
-                <span id="rating-text" style="background: var(--accent-color); color: black; padding: 2px 12px; border-radius: 10px; font-weight: bold;">0</span>
+            <div class="d-flex flex-between w-100 mb-10" style="align-items: center;">
+                <label class="input-label m-0">Min TMDB Rating (0-10)</label>
+                <span id="rating-text" class="rating-badge">0</span>
             </div>
             
-            <input type="range" id="c_rating" min="0" max="10" step="0.5" value="0" oninput="document.getElementById('rating-text').innerText = this.value" style="width: 100%; accent-color: var(--accent-color);">
+            <input type="range" id="c_rating" min="0" max="10" step="0.5" value="0" oninput="document.getElementById('rating-text').innerText = this.value" class="w-100" style="accent-color: var(--accent-color);">
         </div>
 
-        <button onclick="previewMatches()" class="btn btn-secondary" style="width: 100%;">🔍 Preview Top 10 Matches</button>
+        <button onclick="previewMatches()" class="btn btn-secondary w-100">🔍 Preview Top 10 Matches</button>
         <button onclick="saveCollection()" class="btn btn-save">Create Collection & Schedule</button>
     </div>
 
-    <div id="preview-area" class="preview-card" style="display:none; margin-top: 20px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
-            <h3 style="margin:0;">Live Preview Results</h3>
-            <button id="request-all-btn" class="btn-request-all" onclick="requestAllMissing()" style="display:none; width:auto; margin:0; padding: 5px 15px;">📥 Request All Missing</button>
+    <div id="preview-area" class="preview-card d-none mt-20">
+        <div class="d-flex flex-between mb-15" style="align-items:center;">
+            <h3 class="m-0">Live Preview Results</h3>
+            <button id="request-all-btn" class="btn-request-all d-none w-auto m-0" onclick="requestAllMissing()" style="padding: 5px 15px;">📥 Request All Missing</button>
         </div>
         <ul id="preview-list" class="preview-list"></ul>
     </div>
@@ -110,7 +111,7 @@ function renderTags() {
     const container = document.getElementById('selected-keywords'); container.innerHTML = "";
     selectedKeywords.forEach(k => {
         const tag = document.createElement('span'); tag.className = 'keyword-tag';
-        tag.innerHTML = `${k.name} <span onclick="removeTag(${k.id})">&times;</span>`; container.appendChild(tag);
+        tag.innerHTML = `${escapeHtml(String(k.name || ''))} <span onclick="removeTag(${Number(k.id)})">&times;</span>`; container.appendChild(tag);
     });
 }
 
@@ -138,7 +139,7 @@ function previewMatches() {
     
     // Show a quick loading state.
     area.style.display = 'block'; 
-    list.innerHTML = "<li style='text-align:center; padding:20px; color:#777;'>Loading matches...</li>"; 
+    list.innerHTML = '<li class="preview-list-item preview-list-item-loading">Loading matches...</li>'; 
     allBtn.style.display = 'none';
     
     fetch('/preview_custom_collection', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) })
@@ -161,7 +162,7 @@ function previewMatches() {
                     hasMissing = true;
                     buttonHtml = `<button class="item-request-btn" data-tmdb-id="${item.tmdb_id}" data-media-type="${item.media_type}" onclick="requestSingle(this)">Request 📥</button>`;
                 } else {
-                    buttonHtml = `<span style="font-size:0.8em; color:#2ecc71; font-weight:bold;">Owned ✅</span>`;
+                    buttonHtml = '<span class="owned-badge">Owned ✅</span>';
                 }
 
                 li.innerHTML = `
@@ -169,7 +170,7 @@ function previewMatches() {
                     <div class="preview-details">
                         <div class="preview-title-row">
                             <strong>${item.text}</strong>
-                            <span style="font-size:0.8em; color:#888;">${item.year || ''}</span>
+                            <span class="fs-small text-muted">${item.year || ''}</span>
                         </div>
                         ${buttonHtml}
                     </div>
@@ -181,7 +182,7 @@ function previewMatches() {
             if(hasMissing) allBtn.style.display = 'block';
             
         } else { 
-            list.innerHTML = `<li style='text-align:center; padding:20px; color:#aaa;'>${data.message || "No matches found."}</li>`; 
+            list.innerHTML = `<li class="preview-list-item preview-list-item-empty">${escapeHtml(String(data.message || "No matches found."))}</li>`; 
         }
     });
 }
@@ -190,23 +191,27 @@ function requestSingle(btn) {
     const tmdbId = btn.dataset.tmdbId;
     const type = btn.dataset.mediaType;
     
-    btn.innerText = "Sending... ⏳"; 
-    btn.disabled = true;
+    // grab stuff from the preview list
+    const previewItem = btn.closest('.preview-item-row');
+    const titleEl = previewItem ? previewItem.querySelector('strong') : null;
+    const title = titleEl ? titleEl.textContent : '';
+    const yearEl = previewItem ? previewItem.querySelector('.fs-small') : null;
+    const year = yearEl ? yearEl.textContent.trim() : '';
+    const posterEl = previewItem ? previewItem.querySelector('.preview-tiny-poster') : null;
+    const posterUrl = posterEl ? posterEl.src.replace('/w92', '/w500') : '';
     
-    fetch('/request_media', { 
-        method: 'POST', 
-        headers: {'Content-Type': 'application/json'}, 
-        body: JSON.stringify({ tmdb_id: tmdbId, media_type: type }) 
-    }).then(res => res.json()).then(resData => { 
-        if(resData.status === 'success') { 
-            btn.innerText = "Requested ✅"; 
-            btn.style.background = "#2ecc71"; 
-            btn.style.color = "white"; 
-        } else { 
-            btn.innerText = "Failed ❌"; 
-            btn.disabled = false; 
-        } 
-    });
+    // open the popup
+    openRequestModal(type, tmdbId, title, posterUrl, year);
+    
+    // update button when it works
+    window.onRequestSuccess = function(modalTmdbId, mediaType) {
+        if (btn && modalTmdbId == tmdbId && mediaType == type) {
+            btn.innerText = "Requested ✅";
+            btn.style.background = "#2ecc71";
+            btn.style.color = "white";
+            btn.disabled = true;
+        }
+    };
 }
 
 function requestAllMissing() {

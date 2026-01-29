@@ -20,95 +20,159 @@
 </head>
 <body>
 
-    <nav class="navbar navbar-expand-lg navbar-dark">
-        <div class="container-fluid" style="max-width: 1200px;">
-            <a class="navbar-brand" href="{{ url_for('dashboard') }}">
-                <i class="fas fa-film"></i> SeekAndWatch
+    {% if current_user.is_authenticated %}
+    <!-- Sidebar Navigation -->
+    <aside class="app-sidebar" id="appSidebar">
+        <a href="{{ url_for('dashboard') }}" class="sidebar-header-link">
+            <div class="sidebar-header">
+                <div class="sidebar-logo">
+                    <img src="{{ url_for('static', filename='icon.png') }}" alt="SeekAndWatch Logo" class="logo-image">
+                </div>
+                <h1 class="sidebar-title">SeekAndWatch</h1>
+            </div>
+        </a>
+
+        <a href="https://www.buymeacoffee.com/softerfish" target="_blank" class="sidebar-sponsor">
+            <img src="https://cdn.buymeacoffee.com/buttons/v2/default-violet.png" alt="Buy Me A Coffee" style="height: 50px !important;width: 190px !important;">
+        </a>
+
+        <nav class="sidebar-nav">
+            <div class="nav-section">
+                <div class="nav-section-header">Core</div>
+                <a href="{{ url_for('dashboard') }}" class="nav-item {% if request.endpoint == 'dashboard' %}active{% endif %}">
+                    <i class="fas fa-home"></i>
+                    <span>Home</span>
+                </a>
+                <a href="{{ url_for('playlists') }}" class="nav-item {% if request.endpoint == 'playlists' %}active{% endif %}">
+                    <i class="fas fa-layer-group"></i>
+                    <span>Plex Collections</span>
+                </a>
+                <a href="{{ url_for('kometa') }}" class="nav-item {% if request.endpoint == 'kometa' %}active{% endif %}">
+                    <i class="fas fa-puzzle-piece"></i>
+                    <span>Kometa</span>
+                </a>
+                <a href="{{ url_for('manage_blocklist') }}" class="nav-item {% if request.endpoint == 'manage_blocklist' %}active{% endif %}">
+                    <i class="fas fa-ban"></i>
+                    <span>Blocklist</span>
+                </a>
+                <a href="{{ url_for('logs_page') }}" class="nav-item {% if request.endpoint == 'logs_page' %}active{% endif %}">
+                    <i class="fas fa-file-alt"></i>
+                    <span>Logs</span>
+                </a>
+                <a href="{{ url_for('settings') }}" class="nav-item {% if request.endpoint == 'settings' %}active{% endif %}">
+                    <i class="fas fa-cog"></i>
+                    <span>Settings</span>
+                </a>
+            </div>
+
+            <div class="nav-section">
+                <div class="nav-section-header">Apps</div>
+                <a href="{{ url_for('media') }}#requested" class="nav-item {% if request.endpoint == 'media' %}media-nav-item{% endif %}" data-tab="requested">
+                    <i class="fas fa-clipboard-list"></i>
+                    <span>Requested</span>
+                </a>
+                <a href="{{ url_for('media') }}#radarr" class="nav-item {% if request.endpoint == 'media' %}media-nav-item{% endif %}" data-tab="movies">
+                    <i class="fas fa-film"></i>
+                    <span>Radarr</span>
+                </a>
+                <a href="{{ url_for('media') }}#sonarr" class="nav-item {% if request.endpoint == 'media' %}media-nav-item{% endif %}" data-tab="tv">
+                    <i class="fas fa-tv"></i>
+                    <span>Sonarr</span>
+                </a>
+            </div>
+
+            <div class="nav-section">
+                <div class="nav-section-header">Support</div>
+                <a href="{{ url_for('support_us') }}" class="nav-item {% if request.endpoint == 'support_us' %}active{% endif %}">
+                    <i class="fas fa-heart"></i>
+                    <span>Support Us</span>
+                </a>
+                <a href="https://github.com/softerfish/seekandwatch/wiki" target="_blank" class="nav-item">
+                    <i class="fab fa-github"></i>
+                    <span>GitHub Wiki</span>
+                </a>
+                <a href="https://www.reddit.com/r/SeekAndWatch/" target="_blank" class="nav-item">
+                    <i class="fab fa-reddit icon-orange"></i>
+                    <span>Reddit</span>
+                </a>
+            </div>
+        </nav>
+
+        <div class="sidebar-footer">
+            <a href="{{ url_for('logout') }}" class="nav-item logout-item">
+                <i class="fas fa-sign-out-alt"></i>
+                <span>Logout</span>
             </a>
-            
-            {% if current_user.is_authenticated %}
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navMenu">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            
-            <div class="collapse navbar-collapse" id="navMenu">
-                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-                    <li class="nav-item">
-                        <a class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}">
-                            <i class="fas fa-home"></i> Dashboard
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link {% if request.endpoint == 'playlists' %}active{% endif %}" href="{{ url_for('playlists') }}">
-                            <i class="fas fa-layer-group"></i> Plex Collections
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link {% if request.endpoint == 'kometa' %}active{% endif %}" href="{{ url_for('kometa') }}">
-                            <i class="fas fa-puzzle-piece"></i> Kometa
-                        </a>
-                    </li>
-                </ul>
-                
-                <div class="d-flex align-items-center">
-                    <div class="nav-icon-group">
-                        <a href="https://www.buymeacoffee.com/softerfish" target="_blank" title="Buy Me A Coffee">
-                            <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 30px !important;width: 100px !important;">
-                        </a>
-                        <a href="https://www.reddit.com/r/SeekAndWatch/" target="_blank" class="nav-mini-icon" title="Join us on Reddit" style="color: #ff4500;">
-                            <i class="fas fa-comments"></i>
-                        </a>
-                        
-                        <a href="https://github.com/softerfish/seekandwatch" target="_blank" class="text-white nav-mini-icon" title="Star on GitHub" style="gap: 4px;">
-                            <i class="fab fa-github"></i> 
-                            <span id="gh-star-count" style="font-weight: bold;"></span>
-                        </a>
+        </div>
+    </aside>
 
-                        <a href="javascript:void(0)" onclick="smartUpdate()" class="version-badge" title="Installed v{{ current_version|default(version)|default('0.0.0') }} | Latest v{{ latest_version|default('0.0.0') }}">
-                            <span id="current-version-text">v{{ current_version|default(version)|default('0.0.0') }}</span>
-                            <div id="update-dot" class="update-dot" title="Update Available"></div>
-                        </a>
+    <!-- Mobile Sidebar Toggle -->
+    <button class="sidebar-toggle" id="sidebarToggle" aria-label="Toggle sidebar">
+        <i class="fas fa-bars"></i>
+    </button>
 
-                    </div>
-
-                    <div class="d-flex align-items-center" style="gap: 10px;">
-                        <a href="{{ url_for('settings') }}" class="nav-mini-icon" title="Settings" style="color: #888;">
-                            <i class="fas fa-cog"></i>
-                        </a>
-                        <a href="{{ url_for('logout') }}" class="nav-mini-icon" title="Logout" style="color: #e74c3c;">
-                            <i class="fas fa-sign-out-alt"></i>
-                        </a>
-                    </div>
+    <!-- Main Content Area -->
+    <main class="main-content-wrapper">
+        <!-- Top Header Bar -->
+        <header class="main-header">
+            <div class="header-left">
+                <h2 class="page-title" id="pageTitle">{% block page_title %}Home{% endblock %}</h2>
+            </div>
+            <div class="header-right">
+                <div class="header-info-group">
+                    <span class="version-info">
+                        <span>Ver:</span>
+                        <span id="current-version-display">{{ current_version|default('0.0.0') }}</span>
+                    </span>
+                    <span class="version-info">
+                        <span>Latest:</span>
+                        <span id="latest-version-display">{{ latest_version|default('0.0.0') }}</span>
+                    </span>
+                    <a href="https://github.com/softerfish/seekandwatch" target="_blank" class="header-link" title="GitHub">
+                        <i class="fab fa-github"></i>
+                        <span id="gh-star-count-header">-</span>
+                    </a>
+                    <a href="javascript:void(0)" onclick="smartUpdate()" class="header-link version-update-link" title="Check for updates">
+                        <i class="fas fa-code-branch"></i>
+                        <div id="update-dot-header" class="update-dot" title="Update Available"></div>
+                    </a>
                 </div>
             </div>
-            {% endif %}
-        </div>
-    </nav>
+        </header>
 
+        <!-- Page Content -->
+        <div class="main-content">
+    {% else %}
+    <!-- Not authenticated - show login page without sidebar -->
     <div class="container mt-4 main-content">
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-                        {% if category == 'success' %} <i class="fas fa-check-circle"></i> 
-                        {% elif category == 'error' %} <i class="fas fa-exclamation-circle"></i> 
-                        {% endif %}
-                        {{ message }}
-                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="alert" aria-label="Close"></button>
-                    </div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
-
-        {% block content %}{% endblock %}
+    {% endif %}
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                            {% if category == 'success' %} <i class="fas fa-check-circle"></i> 
+                            {% elif category == 'error' %} <i class="fas fa-exclamation-circle"></i> 
+                            {% endif %}
+                            {{ message }}
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+            {% block content %}{% endblock %}
+    {% if current_user.is_authenticated %}
+        </div>
+    </main>
+    {% else %}
     </div>
+    {% endif %}
 
     <div id="updateConfirmModal" class="custom-modal-overlay">
         <div class="custom-modal-box">
             <div class="modal-icon">⬆️</div>
             <h3 class="modal-title" id="updateConfirmTitle">Update Available</h3>
             <p class="modal-message" id="updateConfirmMessage"></p>
-            <div style="display:flex; gap:10px; justify-content:center;">
+            <div class="d-flex gap-10 flex-center">
                 <button id="updateCancelBtn" class="btn-secondary">Not now</button>
                 <button id="updateConfirmBtn" class="modal-btn">Update now</button>
             </div>
@@ -215,18 +279,20 @@
                 return data;
             })
             .then(data => {
-                badge.style.opacity = "1";
-                document.getElementById('current-version-text').innerText = originalText;
+                if (versionDisplay) {
+                    versionDisplay.style.opacity = "1";
+                    versionDisplay.innerText = originalText;
+                }
 
                 if (data.action === 'none') {
                     alert("You are up to date! ✨");
                 } else if (data.action === 'unraid_instruction') {
                     showModal("🧰 Update Available: " + data.version,
-                        `<div style='text-align:left;'>
+                        `<div class="text-left">
                             <p>This install was detected as <b>Unraid</b>.</p>
                             <p>Please update via the <b>Unraid App Store</b>.</p>
                             <hr>
-                            <p style='color:#aaa; font-size:0.8em; margin-top:10px;'>
+                            <p class="text-muted fs-small mt-10">
                                 One-click updates are disabled on Unraid to avoid breaking installs.
                             </p>
                         </div>`, false);
@@ -237,14 +303,14 @@
                 } else if (data.action === 'docker_instruction') {
                     // Give advanced users a manual pull option if they mapped the repo.
                     showModal("🐳 Update Available: " + data.version,
-                        `<div style='text-align:left;'>
+                        `<div class="text-left">
                             <p>The app detected Docker but <b>could not find a .git folder</b>.</p>
                             <p>If you mapped your source code volume correctly, you can force the update:</p>
-                            <button onclick="smartUpdate(true); document.getElementById('settingsModal').style.display='none';" class="btn btn-primary" style="width:100%; margin-top:10px;">
+                            <button onclick="smartUpdate(true); document.getElementById('settingsModal').style.display='none';" class="btn btn-primary w-100 mt-10">
                                 Force Git Pull ⬇️
                             </button>
                             <hr>
-                            <p style='color:#aaa; font-size:0.8em; margin-top:10px;'>
+                            <p class="text-muted fs-small mt-10">
                                 Otherwise, please update the image via your Docker UI.
                             </p>
                         </div>`, false);
@@ -259,8 +325,10 @@
                 }
             })
             .catch(err => {
-                badge.style.opacity = "1";
-                document.getElementById('current-version-text').innerText = originalText;
+                const updateLink = document.querySelector('.version-update-link');
+                const versionDisplay = document.getElementById('current-version-display');
+                if (updateLink) updateLink.style.opacity = "1";
+                if (versionDisplay && originalText) versionDisplay.innerText = originalText;
                 alert(err && err.message ? err.message : "Connection Failed");
             });
     }
@@ -307,49 +375,145 @@
 
     document.addEventListener("DOMContentLoaded", function() {
         // Populate the GitHub stars in the header.
-        const starCount = document.getElementById('gh-star-count');
-        if (starCount) {
+        const starCountHeader = document.getElementById('gh-star-count-header');
+        if (starCountHeader) {
             fetch('https://api.github.com/repos/softerfish/seekandwatch')
                 .then(res => res.ok ? res.json() : null)
                 .then(data => {
-                    if (data) starCount.innerText = data.stargazers_count;
+                    if (data && data.stargazers_count !== undefined) {
+                        starCountHeader.innerText = data.stargazers_count.toLocaleString();
+                    } else {
+                        starCountHeader.innerText = '-';
+                    }
                 })
-                .catch(e => console.error("Star fetch failed", e));
+                .catch(e => {
+                    console.error("Star fetch failed", e);
+                    if (starCountHeader) starCountHeader.innerText = '-';
+                });
+        }
+
+        // Populate Buy Me A Coffee count (if available via API or use placeholder)
+        const coffeeCount = document.getElementById('coffee-count');
+        if (coffeeCount && coffeeCount.innerText === '2,842') {
+            // This would ideally fetch from Buy Me A Coffee API if available
+            // For now, keeping the placeholder or you can update manually
         }
 
         // Check latest release to drive the red dot badge.
-        const localVersionRaw = "{{ current_version|default(version)|default('0.0.0') }}";
+        const localVersionRaw = "{{ current_version|default('0.0.0') }}";
+        const latestVersionDisplay = document.getElementById('latest-version-display');
         console.log("My Local Version:", localVersionRaw);
 
-        const updateDot = document.getElementById('update-dot');
-        const badge = document.querySelector('.version-badge');
+        const updateDotHeader = document.getElementById('update-dot-header');
 
-        if (updateDot) {
-            fetch('https://api.github.com/repos/softerfish/seekandwatch/releases/latest')
-                .then(res => {
-                    if (!res.ok) {
-                        console.warn("GitHub release check skipped (404 or rate limit)");
-                        return null;
+        fetch('https://api.github.com/repos/softerfish/seekandwatch/releases/latest')
+            .then(res => {
+                if (!res.ok) {
+                    console.warn("GitHub release check skipped (404 or rate limit)");
+                    return null;
+                }
+                return res.json();
+            })
+            .then(data => {
+                if (data && data.tag_name) {
+                    const remoteVersion = data.tag_name.replace('v', '');
+                    if (latestVersionDisplay) {
+                        latestVersionDisplay.innerText = remoteVersion;
                     }
-                    return res.json();
-                })
-                .then(data => {
-                    if (data && data.tag_name) {
-                        const remoteVersion = data.tag_name;
-                        console.log("GitHub Latest:", remoteVersion);
+                    console.log("GitHub Latest:", remoteVersion);
 
-                        if (isUpdateAvailable(remoteVersion, localVersionRaw)) {
-                            console.log("Update found, enabling badge.");
-                            updateDot.style.display = 'block';
-                            badge.title = `Update available: ${remoteVersion}`;
-                            badge.style.borderColor = '#e74c3c';
-                            badge.style.color = '#ccc';
-                        } else {
-                            console.log("Already up to date (or ahead).");
+                    if (isUpdateAvailable(data.tag_name, localVersionRaw)) {
+                        console.log("Update found, enabling badge.");
+                        if (updateDotHeader) {
+                            updateDotHeader.style.display = 'block';
                         }
+                    } else {
+                        console.log("Already up to date (or ahead).");
                     }
-                })
-                .catch(e => console.error("Update check failed", e));
+                }
+            })
+            .catch(e => console.error("Update check failed", e));
+
+        // Sidebar toggle functionality
+        const sidebarToggle = document.getElementById('sidebarToggle');
+        const sidebar = document.getElementById('appSidebar');
+        if (sidebarToggle && sidebar) {
+            sidebarToggle.addEventListener('click', function() {
+                sidebar.classList.toggle('sidebar-collapsed');
+                document.body.classList.toggle('sidebar-open');
+            });
+
+            // Close sidebar when clicking overlay on mobile
+            document.body.addEventListener('click', function(e) {
+                if (window.innerWidth <= 768 && sidebar.classList.contains('sidebar-collapsed')) {
+                    if (e.target === document.body || e.target.classList.contains('main-content-wrapper')) {
+                        sidebar.classList.remove('sidebar-collapsed');
+                        document.body.classList.remove('sidebar-open');
+                    }
+                }
+            });
+        }
+
+        // Update page title based on current route
+        const pageTitle = document.getElementById('pageTitle');
+        if (pageTitle) {
+            const routeMap = {
+                'dashboard': 'Home',
+                'playlists': 'Plex Collections',
+                'media': 'Media',
+                'kometa': 'Kometa',
+                'manage_blocklist': 'Blocklist',
+                'logs_page': 'Logs',
+                'settings': 'Settings'
+            };
+            const currentRoute = "{{ request.endpoint }}";
+            if (routeMap[currentRoute]) {
+                pageTitle.innerText = routeMap[currentRoute];
+            }
+        }
+
+        // Handle sidebar Apps navigation clicks
+        document.querySelectorAll('.media-nav-item').forEach(link => {
+            link.addEventListener('click', function(e) {
+                // Allow Ctrl/Cmd+click to open in new tab
+                if (e.ctrlKey || e.metaKey) return true;
+                
+                e.preventDefault();
+                const tabName = this.getAttribute('data-tab');
+                const href = this.getAttribute('href');
+                
+                // Navigate to media page if not already there
+                if (window.location.pathname !== '/media') {
+                    window.location.href = href;
+                    return false;
+                }
+                
+                // Switch tab if already on media page (function defined in media.html)
+                if (typeof switchMediaTab === 'function') {
+                    switchMediaTab(null, tabName);
+                } else {
+                    // Fallback: navigate normally
+                    window.location.href = href;
+                }
+                return false;
+            });
+        });
+        
+        // Update sidebar active state based on URL hash when on media page
+        if (window.location.pathname === '/media') {
+            const hash = window.location.hash;
+            const hashToTab = {
+                '#requested': 'requested',
+                '#radarr': 'movies',
+                '#sonarr': 'tv'
+            };
+            const tabName = hashToTab[hash];
+            if (tabName) {
+                const sidebarLink = document.querySelector(`.media-nav-item[data-tab="${tabName}"]`);
+                if (sidebarLink) {
+                    sidebarLink.classList.add('active');
+                }
+            }
         }
     });
 
@@ -378,5 +542,295 @@
 
     });
 </script>
+
+<!-- Request Modal -->
+<div id="request-modal" class="request-modal-overlay" onclick="if(event.target===this) closeRequestModal()">
+    <div class="request-modal-box">
+        <button type="button" class="modal-close-btn" onclick="closeRequestModal()" aria-label="Close">×</button>
+        
+        <div class="request-modal-header">
+            <div class="request-modal-banner" id="request-modal-banner"></div>
+            <div class="request-modal-title-overlay">
+                <div class="request-modal-subtitle" id="request-modal-subtitle">Request Series</div>
+                <h2 class="request-modal-title" id="request-modal-title"></h2>
+            </div>
+        </div>
+        
+        <div class="request-modal-status" id="request-modal-status">
+            <div class="request-status-content">
+                <div class="request-status-text" id="request-status-text">How would you like this added to your library?</div>
+            </div>
+        </div>
+        
+        <div class="request-modal-form">
+            <div class="request-form-group">
+                <label class="request-form-label">Instance</label>
+                <select id="request-instance-select" class="request-form-select" onchange="handleInstanceChange()">
+                    <option value="">Select instance...</option>
+                </select>
+            </div>
+            
+            <div class="request-form-group" id="quality-profile-group" style="display: none;">
+                <label class="request-form-label">Quality Profile</label>
+                <select id="request-quality-select" class="request-form-select">
+                    <option value="">Loading...</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="request-modal-actions">
+            <button type="button" class="request-btn-cancel" onclick="closeRequestModal()">Cancel</button>
+            <button type="button" class="request-btn-submit" id="request-submit-btn" onclick="submitRequest()">Request</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// keep track of what we're requesting
+let requestModalState = {
+    mediaType: null,
+    tmdbId: null,
+    title: null,
+    posterUrl: null,
+    year: null
+};
+
+// open the request popup
+function openRequestModal(mediaType, tmdbId, title, posterUrl, year) {
+    requestModalState = {
+        mediaType: mediaType,
+        tmdbId: tmdbId,
+        title: title || 'Unknown',
+        posterUrl: posterUrl || '',
+        year: year || ''
+    };
+    
+    const modal = document.getElementById('request-modal');
+    const titleEl = document.getElementById('request-modal-title');
+    const subtitleEl = document.getElementById('request-modal-subtitle');
+    const bannerEl = document.getElementById('request-modal-banner');
+    const instanceSelect = document.getElementById('request-instance-select');
+    
+    // set the title stuff
+    titleEl.textContent = requestModalState.title;
+    subtitleEl.textContent = mediaType === 'movie' ? 'Request Movie' : 'Request Series';
+    
+    
+    // show the poster if we have it
+    if (requestModalState.posterUrl) {
+        bannerEl.style.backgroundImage = `url(${requestModalState.posterUrl})`;
+        bannerEl.style.display = 'block';
+    } else {
+        bannerEl.style.display = 'none';
+    }
+    
+    // fill in the dropdown options
+    instanceSelect.innerHTML = '<option value="">Select instance...</option>';
+    
+    // add overseerr if it's set up
+    const hasOverseerr = true; // todo: check from settings
+    if (hasOverseerr) {
+        instanceSelect.innerHTML += '<option value="overseerr">Overseerr</option>';
+    }
+    
+    // add radarr/sonarr based on what type it is
+    if (mediaType === 'movie') {
+        const hasRadarr = true; // todo: check from settings
+        if (hasRadarr) {
+            instanceSelect.innerHTML += '<option value="radarr">Radarr - Radarr</option>';
+        }
+    } else if (mediaType === 'tv') {
+        const hasSonarr = true; // todo: check from settings
+        if (hasSonarr) {
+            instanceSelect.innerHTML += '<option value="sonarr">Sonarr - Sonarr</option>';
+        }
+    }
+    
+    // show the popup
+    modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+    
+    // reset things
+    document.getElementById('quality-profile-group').style.display = 'none';
+    document.getElementById('request-quality-select').innerHTML = '<option value="">Select quality profile...</option>';
+    const submitBtn = document.getElementById('request-submit-btn');
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Request';
+    submitBtn.style.background = '';
+}
+
+// close the popup
+function closeRequestModal() {
+    const modal = document.getElementById('request-modal');
+    modal.style.display = 'none';
+    document.body.style.overflow = '';
+    requestModalState = {
+        mediaType: null,
+        tmdbId: null,
+        title: null,
+        posterUrl: null,
+        year: null
+    };
+}
+
+// when they pick radarr/sonarr, show quality stuff
+function handleInstanceChange() {
+    const instanceSelect = document.getElementById('request-instance-select');
+    const qualityGroup = document.getElementById('quality-profile-group');
+    const qualitySelect = document.getElementById('request-quality-select');
+    const selectedInstance = instanceSelect.value;
+    
+    if (selectedInstance === 'radarr' || selectedInstance === 'sonarr') {
+        // show quality stuff and load it
+        qualityGroup.style.display = 'block';
+        qualitySelect.innerHTML = '<option value="">Loading...</option>';
+        loadQualityProfiles(selectedInstance);
+    } else {
+        // hide quality stuff for overseerr
+        qualityGroup.style.display = 'none';
+        qualitySelect.innerHTML = '<option value="">Select quality profile...</option>';
+    }
+}
+
+// grab quality profiles from radarr/sonarr
+function loadQualityProfiles(instance) {
+    const qualitySelect = document.getElementById('request-quality-select');
+    
+    fetch(`/api/${instance}/quality-profiles`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'success' && data.profiles) {
+                qualitySelect.innerHTML = '<option value="">Any (Default)</option>';
+                data.profiles.forEach(profile => {
+                    qualitySelect.innerHTML += `<option value="${escapeHtml(String(profile.id))}">${escapeHtml(String(profile.name || ''))}</option>`;
+                });
+            } else {
+                qualitySelect.innerHTML = '<option value="">Any (Default)</option>';
+            }
+        })
+        .catch(err => {
+            console.error('Error loading quality profiles:', err);
+            qualitySelect.innerHTML = '<option value="">Any (Default)</option>';
+        });
+}
+
+// send the request
+function submitRequest() {
+    const instanceSelect = document.getElementById('request-instance-select');
+    const qualitySelect = document.getElementById('request-quality-select');
+    const submitBtn = document.getElementById('request-submit-btn');
+    
+    const selectedInstance = instanceSelect.value;
+    if (!selectedInstance) {
+        alert('Please select an instance');
+        return;
+    }
+    
+    const qualityProfileId = qualitySelect.value || null;
+    
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Requesting...';
+    
+    if (selectedInstance === 'overseerr') {
+        // send to overseerr
+        fetch('/request_media', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                media_type: requestModalState.mediaType,
+                tmdb_id: requestModalState.tmdbId
+            })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'success') {
+                submitBtn.textContent = 'Requested ✅';
+                submitBtn.style.background = '#2ecc71';
+                setTimeout(() => {
+                    closeRequestModal();
+                    // update the button if there's a callback
+                    if (window.onRequestSuccess) {
+                        window.onRequestSuccess(requestModalState.tmdbId, requestModalState.mediaType);
+                    }
+                }, 1000);
+            } else {
+                alert(data.message || 'Failed to request');
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Request';
+            }
+        })
+        .catch(err => {
+            alert('Error: ' + err.message);
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Request';
+        });
+    } else if (selectedInstance === 'radarr') {
+        // send to radarr
+        fetch('/api/radarr/add', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                tmdb_id: requestModalState.tmdbId,
+                quality_profile_id: qualityProfileId
+            })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'success') {
+                submitBtn.textContent = 'Added ✅';
+                submitBtn.style.background = '#2ecc71';
+                setTimeout(() => {
+                    closeRequestModal();
+                    if (window.onRequestSuccess) {
+                        window.onRequestSuccess(requestModalState.tmdbId, requestModalState.mediaType);
+                    }
+                }, 1000);
+            } else {
+                alert(data.message || 'Failed to add to Radarr');
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Request';
+            }
+        })
+        .catch(err => {
+            alert('Error: ' + err.message);
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Request';
+        });
+    } else if (selectedInstance === 'sonarr') {
+        // send to sonarr
+        fetch('/api/sonarr/add', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                tmdb_id: requestModalState.tmdbId,
+                quality_profile_id: qualityProfileId
+            })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'success') {
+                submitBtn.textContent = 'Added ✅';
+                submitBtn.style.background = '#2ecc71';
+                setTimeout(() => {
+                    closeRequestModal();
+                    if (window.onRequestSuccess) {
+                        window.onRequestSuccess(requestModalState.tmdbId, requestModalState.mediaType);
+                    }
+                }, 1000);
+            } else {
+                alert(data.message || 'Failed to add to Sonarr');
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Request';
+            }
+        })
+        .catch(err => {
+            alert('Error: ' + err.message);
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Request';
+        });
+    }
+}
+</script>
+
 </body>
 </html>

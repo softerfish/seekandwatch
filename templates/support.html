@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block page_title %}Support Us{% endblock %}
+{% block content %}
+
+<div class="settings-container support-page">
+    <div class="settings-header">
+        <h2>💚 Support Us</h2>
+        <p class="text-muted">SeekAndWatch is free and open source. Here's how you can help it thrive.</p>
+    </div>
+
+    <div class="card setting-card" style="margin-bottom: 24px;">
+        <h3>📖 How this project started</h3>
+        <p class="support-body">SeekAndWatch started as a simple media scanner to recommend movies and TV shows for my wife. It's since taken on a life of its own (Smart Discovery, Plex Collections, Kometa builder, Radarr/Sonarr integration, and more), and I'm glad it's useful to others too. Thanks for being part of it.</p>
+    </div>
+
+    <div class="card setting-card border-green" style="margin-bottom: 24px;">
+        <h3>📢 Best way to support: spread the word</h3>
+        <p class="support-body mb-15">The most valuable support is telling others about SeekAndWatch when it fits.</p>
+        <ul class="support-list">
+            <li>Recommend us on <a href="https://www.reddit.com/" target="_blank" rel="noopener" style="color: var(--accent-color); text-decoration: underline;">Reddit</a> when someone asks for tools like ours (smart discovery, Plex collections, Radarr/Sonarr helpers, etc.).</li>
+            <li>Mention us to friends or in communities when people are looking for "something to recommend movies and TV" or "a way to manage Plex collections."</li>
+        </ul>
+        <p class="support-body">Word of mouth and honest recommendations mean more than anything else.</p>
+    </div>
+
+    <div class="card setting-card" style="margin-bottom: 24px;">
+        <h3>☕ If you have spare money</h3>
+        <p class="support-body mb-15">I've put a lot of time into SeekAndWatch and had a blast building it. If you're able to chip in a coffee or two, that would mean a lot, but no pressure at all.</p>
+        <p class="support-body mb-15">You can support with a one-time coffee here:</p>
+        <a href="https://www.buymeacoffee.com/softerfish" target="_blank" rel="noopener" class="support-coffee-link">
+            <img src="https://cdn.buymeacoffee.com/buttons/v2/default-violet.png" alt="Buy Me A Coffee" style="height: 50px !important; width: 190px !important;">
+        </a>
+    </div>
+</div>
+
+<style>
+.support-page .card p { color: #ccc; }
+.support-list { margin: 0 0 15px 0; padding-left: 20px; color: #ccc; line-height: 1.6; }
+.support-list li { margin-bottom: 8px; }
+.support-coffee-link { display: inline-block; line-height: 0; transition: opacity 0.2s; }
+.support-coffee-link:hover { opacity: 0.9; }
+.mb-15 { margin-bottom: 15px; }
+</style>
+
+{% endblock %}

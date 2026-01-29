@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% block page_title %}Kometa{% endblock %}
 {% block content %}
 
 <div class="intro-box">
@@ -46,7 +47,7 @@
 <div id="performance-indicator">
     <div class="perf-content">
         <div>
-            <strong style="color: #3498db;">📊 Performance Estimate: <span class="info-icon" title="Calculation: (Collections × 3s) + (Overlays × 1.5s). Multipliers: Genre=20, Actor=50, Director=30, Streaming=20, Studio=25, Year=30, Decade=10, Franchise=15, Universe=10, Rating=6. Estimates vary by library content.">ℹ️</span></strong>
+            <strong class="kometa-performance-text">📊 Performance Estimate: <span class="info-icon" title="Calculation: (Collections × 3s) + (Overlays × 1.5s). Multipliers: Genre=20, Actor=50, Director=30, Streaming=20, Studio=25, Year=30, Decade=10, Franchise=15, Universe=10, Rating=6. Estimates vary by library content.">ℹ️</span></strong>
             <span id="perf-collections" class="perf-text"></span>
             <span id="perf-runtime" class="perf-text"></span>
         </div>
@@ -66,8 +67,8 @@
 
         <div id="tab-config" class="k-section active">
             <div class="k-group" style="border-left: 4px solid #e74c3c;">
-                <h4 style="border-bottom:none; margin-bottom:10px;">🚨 Required Connections</h4>
-                <div style="margin-bottom:15px; font-size:0.85em; color:#aaa; border-bottom:1px solid #444; padding-bottom:10px;">These are mandatory for Kometa to function.</div>
+                <h4 class="mb-10" style="border-bottom:none;">🚨 Required Connections</h4>
+                <div class="mb-15 fs-small text-muted border-bottom pb-10">These are mandatory for Kometa to function.</div>
                 
                 <div class="k-input-row">
                     <label>Plex URL <span class="info-icon" title="Local IP of your Plex Server">ℹ️</span></label>
@@ -91,7 +92,7 @@
 
         <div id="tab-global" class="k-section">
             <div class="k-group">
-                <h4 style="border:none;">⚙️ System & Caching</h4>
+                <h4 class="border-none">⚙️ System & Caching</h4>
                 
                 <div class="k-input-row">
                     <label>Cache Enabled <span class="info-icon" title="Speeds up runs by saving TMDB/Plex data locally.">ℹ️</span></label>
@@ -119,7 +120,7 @@
             </div>
 
             <div class="k-group">
-                <h4 style="border:none;">📂 Assets & Folders</h4>
+                <h4 class="border-none">📂 Assets & Folders</h4>
                 
                 <div class="k-input-row">
                     <label>Asset Folders <span class="info-icon" title="Expects one folder per item in your assets directory (e.g. Assets/Star Wars/poster.jpg).">ℹ️</span></label>
@@ -141,7 +142,7 @@
             </div>
 
             <div class="k-group">
-                <h4 style="border:none;">🧹 Collection Management</h4>
+                <h4 class="border-none">🧹 Collection Management</h4>
 
                 <div class="k-input-row">
                     <label>Sync Mode <span class="info-icon" title="'Sync' removes items from collections if they no longer match the rules. 'Append' only adds new items.">ℹ️</span></label>
@@ -168,7 +169,7 @@
             </div>
 
             <div class="k-group">
-                <h4 style="border:none;">🎨 Overlay Quality</h4>
+                <h4 class="border-none">🎨 Overlay Quality</h4>
                 
                 <div class="k-input-row">
                     <label>Artwork Quality (0-100) <span class="info-icon" title="Compression level for generated posters. Higher = Larger files.">ℹ️</span></label>
@@ -180,8 +181,8 @@
 
         <div id="tab-libraries" class="k-section">
              <div class="k-group">
-                <h4 style="border:none; margin-bottom:5px;">Add a Library</h4>
-                <p style="color:#777; font-size:0.9em; margin-bottom:20px; border-bottom:1px solid #444; padding-bottom:10px;">Configure one or more Plex libraries.</p>
+                <h4 class="border-none mb-5">Add a Library</h4>
+                <p class="text-muted fs-normal mb-20 border-bottom pb-10">Configure one or more Plex libraries.</p>
 
                 <div class="k-input-row">
                     <label>Library <button class="btn-refresh" onclick="fetchLibs()" title="Refresh Libraries">🔄</button></label>
@@ -334,32 +335,32 @@
                 
                 </div> </div>
 
-            <h4 style="margin-top:30px; margin-bottom:10px;">Added Libraries:</h4>
-            <div id="added-libs-container" style="min-height:50px; border:1px dashed #444; padding:10px; border-radius:6px; background:#111;">
-                <div style="text-align:center; color:#555; font-size:0.9em; padding:10px;">No libraries added yet.</div>
+            <h4 class="mt-30 mb-10">Added Libraries:</h4>
+            <div id="added-libs-container" class="kometa-container-empty">
+                <div class="kometa-empty-state">No libraries added yet.</div>
             </div>
         </div>
     </div>
 
     <div class="k-panel" style="position: sticky; top: 20px; min-width:400px;">
-        <h3 style="margin-top:0; margin-bottom:15px; color:white;">📄 config.yml Output</h3>
+        <h3 class="mt-0 mb-15 text-white">📄 config.yml Output</h3>
         <div class="yaml-box" id="output">
 <span class="y-cmnt"># Fill in the form on the left to generate config...</span>
         </div>
-        <button onclick="copyYaml()" style="width:100%; margin-top:15px; padding:12px; background:var(--accent-color); border:none; border-radius:6px; font-weight:bold; cursor:pointer;">📋 Copy to Clipboard</button>
+        <button onclick="copyYaml()" class="w-100 mt-15 px-15 py-15 fw-bold cursor-pointer" style="background:var(--accent-color); border:none; border-radius:6px;">📋 Copy to Clipboard</button>
     </div>
 </div>
 
 <div id="var-modal" class="modal-overlay">
     <div class="modal-box">
         <button type="button" class="modal-close-btn" onclick="closeModal()" aria-label="Close">×</button>
-        <h3 style="margin-top:0;">🔧 Customize: <span id="modal-title" style="color:var(--accent-color)"></span></h3>
-        <p style="font-size:0.85em; color:#aaa; margin-bottom:15px; border-bottom:1px solid #333; padding-bottom:10px;">
-            See available variables at <a href="https://kometa.wiki/en/latest/defaults/collections/" target="_blank" style="color:var(--accent-color); font-weight:bold;">Kometa Wiki ↗</a>.<br>
-            <span style="color:#e74c3c;">⚠️ Note: Not all variables work with every collection type. Check the wiki!</span>
+        <h3 class="mt-0">🔧 Customize: <span id="modal-title" class="modal-title-accent"></span></h3>
+        <p class="fs-small text-light mb-15 border-bottom pb-10">
+            See available variables at <a href="https://kometa.wiki/en/latest/defaults/collections/" target="_blank" class="link-accent">Kometa Wiki ↗</a>.<br>
+            <span class="warning-text-red">⚠️ Note: Not all variables work with every collection type. Check the wiki!</span>
         </p>
 
-        <div class="k-sub-header" id="qs-header" style="margin-top:5px; border-bottom:none;">⚡ Quick Settings</div>
+        <div class="k-sub-header border-bottom-none mt-5" id="qs-header">⚡ Quick Settings</div>
         <div class="quick-settings" id="qs-container">
             <div class="qs-col" id="wrapper-qs-limit">
                 <label>Limit (Items) <span class="info-icon" title="Maximum number of items to keep in this collection.">ℹ️</span></label>
@@ -441,13 +442,13 @@
             </div>
         </div>
 
-        <div class="k-sub-header" style="border-bottom:none;">🔧 Advanced Custom Variables</div>
+        <div class="k-sub-header border-bottom-none">🔧 Advanced Custom Variables</div>
         <div id="var-container">
             </div>
 
-        <button class="btn-secondary" onclick="addVarRow()" style="width:100%; margin-bottom:20px; border:1px dashed #444;">+ Add Variable</button>
+        <button class="btn-secondary w-100 mb-20" onclick="addVarRow()" style="border:1px dashed #444;">+ Add Variable</button>
 
-        <div style="display:flex; justify-content:flex-end; gap:10px;">
+        <div class="d-flex gap-10" style="justify-content:flex-end;">
             <button class="btn-secondary" onclick="closeModal()">Cancel</button>
             <button class="btn-primary" onclick="saveModal()">Save Variables</button>
         </div>
@@ -1074,7 +1075,7 @@ function fetchLibs() {
                 });
                 select.innerHTML = html;
             } else {
-                select.innerHTML = '<option disabled>Error: ' + data.message + '</option>';
+                select.innerHTML = '<option disabled>Error: ' + escapeHtml(String(data.message || '')) + '</option>';
             }
             toggleOptions(); 
         })

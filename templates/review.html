@@ -1,7 +1,17 @@
 {% extends "base.html" %}
+{% block page_title %}Review History{% endblock %}
 {% block content %}
+<script>
+    // Hide loader when review page loads (in case of redirect)
+    document.addEventListener("DOMContentLoaded", function() {
+        const loader = document.getElementById('nuclear-loader');
+        if (loader) {
+            loader.style.display = 'none';
+        }
+    });
+</script>
 
-<form id="generateForm" action="{{ url_for('generate') }}" method="POST" onsubmit="prepareKeywords()">
+<form id="generateForm" action="{{ url_for('generate') }}" method="POST" onsubmit="return prepareKeywords();">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
     <input type="hidden" name="media_type" value="{{ media_type }}">
     <input type="hidden" name="critic_filter" value="{{ session.get('critic_filter', '') }}">
@@ -10,7 +20,7 @@
     <input type="hidden" name="keywords" id="final-keywords">
     
     <div class="step-header">
-        <h2 style="font-weight: 800;">Step 2: Curate & Filter</h2>
+        <h2 class="fw-800">Step 2: Curate & Filter</h2>
         <button type="submit" name="lucky_mode" value="true" class="btn btn-lucky-glow">
             🍀 I'm Feeling Lucky
         </button>
@@ -22,16 +32,16 @@
             
             <div class="filter-col">
                 <label class="input-label" title="Filters based on TheMovieDB User Score">
-                    Min. TMDB Rating: <span id="rating-val" style="color:var(--accent-color);">0</span>/10
+                    Min. TMDB Rating: <span id="rating-val" class="text-accent">0</span>/10
                 </label>
                 <input type="range" name="min_rating" min="0" max="9" step="0.5" value="0" 
-                       style="width:100%; accent-color:var(--accent-color); margin-top: 10px;" 
+                       class="w-100 mt-10" style="accent-color:var(--accent-color);" 
                        oninput="document.getElementById('rating-val').innerText=this.value">
             </div>
 
             <div class="filter-col">
                 <label class="input-label">Released After (Year)</label>
-                <input type="number" name="min_year" placeholder="e.g. 1990" style="padding:10px; width:100%;">
+                <input type="number" name="min_year" placeholder="e.g. 1990" class="px-10 w-100">
             </div>
 
             <div class="filter-col" style="position:relative;">
@@ -64,7 +74,7 @@
                 {% endfor %}
             </div>
         </div>
-        <div class="filter-col" style="margin-bottom: 25px;">
+        <div class="filter-col mb-25">
             <label class="input-label" title="Restricts recommendations to specific genres">
                 Genre Filter ℹ️
             </label>
@@ -72,7 +82,7 @@
             <div class="genre-selector">
                 <div class="genre-header">
                     <strong>Select Genres:</strong>
-                    <a href="javascript:void(0)" onclick="toggleAllGenres(this)" id="btn-toggle-genres" style="color:#aaa; text-decoration:underline;">Deselect All</a>
+                    <a href="javascript:void(0)" onclick="toggleAllGenres(this)" id="btn-toggle-genres" class="text-muted" style="text-decoration:underline;">Deselect All</a>
                 </div>
                 
                 <div class="genre-grid" id="genre-grid">
@@ -92,7 +102,7 @@
             </div>
         </div>
 
-        <div style="border-top: 1px solid #333; padding-top: 20px;">
+        <div class="border-top pt-20">
             <label class="input-label">📡 Available on Streaming</label>
             {% if providers %}
             <div class="provider-grid">
@@ -106,12 +116,12 @@
                 {% endfor %}
             </div>
             {% else %}
-            <div style="color:#888;">No streaming providers found for your region. Check Settings > Streaming Regions.</div>
+            <div class="text-muted">No streaming providers found for your region. Check Settings > Streaming Regions.</div>
             {% endif %}
         </div>
     </div>
 
-    <p style="color: #888; margin: 25px 0 15px 0;">Select titles to influence recommendations:</p>
+    <p class="text-muted my-25 mb-15">Select titles to influence recommendations:</p>
     
     <div class="selection-grid">
         {% for movie in movies %}
@@ -133,18 +143,18 @@
             </div>
             <div class="selection-info">
                 <div class="selection-title">{{ movie.title }}</div>
-                <div style="font-size:0.8em; color:#777;">{{ movie.year }}</div>
+                <div class="fs-small text-muted">{{ movie.year }}</div>
             </div>
         </div>
         {% endfor %}
     </div>
 
-    <button type="submit" class="btn btn-save" style="margin-top:40px;">Generate Recommendations 🚀</button>
+    <button type="submit" class="btn btn-save mt-40">Generate Recommendations 🚀</button>
 </form>
 
 <div id="loadingOverlay">
     <div class="spinner"></div>
-    <h2 style="color: white; margin-top: 25px;">Analysing your taste...</h2>
+    <h2 class="text-white mt-25">Analysing your taste...</h2>
 </div>
 
 <script>
@@ -224,7 +234,7 @@ function renderTags() {
     selectedKeywords.forEach(k => {
         const tag = document.createElement('span'); 
         tag.className = 'keyword-tag';
-        tag.innerHTML = `${k.name} <span onclick="removeTag(${k.id})">&times;</span>`; 
+        tag.innerHTML = `${escapeHtml(String(k.name || ''))} <span onclick="removeTag(${Number(k.id)})">&times;</span>`; 
         container.appendChild(tag);
     });
 }
@@ -233,7 +243,24 @@ function prepareKeywords() {
     // Backend expects a pipe-delimited string.
     const keywordString = selectedKeywords.map(k => k.name).join('|');
     document.getElementById('final-keywords').value = keywordString;
-    document.getElementById('loadingOverlay').style.display = 'flex';
+    // Show loading overlay and hide nuclear-loader if it exists
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    if (loadingOverlay) {
+        loadingOverlay.style.display = 'flex';
+    }
+    const nuclearLoader = document.getElementById('nuclear-loader');
+    if (nuclearLoader) {
+        nuclearLoader.style.display = 'none';
+    }
+    // Prevent form from submitting multiple times
+    const form = document.getElementById('generateForm');
+    if (form) {
+        const submitBtn = form.querySelector('button[type="submit"]');
+        if (submitBtn) {
+            submitBtn.disabled = true;
+        }
+    }
+    return true; // Allow form submission
 }
 
 // Selection UI helpers

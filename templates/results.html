@@ -1,11 +1,30 @@
 {% extends "base.html" %}
-
+{% block page_title %}Recommendations{% endblock %}
 {% block content %}
+<script>
+    // Hide all loaders when results page loads
+    document.addEventListener("DOMContentLoaded", function() {
+        const nuclearLoader = document.getElementById('nuclear-loader');
+        if (nuclearLoader) {
+            nuclearLoader.style.display = 'none';
+        }
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        if (loadingOverlay) {
+            loadingOverlay.style.display = 'none';
+        }
+    });
+</script>
 
 <div class="results-header">
     <a href="{{ url_for('dashboard') }}" class="back-link">← Back to Dashboard</a>
-    <h2 style="margin:0;">✨ Top Picks For You</h2>
-    <button class="btn btn-primary" onclick="spinWheel()">🎡 Spin Wheel</button>
+    <h2 class="m-0">✨ Top Picks For You</h2>
+    <div class="d-flex gap-10" style="align-items: center;">
+        <div class="view-toggle">
+            <button onclick="setViewMode('grid')" id="btn-grid" class="view-toggle-btn active" title="Grid View">⊞</button>
+            <button onclick="setViewMode('list')" id="btn-list" class="view-toggle-btn" title="List View">☰</button>
+        </div>
+        <button class="btn btn-primary" onclick="spinWheel()">🎡 Spin Wheel</button>
+    </div>
 </div>
 
 <div class="results-container">
@@ -13,7 +32,7 @@
     {% if not is_lucky %}
     <div class="card filter-card">
         
-        <div class="top-filters-grid" style="margin-bottom: 20px;">
+        <div class="top-filters-grid mb-20">
             
             <div>
                 <label class="input-label">Released After (Year)</label>
@@ -24,25 +43,31 @@
 
             <div>
                 <label class="input-label">
-                    Min. Rating: <span id="rating-val" style="color:var(--accent-color);">{{ min_rating }}</span>/10
+                    Min. Rating: <span id="rating-val" class="text-accent">{{ min_rating }}</span>/10
                 </label>
                 <input type="range" id="filter-rating" min="0" max="10" step="0.5" 
-                       value="{{ min_rating }}" style="width:100%; accent-color:var(--accent-color); margin-top:10px;" 
+                       value="{{ min_rating }}" class="w-100 mt-10" style="accent-color:var(--accent-color);" 
                        oninput="document.getElementById('rating-val').innerText=this.value; filterVisibleCards();">
             </div>
 
-            <div style="position:relative;">
+            <div>
+                <label class="input-label">Max Runtime (minutes)</label>
+                <input type="number" id="filter-runtime" placeholder="e.g. 90" min="0" 
+                       onkeyup="filterVisibleCards()">
+            </div>
+
+            <div class="position-relative">
                 <label class="input-label" title="Search specific TMDB tags.">
-                    TMDB Keywords <span class="text-muted" style="font-size: 0.8em; font-weight: normal;">(Not Genres)</span>
+                    TMDB Keywords <span class="text-muted fs-small" style="font-weight: normal;">(Not Genres)</span>
                 </label>
                 <input type="text" id="keyword-search" placeholder="Filter tags..." autocomplete="off">
                 <div id="keyword-results" class="keyword-dropdown"></div>
-                <div id="selected-keywords" class="tag-container" style="margin-top:5px;"></div>
+                <div id="selected-keywords" class="tag-container mt-5"></div>
             </div>
 
         </div>
-        <div style="margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 20px;">
-            <label class="input-label" style="margin-bottom:10px;">Content Rating</label>
+        <div class="mb-20 border-bottom pb-20">
+            <label class="input-label mb-10">Content Rating</label>
             <div class="rating-grid" style="grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));">
                 {% set saved_ratings = session.get('rating_filter') %}
                 {% set all_ratings = ['G', 'PG', 'PG-13', 'R', 'NC-17', 'TV-Y', 'TV-Y7', 'TV-G', 'TV-PG', 'TV-14', 'TV-MA', 'NR'] %}
@@ -67,7 +92,7 @@
         <div class="genre-selector">
             <div class="genre-header">
                 <strong>Genres</strong>
-                <a href="javascript:void(0)" onclick="toggleResultsGenres(this)" style="font-size:0.8em; color:#aaa; text-decoration:underline;">Deselect All</a>
+                <a href="javascript:void(0)" onclick="toggleResultsGenres(this)" class="fs-small text-muted" style="text-decoration:underline;">Deselect All</a>
             </div>
             
             <div class="genre-grid">
@@ -88,7 +113,7 @@
             {% endif %}
         </div>
 
-        <button class="btn btn-lucky" style="width:100%; font-weight:bold; font-size:1.1em;" onclick="updateFilters()">
+        <button class="btn btn-lucky w-100 fw-bold fs-large" onclick="updateFilters()">
             🔄 Update Results
         </button>
     </div>
@@ -100,7 +125,7 @@
             <h2>Crunching the numbers...</h2>
         </div>
 
-        <div id="results-grid" class="results-grid" style="display:none;"></div>
+        <div id="results-grid" class="results-grid d-none"></div>
         
         {% if not is_lucky %}
         <div class="load-more-wrapper">
@@ -119,11 +144,11 @@
 
 <div id="trailer-modal" class="k-modal" style="z-index: 1100;">
     <div class="k-modal-content">
-        <span class="k-close-modal" onclick="closeTrailer()" style="color:white; z-index:20;">&times;</span>
+        <span class="k-close-modal text-white" onclick="closeTrailer()" style="z-index:20;">&times;</span>
         <div id="trailer-body" style="flex:1; width:100%; height:100%;"></div>
     </div>
 </div>
-<div id="server-data" style="display:none;">{{ movies|tojson if movies else '[]' }}</div>
+<div id="server-data" class="d-none">{{ movies|tojson if movies else '[]' }}</div>
 
 <script>
     let page = 1;
@@ -211,7 +236,9 @@
         container.innerHTML = "";
         selectedKeywords.forEach(k => {
             const tag = document.createElement('span'); tag.className = 'keyword-tag';
-            tag.innerHTML = `${k.name} <span onclick="removeTag('${k.name}')">&times;</span>`; 
+            // display: escapeHtml for XSS; onclick: escape only ' and \ so attribute doesn't break, pass raw name to removeTag
+            const safeNameAttr = String(k.name || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+            tag.innerHTML = `${escapeHtml(k.name)} <span onclick="removeTag('${safeNameAttr}')">&times;</span>`; 
             container.appendChild(tag);
         });
     }
@@ -242,7 +269,7 @@
                 updateFilters();
             } else {
                 document.getElementById('loading').style.display = 'none';
-                document.getElementById('results-grid').innerHTML = '<div style="grid-column:1/-1;text-align:center;">No results found.</div>';
+                document.getElementById('results-grid').innerHTML = '<div class="empty-state">No results found.</div>';
                 document.getElementById('results-grid').style.display = 'block';
             }
         }
@@ -251,9 +278,11 @@
     function filterVisibleCards() {
         const yearInput = document.getElementById('filter-year');
         const ratingInput = document.getElementById('filter-rating');
+        const runtimeInput = document.getElementById('filter-runtime');
         
         const minYear = yearInput ? (parseInt(yearInput.value) || 0) : 0;
         const minRating = ratingInput ? (parseFloat(ratingInput.value) || 0) : 0;
+        const maxRuntime = runtimeInput ? (parseInt(runtimeInput.value) || 9999) : 9999;
         const activeTags = selectedKeywords.map(k => k.name.toLowerCase());
         const ratingBoxes = document.querySelectorAll('.rating-filter-box:checked');
         const checkedRatings = Array.from(ratingBoxes).map(cb => cb.value);
@@ -261,11 +290,13 @@
         document.querySelectorAll('.result-card').forEach(card => {
             const year = parseInt(card.dataset.year) || 0;
             const rating = parseFloat(card.dataset.rating) || 0;
+            const runtime = parseInt(card.dataset.runtime) || 9999;
             const text = card.innerText.toLowerCase();
             
             let visible = true;
             if(year < minYear) visible = false;
             if(rating < minRating) visible = false;
+            if(runtime > maxRuntime) visible = false;
             if(activeTags.length > 0) {
                 const hasAllTags = activeTags.every(tag => text.includes(tag));
                 if(!hasAllTags) visible = false;
@@ -284,6 +315,7 @@
         const genreList = Array.from(checkedBoxes).map(cb => cb.value);
         const year = document.getElementById('filter-year') ? document.getElementById('filter-year').value : 0;
         const rating = document.getElementById('filter-rating') ? document.getElementById('filter-rating').value : 0;
+        const runtime = document.getElementById('filter-runtime') ? document.getElementById('filter-runtime').value : 9999;
         const tags = getKeywordString();
         const ratingBoxes = document.querySelectorAll('.rating-filter-box:checked');
         const ratingList = Array.from(ratingBoxes).map(cb => cb.value);
@@ -307,7 +339,8 @@
             body: JSON.stringify({ 
                 genre_filter: genreList, 
                 min_year: year, 
-                min_rating: rating, 
+                min_rating: rating,
+                max_runtime: runtime,
                 keywords: tags,
                 rating_filter: ratingList 
             })
@@ -343,7 +376,7 @@
                 
                 if (!data || data.length === 0) {
                     if (page === 1) {
-                        grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:50px; color:#777;">No matches found for these filters.</div>';
+                        grid.innerHTML = '<div class="empty-state">No matches found for these filters.</div>';
                         if(btn) btn.style.display = 'none';
                     } else {
                         if(btn) {
@@ -377,7 +410,7 @@
                 document.getElementById('loading').style.display = 'none';
                 if (page === 1) {
                     const grid = document.getElementById('results-grid');
-                    grid.innerHTML = `<div style="grid-column:1/-1; text-align:center; padding:40px;"><h3>⚠️ Scan Timeout</h3><p style="color:#aaa;">The deep scan is taking longer than expected.</p><button onclick="loadMore()" class="btn btn-primary">Try Again</button></div>`;
+                    grid.innerHTML = `<div class="empty-state-small"><h3>⚠️ Scan Timeout</h3><p class="empty-state-text">The deep scan is taking longer than expected.</p><button onclick="loadMore()" class="btn btn-primary">Try Again</button></div>`;
                 } else {
                     if(btn) {
                         btn.innerText = "Timeout - Try Again";
@@ -427,6 +460,8 @@
         card.dataset.year = parseInt(displayDate) || 0;
         card.dataset.rating = rating;
         card.dataset.contentRating = item.content_rating || 'NR';
+        card.dataset.runtime = item.runtime || 9999;
+        card.dataset.tmdbId = id;
         
         const posterUrl = item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : 'https://placehold.co/500x750/222/888?text=No+Poster';
         
@@ -470,13 +505,13 @@
                 
                 <div class="card-icon-overlay">
                     <div class="overlay-top-actions">
-                        <div class="icon-btn" title="Block this item" onclick="blockItem(event, '${jsTitle}', '${mediaType}')" style="color:#e74c3c; border-color:#e74c3c;">🚫</div>
+                        <div class="icon-btn icon-btn-danger" title="Block this item" onclick="blockItem(event, '${jsTitle}', '${mediaType}')">🚫</div>
                     </div>
                     <div class="overlay-bottom-row">
-                        <div class="icon-btn btn-request" title="Request on Overseerr" onclick="requestMedia('${mediaType}', ${id}, this); event.stopPropagation();">📥</div>
+                        <div class="icon-btn btn-request" title="Request" onclick="requestMedia('${mediaType}', ${id}, this); event.stopPropagation();">📥</div>
                         <div class="icon-group-right">
                             <div class="icon-btn" title="View Details" onclick="event.preventDefault(); event.stopPropagation(); openModal(${id}, '${mediaType}');">👁️</div>
-                            <a href="https://www.themoviedb.org/${mediaType}/${id}" target="_blank" class="icon-btn" title="TMDB Page" onclick="event.stopPropagation();" style="font-size:0.6em; font-weight:900;">TMDB</a>
+                            <a href="https://www.themoviedb.org/${mediaType}/${id}" target="_blank" class="icon-btn icon-btn-small" title="TMDB Page" onclick="event.stopPropagation();">TMDB</a>
                         </div>
                     </div>
                 </div>
@@ -486,7 +521,7 @@
                 <div class="movie-title" title="${safeTitle}">${safeTitle}</div>
                 <div class="movie-meta-row">
                     ${ratingsHtml}
-                    <span style="margin-left:auto; font-size:0.75em; border:1px solid #555; padding:1px 4px; border-radius:3px; color:#ccc;">
+                    <span class="content-rating-badge">
                         ${item.content_rating || 'NR'}
                     </span>
                 </div>
@@ -497,16 +532,24 @@
     }
 
     function requestMedia(type, id, btn) {
-        if(!confirm("Send request to Overseerr?")) return;
-        btn.style.background = "#e67e22"; 
-        fetch('/request_media', {
-            method:'POST', headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({media_type:type, tmdb_id:id})
-        }).then(r=>r.json()).then(d=>{
-            if(d.status === 'success') { btn.innerHTML = "✅"; btn.style.background = "#2ecc71"; } 
-            else { alert(d.message); btn.style.background = "rgba(255,255,255,0.1)"; }
-        });
+        // grab stuff from the card
+        const card = btn.closest('.result-card');
+        const posterUrl = card ? card.querySelector('img')?.src : '';
+        const title = card ? card.querySelector('.movie-title')?.textContent : '';
+        const year = card ? card.dataset.year : '';
+        
+        // open the popup
+        openRequestModal(type, id, title, posterUrl, year);
+        
+        // update button when it works
+        window.onRequestSuccess = function(tmdbId, mediaType) {
+            if (btn && tmdbId == id && mediaType == type) {
+                btn.innerHTML = "✅";
+                btn.style.background = "#2ecc71";
+            }
+        };
     }
+
 
     function playTrailer(id, type) {
         const modal = document.getElementById('trailer-modal');
@@ -514,7 +557,7 @@
         modal.style.display = 'flex'; 
         modal.style.justifyContent = 'center';
         modal.style.alignItems = 'center';
-        body.innerHTML = '<div style="color:white;text-align:center;padding:50px;">Loading Trailer... <div class="loader-small"></div></div>';
+        body.innerHTML = '<div class="modal-loading">Loading Trailer... <div class="loader-small"></div></div>';
 
         fetch(`/get_metadata/${type}/${id}`)
             .then(r => r.json())
@@ -522,7 +565,7 @@
                 if(data.trailer_key) {
                     body.innerHTML = `<iframe width="100%" height="100%" src="https://www.youtube.com/embed/${data.trailer_key}?autoplay=1" frameborder="0" allowfullscreen></iframe>`;
                 } else {
-                    body.innerHTML = `<div style="text-align:center; padding:50px; color:#ccc;"><h3>No Trailer Found 😕</h3></div>`;
+                    body.innerHTML = `<div class="modal-loading-light"><h3>No Trailer Found 😕</h3></div>`;
                 }
             });
     }
@@ -536,7 +579,7 @@
         const modal = document.getElementById('detail-modal');
         modal.style.display = "flex"; 
         const body = document.getElementById('modal-body');
-        body.innerHTML = '<div style="text-align:center; padding:50px;"><div class="loader-small"></div> Loading...</div>';
+        body.innerHTML = '<div class="modal-loading-light"><div class="loader-small"></div> Loading...</div>';
         
         const mediaType = type || 'movie';
 
@@ -546,15 +589,15 @@
                 return r.json();
             })
             .then(data => {
-                if(data.error) { body.innerHTML = `<div style="padding:20px; color:var(--error);">Error: ${data.error}</div>`; return; }
+                if(data.error) { body.innerHTML = `<div class="modal-error">Error: ${data.error}</div>`; return; }
                 
                 const poster = data.poster_path ? `https://image.tmdb.org/t/p/w500${data.poster_path}` : 'https://placehold.co/300x450/333/888?text=No+Poster';
-                const trailerBtn = `<button onclick="playTrailer(${id}, '${mediaType}')" class="btn-secondary" style="margin-top:10px;">▶ Watch Trailer</button>`;
+                const trailerBtn = `<button onclick="playTrailer(${id}, '${mediaType}')" class="btn-secondary modal-trailer-btn">▶ Watch Trailer</button>`;
                 const tmdbLink = `https://www.themoviedb.org/${mediaType}/${id}`;
                 
                 const providersHtml = data.providers && data.providers.length > 0 
-                    ? `<div style="margin-top:15px;"><strong>Streaming on:</strong><br>${data.providers.map(p => `<img src="https://image.tmdb.org/t/p/original${p.logo}" title="${p.name}" style="width:40px; border-radius:8px; margin:5px 5px 0 0;">`).join('')}</div>`
-                    : '<div style="margin-top:15px; color:#888;">Not streaming in your region.</div>';
+                    ? `<div class="mt-15"><strong>Streaming on:</strong><br>${data.providers.map(p => `<img src="https://image.tmdb.org/t/p/original${p.logo}" title="${p.name}" class="provider-logo">`).join('')}</div>`
+                    : '<div class="mt-15 text-muted">Not streaming in your region.</div>';
 
                 body.innerHTML = `
                     <div class="modal-poster"><img src="${poster}" onerror="this.style.display='none'"></div>
@@ -564,14 +607,14 @@
                         <p style="color:#aaa; font-size:0.9em;"><strong>Cast:</strong> ${data.cast ? data.cast.join(', ') : 'N/A'}</p>
                         ${providersHtml}
                         <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:20px;">
-                            <button onclick="requestMedia('${mediaType}', ${id}, this)" class="request-btn" style="flex:2;">Request 📥</button>
+                            <button onclick="openRequestModal('${mediaType}', ${id}, '${data.title}', '${poster}', '${data.year}')" class="request-btn" style="flex:2;">Request 📥</button>
                             ${trailerBtn}
                             <a href="${tmdbLink}" target="_blank" class="btn-secondary" style="text-decoration:none; display:flex; align-items:center; justify-content:center;">TMDB ↗</a>
                         </div>
                     </div>`;
             })
             .catch(err => {
-                body.innerHTML = `<div style="padding:20px; color:red; text-align:center;"><h3>Error</h3><p>${err.message}</p></div>`;
+                body.innerHTML = `<div class="modal-error text-center"><h3>Error</h3><p>${escapeHtml(String(err.message || ''))}</p></div>`;
             });
     }
     
@@ -610,6 +653,24 @@
         step();
     }
 
-    document.addEventListener('DOMContentLoaded', init);
+    // View mode toggle (Grid/List)
+    function setViewMode(mode) {
+        localStorage.setItem('viewMode', mode);
+        const grid = document.getElementById('results-grid');
+        if (grid) {
+            grid.className = 'results-' + mode;
+        }
+        // Toggle active button
+        document.getElementById('btn-grid').classList.toggle('active', mode === 'grid');
+        document.getElementById('btn-list').classList.toggle('active', mode === 'list');
+    }
+
+    // Load saved view mode on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        const savedMode = localStorage.getItem('viewMode') || 'grid';
+        setViewMode(savedMode);
+        init();
+    });
+
 </script>
 {% endblock %}

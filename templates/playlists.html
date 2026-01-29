@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% block page_title %}Plex Collections{% endblock %}
 {% block content %}
 
     <div class="playlist-header">
@@ -38,19 +39,16 @@
         <button onclick="openImportModal()" class="btn-import" id="btn-import-open">📋 Import List</button>
     </div>
 
-        <div class="card p-3 mb-4 schedule-card" style="max-width: 400px;">
-            <h5 style="margin-top:0;">Global Schedule Time</h5>
-            <p class="text-muted small" style="margin-bottom: 10px;">All "Daily" collections will run automatically after this time.</p>
-            <div class="d-flex gap-2" style="align-items:center; flex-wrap:wrap;">
-                <input type="time" id="globalTime" class="form-control" value="{{ schedule_time }}" style="max-width: 120px;">
-                <button class="btn btn-primary" onclick="saveGlobalTime()">Save</button>
-                <span id="save-time-feedback" style="display:none; color: var(--success, #2ecc71); font-size: 0.9em;">Saved</span>
-            </div>
-        </div>
-
         <div class="type-toggle-group">
         <button onclick="filterType('movie')" id="btn-movie" class="type-toggle-btn active">Movies 🎬</button>
         <button onclick="filterType('tv')" id="btn-tv" class="type-toggle-btn">TV Shows 📺</button>
+        </div>
+
+        <div class="schedule-time-compact">
+            <span class="schedule-label">Global Schedule Time:</span>
+            <input type="time" id="globalTime" class="form-control schedule-time-input" value="{{ schedule_time }}">
+            <button class="btn btn-primary schedule-save-btn" onclick="saveGlobalTime()">Save</button>
+            <span id="save-time-feedback" class="save-feedback" style="display:none;">Saved</span>
         </div>
     </div>
     <div id="tab-viewer" class="tab-content">

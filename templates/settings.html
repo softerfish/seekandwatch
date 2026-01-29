@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% block page_title %}Settings{% endblock %}
 {% block content %}
 
 <div class="settings-container">
@@ -15,7 +16,6 @@
         <button type="button" class="tab-link active" onclick="openTab(event, 'tab-apis')">APIs & Connections</button>
         <button type="button" class="tab-link" onclick="openTab(event, 'tab-scanners')">Scanners & Cache</button>
         <button type="button" class="tab-link" onclick="openTab(event, 'tab-system')">System & Maintenance</button>
-        <button type="button" class="tab-link" onclick="openTab(event, 'tab-logs')">System Logs</button>
         
         {% if current_user.is_admin %}
         <button type="button" class="tab-link" onclick="openTab(event, 'tab-users'); loadUsers();">👥 User Management</button>
@@ -103,6 +103,23 @@ function deleteUser(id, name) {
     <form id="settings-form" action="{{ url_for('settings') }}" method="POST" autocomplete="off">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>    
         <div id="tab-apis" class="tab-content active">
+            {% if server_host %}
+            <div id="auto-fill-banner" class="card" style="margin-bottom: 20px; border-left: 4px solid var(--accent-color); background: rgba(0, 204, 102, 0.1); display: none;">
+                <div class="d-flex flex-between" style="align-items: flex-start;">
+                    <div style="flex: 1;">
+                        <h4 style="margin: 0 0 8px 0; color: var(--accent-color);">🔧 Auto-Fill Available</h4>
+                        <p style="margin: 0; color: #ccc; font-size: 0.9em; line-height: 1.5;">
+                            We detected your server IP (<code style="background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 3px;">{{ server_host }}</code>) and can auto-fill API URLs with default ports. 
+                            This is based on the URL you're accessing SeekAndWatch from. Only empty fields will be filled.
+                        </p>
+                    </div>
+                    <div style="display: flex; gap: 10px; margin-left: 15px; flex-shrink: 0;">
+                        <button type="button" onclick="acceptAutoFill()" class="btn-primary" style="padding: 8px 16px; font-size: 0.9em;">Accept ✓</button>
+                        <button type="button" onclick="dismissAutoFill()" class="btn-secondary" style="padding: 8px 16px; font-size: 0.9em;">Dismiss ✕</button>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
             <div class="card setting-card border-orange">
                 <h3>Plex Integration</h3>
                 <details class="help-box">
@@ -246,6 +263,60 @@ function deleteUser(id, name) {
                     </div>
                 </div>
             </div>
+
+            <div class="card setting-card border-blue">
+                <h3>Radarr & Sonarr</h3>
+                
+                <div class="input-group">
+                    <label class="input-label">Radarr URL</label>
+                    <input type="text" id="radarr_url" name="radarr_url" value="{{ settings.radarr_url or '' }}" placeholder="http://192.168.1.50:7878" autocomplete="off">
+                </div>
+                
+                <div class="input-group">
+                    <label class="input-label">Radarr API Key</label>
+                    <details class="help-box">
+                        <summary>❓ How to find your Radarr API key</summary>
+                        <ol>
+                            <li>Open Radarr and go to <b>Settings → General</b>.</li>
+                            <li>Scroll to <b>Security</b> and copy the <b>API Key</b>.</li>
+                            <li>Paste it here and click Test.</li>
+                        </ol>
+                    </details>
+                    <div style="display: flex; gap: 10px;">
+                        <div class="password-wrapper">
+                            <input type="password" id="radarr_api_key" name="radarr_api_key" value="{{ settings.radarr_api_key or '' }}" autocomplete="new-password" style="width: 100%; padding-right: 40px;">
+                            <button type="button" class="toggle-pass" onclick="toggleVisibility('radarr_api_key', this)">👁️</button>
+                        </div>
+                        <button type="button" onclick="testService('radarr')" class="btn-secondary">Test ⚡</button>
+                    </div>
+                </div>
+                
+                <hr style="border: 0; border-top: 1px solid #333; margin: 20px 0;">
+                
+                <div class="input-group">
+                    <label class="input-label">Sonarr URL</label>
+                    <input type="text" id="sonarr_url" name="sonarr_url" value="{{ settings.sonarr_url or '' }}" placeholder="http://192.168.1.50:8989" autocomplete="off">
+                </div>
+                
+                <div class="input-group">
+                    <label class="input-label">Sonarr API Key</label>
+                    <details class="help-box">
+                        <summary>❓ How to find your Sonarr API key</summary>
+                        <ol>
+                            <li>Open Sonarr and go to <b>Settings → General</b>.</li>
+                            <li>Scroll to <b>Security</b> and copy the <b>API Key</b>.</li>
+                            <li>Paste it here and click Test.</li>
+                        </ol>
+                    </details>
+                    <div style="display: flex; gap: 10px;">
+                        <div class="password-wrapper">
+                            <input type="password" id="sonarr_api_key" name="sonarr_api_key" value="{{ settings.sonarr_api_key or '' }}" autocomplete="new-password" style="width: 100%; padding-right: 40px;">
+                            <button type="button" class="toggle-pass" onclick="toggleVisibility('sonarr_api_key', this)">👁️</button>
+                        </div>
+                        <button type="button" onclick="testService('sonarr')" class="btn-secondary">Test ⚡</button>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <div id="tab-scanners" class="tab-content">
@@ -291,7 +362,7 @@ function deleteUser(id, name) {
                 <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; padding-bottom:10px; margin-bottom:15px;">
                     <h3 style="margin:0;">🧠 Keyword Memory (Cache)</h3>
                     <span style="font-size:0.9em; background:rgba(52, 152, 219, 0.2); color:#3498db; padding:4px 10px; border-radius:4px; border:1px solid #3498db;">
-                        Stored: <strong>{{ keyword_count }}</strong> / {{ settings.keyword_cache_size or 1000 }}
+                        Stored: <strong>{{ keyword_count }}</strong> / {{ settings.keyword_cache_size or 3000 }}
                     </span>
                 </div>
                 
@@ -301,11 +372,36 @@ function deleteUser(id, name) {
                 </p>
 
                 <div class="input-group" style="margin-bottom: 0;">
-                    <label class="input-label">Max Keywords to Store <span style="font-weight:normal; color:#888;">(Recommended: 1000-5000)</span></label>
+                    <label class="input-label">Max Keywords to Store <span style="font-weight:normal; color:#888;">(Recommended: 2000-6000)</span></label>
                     <div style="display:flex; gap:10px; align-items:center;">
                         <input type="number" name="keyword_cache_size" class="form-control" 
-                               value="{{ settings.keyword_cache_size or 2000 }}" 
-                               min="100" max="100000" step="100" 
+                               value="{{ settings.keyword_cache_size or 3000 }}" 
+                               min="100" max="6000" step="100" 
+                               style="max-width:150px; background:#111; border:1px solid #444; color:white; padding:10px; border-radius:5px;">
+                        <span style="color:#aaa; font-size:0.9em;">entries</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card setting-card border-green">
+                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; padding-bottom:10px; margin-bottom:15px;">
+                    <h3 style="margin:0;">⏱️ Runtime Memory (Cache)</h3>
+                    <span style="font-size:0.9em; background:rgba(46, 204, 113, 0.2); color:#2ecc71; padding:4px 10px; border-radius:4px; border:1px solid #2ecc71;">
+                        Stored: <strong>{{ runtime_count }}</strong> / {{ settings.runtime_cache_size or 3000 }}
+                    </span>
+                </div>
+                
+                <p class="text-muted small">
+                    To save API calls and speed up recommendations, we store movie runtime data in the database.
+                    When this limit is reached, the oldest runtime entries are deleted to make room for new ones.
+                </p>
+
+                <div class="input-group" style="margin-bottom: 0;">
+                    <label class="input-label">Max Runtime Entries to Store <span style="font-weight:normal; color:#888;">(Recommended: 2000-6000)</span></label>
+                    <div style="display:flex; gap:10px; align-items:center;">
+                        <input type="number" name="runtime_cache_size" class="form-control" 
+                               value="{{ settings.runtime_cache_size or 3000 }}" 
+                               min="100" max="6000" step="100" 
                                style="max-width:150px; background:#111; border:1px solid #444; color:white; padding:10px; border-radius:5px;">
                         <span style="color:#aaa; font-size:0.9em;">entries</span>
                     </div>
@@ -354,6 +450,55 @@ function deleteUser(id, name) {
                             Reset
                         </button>
                         <button type="button" class="btn-primary" style="background:#2ecc71; color:white; border:none; flex: 1;" onclick="saveScannerSettings()">
+                            Save
+                        </button>
+                    </div>
+                </div>                
+            </div>
+
+            <div class="card setting-card border-blue" style="margin-top: 30px;">
+                <div class="card-header bg-transparent d-flex justify-content-between align-items-center" style="padding:0; margin-bottom:15px;">
+                    <h3 style="margin:0; display:flex; align-items:center; gap:10px;">🎬 Radarr & Sonarr Scanner</h3>
+                    <div>
+                        <span class="badge bg-dark border border-secondary text-info me-2" id="radarr-sonarr-count-badge" style="padding:5px 10px; border-radius:4px; font-size:0.8em; margin-right:10px;">
+                            Loading...
+                        </span>
+                    </div>
+                </div>
+                
+                <p class="text-muted small">
+                    Scan your Radarr and Sonarr libraries to exclude items from recommendations. Items in Radarr/Sonarr are considered "owned" and won't appear in Smart Discovery results.
+                </p>
+                
+                <div style="margin-bottom: 15px; padding: 10px; background: rgba(52, 152, 219, 0.1); border-radius: 6px; border: 1px solid rgba(52, 152, 219, 0.3);">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <strong style="color: #3498db;">Last Scan:</strong>
+                            <span id="radarr-sonarr-last-scan" style="color: #ccc; margin-left: 8px;">Never</span>
+                        </div>
+                        <button type="button" class="btn-primary" style="background:#3498db; color:white; border:none; padding:6px 15px; border-radius:4px; cursor:pointer;" onclick="forceRadarrSonarrCacheRefresh()">
+                            Force Refresh Now
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="scanner-row">
+                    <div class="flex-item">
+                        <label class="form-label text-muted small">Scan Interval (Hours)</label>
+                        <select class="filter-input" id="radarr-sonarr-interval" style="width:100%;">
+                            <option value="6">Every 6 Hours</option>
+                            <option value="12">Every 12 Hours</option>
+                            <option value="24" selected>Every 24 Hours</option>
+                            <option value="48">Every 48 Hours</option>
+                        </select>
+                    </div>
+                    <div class="spacer-col-1"></div>
+                    <div class="flex-item" style="display:flex; align-items:center; padding-bottom:12px;">
+                        <input type="checkbox" id="radarr-sonarr-toggle" style="width:20px; height:20px; margin-right:10px;">
+                        <label for="radarr-sonarr-toggle" style="margin:0; cursor:pointer;">Enable Auto-Scan</label>
+                    </div>
+                    <div class="flex-item" style="text-align:right;">
+                        <button type="button" class="btn-primary" style="background:#2ecc71; color:white; border:none; flex: 1;" onclick="saveRadarrSonarrScannerSettings()">
                             Save
                         </button>
                     </div>
@@ -423,97 +568,6 @@ function deleteUser(id, name) {
             </div>
         </div>
 
-        <div id="tab-logs" class="tab-content">
-            <div class="card setting-card" style="border-top: 4px solid #95a5a6;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                    <h3 style="margin:0;">📜 System Event Log</h3>
-                    <div style="display:flex; gap:10px;">
-                         <button type="button" onclick="clearLogs()" class="btn-delete" style="padding: 6px 12px;">Clear All</button>
-                         <button type="button" onclick="location.reload()" class="btn-secondary" style="padding: 6px 12px; font-size:0.9em;">Refresh</button>
-                    </div>
-                </div>
-                
-                <p class="text-muted small" style="margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 15px;">
-                    Tracks general system health, including scheduled backups, collection syncs, cache refreshes, and application errors.
-                </p>
-
-                <div style="background:rgba(0,0,0,0.2); border-radius:8px; padding:15px; margin-bottom:20px; display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:15px;">
-                    
-                    <div style="display:flex; align-items:center; gap:15px;">
-                        <div>
-                            <strong style="color:#ddd; display:block;">Live Recording</strong>
-                            <div style="font-size:0.8em; color:#888;">Capture system events</div>
-                        </div>
-                        <label class="switch-container">
-                            <input type="checkbox" id="log-toggle" {% if settings.logging_enabled %}checked{% endif %} onchange="toggleLogging()">
-                            <span class="switch-label" style="color: var(--accent-color);">
-                                {% if settings.logging_enabled %}ON{% else %}OFF{% endif %}
-                            </span>
-                        </label>
-                    </div>
-
-                    <div style="display:flex; align-items:center; gap:10px; background:rgba(255,255,255,0.05); padding:8px 12px; border-radius:6px;">
-                        <label for="max_log_size" style="font-size:0.9em; font-weight:bold; color:#ccc;">Log Limit (MB):</label>
-                        <input type="number" id="max_log_size" name="max_log_size" value="{{ settings.max_log_size }}" min="0" max="100" style="width: 70px; padding: 5px; background: #111; color: white; border: 1px solid #444; border-radius: 4px; text-align:center;">
-                        <span style="font-size: 0.8em; color: #888;">(0=∞)</span>
-                    </div>
-                </div>
-
-                <div class="logs-table-container">
-                    <table class="logs-table">
-                        <thead>
-                            <tr>
-                                <th style="width: 140px;">Time</th>
-                                <th style="width: 80px;">Module</th>
-                                <th style="width: 60px;">Level</th>
-                                <th>Message</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for log in logs %}
-                            <tr>
-                                <td style="white-space:nowrap; color: #888;">{{ log.timestamp.strftime('%m-%d %H:%M') }}</td>
-                                <td><code>{{ log.category }}</code></td>
-                                <td>
-                                    {% if log.level == 'INFO' %} <span class="log-badge info">INFO</span>
-                                    {% elif log.level == 'SUCCESS' %} <span class="log-badge success">OK</span>
-                                    {% elif log.level == 'WARNING' %} <span class="log-badge warning">WARN</span>
-                                    {% elif log.level == 'ERROR' %} <span class="log-badge error">ERR</span>
-                                    {% else %} <span class="log-badge default">{{ log.level }}</span>
-                                    {% endif %}
-                                </td>
-                                <td style="line-height: 1.4; color:#ccc;">{{ log.message }}</td>
-                            </tr>
-                            {% else %}
-                            <tr><td colspan="4" class="text-center" style="padding: 30px; color: #666;">No logs recorded yet.</td></tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <div class="card setting-card" style="margin-top: 20px; border-top: 4px solid #34495e;">
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <h3 style="margin:0;">📟 Live Scanner Output</h3>
-                    <div style="display:flex; gap:10px; align-items:center;">
-                        <div class="input-group" style="margin:0; width:auto; display:flex; align-items:center; gap:5px;">
-                            <span style="font-size:0.8em; color:#aaa;">Limit (MB):</span>
-                            <input type="number" name="scanner_log_size" value="{{ settings.scanner_log_size or 10 }}" min="1" max="100" style="width:60px; padding:5px; background:#111; border:1px solid #444; color:white; border-radius:4px; text-align:center;">
-                        </div>
-                    </div>
-                </div>
-                
-                <p class="text-muted small" style="margin-bottom: 15px;">
-                    Real-time feed of the background worker. Auto-refreshes every 2 seconds.
-                </p>
-
-                <div id="scanner-terminal">Waiting for logs...</div>
-
-                <div class="text-right">
-                    <button type="button" onclick="refreshScannerLogs()" class="btn-secondary" style="font-size:0.8em;">🔄 Refresh Now</button>
-                </div>
-            </div>
-        </div>
 
         <button type="submit" class="btn-save" id="main-save-btn">Save Configuration 💾</button>
     </form>
@@ -533,6 +587,45 @@ function deleteUser(id, name) {
 </div>
 
 <script>
+// Auto-fill API URLs based on server IP
+function acceptAutoFill() {
+    const serverHost = "{{ server_host|default('') }}";
+    if (!serverHost) return;
+    
+    // Default ports for each service
+    const defaults = {
+        'plex_url': `http://${serverHost}:32400`,
+        'radarr_url': `http://${serverHost}:7878`,
+        'sonarr_url': `http://${serverHost}:8989`,
+        'overseerr_url': `http://${serverHost}:5055`,
+        'tautulli_url': `http://${serverHost}:8181`
+    };
+    
+    let filledCount = 0;
+    // Only fill if field is empty
+    Object.keys(defaults).forEach(id => {
+        const field = document.getElementById(id);
+        if (field && !field.value.trim()) {
+            field.value = defaults[id];
+            filledCount++;
+        }
+    });
+    
+    // Hide the banner
+    dismissAutoFill();
+    
+    if (filledCount > 0) {
+        showToast();
+    }
+}
+
+function dismissAutoFill() {
+    const banner = document.getElementById('auto-fill-banner');
+    if (banner) {
+        banner.style.display = 'none';
+    }
+}
+
 // Tabs
 function openTab(evt, tabName) {
     var i, tabcontent, tablinks;
@@ -575,36 +668,72 @@ function showToast() {
     setTimeout(() => { toast.style.opacity = '0'; }, 2000);
 }
 
-// Logging toggle
-function toggleLogging() {
-    const enabled = document.getElementById('log-toggle').checked;
-    fetch('/toggle_logging', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({enabled: enabled})
-    }).then(r => r.json()).then(d => {
-        if(d.status === 'success') showToast();
-        else alert("Error: " + d.message);
-    });
-}
-
-function clearLogs() {
-    if(!confirm("Are you sure you want to delete all history?")) return;
-    fetch('/clear_logs', {method: 'POST'})
-    .then(r => r.json())
-    .then(d => {
-        if(d.status === 'success') location.reload();
-        else alert("Error: " + d.message);
-    });
-}
-
 // Scanner + cache controls
 let countdownInterval;
+
+// Auto-fill API URLs based on server IP
+function acceptAutoFill() {
+    const serverHost = "{{ server_host|default('') }}";
+    if (!serverHost) return;
+    
+    // Default ports for each service
+    const defaults = {
+        'plex_url': `http://${serverHost}:32400`,
+        'radarr_url': `http://${serverHost}:7878`,
+        'sonarr_url': `http://${serverHost}:8989`,
+        'overseerr_url': `http://${serverHost}:5055`,
+        'tautulli_url': `http://${serverHost}:8181`
+    };
+    
+    let filledCount = 0;
+    // Only fill if field is empty
+    Object.keys(defaults).forEach(id => {
+        const field = document.getElementById(id);
+        if (field && !field.value.trim()) {
+            field.value = defaults[id];
+            filledCount++;
+        }
+    });
+    
+    // Hide the banner
+    dismissAutoFill();
+    
+    if (filledCount > 0) {
+        showToast();
+    }
+}
+
+function dismissAutoFill() {
+    const banner = document.getElementById('auto-fill-banner');
+    if (banner) {
+        banner.style.display = 'none';
+    }
+}
 
 document.addEventListener('DOMContentLoaded', function() {
     loadBackups();
     fetchStatus();
+    checkRadarrSonarrCacheStatus();
     setInterval(fetchStatus, 30000);
     setInterval(checkCacheStatus, 2000);
+    setInterval(checkRadarrSonarrCacheStatus, 30000);
+    
+    // Check if auto-fill banner should be shown (only if there are empty URL fields)
+    {% if server_host %}
+    const serverHost = "{{ server_host }}";
+    const urlFields = ['plex_url', 'radarr_url', 'sonarr_url', 'overseerr_url', 'tautulli_url'];
+    const hasEmptyFields = urlFields.some(id => {
+        const field = document.getElementById(id);
+        return field && !field.value.trim();
+    });
+    
+    if (hasEmptyFields) {
+        const banner = document.getElementById('auto-fill-banner');
+        if (banner) {
+            banner.style.display = 'block';
+        }
+    }
+    {% endif %}
 
     const checkboxes = document.querySelectorAll('input[name="ignored_plex_users"]');
     checkboxes.forEach(box => {
@@ -680,6 +809,15 @@ function fetchStatus() {
         
         const badge = document.getElementById('db-count-badge');
         if(badge) badge.innerText = data.total_indexed + " Aliases Indexed";
+        
+        // Load Radarr/Sonarr scanner settings
+        fetch('/get_radarr_sonarr_cache_status').then(r => r.json()).then(rsData => {
+            const rsToggle = document.getElementById('radarr-sonarr-toggle');
+            const rsInterval = document.getElementById('radarr-sonarr-interval');
+            if(rsToggle) rsToggle.checked = rsData.enabled || false;
+            if(rsInterval) rsInterval.value = rsData.interval || 24;
+            checkRadarrSonarrCacheStatus();
+        });
         
         const nextBadge = document.getElementById('next-scan-badge');
         if(nextBadge) {
@@ -780,6 +918,69 @@ function checkCacheStatus() {
     });
 }
 
+function forceRadarrSonarrCacheRefresh() {
+    const btn = event.target;
+    btn.disabled = true; 
+    btn.innerText = "Refreshing... ⏳";
+    
+    fetch('/force_radarr_sonarr_cache_refresh', {method: 'POST'})
+    .then(r => r.json())
+    .then(data => {
+        if(data.status !== 'success') {
+            alert("Error: " + (data.message || "Failed to start refresh"));
+            btn.disabled = false;
+            btn.innerText = "Force Refresh Now";
+        } else {
+            setTimeout(() => {
+                checkRadarrSonarrCacheStatus();
+                btn.disabled = false;
+                btn.innerText = "Force Refresh Now";
+            }, 2000);
+        }
+    }).catch(err => {
+        alert("Error: " + err.message);
+        btn.disabled = false;
+        btn.innerText = "Force Refresh Now";
+    });
+}
+
+function checkRadarrSonarrCacheStatus() {
+    fetch('/get_radarr_sonarr_cache_status').then(r => r.json()).then(data => {
+        const countBadge = document.getElementById('radarr-sonarr-count-badge');
+        const lastScan = document.getElementById('radarr-sonarr-last-scan');
+        
+        if(countBadge) {
+            countBadge.innerText = `${data.count || 0} Items`;
+        }
+        if(lastScan) {
+            lastScan.innerText = data.last_scan || "Never";
+        }
+    }).catch(err => {
+        console.error("Failed to get Radarr/Sonarr cache status:", err);
+    });
+}
+
+function saveRadarrSonarrScannerSettings() {
+    const enabled = document.getElementById('radarr-sonarr-toggle').checked;
+    const interval = document.getElementById('radarr-sonarr-interval').value;
+    
+    fetch('/api/radarr_sonarr_scanner/save', {
+        method: 'POST', 
+        headers: {'Content-Type': 'application/json'}, 
+        body: JSON.stringify({enabled, interval})
+    }).then(r => r.json()).then(data => {
+        const btn = document.querySelector('button[onclick="saveRadarrSonarrScannerSettings()"]');
+        const oldText = btn.innerText;
+        btn.innerText = "Saved ✅";
+        setTimeout(() => { 
+            checkRadarrSonarrCacheStatus(); 
+            btn.innerText = oldText; 
+        }, 1000);
+    }).catch(err => {
+        alert("Error saving settings: " + err.message);
+    });
+}
+
 // Service testing + main save
 function testService(service) {
     let payload = { service: service };
@@ -803,6 +1004,14 @@ function testService(service) {
         payload.url = document.getElementById('tautulli_url').value;
         payload.api_key = document.getElementById('tautulli_api_key').value;
         btn = document.querySelector('button[onclick="testService(\'tautulli\')"]');
+    } else if (service === 'radarr') {
+        payload.url = document.getElementById('radarr_url').value;
+        payload.api_key = document.getElementById('radarr_api_key').value;
+        btn = document.querySelector('button[onclick="testService(\'radarr\')"]');
+    } else if (service === 'sonarr') {
+        payload.url = document.getElementById('sonarr_url').value;
+        payload.api_key = document.getElementById('sonarr_api_key').value;
+        btn = document.querySelector('button[onclick="testService(\'sonarr\')"]');
     }
 
     const originalText = btn.innerText;
@@ -922,31 +1131,11 @@ function handleBackupUpload(files) {
         .catch(() => showModal('❌', 'Upload Failed', 'Could not upload backup.', false));
 }
 
-// Scanner log polling
-let scannerLogInterval;
-
-function refreshScannerLogs() {
-    fetch('/api/scanner/logs_stream')
-    .then(r => r.json())
-    .then(data => {
-        const term = document.getElementById('scanner-terminal');
-        if(term) {
-            term.innerText = data.logs;
-            term.scrollTop = term.scrollHeight;
-        }
-    });
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
-
-// Only poll when the logs tab is visible.
-document.addEventListener('DOMContentLoaded', function() {
-    scannerLogInterval = setInterval(function() {
-        // Skip polling when hidden to save bandwidth.
-        const scannerTab = document.getElementById('tab-logs');
-        if (scannerTab && scannerTab.style.display === 'block') {
-            refreshScannerLogs();
-        }
-    }, 2000);
-});
 </script>
 <style>
     @keyframes blink { 50% { opacity: 0.5; } }
