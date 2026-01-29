@@ -1,101 +1,119 @@
-# 🚀 SeekAndWatch
-![Version](https://img.shields.io/badge/version-1.3.2-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) (coming soon) ![License](https://img.shields.io/badge/License-MIT-green.svg)
+# SeekAndWatch
 
-⭐ **If this saves you from endless scrolling, a star helps a ton.**
+![Version](https://img.shields.io/badge/version-1.4.0-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) (submitted) ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
-### 👋 What is SeekAndWatch?
-SeekAndWatch is a self-hosted Plex companion that turns your library into a smart, personalized "what should we watch?" hub. It connects Plex, Tautulli, TMDB, and Overseerr into one clean dashboard so you can discover, decide, and request faster.
+**GitHub repo description** (paste in Settings → General → Description):
 
-The goal is simple: spend less time browsing, more time watching. It learns your taste from real watch history, surfaces hidden gems you already own, and gives you tools to build better collections without touching YAML.
+> Self-hosted Plex companion: Smart Discovery from your watch history, add movies/shows via Radarr/Sonarr, Kometa builder, Plex collections, Overseerr, Tautulli. One dashboard -less scrolling, more watching.
+
+If this saves you from endless scrolling, a star helps.
+
+**Documentation:** [Wiki](https://github.com/softerfish/seekandwatch/wiki)  - install, Smart Discovery, Radarr, Sonarr, Kometa builder, troubleshooting.
 
 ---
 
-### 📚 Table of Contents
-- [Key Features](#-key-features)
-- [Screenshots](#-screenshots)
-- [Requirements](#-requirements)
-- [Installation](#-installation)
-  - [Unraid](#unraid-has-not-been-submitted-yet)
-  - [Docker (Manual)](#docker-manual)
-  - [Docker Compose](#docker-compose)
+## What is SeekAndWatch?
+
+SeekAndWatch is a self-hosted Plex companion that turns your library into a smart “what should we watch?” hub. It connects Plex, Tautulli, TMDB, Overseerr, Radarr, and Sonarr in one dashboard so you can discover, decide, and request without switching tabs.
+
+Goal: spend less time browsing, more time watching. It uses your watch history and owned libraries (Plex, Radarr, Sonarr) to surface stuff you don’t have yet and gives you tools to build collections without editing YAML.
+
+---
+
+## Table of Contents
+
+- [Key Features](#key-features)
+- [Requirements](#requirements)
+- [Installation](#installation)
 - [How to Update](#how-to-update)
 - [Changelog](#changelog)
+- [Screenshots](#screenshots)
 
-## ✨ Key Features
+---
 
-### 🧠 Smart Discovery (Built From Your Taste)
-- Analyzes your last 5,000 plays to build a personalized taste profile.
-- Seed-based recommendations to surface titles you don't own or haven't watched.
-- Streaming availability + Rotten Tomatoes/critic scores (with OMDB).
-- "I'm Feeling Lucky" and "Spin the Wheel" for instant decisions.
-- Instant trailers inside the dashboard.
+## Key Features
 
-### 🧩 Kometa Config Builder (No YAML Needed)
-- Visual Kometa builder for overlays and collections with simple toggles.
-- Live preview for overlays, ratings, codecs, and content badges.
-- Generates clean starter configs you can refine later.
+### Smart Discovery (built from your taste)
 
-### 📂 Plex Collections, Done Right
-- Auto-Collections with schedules (daily/weekly/manual).
-- Sync modes: strict (sync) or append-only (grow forever).
-- Bulk list import from IMDb/Letterboxd/Reddit, with smart matching.
-- Library browser to see what collections already exist in Plex.
-- Custom builder for collections and curated presets out of the box.
+- Uses your last 5,000 plays to build a taste profile and recommend titles you don’t own or haven’t watched.
+- Seed-based recommendations (pick movies/shows you like; get similar stuff) plus **I’m Feeling Lucky** for random picks.
+- Filters: genre, year, rating, **Certified Fresh** (Rotten Tomatoes), future releases only, international & obscure.
+- **Owned items hidden**  - Plex library plus optional Radarr/Sonarr scanner so recommendations exclude what you already have.
+- Randomized results each run; load more without regenerating.
+- Instant trailers in the app; optional OMDB for Rotten Tomatoes/critic scores.
 
-### 🛠️ Library Quality Tools
-- Background Alias Discovery to reduce duplicate recommendations.
-- Blocklist for titles you never want to see again.
+### Radarr & Sonarr
+
+- **Add movies/shows from the app**  - Request from Smart Discovery or elsewhere; opens in Radarr/Sonarr with quality profile and root folder.
+- **Media page**  - View your Radarr/Sonarr libraries (requested, monitored, downloaded), open in Radarr/Sonarr, toggle monitored, search/refresh.
+- **Radarr & Sonarr Scanner** (optional)  - Background scan of your Radarr/Sonarr libraries so those items are treated as “owned” and excluded from Smart Discovery (in addition to Plex).
+
+### Kometa Config Builder (no YAML needed)
+
+- Visual builder for Kometa overlays and collections with toggles.
+- Live preview for overlays, ratings, codecs, content badges.
+- Library templates, undo/redo, comparison (current vs saved), performance estimates.
+- Import configs (paste or URL); generates clean configs you can refine later.
+
+### Plex collections
+
+- Auto-collections with schedules (daily/weekly/manual); sync strict or append-only.
+- Bulk list import (IMDb/Letterboxd/Reddit) with smart matching.
+- Library browser to see existing Plex collections; custom builder and presets.
+
+### Library quality & requests
+
+- Background Alias Discovery to reduce duplicate recommendations; blocklist for titles you never want to see.
 - Ignore specific Plex users in recommendation history.
+- **Overseerr** for one-click requests; **Radarr/Sonarr** for direct add; track past requests across all three.
+- Tautulli integration for trending on server.
 
-### 📊 Stats & Requests in One Place
-- Results based off top on server.
-- Overseerr integration for one-click requests.
+### System & security
 
-### 🔒 Built for Long-Running Servers
-- Built-in backup/restore (including importing backups).
-- One-click updates for non-Unraid installs.
-- System logs + health tracking for scans and scheduled jobs.
-- Security safeguards for logins, forms, and file handling.
-- Multi-user accounts with admin controls.
+- Backup/restore (including import); one-click updates for manual Docker installs (Unraid App Store installs update via App Store only).
+- System logs and health for scans and scheduled jobs; multi-user accounts with admin controls; security safeguards for logins, forms, and file handling.
 
 ---
 
-## 📋 Requirements
+## Requirements
 
-| Service | Status | Why we need it |
+| Service | Status | Why |
 | :--- | :--- | :--- |
-| **Plex** | **Required** | Library access and watch history. |
-| **TMDB API Key** | **Required** | Posters, plot summaries, cast, and metadata. (Free at [themoviedb.org](https://www.themoviedb.org/settings/api)) |
-| **Overseerr** | Recommended | Requests for new content. |
-| **Tautulli** | Recommended | Live server stats and watch history analytics. |
-| **OMDB API Key** | Optional | Rotten Tomatoes / critic scores. |
+| **Plex** | Recommended | Library access and watch history; ownership filtering in Smart Discovery. |
+| **TMDB API Key** | **Required** | Posters, metadata, recommendations. Free at [themoviedb.org](https://www.themoviedb.org/settings/api). |
+| **Radarr / Sonarr** | Optional | Add movies/shows from the app; Media page; optional scanner for “owned” filtering. |
+| **Overseerr** | Optional | One-click requests. |
+| **Tautulli** | Optional | Trending on server. |
+| **OMDB API Key** | Optional | Rotten Tomatoes / critic scores in Smart Discovery. |
 
 ---
 
-## 🐳 Installation
+## Installation
+
+Full install and troubleshooting: [Wiki  - Install & Troubleshooting](https://github.com/softerfish/seekandwatch/wiki).
 
 ### Unraid (waiting on approval)
-1. Go to the **Apps** tab in Unraid.
-2. Search for `SeekAndWatch`.
-3. Click **Install**.
 
-### Docker (Manual)
-If you prefer manual setup, run the container and point a browser to http://<YOUR_SERVER_IP>:5000
+1. Open **Apps** in Unraid, search for **SeekAndWatch**, click **Install**.
+2. If you install via Unraid App Store, you must update only through the App Store (in-app one-click updater is disabled for that install).
 
-**Note:** Replace `/path/to/config` with the path where you want to store your database and settings.
+### Docker (manual)
+
+Replace `/path/to/config` with where you want your database and settings (e.g. `/mnt/user/appdata/seekandwatch`). Then open http://&lt;YOUR_SERVER_IP&gt;:5000
 
 ```bash
 docker run -d \
   --name=seekandwatch \
   -p 5000:5000 \
-  -v /path/to/seekandwatch:/config \
+  -v /path/to/config:/config \
   -e TZ=America/New_York \
   --restart unless-stopped \
   ghcr.io/softerfish/seekandwatch:latest
 ```
 
 ### Docker Compose
-There's a `docker-compose.yml` included. From the repo root:
+
+From the repo root:
 
 ```bash
 docker compose up -d
@@ -104,35 +122,41 @@ docker compose up -d
 ---
 
 ## How to Update
-If you're not using Unraid's App store, you can update manually or use the one click updater in the app:
 
-```bash
-# 1) Pull the latest version
-docker pull ghcr.io/softerfish/seekandwatch:latest
-
-# 2) Stop + remove the container
-docker stop seekandwatch
-docker rm seekandwatch
-
-# 3) Start it again
-docker run -d \
-  --name=seekandwatch \
-  -p 5000:5000 \
-  -v /path/to/seekandwatch:/config \
-  -e TZ=America/New_York \
-  --restart unless-stopped \
-  ghcr.io/softerfish/seekandwatch:latest
-```
+- **Manual Docker installs:** Use the version badge in the app (one-click updater) or run `docker pull ghcr.io/softerfish/seekandwatch:latest` and recreate the container. Your database and config in `/config` are not touched.
+- **Unraid App Store installs:** Update only through the Unraid App Store.
+- **Manual steps (if you prefer):** See [Wiki  - Install & Troubleshooting](https://github.com/softerfish/seekandwatch/wiki).
 
 ---
 
 ## Changelog
+
+v1.4.0
+This is a pretty huge update
+
+New features:
+- added Radarr/Sonarr support just like you're (almost) in their apps. Monitor, unmonitor, search, interactive search and more to save from having to switch tabs. This will continue to be worked on
+- track past requests to Overseerr, Radarr, and Sonarr
+- all Settings API URLs will auto-fill based on the IP SeekAndWatch is installed on
+- a complete new layout. The old style was getting cluttered too fast
+- Radarr & Sonarr Scanner separate background scanner that syncs your Radarr/Sonarr libraries into the app. Items in Radarr/Sonarr are treated as "owned" and excluded from Smart Discovery (in addition to Plex). Configurable in Settings (enable/disable, scan interval, "Force refresh")
+
+
+Tweaks and bugfixes:
+- all logs on one page now in the logs section on the left navbar
+- improved 1-click updater to be smarter and recognize nested folder installs to keep the most up to date folder
+- Smart Discovery tweaks
+- fix for Analyzing your taste / homepage flashing when generating from the review page
+
+Docs:
+- new and updated for the wiki. Smart Discovery, Radarr, Sonarr, Installation & Updates (including Docker/Unraid one-click updater),  and wiki homepage
+
+<details>
+  <summary><b>Past Changelog</b></summary>
 v1.3.2
 - finished last of the security updates
 - finished Kometa import config files -> copy and paste or by URL
 
-<details>
-  <summary><b>Past Changelog</b></summary>
 v1.3.1
 - fixes for GitHub CodeQL findings
 - changed header icons around a bit
@@ -241,26 +265,27 @@ v1.0.2
 - added api testing in settings
 </details>
 
+
 This product uses the TMDB API but is not endorsed or certified by TMDB.
 
-## 📸 Screenshots
+---
+
+## Screenshots
 
 <details>
-  <summary><b>View v1.1.0 screenshots. Please note, screenshots may become outdated.</b></summary>
+  <summary><b>View screenshots (v1.4.0)</b></summary>
   <br>
 
-| Smart Discovery | Recommendations |
+| Smart Discovery (1) | Smart Discovery (2) | Smart Discovery (3) |
+| :---: | :---: | :---: |
+| <img src="images/smart-discovery1.png" alt="Smart Discovery - Step 1" width="400"> | <img src="images/smart-discovery2.png" alt="Smart Discovery - Step 2" width="400"> | <img src="images/smart-discovery3.png" alt="Smart Discovery - Step 3" width="400"> |
+
+| Kometa Builder |
 | :---: | :---: |
-| <img src="images/smart-discovery1.png" alt="Smart Discovery - Step 1" width="400"> | <img src="images/smart-discovery3.png" alt="Smart Discovery - Step 3" width="400"> |
+| <img src="images/kometa.png" alt="Kometa Main Config" width="400"> |
 
-| Settings & Cache | Kometa Builder |
-| :---: | :---: |
-| <img src="images/scanners.png" alt="Settings Scanners" width="800"> | <img src="images/kometa.png" alt="Kometa Main Config" width="400"> |
-
-| Plex Collections | Custom Builder |
-| :---: | :---: |
-| <img src="images/plexcollections.png" alt="Plex Collections" width="800"> | <img src="images/custom-builder.png" alt="Custom Builder" width="400"> |
-
-
+| Plex Collections |
+| :---: |
+| <img src="images/plexcollections.png" alt="Plex Collections" width="800"> |
 
 </details>

@@ -14,6 +14,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Add build argument for version to invalidate cache when version changes
+ARG APP_VERSION=unknown
+ENV APP_VERSION=${APP_VERSION}
+
 # Copy application code
 COPY . .
 

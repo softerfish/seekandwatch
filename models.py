@@ -40,6 +40,10 @@ class Settings(db.Model):
     overseerr_api_key = db.Column(db.String(200))
     tautulli_url = db.Column(db.String(200))
     tautulli_api_key = db.Column(db.String(200))
+    radarr_url = db.Column(db.String(200))
+    radarr_api_key = db.Column(db.String(200))
+    sonarr_url = db.Column(db.String(200))
+    sonarr_api_key = db.Column(db.String(200))
     
     # System
     last_checked = db.Column(db.DateTime)
@@ -58,7 +62,13 @@ class Settings(db.Model):
     last_alias_scan = db.Column(db.Integer, default=0)
     scanner_log_size = db.Column(db.Integer, default=10)
     kometa_config = db.Column(db.Text)
-    keyword_cache_size = db.Column(db.Integer, default=2000)
+    keyword_cache_size = db.Column(db.Integer, default=3000)
+    runtime_cache_size = db.Column(db.Integer, default=3000)
+    
+    # Radarr/Sonarr scanner
+    radarr_sonarr_scanner_enabled = db.Column(db.Boolean, default=False)
+    radarr_sonarr_scanner_interval = db.Column(db.Integer, default=24)  # hours
+    last_radarr_sonarr_scan = db.Column(db.Integer, default=0)
 
 class Blocklist(db.Model):
     __table_args__ = {'extend_existing': True}
@@ -97,6 +107,40 @@ class TmdbKeywordCache(db.Model):
     tmdb_id = db.Column(db.Integer, unique=True)
     media_type = db.Column(db.String(10))
     keywords = db.Column(db.Text)
+    timestamp = db.Column(db.DateTime, default=datetime.now)
+
+class TmdbRuntimeCache(db.Model):
+    __table_args__ = {'extend_existing': True}
+    id = db.Column(db.Integer, primary_key=True)
+    tmdb_id = db.Column(db.Integer, unique=True, nullable=False)
+    media_type = db.Column(db.String(10), nullable=False)
+    runtime = db.Column(db.Integer, nullable=False)  # minutes
+    timestamp = db.Column(db.DateTime, default=datetime.now)
+
+class AppRequest(db.Model):
+    """Requests made from the app via Radarr or Sonarr (so they show on Requested tab and in logs)."""
+    __table_args__ = {'extend_existing': True}
+    id = db.Column(db.Integer, primary_key=True)
+    tmdb_id = db.Column(db.Integer, nullable=False)
+    media_type = db.Column(db.String(10), nullable=False)  # 'movie' or 'tv'
+    title = db.Column(db.String(300), nullable=False)
+    requested_via = db.Column(db.String(20), nullable=False)  # 'Radarr' or 'Sonarr'
+    requested_at = db.Column(db.DateTime, default=datetime.now)
+
+
+class RadarrSonarrCache(db.Model):
+    # unique constraint on tmdb_id + media_type + source
+    __table_args__ = (
+        db.UniqueConstraint('tmdb_id', 'media_type', 'source', name='uq_radarr_sonarr_cache'),
+        {'extend_existing': True}
+    )
+    id = db.Column(db.Integer, primary_key=True)
+    tmdb_id = db.Column(db.Integer, nullable=False)  # TMDB ID for movies/shows
+    media_type = db.Column(db.String(10), nullable=False)  # 'movie' or 'tv'
+    source = db.Column(db.String(10), nullable=False)  # 'radarr' or 'sonarr'
+    title = db.Column(db.String(200))  # normalized title
+    original_title = db.Column(db.String(200))  # original title from API
+    year = db.Column(db.Integer)  # release year
     timestamp = db.Column(db.DateTime, default=datetime.now)
 
 class KometaTemplate(db.Model):

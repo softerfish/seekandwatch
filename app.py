@@ -7,12 +7,14 @@ import requests
 import random
 import json
 import datetime
+from datetime import timedelta
 import threading
 import socket
 import hashlib
 import sqlalchemy
 import concurrent.futures
 import secrets
+import subprocess
 from flask import Flask, Blueprint, request, jsonify, session, send_from_directory, render_template, redirect, url_for, flash
 from flask_login import login_required, current_user, LoginManager, login_user, logout_user
 from flask_apscheduler import APScheduler
@@ -21,23 +23,23 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFProtect
 from plexapi.server import PlexServer
-from models import db, Blocklist, CollectionSchedule, TmdbAlias, SystemLog, Settings, User, TmdbKeywordCache
-from utils import (normalize_title, is_duplicate, fetch_omdb_ratings, send_overseerr_request, 
+from models import db, Blocklist, CollectionSchedule, TmdbAlias, SystemLog, Settings, User, TmdbKeywordCache, TmdbRuntimeCache, RadarrSonarrCache
+from utils import (normalize_title, is_duplicate, is_owned_item, fetch_omdb_ratings, send_overseerr_request, 
                    run_collection_logic, create_backup, list_backups, restore_backup, 
                    prune_backups, BACKUP_DIR, CACHE_FILE, sync_remote_aliases, get_tmdb_aliases, 
-                   refresh_plex_cache, get_plex_cache, get_lock_status, is_system_locked,
+                   refresh_plex_cache, get_plex_cache, refresh_radarr_sonarr_cache, get_lock_status, is_system_locked,
                    write_scanner_log, read_scanner_log, prefetch_keywords_parallel,
                    item_matches_keywords, RESULTS_CACHE, get_session_filters, write_log,
                    check_for_updates, handle_lucky_mode, run_alias_scan, reset_stuck_locks, 
                    prefetch_tv_states_parallel, prefetch_ratings_parallel, prefetch_omdb_parallel,
-                   is_docker, is_unraid, is_git_repo, is_app_dir_writable, perform_git_update,
+                   prefetch_runtime_parallel, is_docker, is_unraid, is_git_repo, is_app_dir_writable, perform_git_update,
                    perform_release_update, save_results_cache, get_history_cache, set_history_cache,
                    score_recommendation, diverse_sample, get_tmdb_rec_cache, set_tmdb_rec_cache)
 from presets import PLAYLIST_PRESETS
 
 # basic app setup stuff
 
-VERSION = "1.3.2"
+VERSION = "1.4.0"
 
 UPDATE_CACHE = {
     'version': None,
@@ -135,13 +137,33 @@ def run_migrations():
                 if 'scanner_log_size' not in settings_columns:
                     conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN scanner_log_size INTEGER DEFAULT 10"))
                 if 'keyword_cache_size' not in settings_columns:
-                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN keyword_cache_size INTEGER DEFAULT 2000"))
+                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN keyword_cache_size INTEGER DEFAULT 3000"))
+                if 'runtime_cache_size' not in settings_columns:
+                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN runtime_cache_size INTEGER DEFAULT 3000"))
+                if 'radarr_sonarr_scanner_enabled' not in settings_columns:
+                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN radarr_sonarr_scanner_enabled BOOLEAN DEFAULT 0"))
+                if 'radarr_sonarr_scanner_interval' not in settings_columns:
+                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN radarr_sonarr_scanner_interval INTEGER DEFAULT 24"))
+                if 'last_radarr_sonarr_scan' not in settings_columns:
+                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN last_radarr_sonarr_scan INTEGER DEFAULT 0"))
                 if 'schedule_time' not in settings_columns:
                     print("--- [Migration] Adding 'schedule_time' column ---")
                     conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN schedule_time VARCHAR(10) DEFAULT '04:00'"))
                 if 'ignored_libraries' not in settings_columns:
                     print("--- [Migration] Adding 'ignored_libraries' column ---")
                     conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN ignored_libraries VARCHAR(500)"))
+                if 'radarr_url' not in settings_columns:
+                    print("--- [Migration] Adding 'radarr_url' column ---")
+                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN radarr_url VARCHAR(200)"))
+                if 'radarr_api_key' not in settings_columns:
+                    print("--- [Migration] Adding 'radarr_api_key' column ---")
+                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN radarr_api_key VARCHAR(200)"))
+                if 'sonarr_url' not in settings_columns:
+                    print("--- [Migration] Adding 'sonarr_url' column ---")
+                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN sonarr_url VARCHAR(200)"))
+                if 'sonarr_api_key' not in settings_columns:
+                    print("--- [Migration] Adding 'sonarr_api_key' column ---")
+                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN sonarr_api_key VARCHAR(200)"))
                 
                 # Check if kometa_template table exists
                 try:
@@ -190,6 +212,10 @@ def run_migrations():
         try: TmdbAlias.__table__.create(db.engine)
         except: pass
         try: TmdbKeywordCache.__table__.create(db.engine)
+        except: pass
+        try: TmdbRuntimeCache.__table__.create(db.engine)
+        except: pass
+        try: RadarrSonarrCache.__table__.create(db.engine)
         except: pass
         
 @login_manager.user_loader
@@ -329,7 +355,7 @@ def trigger_update_route():
     except Exception as e:
         try:
             import traceback
-            write_log("ERROR", "Updater", traceback.format_exc())
+            write_log("error", "Updater", traceback.format_exc())
         except Exception:
             pass
         print(f"Update Error: {e}", flush=True)
@@ -345,9 +371,21 @@ def index():
         return redirect(url_for('dashboard'))
     return redirect(url_for('login'))
 
+def _no_users_exist():
+    """Check if no users exist - used to exempt first registration/login from rate limiting."""
+    try:
+        return User.query.count() == 0
+    except:
+        return False
+
 @app.route('/login', methods=['GET', 'POST'])
-@limiter.limit("5 per minute")
+@limiter.limit("5 per minute", exempt_when=_no_users_exist)
 def login():
+    # Check if no users exist - redirect to register
+    if User.query.count() == 0:
+        flash('No accounts exist. Please register to create the first admin account.')
+        return redirect(url_for('register'))
+    
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
@@ -363,7 +401,7 @@ def login():
     return render_template('login.html')
 
 @app.route('/register', methods=['GET', 'POST'])
-@limiter.limit("5 per hour")
+@limiter.limit("5 per hour", exempt_when=_no_users_exist)
 def register():
     if request.method == 'POST':
         username = request.form.get('username')
@@ -449,7 +487,7 @@ def get_local_trending():
 @app.route('/recommend_from_trending')
 @login_required
 def recommend_from_trending():
-    from utils import get_tautulli_trending, get_plex_cache, normalize_title, RESULTS_CACHE
+    from utils import get_tautulli_trending, get_plex_cache, normalize_title, RESULTS_CACHE, is_owned_item
     
     m_type = request.args.get('type', 'movie')
     
@@ -489,14 +527,24 @@ def recommend_from_trending():
             date = r.get('release_date') or r.get('first_air_date')
             r['year'] = int(date[:4]) if date else 0
             r['media_type'] = m_type
+            # Set default runtime (will be fetched in background)
+            if not r.get('runtime'):
+                r['runtime'] = 0
 
-            t_clean = normalize_title(r.get('title', r.get('name')))
-            if t_clean in owned_keys: continue
+            # check if already owned (improved duplicate detection)
+            if is_owned_item(r, owned_keys, m_type):
+                continue
             
             seen.add(r['id'])
             unique_recs.append(r)
             
     random.shuffle(unique_recs)
+    
+    # Fetch runtime in background for trending recommendations
+    def async_fetch_runtime_trending(app_obj, items, key):
+        with app_obj.app_context():
+            prefetch_runtime_parallel(items, key)
+    threading.Thread(target=async_fetch_runtime_trending, args=(app, unique_recs[:40], s.tmdb_key)).start()
     
     # save to cache so "load more" works
     RESULTS_CACHE[current_user.id] = {
@@ -681,7 +729,7 @@ def review_history():
                 set_history_cache(cache_key, candidates)
 
     except Exception as e:
-        write_log("ERROR", "Review History", f"Scan failed: {str(e)}")
+        write_log("error", "Review History", f"Scan failed: {str(e)}")
         flash("Scan failed. Please check your Plex connection and try again.", "error")
         return redirect(url_for('dashboard'))
         
@@ -692,13 +740,15 @@ def review_history():
         p_url = f"https://api.themoviedb.org/3/watch/providers/{media_type}?api_key={s.tmdb_key}&watch_region={reg}"
         p_data = requests.get(p_url, timeout=10).json().get('results', [])
         providers = sorted(p_data, key=lambda x: x.get('display_priority', 999))[:30]
-    except: pass
+    except Exception as e:
+        write_log("warning", "Review History", f"Failed to fetch providers: {str(e)}")
 
     genres = []
     try:
         g_url = f"https://api.themoviedb.org/3/genre/{media_type}/list?api_key={s.tmdb_key}"
         genres = requests.get(g_url, timeout=10).json().get('genres', [])
-    except: pass
+    except Exception as e:
+        write_log("warning", "Review History", f"Failed to fetch genres: {str(e)}")
 
     return render_template('review.html', 
                            movies=candidates, 
@@ -722,15 +772,36 @@ def generate():
              return redirect(url_for('dashboard'))
         
         lucky_result = []
-        for item in raw_candidates:
-            if len(lucky_result) >= 5: break
+        # keep fetching pages until we have 5 unowned items
+        page = 1
+        max_pages = 10
+        while len(lucky_result) < 5 and page <= max_pages:
+            # if we've exhausted the current candidates, fetch more
+            if page > 1 or len(raw_candidates) == 0:
+                try:
+                    random_genre = random.choice([28, 35, 18, 878, 27, 53])
+                    url = f"https://api.themoviedb.org/3/discover/movie?api_key={s.tmdb_key}&with_genres={random_genre}&sort_by=popularity.desc&page={page}"
+                    data = requests.get(url, timeout=10).json().get('results', [])
+                    raw_candidates = [{'id': p['id'], 'title': p['title'], 'year': (p.get('release_date') or '')[:4], 'poster_path': p.get('poster_path'), 'overview': p.get('overview'), 'vote_average': p.get('vote_average'), 'media_type': 'movie'} for p in data]
+                    random.shuffle(raw_candidates)
+                except:
+                    break
             
-            t_clean = normalize_title(item['title'])
-            if t_clean in owned_keys: continue
+            for item in raw_candidates:
+                if len(lucky_result) >= 5:
+                    break
+                
+                # Set default runtime (will be fetched in background)
+                if not item.get('runtime'):
+                    item['runtime'] = 0
+                
+                # check if already owned (improved duplicate detection)
+                if is_owned_item(item, owned_keys, 'movie'):
+                    continue
+                
+                lucky_result.append(item)
             
-            if TmdbAlias.query.filter_by(tmdb_id=item['id']).first(): continue
-            
-            lucky_result.append(item)
+            page += 1
             
         if not lucky_result:
              flash("You own all the lucky picks! Try again.", "error")
@@ -741,6 +812,12 @@ def generate():
             g_url = f"https://api.themoviedb.org/3/genre/movie/list?api_key={s.tmdb_key}"
             genres = requests.get(g_url, timeout=10).json().get('genres', [])
         except: pass
+
+        # Fetch runtime in background for lucky results
+        def async_fetch_runtime_lucky(app_obj, items, key):
+            with app_obj.app_context():
+                prefetch_runtime_parallel(items, key)
+        threading.Thread(target=async_fetch_runtime_lucky, args=(app, lucky_result, s.tmdb_key)).start()
 
         RESULTS_CACHE[current_user.id] = {'candidates': lucky_result, 'next_index': len(lucky_result)}
         return render_template('results.html', 
@@ -790,6 +867,7 @@ def generate():
     today = datetime.datetime.now().strftime('%Y-%m-%d')
 
     def fetch_seed_results(tmdb_id):
+        # keep cache key simple - we'll shuffle results after combining all seeds
         cache_key = f"{media_type}:{tmdb_id}:{'future' if future_mode else 'recs'}:{today}"
         cached = get_tmdb_rec_cache(cache_key)
         if cached is not None:
@@ -825,8 +903,9 @@ def generate():
                 data = requests.get(disc_url, params=params).json()
                 results = data.get('results', [])
             else:
+                # fetch more pages to ensure we have enough unowned items to filter from
                 results = []
-                for page_num in range(1, 3):
+                for page_num in range(1, 5):  # pages 1-4 (reduced from 5 to speed up)
                     rec_url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}/recommendations?api_key={s.tmdb_key}&language=en-US&page={page_num}"
                     page_data = requests.get(rec_url, timeout=10).json()
                     results.extend(page_data.get('results', []))
@@ -836,35 +915,44 @@ def generate():
         except Exception:
             return []
 
+    # fetch recommendations from all seeds, filtering owned items as we go
+    all_results = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
         for results in executor.map(fetch_seed_results, seed_ids):
-            for item in results:
-                if item['id'] in seen_ids: continue
-                
-                # filter out low-quality stuff (unless user wants obscure content)
-                if not include_obscure:
-                    # only english-language content in standard mode
-                    if item.get('original_language') != 'en': continue
-                    
-                    # skip stuff with very few votes (probably not great)
-                    if not future_mode and item.get('vote_count', 0) < 20: continue
-                
-                item['media_type'] = media_type
-                date = item.get('release_date') or item.get('first_air_date')
-                item['year'] = int(date[:4]) if date else 0
-                item['score'] = score_recommendation(item)
-                
-                if item.get('title', item.get('name')) in blocked: continue
-                
-                # check if already owned
-                t_clean = normalize_title(item.get('title', item.get('name')))
-                if t_clean in owned_keys: continue
-                
-                alias = TmdbAlias.query.filter_by(tmdb_id=item['id'], media_type=media_type).first()
-                if alias: continue 
-
-                recommendations.append(item)
-                seen_ids.add(item['id'])
+            all_results.extend(results)
+    
+    # shuffle all results once before processing to get variety
+    random.shuffle(all_results)
+    
+    # now filter and process
+    for item in all_results:
+        if item['id'] in seen_ids: continue
+        
+        # filter out low-quality stuff (unless user wants obscure content)
+        if not include_obscure:
+            # only english-language content in standard mode
+            if item.get('original_language') != 'en': continue
+            
+            # skip stuff with very few votes (probably not great)
+            if not future_mode and item.get('vote_count', 0) < 20: continue
+        
+        item['media_type'] = media_type
+        date = item.get('release_date') or item.get('first_air_date')
+        item['year'] = int(date[:4]) if date else 0
+        item['score'] = score_recommendation(item)
+        # Set default runtime (will be fetched in background)
+        if not item.get('runtime'):
+            item['runtime'] = 0 if media_type == 'tv' else 0  # Start with 0, will be updated when fetched
+        
+        if item.get('title', item.get('name')) in blocked: continue
+        
+        # check if already owned (improved duplicate detection)
+        is_owned = is_owned_item(item, owned_keys, media_type)
+        if is_owned:
+            continue
+        
+        recommendations.append(item)
+        seen_ids.add(item['id'])
             
     # sort by score (popularity + votes)
     recommendations.sort(key=lambda x: x.get('score', 0), reverse=True)
@@ -886,11 +974,14 @@ def generate():
             unique_recs.append(item)
             seen_final.add(item['id'])
     
+    # shuffle results so they're different each time
+    random.shuffle(unique_recs)
+    
     RESULTS_CACHE[current_user.id] = {
         'candidates': unique_recs,
         'next_index': 0,
         'ts': int(time.time()),
-        'sorted': True
+        'sorted': False  # mark as not sorted since we shuffled
     }
     save_results_cache()
     
@@ -901,28 +992,43 @@ def generate():
     raw_keywords = session.get('keywords', '')
     target_keywords = [k.strip() for k in raw_keywords.split('|') if k.strip()]
 
-    prefetch_ratings_parallel(recommendations[:60], s.tmdb_key)
+    # use shuffled list for display, not sorted recommendations
+    prefetch_ratings_parallel(unique_recs[:60], s.tmdb_key)
+    # Fetch runtime in background to not block initial render
+    def async_fetch_runtime(app_obj, items, key):
+        with app_obj.app_context():
+            prefetch_runtime_parallel(items, key)
+    threading.Thread(target=async_fetch_runtime, args=(app, unique_recs[:60], s.tmdb_key)).start()
+    
     if s.omdb_key:
-        prefetch_omdb_parallel(recommendations[:80], s.omdb_key)
+        prefetch_omdb_parallel(unique_recs[:80], s.omdb_key)
 
     if target_keywords:
-        prefetch_keywords_parallel(recommendations, s.tmdb_key)
+        prefetch_keywords_parallel(unique_recs, s.tmdb_key)
     else:
         def async_prefetch(app_obj, items, key):
             with app_obj.app_context():
                 prefetch_keywords_parallel(items, key)
-        threading.Thread(target=async_prefetch, args=(app, recommendations, s.tmdb_key)).start()
+        threading.Thread(target=async_prefetch, args=(app, unique_recs, s.tmdb_key)).start()
 
     final_list = []
     idx = 0
     
-    while len(final_list) < 40 and idx < len(recommendations):
-        item = recommendations[idx]
+    # use shuffled unique_recs instead of sorted recommendations
+    while len(final_list) < 40 and idx < len(unique_recs):
+        item = unique_recs[idx]
         idx += 1
         
         if item['year'] < min_year: continue
         # skip rating check in future mode (upcoming movies have 0 rating)
         if not future_mode and item.get('vote_average', 0) < min_rating: continue
+        
+        # runtime filter (if set in session)
+        max_runtime = session.get('max_runtime', 9999)
+        if max_runtime and max_runtime < 9999:
+            item_runtime = item.get('runtime', 9999)
+            if item_runtime > max_runtime: continue
+        
         if rating_filter:
             c_rate = item.get('content_rating', 'NR')
             if c_rate not in rating_filter: continue
@@ -963,7 +1069,9 @@ def generate():
     
     g_url = f"https://api.themoviedb.org/3/genre/{media_type}/list?api_key={s.tmdb_key}"
     try: genres = requests.get(g_url, timeout=10).json().get('genres', [])
-    except: genres = []
+    except Exception as e:
+        write_log("warning", "Generate", f"Failed to fetch genres: {str(e)}")
+        genres = []
 
     return render_template('results.html', 
                            movies=final_list, 
@@ -984,7 +1092,8 @@ def reset_alias_db():
         s.last_alias_scan = 0
         db.session.commit()
         return "<h1>Alias DB Wiped.</h1><p>The scanner will now restart from scratch. Please wait 10 minutes and check logs.</p><a href='/dashboard'>Back</a>"
-    except Exception:
+    except Exception as e:
+        write_log("error", "Wipe Database", f"Failed to wipe alias database: {str(e)}")
         return "<h1>Error</h1><p>An error occurred while wiping the alias database.</p><a href='/dashboard'>Back</a>"
 
 @app.route('/playlists')
@@ -1041,11 +1150,18 @@ def settings():
         s.overseerr_api_key = request.form.get('overseerr_api_key')
         s.tautulli_url = request.form.get('tautulli_url')
         s.tautulli_api_key = request.form.get('tautulli_api_key')
+        s.radarr_url = request.form.get('radarr_url')
+        s.radarr_api_key = request.form.get('radarr_api_key')
+        s.sonarr_url = request.form.get('sonarr_url')
+        s.sonarr_api_key = request.form.get('sonarr_api_key')
         s.backup_interval = int(request.form.get('backup_interval', 2))
         s.backup_retention = int(request.form.get('backup_retention', 7))
         
-        try: s.keyword_cache_size = int(request.form.get('keyword_cache_size', 2000))
-        except: s.keyword_cache_size = 2000
+        try: s.keyword_cache_size = int(request.form.get('keyword_cache_size', 3000))
+        except: s.keyword_cache_size = 3000
+        
+        try: s.runtime_cache_size = int(request.form.get('runtime_cache_size', 3000))
+        except: s.runtime_cache_size = 3000
         
         db.session.commit()
         
@@ -1086,7 +1202,8 @@ def settings():
         if s.plex_url and s.plex_token:
             p = PlexServer(s.plex_url, s.plex_token, timeout=3)
             plex_libraries = [sec.title for sec in p.library.sections() if sec.type in ['movie', 'show']]
-    except: pass
+    except Exception as e:
+        write_log("warning", "Settings", f"Failed to fetch Plex libraries: {str(e)}")
     
     current_ignored_libs = (s.ignored_libraries or '').split(',')
 
@@ -1101,6 +1218,38 @@ def settings():
 
     try: keyword_count = TmdbKeywordCache.query.count()
     except: keyword_count = 0
+    
+    try: runtime_count = TmdbRuntimeCache.query.count()
+    except: runtime_count = 0
+    
+    # Extract server IP/hostname from request for auto-fill
+    server_host = None
+    try:
+        host_header = request.host
+        # Remove port if present (e.g., "192.168.1.50:5000" -> "192.168.1.50")
+        if ':' in host_header:
+            server_host = host_header.split(':')[0]
+        else:
+            server_host = host_header
+        # Don't use localhost/127.0.0.1 - try to get actual IP
+        if server_host in ['localhost', '127.0.0.1', '0.0.0.0']:
+            # Try to get the actual server IP from the request
+            forwarded_for = request.headers.get('X-Forwarded-For')
+            if forwarded_for:
+                server_host = forwarded_for.split(',')[0].strip()
+            elif request.remote_addr and request.remote_addr not in ['127.0.0.1', '::1']:
+                server_host = request.remote_addr
+            else:
+                # Fallback: try to detect from socket
+                try:
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                    sock.connect(("8.8.8.8", 80))
+                    server_host = sock.getsockname()[0]
+                    sock.close()
+                except:
+                    server_host = None
+    except:
+        server_host = None
 
     return render_template('settings.html', 
                            settings=s, 
@@ -1110,14 +1259,25 @@ def settings():
                            current_ignored_libs=current_ignored_libs,
                            logs=logs, 
                            cache_age=cache_age,
-                           keyword_count=keyword_count)
+                           keyword_count=keyword_count,
+                           runtime_count=runtime_count,
+                           server_host=server_host)
 
 @app.route('/logs_page')
 @login_required
 def logs_page():
     logs = SystemLog.query.order_by(SystemLog.timestamp.desc()).limit(200).all()
     s = Settings.query.filter_by(user_id=current_user.id).first()
-    return render_template('logs.html', logs=logs, settings=s)
+    
+    # Count errors for summary
+    error_count = SystemLog.query.filter(SystemLog.level.in_(['error', 'ERROR'])).count()
+    recent_error_count = SystemLog.query.filter(
+        SystemLog.level.in_(['error', 'ERROR']),
+        SystemLog.timestamp >= datetime.datetime.now() - timedelta(days=7)
+    ).count()
+    
+    return render_template('logs.html', logs=logs, settings=s, 
+                         error_count=error_count, recent_error_count=recent_error_count)
 
 @app.route('/delete_profile', methods=['POST'])
 @login_required
@@ -1151,6 +1311,17 @@ def manage_blocklist():
 def kometa():
     s = Settings.query.filter_by(user_id=current_user.id).first()
     return render_template('kometa.html', settings=s)
+
+@app.route('/media')
+@login_required
+def media():
+    s = Settings.query.filter_by(user_id=current_user.id).first()
+    return render_template('media.html', settings=s)
+
+@app.route('/support')
+@login_required
+def support_us():
+    return render_template('support.html')
 
 # background scheduler - runs collections, cache refreshes, etc on a schedule
 
@@ -1244,6 +1415,17 @@ def scheduled_tasks():
                 if not is_system_locked():
                     print("Scheduler: Starting Background Alias Scan...")
                     threading.Thread(target=run_scan_wrapper, args=(app,)).start()
+        
+        # background Radarr/Sonarr scanner
+        if s.radarr_sonarr_scanner_enabled:
+            last = s.last_radarr_sonarr_scan or 0
+            now_ts = int(time.time())
+            interval_sec = (s.radarr_sonarr_scanner_interval or 24) * 3600  # convert hours to seconds
+            
+            if now_ts - last >= interval_sec:
+                if not is_system_locked():
+                    print("Scheduler: Starting Radarr/Sonarr Cache Refresh...")
+                    threading.Thread(target=refresh_radarr_sonarr_cache, args=(app,)).start()
 
 scheduler.add_job(id='master_task', func=scheduled_tasks, trigger='interval', minutes=1)
 
@@ -1254,7 +1436,7 @@ try:
     # Make limiter available to blueprint
     import api
 except ImportError as e:
-    print(f"ERROR: Failed to import api module: {e}")
+    print(f"error: failed to import api module: {e}")
     print(f"Current working directory: {os.getcwd()}")
     print(f"Files in current directory: {os.listdir('.')}")
     raise
