@@ -149,7 +149,7 @@ Tweaks and bugfixes:
 - fix for Analyzing your taste / homepage flashing when generating from the review page
 
 Docs:
-- new and updated for the wiki. Smart Discovery, Radarr, Sonarr, Installation & Updates (including Docker/Unraid one-click updater),  and wiki homepage
+- new and updated for the wiki. Smart Discovery, Radarr, Sonarr, Installation & Updates (including Docker/Unraid one-click updater), and wiki homepage
 
 <details>
   <summary><b>Past Changelog</b></summary>
