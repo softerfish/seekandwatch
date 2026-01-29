@@ -2,9 +2,7 @@
 
 ![Version](https://img.shields.io/badge/version-1.4.0-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) (submitted) ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
-**GitHub repo description** (paste in Settings → General → Description):
-
-> Self-hosted Plex companion: Smart Discovery from your watch history, add movies/shows via Radarr/Sonarr, Kometa builder, Plex collections, Overseerr, Tautulli. One dashboard -less scrolling, more watching.
+Self-hosted Plex companion: Smart Discovery from your watch history, add movies/shows via Radarr/Sonarr, Kometa builder, Plex collections, Overseerr, Tautulli. One dashboard -less scrolling, more watching.
 
 If this saves you from endless scrolling, a star helps.
 
@@ -289,3 +287,4 @@ This product uses the TMDB API but is not endorsed or certified by TMDB.
 | <img src="images/plexcollections.png" alt="Plex Collections" width="800"> |
 
 </details>
+
