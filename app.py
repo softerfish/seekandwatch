@@ -1,8 +1,10 @@
 """Main Flask app - handles routing, auth, and the main UI stuff."""
 
+import base64
 import time
 import os
 import re
+import sys
 import requests
 import random
 import json
@@ -23,7 +25,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFProtect
 from plexapi.server import PlexServer
-from models import db, Blocklist, CollectionSchedule, TmdbAlias, SystemLog, Settings, User, TmdbKeywordCache, TmdbRuntimeCache, RadarrSonarrCache
+from models import db, Blocklist, CollectionSchedule, TmdbAlias, SystemLog, Settings, User, TmdbKeywordCache, TmdbRuntimeCache, RadarrSonarrCache, RecoveryCode
 from utils import (normalize_title, is_duplicate, is_owned_item, fetch_omdb_ratings, send_overseerr_request, 
                    run_collection_logic, create_backup, list_backups, restore_backup, 
                    prune_backups, BACKUP_DIR, CACHE_FILE, sync_remote_aliases, get_tmdb_aliases, 
@@ -36,10 +38,11 @@ from utils import (normalize_title, is_duplicate, is_owned_item, fetch_omdb_rati
                    perform_release_update, save_results_cache, get_history_cache, set_history_cache,
                    score_recommendation, diverse_sample, get_tmdb_rec_cache, set_tmdb_rec_cache)
 from presets import PLAYLIST_PRESETS
+from sqlalchemy.exc import OperationalError
 
 # basic app setup stuff
 
-VERSION = "1.4.0"
+VERSION = "1.4.1"
 
 UPDATE_CACHE = {
     'version': None,
@@ -76,6 +79,9 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////config/seekandwatch.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 # Limit request body size (mitigates CVE-2024-49767 / multipart exhaustion)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB
+# session cookie hardening (set SESSION_COOKIE_SECURE = True in production when using HTTPS)
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 csrf = CSRFProtect(app)
 
 # Rate limiting to prevent abuse.
@@ -95,6 +101,32 @@ db.init_app(app)
 login_manager = LoginManager()
 login_manager.login_view = 'login'
 login_manager.init_app(app)
+
+# db commit with retry (helps when sqlite is briefly locked)
+def commit_with_retry(max_retries=3):
+    for attempt in range(max_retries):
+        try:
+            db.session.commit()
+            return
+        except OperationalError as e:
+            if "locked" in str(e).lower() or "busy" in str(e).lower():
+                if attempt < max_retries - 1:
+                    time.sleep(0.15 * (attempt + 1))
+                else:
+                    raise
+            else:
+                raise
+
+
+def _valid_url(val):
+    """True if value is empty or a safe http(s) URL (no javascript:, data:)."""
+    if not val or not str(val).strip():
+        return True
+    v = str(val).strip().lower()
+    if v.startswith("javascript:") or v.startswith("data:"):
+        return False
+    return v.startswith("http://") or v.startswith("https://")
+
 
 # database migration stuff - adds new columns and fixes admin issues
 
@@ -217,12 +249,34 @@ def run_migrations():
         except: pass
         try: RadarrSonarrCache.__table__.create(db.engine)
         except: pass
-        
+        try: RecoveryCode.__table__.create(db.engine)
+        except: pass
+        # add user_id to app_request so requested media is per-user (security)
+        try:
+            inspector = sqlalchemy.inspect(db.engine)
+            if 'app_request' in inspector.get_table_names():
+                app_request_columns = [c['name'] for c in inspector.get_columns('app_request')]
+                if 'user_id' not in app_request_columns:
+                    with db.engine.connect() as conn:
+                        conn.execute(sqlalchemy.text("ALTER TABLE app_request ADD COLUMN user_id INTEGER REFERENCES user(id)"))
+                        conn.commit()
+                        # backfill: assign existing rows to first user so they still show for that user
+                        first_user = conn.execute(sqlalchemy.text("SELECT id FROM user ORDER BY id ASC LIMIT 1")).scalar()
+                        if first_user is not None:
+                            conn.execute(sqlalchemy.text("UPDATE app_request SET user_id = :uid WHERE user_id IS NULL"), {"uid": first_user})
+                            conn.commit()
+        except Exception as ex:
+            print(f"Migration Warning (app_request user_id): {ex}")
+
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
     
-run_migrations()
+try:
+    run_migrations()
+except Exception as e:
+    print(f"--- STARTUP ERROR: migrations failed: {e} ---", flush=True)
+    sys.exit(1)
 
 # clear any leftover lock files from crashes/restarts
 print("--- BOOT SEQUENCE: CLEARING LOCKS ---", flush=True)
@@ -275,9 +329,8 @@ def inject_github_data():
 
 # main page routes
 
-# one-click updater for git/release installs
+# one-click updater for git/release installs (CSRF required via X-CSRFToken in fetch)
 @app.route('/trigger_update', methods=['POST'])
-@csrf.exempt
 @limiter.limit("10 per hour")
 @login_required
 def trigger_update_route():
@@ -404,10 +457,13 @@ def login():
 @limiter.limit("5 per hour", exempt_when=_no_users_exist)
 def register():
     if request.method == 'POST':
-        username = request.form.get('username')
-        password = request.form.get('password')
-        
-        if User.query.filter_by(username=username).first():
+        username = (request.form.get('username') or '').strip()
+        password = (request.form.get('password') or '')
+        if len(username) < 1 or len(username) > 150:
+            flash('Username must be 1–150 characters.')
+        elif len(password) < 8:
+            flash('Password must be at least 8 characters.')
+        elif User.query.filter_by(username=username).first():
             flash('Username already exists')
         else:
             hashed_pw = generate_password_hash(password, method='pbkdf2:sha256')
@@ -434,11 +490,19 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
+@app.route('/reset_password', methods=['GET'])
+def reset_password_page():
+    """Page to reset your password using a one-time recovery code."""
+    return render_template('reset_password.html')
+
+
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    s = Settings.query.order_by(Settings.id.asc()).first()
-    
+    s = current_user.settings
+    if not s:
+        flash("Please complete setup in Settings.", "error")
+        return redirect(url_for('settings'))
     # check for new versions every 4 hours (don't spam github)
     now = time.time()
     if UPDATE_CACHE['version'] is None or (now - UPDATE_CACHE['last_check'] > 14400):
@@ -481,7 +545,7 @@ def get_local_trending():
         if days > 365: days = 365
     except:
         days = 30
-    items = get_tautulli_trending(m_type, days=days)
+    items = get_tautulli_trending(m_type, days=days, settings=current_user.settings)
     return jsonify({'status': 'success', 'items': items})
 
 @app.route('/recommend_from_trending')
@@ -492,7 +556,7 @@ def recommend_from_trending():
     m_type = request.args.get('type', 'movie')
     
     # grab trending stuff from tautulli
-    trending = get_tautulli_trending(m_type)
+    trending = get_tautulli_trending(m_type, settings=current_user.settings)
     if not trending:
         flash("No trending data found to base recommendations on.", "error")
         return redirect(url_for('dashboard'))
@@ -501,8 +565,10 @@ def recommend_from_trending():
     
     # fetch TMDB recommendations for each trending item (in parallel)
     final_recs = []
-    s = Settings.query.order_by(Settings.id.asc()).first()
-    
+    s = current_user.settings
+    if not s:
+        flash("No settings found.", "error")
+        return redirect(url_for('dashboard'))
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         futures = []
         for tid in seed_ids:
@@ -564,7 +630,10 @@ def recommend_from_trending():
 @login_required
 def review_history():
     # scan plex watch history to find stuff for recommendations
-    s = Settings.query.order_by(Settings.id.asc()).first()
+    s = current_user.settings
+    if not s:
+        flash("No settings found.", "error")
+        return redirect(url_for('dashboard'))
     
     ignored_libs = [l.strip().lower() for l in request.form.getlist('ignored_libraries')]
     
@@ -1091,10 +1160,25 @@ def reset_alias_db():
         s = Settings.query.filter_by(user_id=current_user.id).first()
         s.last_alias_scan = 0
         db.session.commit()
-        return "<h1>Alias DB Wiped.</h1><p>The scanner will now restart from scratch. Please wait 10 minutes and check logs.</p><a href='/dashboard'>Back</a>"
+        return "<h1>Alias DB Wiped.</h1><p>The scanner will now restart from scratch. Please wait 10 minutes and check logs.</p><a href='" + url_for('dashboard') + "'>Back</a>"
     except Exception as e:
         write_log("error", "Wipe Database", f"Failed to wipe alias database: {str(e)}")
-        return "<h1>Error</h1><p>An error occurred while wiping the alias database.</p><a href='/dashboard'>Back</a>"
+        return "<h1>Error</h1><p>An error occurred while wiping the alias database.</p><a href='" + url_for('dashboard') + "'>Back</a>"
+
+def _get_plex_collection_titles(settings):
+    """Return set of collection titles that exist in Plex (so we can remove app jobs for deleted collections). None on failure."""
+    if not settings or not settings.plex_url or not settings.plex_token:
+        return None
+    try:
+        plex = PlexServer(settings.plex_url, settings.plex_token, timeout=5)
+        titles = set()
+        for section in plex.library.sections():
+            if section.type in ('movie', 'show'):
+                for col in section.collections():
+                    titles.add(col.title)
+        return titles
+    except Exception:
+        return None
 
 @app.route('/playlists')
 @login_required
@@ -1102,16 +1186,41 @@ def playlists():
     s = Settings.query.filter_by(user_id=current_user.id).first()
     current_time = s.schedule_time if s and s.schedule_time else "04:00"
 
+    # Two-way delete: if collection was deleted in Plex, remove the sync from app
+    plex_titles = _get_plex_collection_titles(s)
+    if plex_titles is not None:
+        for sch in list(CollectionSchedule.query.all()):
+            title = None
+            if sch.preset_key.startswith('custom_') and sch.configuration:
+                try:
+                    cfg = json.loads(sch.configuration)
+                    title = cfg.get('title')
+                except Exception:
+                    pass
+            else:
+                preset = PLAYLIST_PRESETS.get(sch.preset_key, {})
+                title = preset.get('title')
+            if title and title not in plex_titles:
+                CollectionSchedule.query.filter_by(preset_key=sch.preset_key).delete()
+        db.session.commit()
+
     schedules = {}
     sync_modes = {}
+    visibility = {}  # preset_key -> { home, library, friends }
     for sch in CollectionSchedule.query.all():
         schedules[sch.preset_key] = sch.frequency
         if sch.configuration:
             try:
                 config = json.loads(sch.configuration)
                 sync_modes[sch.preset_key] = config.get('sync_mode', 'append')
+                visibility[sch.preset_key] = {
+                    'home': config.get('visibility_home', True),
+                    'library': config.get('visibility_library', False),
+                    'friends': config.get('visibility_friends', False)
+                }
             except Exception:
                 sync_modes[sch.preset_key] = 'append'
+                visibility[sch.preset_key] = {'home': True, 'library': False, 'friends': False}
 
     custom_presets = {}
     for sch in CollectionSchedule.query.filter(CollectionSchedule.preset_key.like('custom_%')).all():
@@ -1123,7 +1232,10 @@ def playlists():
                     'description': config.get('description', 'Custom Builder Collection'),
                     'media_type': config.get('media_type', 'movie'),
                     'icon': config.get('icon', '🛠️'),
-                    'sync_mode': config.get('sync_mode', 'append')
+                    'sync_mode': config.get('sync_mode', 'append'),
+                    'visibility_home': config.get('visibility_home', True),
+                    'visibility_library': config.get('visibility_library', False),
+                    'visibility_friends': config.get('visibility_friends', False)
                 }
             except Exception:
                 pass
@@ -1132,6 +1244,7 @@ def playlists():
                            presets=PLAYLIST_PRESETS, 
                            schedules=schedules, 
                            sync_modes=sync_modes,
+                           visibility=visibility,
                            custom_presets=custom_presets,
                            schedule_time=current_time)
                            
@@ -1141,6 +1254,12 @@ def settings():
     s = Settings.query.filter_by(user_id=current_user.id).first()
     
     if request.method == 'POST':
+        # validate URL fields before saving (no javascript:, data:; must be http(s) if set)
+        url_fields = ['plex_url', 'overseerr_url', 'tautulli_url', 'radarr_url', 'sonarr_url']
+        for field in url_fields:
+            val = request.form.get(field)
+            if not _valid_url(val):
+                return jsonify({'status': 'error', 'message': f'Invalid URL in {field.replace("_", " ")}. Use http:// or https:// only.'}), 400
         s.plex_url = request.form.get('plex_url')
         s.plex_token = request.form.get('plex_token')
         s.tmdb_key = request.form.get('tmdb_key')
@@ -1163,7 +1282,12 @@ def settings():
         try: s.runtime_cache_size = int(request.form.get('runtime_cache_size', 3000))
         except: s.runtime_cache_size = 3000
         
-        db.session.commit()
+        try:
+            commit_with_retry()
+        except Exception as e:
+            db.session.rollback()
+            write_log("error", "Settings", f"Save failed: {type(e).__name__}")
+            return jsonify({'status': 'error', 'message': 'Database save failed. Please try again.'}), 500
         
         # Max log size
         try: s.max_log_size = int(request.form.get('max_log_size', 5))
@@ -1175,7 +1299,12 @@ def settings():
         ignored_libs = request.form.getlist('ignored_libraries')
         s.ignored_libraries = ",".join(ignored_libs)
         
-        db.session.commit()
+        try:
+            commit_with_retry()
+        except Exception as e:
+            db.session.rollback()
+            write_log("error", "Settings", f"Save failed: {type(e).__name__}")
+            return jsonify({'status': 'error', 'message': 'Database save failed. Please try again.'}), 500
         return jsonify({'status': 'success', 'message': 'Settings saved successfully.', 'msg': 'Settings saved successfully.'})
 
     # get plex users for ignore list
@@ -1207,7 +1336,8 @@ def settings():
     
     current_ignored_libs = (s.ignored_libraries or '').split(',')
 
-    logs = SystemLog.query.order_by(SystemLog.timestamp.desc()).limit(50).all()
+    # only admins see system logs (avoid leaking paths/errors to other users)
+    logs = SystemLog.query.order_by(SystemLog.timestamp.desc()).limit(50).all() if current_user.is_admin else []
     
     # cache age
     cache_age = "Never"
@@ -1266,6 +1396,9 @@ def settings():
 @app.route('/logs_page')
 @login_required
 def logs_page():
+    if not current_user.is_admin:
+        flash('Only admins can view system logs.', 'error')
+        return redirect(url_for('dashboard'))
     logs = SystemLog.query.order_by(SystemLog.timestamp.desc()).limit(200).all()
     s = Settings.query.filter_by(user_id=current_user.id).first()
     
@@ -1318,6 +1451,12 @@ def media():
     s = Settings.query.filter_by(user_id=current_user.id).first()
     return render_template('media.html', settings=s)
 
+@app.route('/calendar')
+@login_required
+def calendar_page():
+    s = Settings.query.filter_by(user_id=current_user.id).first()
+    return render_template('calendar.html', settings=s)
+
 @app.route('/support')
 @login_required
 def support_us():
@@ -1337,7 +1476,7 @@ def scheduled_tasks():
         if datetime.datetime.now().hour == 4 and datetime.datetime.now().minute == 0:
             prune_backups()
             
-        # cache refresh
+        # cache refresh + collection schedule (no request context here; uses first user's settings for global cache/schedule)
         s = Settings.query.first()
         if not s: return
         
@@ -1441,6 +1580,24 @@ except ImportError as e:
     print(f"Files in current directory: {os.listdir('.')}")
     raise
 api.limiter = limiter
+
+
+# global error handlers so users see a friendly page instead of a crash
+@app.errorhandler(404)
+def not_found(e):
+    return render_template('error.html', message='Page not found.'), 404
+
+
+@app.errorhandler(500)
+def server_error(e):
+    return render_template('error.html', message='Something went wrong. Please try again or check the logs.'), 500
+
+
+# lightweight health endpoint for Docker/orchestration (no auth, no heavy work)
+@app.route('/health')
+def health():
+    return jsonify({'status': 'ok', 'version': VERSION}), 200
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)

@@ -13,8 +13,21 @@ class User(UserMixin, db.Model):
     username = db.Column(db.String(150), unique=True, nullable=False)
     password_hash = db.Column(db.String(150), nullable=False)
     is_admin = db.Column(db.Boolean, default=False)
-    
+
     settings = db.relationship('Settings', back_populates='user', uselist=False)
+    recovery_codes = db.relationship('RecoveryCode', back_populates='user', cascade='all, delete-orphan')
+
+
+class RecoveryCode(db.Model):
+    """One-time recovery codes for password reset. Stored hashed, one use only."""
+    __table_args__ = {'extend_existing': True}
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    code_hash = db.Column(db.String(255), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    
+    user = db.relationship('User', back_populates='recovery_codes')
+
 
 class Settings(db.Model):
     __table_args__ = {'extend_existing': True}
@@ -118,9 +131,10 @@ class TmdbRuntimeCache(db.Model):
     timestamp = db.Column(db.DateTime, default=datetime.now)
 
 class AppRequest(db.Model):
-    """Requests made from the app via Radarr or Sonarr (so they show on Requested tab and in logs)."""
+    """Requests made from the app via Radarr or Sonarr (so they show on Requested tab and in logs). Scoped by user."""
     __table_args__ = {'extend_existing': True}
     id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)  # nullable for migration; new rows set by api
     tmdb_id = db.Column(db.Integer, nullable=False)
     media_type = db.Column(db.String(10), nullable=False)  # 'movie' or 'tv'
     title = db.Column(db.String(300), nullable=False)

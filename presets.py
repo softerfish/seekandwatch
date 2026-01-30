@@ -91,4 +91,33 @@ PLAYLIST_PRESETS = {
     'rating_us_pg': {'title': 'Rated PG', 'category': 'Content Ratings', 'icon': '🟡', 'media_type': 'movie', 'description': 'Parental Guidance.', 'tmdb_params': {'certification_country': 'US', 'certification': 'PG', 'sort_by': 'popularity.desc'}},
     'rating_us_r': {'title': 'Rated R', 'category': 'Content Ratings', 'icon': '🔴', 'media_type': 'movie', 'description': 'Restricted.', 'tmdb_params': {'certification_country': 'US', 'certification': 'R', 'sort_by': 'popularity.desc'}},
     'rating_us_tvma': {'title': 'TV-MA', 'category': 'Content Ratings', 'icon': '🔞', 'media_type': 'tv', 'description': 'Mature Audiences.', 'tmdb_params': {'certification_country': 'US', 'certification': 'TV-MA', 'sort_by': 'popularity.desc'}},
+
+    # extra themes & vibes
+    'theme_zombies': {'title': 'Zombies', 'category': 'Themes & Vibes', 'icon': '🧟', 'media_type': 'movie', 'description': 'Undead & survival.', 'tmdb_params': {'with_keywords': '12249', 'with_genres': '27', 'sort_by': 'popularity.desc'}},
+    'theme_vampires': {'title': 'Vampires', 'category': 'Themes & Vibes', 'icon': '🧛', 'media_type': 'movie', 'description': 'Fangs & folklore.', 'tmdb_params': {'with_keywords': '8487', 'sort_by': 'popularity.desc'}},
+    'theme_courtroom': {'title': 'Courtroom Drama', 'category': 'Themes & Vibes', 'icon': '⚖️', 'media_type': 'movie', 'description': 'Trials & verdicts.', 'tmdb_params': {'with_keywords': '9714', 'with_genres': '18', 'sort_by': 'vote_average.desc'}},
+    'theme_spy': {'title': 'Spy & Espionage', 'category': 'Themes & Vibes', 'icon': '🕵️', 'media_type': 'movie', 'description': 'Secret agents.', 'tmdb_params': {'with_keywords': '425', 'sort_by': 'popularity.desc'}},
+    'theme_superhero': {'title': 'Superhero', 'category': 'Themes & Vibes', 'icon': '🦸', 'media_type': 'movie', 'description': 'Capes & villains.', 'tmdb_params': {'with_keywords': '9717', 'sort_by': 'popularity.desc'}},
+    'theme_christmas': {'title': 'Holiday & Christmas', 'category': 'Themes & Vibes', 'icon': '🎄', 'media_type': 'movie', 'description': 'Seasonal cheer.', 'tmdb_params': {'with_keywords': '207317', 'sort_by': 'popularity.desc'}},
+    'theme_martial_arts': {'title': 'Martial Arts', 'category': 'Themes & Vibes', 'icon': '🥋', 'media_type': 'movie', 'description': 'Kung fu & action.', 'tmdb_params': {'with_keywords': '3780', 'sort_by': 'vote_average.desc'}},
+    'theme_road_movie': {'title': 'Road Movies', 'category': 'Themes & Vibes', 'icon': '🛣️', 'media_type': 'movie', 'description': 'Journeys & escapes.', 'tmdb_params': {'with_keywords': '9715', 'sort_by': 'popularity.desc'}},
+    'theme_true_crime_tv': {'title': 'True Crime', 'category': 'Themes & Vibes', 'icon': '📋', 'media_type': 'tv', 'description': 'Real cases.', 'tmdb_params': {'with_genres': '80', 'with_keywords': '210024', 'sort_by': 'popularity.desc'}},
+
+    # more international
+    'spanish_cinema': {'title': 'Spanish Language', 'category': 'International & World', 'icon': '🇪🇸', 'media_type': 'movie', 'description': 'Spain & Latin America.', 'tmdb_params': {'with_original_language': 'es', 'sort_by': 'popularity.desc'}},
+    'australian_movies': {'title': 'Australian', 'category': 'International & World', 'icon': '🇦🇺', 'media_type': 'movie', 'description': 'Cinema from down under.', 'tmdb_params': {'with_origin_country': 'AU', 'sort_by': 'popularity.desc'}},
+    'german_cinema': {'title': 'German', 'category': 'International & World', 'icon': '🇩🇪', 'media_type': 'movie', 'description': 'German film.', 'tmdb_params': {'with_original_language': 'de', 'sort_by': 'popularity.desc'}},
+    'british_comedy_tv': {'title': 'British Comedy', 'category': 'International & World', 'icon': '🇬🇧', 'media_type': 'tv', 'description': 'UK sitcoms & comedy.', 'tmdb_params': {'with_origin_country': 'GB', 'with_genres': '35', 'sort_by': 'popularity.desc'}},
+
+    # more studios & networks
+    'studio_marvel': {'title': 'Marvel', 'category': 'Studios & Networks', 'icon': '🦸', 'media_type': 'movie', 'description': 'MCU & more.', 'tmdb_params': {'with_companies': '420', 'sort_by': 'release_date.desc'}},
+    'studio_disney_animation': {'title': 'Disney Animation', 'category': 'Studios & Networks', 'icon': '🏰', 'media_type': 'movie', 'description': 'Classic & new.', 'tmdb_params': {'with_companies': '2', 'sort_by': 'popularity.desc'}},
+    'network_bbc': {'title': 'BBC', 'category': 'Studios & Networks', 'icon': '🇬🇧', 'media_type': 'tv', 'description': 'British drama & docs.', 'tmdb_params': {'with_networks': '12', 'sort_by': 'vote_average.desc', 'vote_count.gte': '100'}},
+
+    # more genres / niche
+    'genre_romance_tv': {'title': 'Romance TV', 'category': 'Genre (TV)', 'icon': '💕', 'media_type': 'tv', 'description': 'Love stories.', 'tmdb_params': {'with_genres': '10749', 'sort_by': 'popularity.desc'}},
+    'genre_horror_tv': {'title': 'Horror TV', 'category': 'Genre (TV)', 'icon': '👻', 'media_type': 'tv', 'description': 'Spooky & supernatural.', 'tmdb_params': {'with_genres': '10765', 'sort_by': 'popularity.desc'}},
+    'genre_mystery_tv': {'title': 'Mystery TV', 'category': 'Genre (TV)', 'icon': '🔍', 'media_type': 'tv', 'description': 'Whodunnits.', 'tmdb_params': {'with_genres': '9648', 'sort_by': 'popularity.desc'}},
+    'new_releases_mov': {'title': 'New Releases', 'category': 'Decades', 'icon': '🆕', 'media_type': 'movie', 'description': 'This year.', 'tmdb_params': {'primary_release_date.gte': '2025-01-01', 'sort_by': 'popularity.desc'}},
+    'best_rated_mov': {'title': 'Best Rated', 'category': 'Awards & Acclaim', 'icon': '⭐', 'media_type': 'movie', 'description': 'Top rated ever.', 'tmdb_params': {'vote_average.gte': '8.0', 'vote_count.gte': '2000', 'sort_by': 'vote_average.desc'}},
 }

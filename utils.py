@@ -18,7 +18,7 @@ import tempfile
 import threading
 import time
 import zipfile
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 
 import requests
 from flask import flash, redirect, url_for, session, render_template, has_app_context, current_app
@@ -417,7 +417,7 @@ def prefetch_runtime_parallel(items, api_key):
             db.session.bulk_save_objects(new_entries)
             db.session.commit()
             
-            # Prune cache if it exceeds the limit
+            # Prune cache if it exceeds the limit (global runtime cache; no request context)
             try:
                 s = Settings.query.first()
                 if s:
@@ -491,7 +491,7 @@ def _write_log_internal(level, module, message):
 def write_scanner_log(message):
     """Writes scanner messages to a file, rotates if it gets too big."""
     try:
-        # import here to avoid circular dependency issues
+        # import here to avoid circular dependency issues (no request context; first user's limit)
         from models import Settings
         s = Settings.query.first()
         limit_mb = s.scanner_log_size if s and s.scanner_log_size is not None else 10
@@ -877,6 +877,7 @@ def refresh_plex_cache(app_obj):
     print("--- STARTING PLEX CACHE REFRESH ---")
     
     with app_obj.app_context():
+        # single global cache file; no request context in background
         settings = Settings.query.first()
         if not settings or not settings.plex_url:
             return False, "Plex not configured."
@@ -948,6 +949,7 @@ def refresh_radarr_sonarr_cache(app_obj):
     print("--- STARTING RADARR/SONARR CACHE REFRESH ---")
     
     with app_obj.app_context():
+        # background job; no request context (uses first user's arr config for global cache)
         settings = Settings.query.first()
         if not settings:
             return False, "Settings not found."
@@ -1160,6 +1162,133 @@ def get_radarr_sonarr_cache(media_type=None):
     except:
         return {'titles': set(), 'tmdb_ids': set()}
 
+def apply_collection_visibility(plex_collection, visible_home=False, visible_library=False, visible_friends=False):
+    """Set where the collection appears: home, library recommended, shared users' home (friends).
+    Best-effort: if Plex rejects the prefs request (e.g. 400), we don't fail — sync still succeeds."""
+    published = 1 if (visible_home or visible_library or visible_friends) else 0
+    server = getattr(plex_collection, '_server', None)
+    key = getattr(plex_collection, 'key', None) or (f"/library/metadata/{getattr(plex_collection, 'ratingKey', '')}")
+    if not server or not key:
+        return  # can't do anything without server/key
+    key = key.strip()
+    if not key.startswith('/'):
+        key = '/' + key
+    rating_key = getattr(plex_collection, 'ratingKey', None)
+    if not rating_key and '/library/collections/' in key:
+        rating_key = key.rstrip('/').split('/')[-1]
+    prefs_path = f"/library/metadata/{rating_key}/prefs" if rating_key else f"{key}/prefs"
+
+    # try Plex’s hubs/sections manage API first (gets collections into Manage Recommendations, then sets toggles)
+    if rating_key:
+        try:
+            # which library section this collection lives in (needed for hubs paths)
+            meta = server.query('/library/metadata/%s' % rating_key)
+            section_id = None
+            if hasattr(meta, 'find'):
+                first = meta.find('Metadata')
+                if first is not None and getattr(first, 'get', None):
+                    section_id = first.get('librarySectionID')
+            if not section_id and hasattr(meta, 'attrib'):
+                section_id = meta.attrib.get('librarySectionID')
+            if not section_id and hasattr(meta, 'MediaContainer'):
+                mc = getattr(meta, 'MediaContainer', None)
+                if mc and getattr(mc, 'Metadata', None):
+                    lst = list(mc.Metadata) if hasattr(mc.Metadata, '__iter__') else []
+                    if lst:
+                        m = lst[0]
+                        section_id = getattr(m, 'librarySectionID', None) or (m.get('librarySectionID') if isinstance(m, dict) else None)
+            if section_id:
+                # add this collection to the section’s managed hubs so it shows up in Manage Recommendations
+                server.query('/hubs/sections/%s/manage?metadataItemId=%s' % (section_id, rating_key), method=server._session.post)
+                # set home / library recommended / friends toggles (Plex param names)
+                hub_id = 'custom.collection.%s.%s' % (section_id, rating_key)
+                q = {'promotedToRecommended': '1' if visible_library else '0', 'promotedToOwnHome': '1' if visible_home else '0', 'promotedToSharedHome': '1' if visible_friends else '0'}
+                server.query('/hubs/sections/%s/manage/%s?%s' % (section_id, hub_id, urlencode(q)), method=server._session.put)
+                return
+        except Exception:
+            pass
+
+    # fallback: editAdvanced (prefs as query string on PUT)
+    if getattr(plex_collection, 'editAdvanced', None):
+        try:
+            kwargs = {'collectionPublished': published}
+            # only add promoted* if the server exposes them (editAdvanced checks enumValues)
+            try:
+                prefs = plex_collection.preferences()
+                ids = {getattr(p, 'id', None) for p in prefs if getattr(p, 'id', None)}
+                if 'promotedToOwnHome' in ids:
+                    kwargs['promotedToOwnHome'] = 1 if visible_home else 0
+                if 'promotedToLibraryRecommended' in ids:
+                    kwargs['promotedToLibraryRecommended'] = 1 if visible_library else 0
+                elif 'promotedToLibrary' in ids:
+                    kwargs['promotedToLibrary'] = 1 if visible_library else 0
+                if 'promotedToSharedHome' in ids:
+                    kwargs['promotedToSharedHome'] = 1 if visible_friends else 0
+            except Exception:
+                pass
+            plex_collection.editAdvanced(**kwargs)
+            return
+        except Exception:
+            pass
+
+    # or use plexapi’s visibility() if it’s available
+    try:
+        hub = plex_collection.visibility()
+        if getattr(hub, 'updateVisibility', None):
+            hub.updateVisibility(promotedToOwnHome=visible_home, promotedToLibrary=visible_library, promotedToSharedHome=visible_friends)
+        elif getattr(hub, 'edit', None):
+            hub.edit(promotedToOwnHome=int(visible_home), promotedToLibrary=int(visible_library), promotedToSharedHome=int(visible_friends))
+        return
+    except Exception:
+        pass
+
+    # last resort: raw prefs PUT (body then query string)
+    prefs_data = {}
+    try:
+        prefs = plex_collection.preferences()
+        supported_ids = {getattr(p, 'id', None) for p in prefs if getattr(p, 'id', None)}
+        if 'collectionPublished' in supported_ids:
+            ev = None
+            for p in prefs:
+                if getattr(p, 'id', None) == 'collectionPublished' and getattr(p, 'enumValues', None) is not None:
+                    ev = p.enumValues
+                    break
+            if ev is not None:
+                prefs_data['collectionPublished'] = ev.get(published) or ev.get(str(published)) or str(published)
+            else:
+                prefs_data['collectionPublished'] = str(published)
+        for pref_id, value in [
+            ('promotedToOwnHome', visible_home),
+            ('promotedToLibrary', visible_library),
+            ('promotedToLibraryRecommended', visible_library),
+            ('promotedToSharedHome', visible_friends),
+        ]:
+            if pref_id in supported_ids:
+                prefs_data[pref_id] = '1' if value else '0'
+    except Exception:
+        supported_ids = set()
+
+    if not prefs_data or 'collectionPublished' not in prefs_data:
+        prefs_data = {
+            'collectionPublished': str(published),
+            'promotedToOwnHome': '1' if visible_home else '0',
+            'promotedToLibrary': '1' if visible_library else '0',
+            'promotedToSharedHome': '1' if visible_friends else '0',
+        }
+
+    try:
+        server.query(prefs_path, method=server._session.put, data=prefs_data)
+        return
+    except Exception:
+        pass
+    try:
+        prefs_url = f"{prefs_path}?{urlencode(prefs_data)}"
+        server.query(prefs_url, method=server._session.put)
+        return
+    except Exception:
+        pass
+    # if nothing worked, user can still set visibility in Plex (Manage Recommendations)
+
 # collection syncing logic
 def run_collection_logic(settings, preset, key, app_obj=None):
     if is_system_locked(): return False, "System busy."
@@ -1261,39 +1390,82 @@ def run_collection_logic(settings, preset, key, app_obj=None):
         
         found_items = list(set(found_items))
 
-        # Sync or append.
+        # Sync or append. Only treat as "existing" if title matches (case-insensitive, trimmed); Plex search can return partial matches.
+        want_title = (preset['title'] or '').strip()
+        want_lower = want_title.lower()
+        existing_col = None
         try:
-            existing_col = target_lib.search(title=preset['title'], libtype='collection')[0]
-        except: existing_col = None
+            results = target_lib.search(title=preset['title'], libtype='collection')
+            for col in results:
+                col_title = (getattr(col, 'title', None) or '').strip()
+                if col_title.lower() == want_lower:
+                    existing_col = col
+                    break
+        except Exception:
+            pass
+
+        # If existing collection is smart, create a new regular one with a suffix (so you don't have to delete the smart one)
+        if existing_col and getattr(existing_col, 'smart', False):
+            suffix = " (SeekAndWatch)"
+            alt_title = want_title + suffix
+            if found_items:
+                col = target_lib.createCollection(title=alt_title, items=found_items)
+                apply_collection_visibility(
+                    col,
+                    visible_home=preset.get('visibility_home', True),
+                    visible_library=preset.get('visibility_library', True),
+                    visible_friends=preset.get('visibility_friends', False)
+                )
+                return True, (
+                    f"A collection named \"{want_title}\" already exists and is a smart collection (filter-based), "
+                    f"so a new regular collection was created as \"{alt_title}\" with {len(found_items)} items. "
+                    "If it doesn't show under Manage Recommendations, open it in Plex → ⋮ → Visible On → check the columns."
+                )
+            return True, f"A smart collection named \"{want_title}\" exists; no items to add. Create a regular one with a different preset name if needed."
 
         if not existing_col:
             if found_items:
-                target_lib.createCollection(title=preset['title'], items=found_items)
-                return True, f"Created '{preset['title']}' with {len(found_items)} items."
+                col = target_lib.createCollection(title=preset['title'], items=found_items)
+                apply_collection_visibility(
+                    col,
+                    visible_home=preset.get('visibility_home', True),
+                    visible_library=preset.get('visibility_library', True),
+                    visible_friends=preset.get('visibility_friends', False)
+                )
+                return True, (
+                    f"Created '{preset['title']}' with {len(found_items)} items. "
+                    "If it doesn't show under Manage Recommendations, open the collection in Plex → ⋮ → Visible On → check the columns you want."
+                )
             return True, "No items found."
+        # existing collection is regular — we can add/remove items
+        current_items = existing_col.items()
+        current_ids = {x.ratingKey for x in current_items}
+        new_ids = {x.ratingKey for x in found_items}
+        
+        to_add = [x for x in found_items if x.ratingKey not in current_ids]
+        
+        if mode == 'sync':
+            to_remove = [x for x in current_items if x.ratingKey not in new_ids]
         else:
-            current_items = existing_col.items()
-            current_ids = {x.ratingKey for x in current_items}
-            new_ids = {x.ratingKey for x in found_items}
-            
-            to_add = [x for x in found_items if x.ratingKey not in current_ids]
-            
-            if mode == 'sync':
-                to_remove = [x for x in current_items if x.ratingKey not in new_ids]
-            else:
-                to_remove = []
+            to_remove = []
 
-            # Guardrail: bulk add limit to avoid Plex rate limits.
-            if len(to_add) > 1000:
-                return False, f"Aborted: Attempted to add {len(to_add)} items. Limit is 1000."
+        # Guardrail: bulk add limit to avoid Plex rate limits.
+        if len(to_add) > 1000:
+            return False, f"Aborted: Attempted to add {len(to_add)} items. Limit is 1000."
 
-            if to_add: existing_col.addItems(to_add)
-            if to_remove: existing_col.removeItems(to_remove)
-                
-            action = "Synced (Strict)" if mode == 'sync' else "Appended"
-            msg = f"{action} '{preset['title']}': Added {len(to_add)}, Removed {len(to_remove)}."
-            write_log("success", "Sync", msg, app_obj=app_obj)
-            return True, msg
+        if to_add: existing_col.addItems(to_add)
+        if to_remove: existing_col.removeItems(to_remove)
+        # re-apply visibility in case preset was updated
+        apply_collection_visibility(
+            existing_col,
+            visible_home=preset.get('visibility_home', True),
+            visible_library=preset.get('visibility_library', True),
+            visible_friends=preset.get('visibility_friends', False)
+        )
+        action = "Synced (Strict)" if mode == 'sync' else "Appended"
+        msg = f"{action} '{preset['title']}': Added {len(to_add)}, Removed {len(to_remove)}."
+        write_log("success", "Sync", msg, app_obj=app_obj)
+        return True, msg
 
     except Exception as e:
         write_log("error", "Sync", f"Collection sync failed: {str(e)}", app_obj=app_obj)
@@ -1829,10 +2001,10 @@ def prefetch_ratings_parallel(items, api_key):
     for item in items:
         item['content_rating'] = rating_map.get(item['id'], 'NR')
 
-def get_tautulli_trending(media_type='movie', days=30):
-    # get top 5 trending from tautulli
+def get_tautulli_trending(media_type='movie', days=30, settings=None):
+    # get top 5 trending from tautulli (caller should pass settings for user isolation)
     try:
-        s = Settings.query.first()
+        s = settings or Settings.query.first()
         if not s or not s.tautulli_url or not s.tautulli_api_key:
             return []
 

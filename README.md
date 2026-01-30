@@ -1,12 +1,12 @@
 # SeekAndWatch
 
-![Version](https://img.shields.io/badge/version-1.4.0-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) (submitted) ![License](https://img.shields.io/badge/License-MIT-green.svg)
+![Version](https://img.shields.io/badge/version-1.4.1-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) (submitted) ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
 Self-hosted Plex companion: Smart Discovery from your watch history, add movies/shows via Radarr/Sonarr, Kometa builder, Plex collections, Overseerr, Tautulli. One dashboard -less scrolling, more watching.
 
 If this saves you from endless scrolling, a star helps.
 
-**Documentation:** [Wiki](https://github.com/softerfish/seekandwatch/wiki)  - install, Smart Discovery, Radarr, Sonarr, Kometa builder, troubleshooting.
+**Documentation:** [Wiki](https://github.com/softerfish/seekandwatch/wiki) — install, Smart Discovery, Plex Collections, Radarr, Sonarr, Kometa builder, troubleshooting.
 
 ---
 
@@ -44,7 +44,7 @@ Goal: spend less time browsing, more time watching. It uses your watch history a
 
 - **Add movies/shows from the app**  - Request from Smart Discovery or elsewhere; opens in Radarr/Sonarr with quality profile and root folder.
 - **Media page**  - View your Radarr/Sonarr libraries (requested, monitored, downloaded), open in Radarr/Sonarr, toggle monitored, search/refresh.
-- **Radarr & Sonarr Scanner** (optional)  - Background scan of your Radarr/Sonarr libraries so those items are treated as “owned” and excluded from Smart Discovery (in addition to Plex).
+- **Radarr & Sonarr Scanner** (optional)  - Background scan of your Radarr/Sonarr libraries so those items are treated as "owned" and excluded from Smart Discovery (in addition to Plex).
 
 ### Kometa Config Builder (no YAML needed)
 
@@ -55,9 +55,10 @@ Goal: spend less time browsing, more time watching. It uses your watch history a
 
 ### Plex collections
 
-- Auto-collections with schedules (daily/weekly/manual); sync strict or append-only.
-- Bulk list import (IMDb/Letterboxd/Reddit) with smart matching.
-- Library browser to see existing Plex collections; custom builder and presets.
+- **90+ preset collections** — decades, genres, studios, themes, international, awards. Categories are collapsible so you can focus on what you use.
+- **Visibility** — Home, Library recommended, and Friends checkboxes on every collection; changes apply to Plex right away (no need to run the collection again).
+- **Library Browser** — Live view of all collections on your Plex server with the same visibility toggles. In Plex you can reorder and change options under Settings → Manage → Libraries → Manage Recommendations.
+- Auto-update (daily/weekly/manual), sync strict or append-only, bulk list import (IMDb/Letterboxd/Reddit) with smart matching, custom builder.
 
 ### Library quality & requests
 
@@ -129,6 +130,26 @@ docker compose up -d
 
 ## Changelog
 
+v1.4.1
+Bugfixes and security:
+- GitHub CodeQL fixes
+- custom builder fixed
+- bugs on results page
+- sonarr and radarr automatic download fixes. Clicking back in the browser fixes to actually load the library
+
+Features:
+- added a calendar that pulls all your Radarr and Sonarr releases. You can click on shows and movies in the calendar to add and see history
+- account recovery can be done via recovery codes now found in Settings -> System & Maintenance and use the Account recovery section
+- Plex collections can now be added to home, library, and friends home screens
+- plex collections now minimized
+- added additional collections
+- added delete option for collections
+
+Additional:
+- updated docker-compose
+
+<details>
+  <summary><b>Past Changelog</b></summary>
 v1.4.0
 This is a pretty huge update
 
@@ -149,8 +170,6 @@ Tweaks and bugfixes:
 Docs:
 - new and updated for the wiki. Smart Discovery, Radarr, Sonarr, Installation & Updates (including Docker/Unraid one-click updater), and wiki homepage
 
-<details>
-  <summary><b>Past Changelog</b></summary>
 v1.3.2
 - finished last of the security updates
 - finished Kometa import config files -> copy and paste or by URL
@@ -287,4 +306,3 @@ This product uses the TMDB API but is not endorsed or certified by TMDB.
 | <img src="images/plexcollections.png" alt="Plex Collections" width="800"> |
 
 </details>
-

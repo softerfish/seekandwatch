@@ -21,7 +21,9 @@ from flask_limiter.util import get_remote_address
 from plexapi.server import PlexServer
 from markupsafe import escape
 from werkzeug.utils import secure_filename
-from models import db, Blocklist, CollectionSchedule, TmdbAlias, SystemLog, Settings, User, AppRequest
+from werkzeug.security import generate_password_hash, check_password_hash
+import secrets
+from models import db, Blocklist, CollectionSchedule, TmdbAlias, SystemLog, Settings, User, AppRequest, RecoveryCode
 from utils import (
     normalize_title,
     is_duplicate,
@@ -74,14 +76,9 @@ def rate_limit_decorator(limit_str):
 
 def _log_api_exception(context, exc):
     try:
-        # keep logs readable: one short line, no raw api responses or tracebacks
-        msg = str(exc).strip() if exc else ""
-        if len(msg) > 300:
-            msg = msg[:297] + "..."
-        if msg and "\n" in msg:
-            msg = msg.split("\n")[0].strip()
-        line = f"{context} failed" + (f" - {msg}" if msg else "")
-        write_log("error", "API", line)
+        # don't expose exception message (CodeQL: information exposure through exception)
+        exc_type = type(exc).__name__ if exc else "Exception"
+        write_log("error", "API", f"{context} failed ({exc_type})")
     except Exception:
         current_app.logger.exception(context)
 
@@ -156,7 +153,7 @@ def load_more_recs():
             item['runtime'] = data.get('runtime', 0)  # Runtime in minutes
         except Exception as e:
             # Runtime fetch failures are non-critical, log as warning
-            write_log("warning", "API", f"Failed to fetch runtime for item: {str(e)}")
+            write_log("warning", "API", "Failed to fetch runtime for item")
             item['runtime'] = 0
     
     # Fetch runtime in parallel for movies
@@ -477,27 +474,77 @@ def get_plex_collections():
         return jsonify({'status': 'error', 'message': 'Plex not configured'})
     
     try:
-        plex = PlexServer(s.plex_url, s.plex_token, timeout=5)
+        plex = PlexServer(s.plex_url, s.plex_token, timeout=10)
         collections = []
+        seen_keys = set()
         
         for section in plex.library.sections():
-            if section.type in ['movie', 'show']:
-                for col in section.collections():
-                    # Use first item's poster if collection doesn't have one.
-                    thumb = col.thumb
-                    if not thumb and col.items():
-                        thumb = col.items()[0].thumb
-                        
-                    collections.append({
-                        'title': col.title,
-                        'key': col.ratingKey,
-                        'library': section.title,
-                        'count': col.childCount,
-                        'thumb': f"{s.plex_url}{thumb}?X-Plex-Token={s.plex_token}" if thumb else None,
-                        'url': f"{s.plex_url}/web/index.html#!/server/{plex.machineIdentifier}/details?key={col.key}"
-                    })
+            if section.type not in ['movie', 'show']:
+                continue
+            # get collections: try section.collections() first, fallback to search (some servers differ)
+            cols = list(section.collections())
+            if not cols:
+                try:
+                    cols = section.search(libtype='collection', maxresults=500)
+                except Exception:
+                    cols = []
+            for col in cols:
+                rk = getattr(col, 'ratingKey', None)
+                if rk is None or rk in seen_keys:
+                    continue
+                seen_keys.add(rk)
+                key_path = getattr(col, 'key', None) or f"/library/metadata/{rk}"
+                if not key_path.startswith('/'):
+                    key_path = f"/library/metadata/{rk}"
+                # use first item's poster if collection doesn't have one
+                thumb = getattr(col, 'thumb', None)
+                if not thumb and getattr(col, 'items', None):
+                    try:
+                        items = col.items()
+                        if items:
+                            thumb = getattr(items[0], 'thumb', None)
+                    except Exception:
+                        pass
+                thumb_url = f"{s.plex_url}{thumb}?X-Plex-Token={s.plex_token}" if thumb else None
+                col_key = getattr(col, 'key', None) or f"/library/metadata/{rk}"
+                url = f"{s.plex_url}/web/index.html#!/server/{plex.machineIdentifier}/details?key={col_key}"
+                # read actual Home / Library / Friends visibility from Plex so our tickboxes match Manage Recommendations
+                visible_home = visible_library = visible_friends = False
+                try:
+                    prefs = col.preferences()
+                    for p in (prefs or []):
+                        pid = getattr(p, 'id', None)
+                        val = getattr(p, 'value', None)
+                        if val in (1, '1', True, 'true'):
+                            on = True
+                        elif val in (0, '0', False, 'false'):
+                            on = False
+                        else:
+                            on = bool(val)
+                        if pid == 'promotedToOwnHome':
+                            visible_home = on
+                        elif pid in ('promotedToLibraryRecommended', 'promotedToLibrary'):
+                            visible_library = on
+                        elif pid == 'promotedToSharedHome':
+                            visible_friends = on
+                except Exception:
+                    pub = bool(getattr(col, 'collectionPublished', False))
+                    visible_home = visible_library = visible_friends = pub
+                collections.append({
+                    'title': getattr(col, 'title', '') or '',
+                    'key': rk,
+                    'keyPath': key_path,
+                    'library': section.title,
+                    'count': getattr(col, 'childCount', 0),
+                    'thumb': thumb_url,
+                    'url': url,
+                    'collectionPublished': bool(getattr(col, 'collectionPublished', False)),
+                    'visible_home': visible_home,
+                    'visible_library': visible_library,
+                    'visible_friends': visible_friends,
+                })
         
-        collections.sort(key=lambda x: x['title'])
+        collections.sort(key=lambda x: (x['title'] or '').lower())
         
         return jsonify({'status': 'success', 'collections': collections})
         
@@ -505,6 +552,96 @@ def get_plex_collections():
         print(f"Error fetching collections: {e}")
         _log_api_exception("get_plex_collections", e)
         return _error_response("Unable to fetch collections")
+
+@api_bp.route('/api/plex/collection/visibility', methods=['POST'])
+@login_required
+def set_plex_collection_visibility():
+    """Set visibility (Library Recommended, Home, Friends' Home) for a Plex collection. Accepts keyPath (Library Browser) or preset_key (preset tickboxes)."""
+    s = current_user.settings
+    if not s.plex_url or not s.plex_token:
+        return jsonify({'status': 'error', 'message': 'Plex not configured'})
+    data = request.json or {}
+    key_path = data.get('keyPath') or data.get('key_path')
+    preset_key = data.get('preset_key')
+    visible_home = data.get('visible_home', True)
+    visible_library = data.get('visible_library', True)
+    visible_friends = data.get('visible_friends', False)
+
+    # resolve collection: by keyPath (Library Browser) or by preset_key (preset tickboxes)
+    if key_path:
+        key_path = str(key_path).strip()
+        if key_path.isdigit():
+            key_path = f"/library/metadata/{key_path}"
+        elif key_path and not key_path.startswith('/'):
+            key_path = f"/library/metadata/{key_path}"
+    elif preset_key:
+        # find collection by preset title in Plex (same logic as run_collection_logic: first section of matching type, exact title)
+        title = None
+        media_type = 'movie'
+        if preset_key.startswith('custom_'):
+            job = CollectionSchedule.query.filter_by(preset_key=preset_key).first()
+            if job and job.configuration:
+                try:
+                    cfg = json.loads(job.configuration)
+                    title = cfg.get('title')
+                    media_type = cfg.get('media_type', 'movie')
+                except Exception:
+                    pass
+        else:
+            preset = PLAYLIST_PRESETS.get(preset_key, {})
+            title = preset.get('title')
+            media_type = preset.get('media_type', 'movie')
+        if not title:
+            return jsonify({'status': 'error', 'message': 'Preset not found'})
+        try:
+            plex = PlexServer(s.plex_url, s.plex_token, timeout=10)
+            target_type = 'movie' if media_type == 'movie' else 'show'
+            want_lower = (title or '').strip().lower()
+            col = None
+            for section in plex.library.sections():
+                if section.type != target_type:
+                    continue
+                try:
+                    results = section.search(title=title, libtype='collection')
+                    for c in results:
+                        if (getattr(c, 'title', None) or '').strip().lower() == want_lower:
+                            col = c
+                            break
+                except Exception:
+                    continue
+                if col:
+                    break
+            if not col:
+                return jsonify({'status': 'error', 'message': 'Collection not found in Plex. Run it once (Sync Now) to create it, then change visibility here.'})
+            from utils import apply_collection_visibility
+            apply_collection_visibility(col, visible_home=visible_home, visible_library=visible_library, visible_friends=visible_friends)
+            return jsonify({'status': 'success', 'message': 'Visibility updated. Refresh Manage Recommendations in Plex to see the change.'})
+        except Exception as e:
+            _log_api_exception("set_plex_collection_visibility", e)
+            return jsonify({'status': 'error', 'message': str(e) or 'Request failed'})
+    else:
+        return jsonify({'status': 'error', 'message': 'keyPath or preset_key required'})
+
+    try:
+        plex = PlexServer(s.plex_url, s.plex_token, timeout=10)
+        col = plex.fetchItem(key_path)
+        if getattr(col, 'type', None) != 'collection':
+            return jsonify({'status': 'error', 'message': 'Not a collection'})
+        from utils import apply_collection_visibility
+        apply_collection_visibility(col, visible_home=visible_home, visible_library=visible_library, visible_friends=visible_friends)
+        col = plex.fetchItem(key_path)
+        published = getattr(col, 'collectionPublished', False)
+        return jsonify({
+            'status': 'success',
+            'message': 'Visibility updated. Refresh Manage Recommendations in Plex (reopen that page) to see the change.',
+            'collectionPublished': bool(published)
+        })
+    except Exception as e:
+        _log_api_exception("set_plex_collection_visibility", e)
+        msg = str(e) or 'Request failed'
+        if '401' in msg or '403' in msg or 'forbidden' in msg.lower():
+            msg += ' (Plex Pass may be required for collection publishing.)'
+        return jsonify({'status': 'error', 'message': msg})
 
 @api_bp.route('/match_bulk_titles', methods=['POST'])
 @login_required
@@ -557,23 +694,45 @@ def create_bulk_collection():
         keys = data['rating_keys']
         if not keys: return jsonify({'status': 'error', 'message': 'No items.'})
         
+        title = data['collection_title']
         # create collection using the first item
         first = lib.fetchItem(keys[0])
-        col = first.addCollection(data['collection_title'])
+        first.addCollection(title)
         
         # add the rest of the items
         for k in keys[1:]:
-            try: lib.fetchItem(k).addCollection(data['collection_title'])
+            try: lib.fetchItem(k).addCollection(title)
             except: pass
+
+        # fetch the new collection and apply visibility (home / library / friends)
+        # default at least library or home visible so it shows in Manage Recommendations
+        visible_home = data.get('visibility_home', True)
+        visible_library = data.get('visibility_library', True)
+        visible_friends = data.get('visibility_friends', False)
+        if not visible_home and not visible_library:
+            visible_library = True  # ensure at least one so collection appears in Manage Recommendations
+        try:
+            from utils import apply_collection_visibility
+            col = lib.search(title=title, libtype='collection')[0]
+            apply_collection_visibility(
+                col,
+                visible_home=visible_home,
+                visible_library=visible_library,
+                visible_friends=visible_friends
+            )
+        except Exception: pass
             
         # save it as a custom preset so it shows up in the UI (store target_library for delete-from-Plex)
         key = f"custom_import_{int(time.time())}"
         config = {
-            'title': data['collection_title'],
+            'title': title,
             'description': f"Imported Static List ({len(keys)} items)",
             'media_type': 'movie',
             'icon': '📋',
-            'target_library': data.get('target_library', '')
+            'target_library': data.get('target_library', ''),
+            'visibility_home': visible_home,
+            'visibility_library': visible_library,
+            'visibility_friends': data.get('visibility_friends', False)
         }
         
         db.session.add(CollectionSchedule(preset_key=key, frequency='manual', configuration=json.dumps(config)))
@@ -657,25 +816,49 @@ def create_collection(key):
     else:
         preset = PLAYLIST_PRESETS.get(key, {}).copy()
         
-        # Check for user overrides (sync mode, etc.).
+        # Merge user overrides (sync mode, visibility, etc.).
         job = CollectionSchedule.query.filter_by(preset_key=key).first()
         if job and job.configuration:
             try: 
                 user_config = json.loads(job.configuration)
                 if 'sync_mode' in user_config:
                     preset['sync_mode'] = user_config['sync_mode']
+                for vk in ('visibility_home', 'visibility_library', 'visibility_friends'):
+                    if vk in user_config:
+                        preset[vk] = user_config[vk]
             except: pass
+    
+    # Run Now sends current visibility checkboxes so first run (or any run) uses them
+    if request.get_json(silent=True):
+        data = request.get_json()
+        for vk in ('visibility_home', 'visibility_library', 'visibility_friends'):
+            if vk in data:
+                preset[vk] = bool(data[vk])
             
     from flask import current_app
     success, msg = run_collection_logic(s, preset, key, app_obj=current_app._get_current_object())
     
     if success:
-        # Update last run time.
+        # Update last run time and persist default visibility so options show after first run
         job = CollectionSchedule.query.filter_by(preset_key=key).first()
-        if not job: 
+        if not job:
             job = CollectionSchedule(preset_key=key)
             db.session.add(job)
         job.last_run = datetime.datetime.now()
+        current_config = {}
+        if job.configuration:
+            try:
+                current_config = json.loads(job.configuration)
+            except Exception:
+                pass
+        # Save visibility so "Where it appears in Plex" shows and matches what we applied
+        current_config['visibility_home'] = preset.get('visibility_home', True)
+        current_config['visibility_library'] = preset.get('visibility_library', False)
+        current_config['visibility_friends'] = preset.get('visibility_friends', False)
+        if not key.startswith('custom_') and 'sync_mode' not in current_config:
+            p = PLAYLIST_PRESETS.get(key, {})
+            current_config['sync_mode'] = 'sync' if ('Trending' in p.get('title', '') or 'Trending' in p.get('category', '')) else 'append'
+        job.configuration = json.dumps(current_config)
         db.session.commit()
         return jsonify({'status': 'success', 'message': msg})
         
@@ -687,6 +870,10 @@ def schedule_collection():
     preset_key = request.form.get('preset_key')
     frequency = request.form.get('frequency')  # manual, daily, weekly
     sync_mode = request.form.get('sync_mode', 'append')
+    # visibility: 1/0 or true/false from form
+    visibility_home = request.form.get('visibility_home', '1') in ('1', 'true', 'yes')
+    visibility_library = request.form.get('visibility_library', '0') in ('1', 'true', 'yes')
+    visibility_friends = request.form.get('visibility_friends', '0') in ('1', 'true', 'yes')
 
     job = CollectionSchedule.query.filter_by(preset_key=preset_key).first()
     if not job:
@@ -700,6 +887,9 @@ def schedule_collection():
         except: current_config = {}
             
     current_config['sync_mode'] = sync_mode
+    current_config['visibility_home'] = visibility_home
+    current_config['visibility_library'] = visibility_library
+    current_config['visibility_friends'] = visibility_friends
     
     job.frequency = frequency
     job.configuration = json.dumps(current_config)
@@ -777,10 +967,13 @@ def save_custom_collection():
             'vote_average.gte': data['min_rating'],
             'with_genres': data['with_genres'],
             'with_keywords': data.get('with_keywords', '')
-        }
+        },
+        'visibility_home': data.get('visibility_home', False),
+        'visibility_library': data.get('visibility_library', False),
+        'visibility_friends': data.get('visibility_friends', False)
     }
     
-    if data['year_start']:
+    if data.get('year_start'):
         k = 'primary_release_date.gte' if data['media_type'] == 'movie' else 'first_air_date.gte'
         config['tmdb_params'][k] = f"{data['year_start']}-01-01"
         
@@ -788,53 +981,78 @@ def save_custom_collection():
     db.session.commit()
     return jsonify({'status': 'success'})
 
+def _delete_collection_from_plex(plex, title, media_type, target_library=None):
+    """Remove collection(s) with this title from Plex. If target_library set, only that section; else all movie/show sections."""
+    target_type = 'movie' if media_type == 'movie' else 'show'
+    sections_to_check = []
+    if target_library:
+        try:
+            sections_to_check.append(plex.library.section(target_library))
+        except Exception:
+            pass
+    if not sections_to_check:
+        sections_to_check = [s for s in plex.library.sections() if s.type == target_type]
+    for section in sections_to_check:
+        try:
+            results = section.search(title=title, libtype='collection')
+            for col in results:
+                col.delete()
+        except Exception as e:
+            _log_api_exception("delete_collection_plex", e)
+
+@api_bp.route('/delete_collection/<key>', methods=['POST'])
+@login_required
+def delete_collection(key):
+    """Two-way delete: remove from app immediately, then remove collection from Plex in background (avoids slow click handler)."""
+    s = current_user.settings
+    title = None
+    media_type = 'movie'
+    target_library = None
+
+    if key.startswith('custom_'):
+        job = CollectionSchedule.query.filter_by(preset_key=key).first()
+        if not job:
+            return jsonify({'status': 'error', 'message': 'Collection not found'}), 404
+        config = {}
+        if job.configuration:
+            try:
+                config = json.loads(job.configuration)
+            except Exception:
+                pass
+        title = config.get('title') or 'Unknown'
+        media_type = config.get('media_type', 'movie')
+        target_library = config.get('target_library')
+    else:
+        preset = PLAYLIST_PRESETS.get(key)
+        if not preset:
+            return jsonify({'status': 'error', 'message': 'Preset not found'}), 404
+        title = preset.get('title') or 'Unknown'
+        media_type = preset.get('media_type', 'movie')
+
+    # Remove from app first so we can return quickly (avoids "[Violation] 'click' handler took 1977ms")
+    CollectionSchedule.query.filter_by(preset_key=key).delete()
+    db.session.commit()
+
+    # Delete from Plex in background so the response is fast
+    if s.plex_url and s.plex_token and title:
+        plex_url = s.plex_url
+        plex_token = s.plex_token
+        def _bg_delete():
+            try:
+                plex = PlexServer(plex_url, plex_token, timeout=10)
+                _delete_collection_from_plex(plex, title, media_type, target_library)
+            except Exception as e:
+                _log_api_exception("delete_collection_plex_bg", e)
+        t = threading.Thread(target=_bg_delete, daemon=True)
+        t.start()
+
+    return jsonify({'status': 'success', 'message': 'Collection removed from app and Plex'})
+
 @api_bp.route('/delete_custom_collection/<key>', methods=['POST'])
 @login_required
 def delete_custom_collection(key):
-    job = CollectionSchedule.query.filter_by(preset_key=key).first()
-    if not job:
-        return jsonify({'status': 'error', 'message': 'Collection not found'}), 404
-
-    # Load config before deleting from DB so we can remove from Plex
-    config = {}
-    if job.configuration:
-        try:
-            config = json.loads(job.configuration)
-        except Exception:
-            pass
-
-    title = config.get('title') or 'Unknown'
-    media_type = config.get('media_type', 'movie')
-    target_library = config.get('target_library')  # set for imported lists
-
-    # Delete from Plex if we have title and connection
-    s = current_user.settings
-    if s.plex_url and s.plex_token and title:
-        try:
-            plex = PlexServer(s.plex_url, s.plex_token, timeout=10)
-            target_type = 'movie' if media_type == 'movie' else 'show'
-            section = None
-            if target_library:
-                try:
-                    section = plex.library.section(target_library)
-                except Exception:
-                    pass
-            if not section:
-                section = next((sec for sec in plex.library.sections() if sec.type == target_type), None)
-            if section:
-                try:
-                    results = section.search(title=title, libtype='collection')
-                    if results:
-                        results[0].delete()
-                except Exception as e:
-                    _log_api_exception("delete_custom_collection_plex", e)
-                    # still delete from DB; Plex failure is non-fatal
-        except Exception as e:
-            _log_api_exception("delete_custom_collection_plex_connect", e)
-
-    CollectionSchedule.query.filter_by(preset_key=key).delete()
-    db.session.commit()
-    return jsonify({'status': 'success', 'message': 'Collection removed from SeekAndWatch and Plex'})
+    """Alias for delete_collection so existing links still work."""
+    return delete_collection(key)
 
 # system and settings stuff
 
@@ -904,6 +1122,8 @@ def toggle_logging():
 @api_bp.route('/clear_logs', methods=['POST'])
 @login_required
 def clear_logs():
+    if not current_user.is_admin:
+        return jsonify({'status': 'error', 'message': 'Unauthorized'}), 403
     SystemLog.query.delete()
     db.session.commit()
     return jsonify({'status': 'success'})
@@ -1264,7 +1484,7 @@ def update_scanner_log_size():
         return jsonify({'status': 'success'})
     except Exception as e:
         _log_api_exception("update_scanner_log_size", e)
-        return jsonify({'status': 'error', 'message': str(e)})
+        return jsonify({'status': 'error', 'message': 'Request failed'})
 
 @api_bp.route('/api/scanner/reset', methods=['POST'])
 @login_required
@@ -1624,6 +1844,64 @@ def admin_delete_user():
         return jsonify({'status': 'success', 'message': 'User deleted.'})
         
     return jsonify({'status': 'error', 'message': 'User not found'})
+
+@api_bp.route('/api/admin/reset_password', methods=['POST'])
+@rate_limit_decorator("10 per hour")
+@login_required
+def admin_reset_password():
+    """Admin-only: set a new password for another user. No public link."""
+    if not current_user.is_admin:
+        return jsonify({'status': 'error', 'message': 'Unauthorized'}), 403
+    data = request.json
+    target_id = data.get('user_id')
+    new_password = (data.get('new_password') or '').strip()
+    if target_id == current_user.id:
+        return jsonify({'status': 'error', 'message': 'Use Settings to change your own password later.'})
+    if len(new_password) < 8:
+        return jsonify({'status': 'error', 'message': 'Password must be at least 8 characters.'})
+    user = User.query.get(target_id)
+    if not user:
+        return jsonify({'status': 'error', 'message': 'User not found'})
+    user.password_hash = generate_password_hash(new_password, method='pbkdf2:sha256')
+    db.session.commit()
+    return jsonify({'status': 'success', 'message': f'Password updated for {user.username}.'})
+
+@api_bp.route('/api/recovery_codes/generate', methods=['POST'])
+@rate_limit_decorator("5 per hour")
+@login_required
+def generate_recovery_codes():
+    """Generate one-time recovery codes. Old codes for this user are invalidated. Codes shown once only."""
+    count = 10
+    plain_codes = [secrets.token_hex(8) for _ in range(count)]  # 16 chars each
+    RecoveryCode.query.filter_by(user_id=current_user.id).delete()
+    for plain in plain_codes:
+        rec = RecoveryCode(user_id=current_user.id, code_hash=generate_password_hash(plain, method='pbkdf2:sha256'))
+        db.session.add(rec)
+    db.session.commit()
+    return jsonify({'status': 'success', 'codes': plain_codes})
+
+@api_bp.route('/api/recovery_codes/use', methods=['POST'])
+@rate_limit_decorator("5 per hour")
+def use_recovery_code():
+    """No login required. Use one recovery code to set a new password. Code is consumed. Rate-limited."""
+    data = request.json or {}
+    username = (data.get('username') or '').strip()
+    code = (data.get('code') or '').strip().replace(' ', '')
+    new_password = (data.get('new_password') or '').strip()
+    if not username or not code or not new_password:
+        return jsonify({'status': 'error', 'message': 'Username, recovery code, and new password are required.'})
+    if len(new_password) < 8:
+        return jsonify({'status': 'error', 'message': 'Password must be at least 8 characters.'})
+    user = User.query.filter_by(username=username).first()
+    if not user:
+        return jsonify({'status': 'error', 'message': 'Invalid code or username.'})
+    for rec in RecoveryCode.query.filter_by(user_id=user.id).all():
+        if check_password_hash(rec.code_hash, code):
+            user.password_hash = generate_password_hash(new_password, method='pbkdf2:sha256')
+            db.session.delete(rec)
+            db.session.commit()
+            return jsonify({'status': 'success', 'message': 'Password updated. You can log in with your new password.'})
+    return jsonify({'status': 'error', 'message': 'Invalid code or username.'})
     
 @api_bp.route('/save_schedule_time', methods=['POST'])
 @login_required
@@ -1706,8 +1984,6 @@ def get_requested_media():
                     requested_by = (requested_by_obj.get('displayName') or requested_by_obj.get('username') or requested_by_obj.get('email') or 'N/A')
                 else:
                     requested_by = str(requested_by_obj) if requested_by_obj else 'N/A'
-                if requested_by and 'agregarr' in requested_by.lower():
-                    requested_by = 'Agregarr'
                 overseerr_url = None
                 if tmdb_id:
                     overseerr_url = f"{base_url}/movie/{tmdb_id}" if media_type == 'movie' else f"{base_url}/tv/{tmdb_id}"
@@ -1732,7 +2008,9 @@ def get_requested_media():
                 })
             # merge requests made from the app (Radarr/Sonarr add)
             try:
-                app_requests = AppRequest.query.order_by(AppRequest.requested_at.desc()).limit(500).all()
+                app_requests = AppRequest.query.filter(
+                    (AppRequest.user_id == current_user.id) | (AppRequest.user_id == None)
+                ).order_by(AppRequest.requested_at.desc()).limit(500).all()
                 for ar in app_requests:
                     added = ar.requested_at.isoformat() if ar.requested_at else ''
                     items.append({
@@ -1751,7 +2029,9 @@ def get_requested_media():
         else:
             # no Overseerr - show only requests made from the app (Radarr/Sonarr)
             try:
-                app_requests = AppRequest.query.order_by(AppRequest.requested_at.desc()).limit(500).all()
+                app_requests = AppRequest.query.filter(
+                    (AppRequest.user_id == current_user.id) | (AppRequest.user_id == None)
+                ).order_by(AppRequest.requested_at.desc()).limit(500).all()
                 for ar in app_requests:
                     added = ar.requested_at.isoformat() if ar.requested_at else ''
                     items.append({
@@ -1823,7 +2103,7 @@ def get_requested_media():
         
     except Exception as e:
         _log_api_exception("get_requested_media", e)
-        return jsonify({'status': 'error', 'message': str(e), 'items': []})
+        return jsonify({'status': 'error', 'message': 'Request failed', 'items': []})
 
 @api_bp.route('/api/media/movies')
 @login_required
@@ -2063,7 +2343,7 @@ def get_movies():
         
     except Exception as e:
         _log_api_exception("get_movies", e)
-        return jsonify({'status': 'error', 'message': str(e), 'items': []})
+        return jsonify({'status': 'error', 'message': 'Request failed', 'items': []})
 
 @api_bp.route('/api/media/tv')
 @login_required
@@ -2235,7 +2515,7 @@ def get_tv_shows():
         
     except Exception as e:
         _log_api_exception("get_tv_shows", e)
-        return jsonify({'status': 'error', 'message': str(e), 'items': []})
+        return jsonify({'status': 'error', 'message': 'Request failed', 'items': []})
 
 # Old toggle endpoints removed - using the ones with URL parameters below (lines ~2038+)
 
@@ -2274,10 +2554,6 @@ def get_media_overview():
                     media = req.get('media', {})
                     status_map = {1: 'Pending', 2: 'Approved', 3: 'Available', 4: 'Failed'}
                     requested_by = req.get('requestedBy', {}).get('displayName', 'Unknown')
-                    # Normalize common service names
-                    if requested_by and 'agregarr' in requested_by.lower():
-                        requested_by = 'Agregarr'
-                    
                     result['requested'].append({
                         'id': req.get('id'),
                         'tmdb_id': media.get('tmdbId'),
@@ -2293,7 +2569,9 @@ def get_media_overview():
                     })
             # merge app requests (Radarr/Sonarr add from the app)
             try:
-                app_requests = AppRequest.query.order_by(AppRequest.requested_at.desc()).limit(500).all()
+                app_requests = AppRequest.query.filter(
+                    (AppRequest.user_id == current_user.id) | (AppRequest.user_id == None)
+                ).order_by(AppRequest.requested_at.desc()).limit(500).all()
                 for ar in app_requests:
                     result['requested'].append({
                         'id': f"app-{ar.id}",
@@ -2315,7 +2593,9 @@ def get_media_overview():
     elif media_type in ['all', 'requested']:
         # no Overseerr configured - still show requests made from the app (Radarr/Sonarr)
         try:
-            app_requests = AppRequest.query.order_by(AppRequest.requested_at.desc()).limit(500).all()
+            app_requests = AppRequest.query.filter(
+                    (AppRequest.user_id == current_user.id) | (AppRequest.user_id == None)
+                ).order_by(AppRequest.requested_at.desc()).limit(500).all()
             for ar in app_requests:
                 result['requested'].append({
                     'id': f"app-{ar.id}",
@@ -2487,7 +2767,7 @@ def add_to_radarr():
                     return jsonify({'status': 'error', 'message': f'{movie_title} is already in your library'})
     except Exception as e:
         # If ownership check fails, continue anyway (don't block the request)
-        write_log("warning", "Radarr", f"Ownership check failed: {str(e)}")
+        write_log("warning", "Radarr", "Ownership check failed")
     
     try:
         headers = {'X-Api-Key': s.radarr_api_key}
@@ -2596,7 +2876,7 @@ def add_to_radarr():
         if add_resp.status_code in [200, 201]:
             title = tmdb_data.get('title') or 'Unknown'
             try:
-                app_req = AppRequest(tmdb_id=int(tmdb_id), media_type='movie', title=title, requested_via='Radarr')
+                app_req = AppRequest(user_id=current_user.id, tmdb_id=int(tmdb_id), media_type='movie', title=title, requested_via='Radarr')
                 db.session.add(app_req)
                 db.session.commit()
             except Exception:
@@ -2620,7 +2900,7 @@ def add_to_radarr():
             return jsonify({'status': 'error', 'message': error_msg})
     except Exception as e:
         _log_api_exception("add_to_radarr", e)
-        return jsonify({'status': 'error', 'message': str(e)})
+        return jsonify({'status': 'error', 'message': 'Request failed'})
 
 @api_bp.route('/api/radarr/quality-profiles', methods=['GET'])
 @login_required
@@ -2657,7 +2937,7 @@ def get_radarr_quality_profiles():
         return jsonify({'status': 'success', 'profiles': profiles})
     except Exception as e:
         _log_api_exception("get_radarr_quality_profiles", e)
-        return jsonify({'status': 'error', 'message': str(e), 'profiles': []})
+        return jsonify({'status': 'error', 'message': 'Request failed', 'profiles': []})
 
 @api_bp.route('/api/sonarr/quality-profiles', methods=['GET'])
 @login_required
@@ -2694,7 +2974,7 @@ def get_sonarr_quality_profiles():
         return jsonify({'status': 'success', 'profiles': profiles})
     except Exception as e:
         _log_api_exception("get_sonarr_quality_profiles", e)
-        return jsonify({'status': 'error', 'message': str(e), 'profiles': []})
+        return jsonify({'status': 'error', 'message': 'Request failed', 'profiles': []})
 
 @api_bp.route('/api/sonarr/add', methods=['POST'])
 @login_required
@@ -2723,7 +3003,7 @@ def add_to_sonarr():
                     return jsonify({'status': 'error', 'message': f'{show_title} is already in your library'})
     except Exception as e:
         # If ownership check fails, continue anyway (don't block the request)
-        write_log("warning", "Sonarr", f"Ownership check failed: {str(e)}")
+        write_log("warning", "Sonarr", "Ownership check failed")
     
     try:
         headers = {'X-Api-Key': s.sonarr_api_key}
@@ -2814,7 +3094,7 @@ def add_to_sonarr():
         if add_resp.status_code in [200, 201]:
             title = series_data.get('title') or 'Unknown'
             try:
-                app_req = AppRequest(tmdb_id=int(tmdb_id), media_type='tv', title=title, requested_via='Sonarr')
+                app_req = AppRequest(user_id=current_user.id, tmdb_id=int(tmdb_id), media_type='tv', title=title, requested_via='Sonarr')
                 db.session.add(app_req)
                 db.session.commit()
             except Exception:
@@ -2826,7 +3106,7 @@ def add_to_sonarr():
             return jsonify({'status': 'error', 'message': error_msg})
     except Exception as e:
         _log_api_exception("add_to_sonarr", e)
-        return jsonify({'status': 'error', 'message': str(e)})
+        return jsonify({'status': 'error', 'message': 'Request failed'})
 
 @api_bp.route('/api/radarr/toggle_monitored/<int:movie_id>', methods=['POST'])
 @login_required
@@ -2856,7 +3136,7 @@ def toggle_radarr_monitored(movie_id):
         return jsonify({'status': 'error', 'message': 'Failed to update'})
     except Exception as e:
         _log_api_exception("toggle_radarr_monitored", e)
-        return jsonify({'status': 'error', 'message': str(e)})
+        return jsonify({'status': 'error', 'message': 'Request failed'})
 
 @api_bp.route('/api/sonarr/toggle_monitored/<int:series_id>', methods=['POST'])
 @login_required
@@ -2886,7 +3166,7 @@ def toggle_sonarr_monitored(series_id):
         return jsonify({'status': 'error', 'message': 'Failed to update'})
     except Exception as e:
         _log_api_exception("toggle_sonarr_monitored", e)
-        return jsonify({'status': 'error', 'message': str(e)})
+        return jsonify({'status': 'error', 'message': 'Request failed'})
 
 def _safe_get_nested_rating_value(movie, rating_type):
     """Safely extract nested rating value, handling cases where structure might be different."""
@@ -3238,6 +3518,22 @@ def get_radarr_movie_detail(movie_id):
             write_log("warning", "Radarr", f"Error constructing URL for movie '{movie.get('title')}': {e}")
             radarr_url = f"{base_url}/movie/{actual_movie_id}"
         
+        radarr_interactive_search_url = f"{base_url}/movie/{actual_movie_id}/search"
+        history_list = []
+        try:
+            hist_url = f"{base_url}/api/v3/history/movie?movieId={actual_movie_id}"
+            hist_resp = requests.get(hist_url, headers=headers, timeout=5)
+            if hist_resp.status_code == 200:
+                hist_data = hist_resp.json()
+                recs = hist_data.get('records', []) if isinstance(hist_data, dict) else (hist_data if isinstance(hist_data, list) else [])
+                for h in (recs or [])[:30]:
+                    if isinstance(h, dict):
+                        date_utc = h.get('date') or h.get('downloadedAt') or ''
+                        evt = h.get('eventType') or h.get('sourceTitle') or 'Event'
+                        history_list.append({'date': date_utc[:19] if isinstance(date_utc, str) else '', 'eventType': evt})
+        except Exception:
+            pass
+        
         # also check movie-level custom formats (some radarr versions store them here)
         movie_level_formats = []
         movie_level_score = 0
@@ -3303,11 +3599,13 @@ def get_radarr_movie_detail(movie_id):
                     'rottenTomatoes': _safe_get_nested_rating_value(movie, 'rottenTomatoes'),
                 },
                 'radarrUrl': radarr_url,
+                'radarrInteractiveSearchUrl': radarr_interactive_search_url,
                 'customFormats': movie_level_formats,  # include movie-level formats
                 'customFormatScore': movie_level_score,  # include movie-level score
                 'queueStatus': None,  # Will be set if in queue
                 '_fetchedAt': int(time.time())  # Timestamp for cache validation
-            }
+            },
+            'history': history_list,
         }
         
         # Add queue status if movie is in queue
@@ -3325,7 +3623,7 @@ def get_radarr_movie_detail(movie_id):
         return jsonify(result)
     except Exception as e:
         _log_api_exception("get_radarr_movie_detail", e)
-        return jsonify({'status': 'error', 'message': str(e)})
+        return jsonify({'status': 'error', 'message': 'Request failed'})
 
 @api_bp.route('/api/sonarr/series/<int:series_id>', methods=['GET'])
 @login_required
@@ -3650,7 +3948,7 @@ def get_sonarr_series_detail(series_id):
         })
     except Exception as e:
         _log_api_exception("get_sonarr_series_detail", e)
-        return jsonify({'status': 'error', 'message': str(e)})
+        return jsonify({'status': 'error', 'message': 'Request failed'})
 
 @api_bp.route('/api/radarr/search', methods=['POST'])
 @login_required
@@ -3702,19 +4000,42 @@ def radarr_search():
             # Get releases for interactive search
             releases_url = f"{base_url}/api/v3/release?movieId={movie_id}"
             resp = requests.get(releases_url, headers=headers, timeout=10)
-            if resp.status_code == 200:
-                releases = resp.json()
-                # Log first release to debug downloadAllowed field
-                if releases and len(releases) > 0:
-                    write_log("info", "Radarr", f"Fetched {len(releases)} release(s) for movie")
-                return jsonify({'status': 'success', 'releases': releases})
-            else:
+            if resp.status_code != 200:
                 return jsonify({'status': 'error', 'message': 'Failed to fetch releases'})
+            releases = resp.json()
+            if releases and len(releases) > 0:
+                write_log("info", "Radarr", f"Fetched {len(releases)} release(s) for movie")
+            # Get current file info so frontend can show "downloaded" icon on the release we have
+            current_file = None
+            try:
+                movie_url = f"{base_url}/api/v3/movie/{movie_id}"
+                movie_resp = requests.get(movie_url, headers=headers, timeout=10)
+                if movie_resp.status_code == 200:
+                    movie = movie_resp.json()
+                    mf = movie.get('movieFile')
+                    if mf and isinstance(mf, dict):
+                        rg = mf.get('releaseGroup')
+                        if rg and isinstance(rg, str):
+                            rg = rg.strip()
+                        else:
+                            rg = ''
+                        quality_name = 'Unknown'
+                        if mf.get('quality'):
+                            q = mf['quality']
+                            if isinstance(q, dict) and q.get('quality'):
+                                inner = q['quality']
+                                quality_name = (inner.get('name') if isinstance(inner, dict) else str(inner)) or 'Unknown'
+                            elif isinstance(q, str):
+                                quality_name = q
+                        current_file = {'releaseGroup': rg or '', 'quality': quality_name}
+            except Exception as e:
+                write_log("warning", "Radarr", f"Could not fetch current file for downloaded icon: {e}")
+            return jsonify({'status': 'success', 'releases': releases, 'current_file': current_file})
         
         return jsonify({'status': 'error', 'message': 'Invalid search type'})
     except Exception as e:
         _log_api_exception("radarr_search", e)
-        return jsonify({'status': 'error', 'message': str(e)})
+        return jsonify({'status': 'error', 'message': 'Request failed'})
 
 @api_bp.route('/api/radarr/refresh/<int:movie_id>', methods=['POST'])
 @login_required
@@ -3744,7 +4065,7 @@ def radarr_refresh_scan(movie_id):
         return jsonify({'status': 'error', 'message': 'Failed to start refresh'})
     except Exception as e:
         _log_api_exception("radarr_refresh_scan", e)
-        return jsonify({'status': 'error', 'message': str(e)})
+        return jsonify({'status': 'error', 'message': 'Request failed'})
 
 @api_bp.route('/api/radarr/search-scan/<int:movie_id>', methods=['POST'])
 @login_required
@@ -3780,7 +4101,67 @@ def radarr_search_scan(movie_id):
         return jsonify({'status': 'error', 'message': 'Failed to start search'})
     except Exception as e:
         _log_api_exception("radarr_search_scan", e)
-        return jsonify({'status': 'error', 'message': str(e)})
+        return jsonify({'status': 'error', 'message': 'Request failed'})
+
+@api_bp.route('/api/radarr/queue-check/<int:movie_id>', methods=['GET'])
+@login_required
+def radarr_queue_check(movie_id):
+    """Lightweight check if a movie is in the download queue (for Search Movie polling)."""
+    s = current_user.settings
+    if not s.radarr_url or not s.radarr_api_key:
+        return jsonify({'status': 'error', 'message': 'Radarr not configured'})
+    try:
+        headers = {'X-Api-Key': s.radarr_api_key}
+        base_url = s.radarr_url.rstrip('/')
+        if base_url.endswith('/api'):
+            base_url = base_url[:-4]
+        if base_url.endswith('/api/v3'):
+            base_url = base_url[:-7]
+        queue_url = f"{base_url}/api/v3/queue"
+        queue_resp = requests.get(queue_url, headers=headers, timeout=5)
+        if queue_resp.status_code != 200:
+            return jsonify({'status': 'success', 'inQueue': False})
+        queue_data = queue_resp.json()
+        records = queue_data.get('records', []) if isinstance(queue_data, dict) else queue_data
+        if not isinstance(records, list):
+            return jsonify({'status': 'success', 'inQueue': False})
+        for item in records:
+            item_movie_id = item.get('movieId')
+            if not item_movie_id and item.get('movie'):
+                movie_obj = item.get('movie')
+                if isinstance(movie_obj, dict):
+                    item_movie_id = movie_obj.get('id')
+            if item_movie_id == movie_id:
+                status = item.get('status', '').lower()
+                tracked_state = item.get('trackedDownloadState', '').lower()
+                is_paused = 'paused' in status or 'paused' in tracked_state or tracked_state == 'paused'
+                is_downloading = 'downloading' in status or 'downloading' in tracked_state or tracked_state == 'downloading'
+                if is_paused:
+                    qstatus = 'paused'
+                elif is_downloading:
+                    qstatus = 'downloading'
+                else:
+                    qstatus = 'queued'
+                return jsonify({
+                    'status': 'success',
+                    'inQueue': True,
+                    'queueStatus': qstatus,
+                    'queueTitle': item.get('title', '')
+                })
+        # Not in queue – check if movie already has a file (so we can tell user "already have best available")
+        has_file = False
+        try:
+            movie_url = f"{base_url}/api/v3/movie/{movie_id}"
+            movie_resp = requests.get(movie_url, headers=headers, timeout=5)
+            if movie_resp.status_code == 200:
+                movie = movie_resp.json()
+                has_file = bool(movie.get('movieFile'))
+        except Exception:
+            pass
+        return jsonify({'status': 'success', 'inQueue': False, 'hasFile': has_file})
+    except Exception as e:
+        _log_api_exception("radarr_queue_check", e)
+        return jsonify({'status': 'error', 'message': 'Queue check failed'})
 
 @api_bp.route('/api/sonarr/refresh/<int:series_id>', methods=['POST'])
 @login_required
@@ -3810,7 +4191,7 @@ def sonarr_refresh_scan(series_id):
         return jsonify({'status': 'error', 'message': 'Failed to start refresh'})
     except Exception as e:
         _log_api_exception("sonarr_refresh_scan", e)
-        return jsonify({'status': 'error', 'message': str(e)})
+        return jsonify({'status': 'error', 'message': 'Request failed'})
 
 @api_bp.route('/api/sonarr/search-scan/<int:series_id>', methods=['POST'])
 @login_required
@@ -3846,7 +4227,73 @@ def sonarr_search_scan(series_id):
         return jsonify({'status': 'error', 'message': 'Failed to start search'})
     except Exception as e:
         _log_api_exception("sonarr_search_scan", e)
-        return jsonify({'status': 'error', 'message': str(e)})
+        return jsonify({'status': 'error', 'message': 'Request failed'})
+
+@api_bp.route('/api/sonarr/queue-check/<int:series_id>', methods=['GET'])
+@login_required
+def sonarr_queue_check(series_id):
+    """Lightweight check if any episode of a series is in the download queue (for Search Monitored polling)."""
+    s = current_user.settings
+    if not s.sonarr_url or not s.sonarr_api_key:
+        return jsonify({'status': 'error', 'message': 'Sonarr not configured'})
+    try:
+        headers = {'X-Api-Key': s.sonarr_api_key}
+        base_url = s.sonarr_url.rstrip('/')
+        if base_url.endswith('/api'):
+            base_url = base_url[:-4]
+        if base_url.endswith('/api/v3'):
+            base_url = base_url[:-7]
+        # Get episode ids for this series (so we know which queue items belong to it)
+        episodes_url = f"{base_url}/api/v3/episode?seriesId={series_id}"
+        ep_resp = requests.get(episodes_url, headers=headers, timeout=5)
+        if ep_resp.status_code != 200:
+            return jsonify({'status': 'success', 'inQueue': False, 'queueItems': []})
+        episodes = ep_resp.json()
+        series_episode_ids = {ep.get('id') for ep in episodes if ep.get('id') is not None}
+        # Count monitored episodes that don't have a file yet (so we can say "all already downloaded")
+        monitored = [ep for ep in episodes if ep.get('monitored')]
+        missing_count = sum(1 for ep in monitored if not ep.get('hasFile', False))
+        all_monitored_downloaded = (len(monitored) > 0 and missing_count == 0)
+        if not series_episode_ids:
+            return jsonify({'status': 'success', 'inQueue': False, 'queueItems': [], 'allMonitoredDownloaded': all_monitored_downloaded, 'missingCount': missing_count})
+        queue_url = f"{base_url}/api/v3/queue"
+        queue_resp = requests.get(queue_url, headers=headers, timeout=5)
+        if queue_resp.status_code != 200:
+            return jsonify({'status': 'success', 'inQueue': False, 'queueItems': [], 'allMonitoredDownloaded': all_monitored_downloaded, 'missingCount': missing_count})
+        queue_data = queue_resp.json()
+        records = queue_data.get('records', []) if isinstance(queue_data, dict) else queue_data
+        if not isinstance(records, list):
+            return jsonify({'status': 'success', 'inQueue': False, 'queueItems': [], 'allMonitoredDownloaded': all_monitored_downloaded, 'missingCount': missing_count})
+        queue_items = []
+        for item in records:
+            episode_id = item.get('episodeId')
+            if not episode_id and item.get('episode'):
+                episode_id = (item.get('episode') or {}).get('id')
+            if episode_id is not None and int(episode_id) in series_episode_ids:
+                status = item.get('status', '').lower()
+                tracked_state = item.get('trackedDownloadState', '').lower()
+                is_paused = 'paused' in status or 'paused' in tracked_state or tracked_state == 'paused'
+                is_downloading = 'downloading' in status or 'downloading' in tracked_state or tracked_state == 'downloading'
+                if is_paused:
+                    qstatus = 'paused'
+                elif is_downloading:
+                    qstatus = 'downloading'
+                else:
+                    qstatus = 'queued'
+                queue_items.append({
+                    'queueStatus': qstatus,
+                    'queueTitle': item.get('title', '')
+                })
+        if not queue_items:
+            return jsonify({'status': 'success', 'inQueue': False, 'queueItems': [], 'allMonitoredDownloaded': all_monitored_downloaded, 'missingCount': missing_count})
+        return jsonify({
+            'status': 'success',
+            'inQueue': True,
+            'queueItems': queue_items
+        })
+    except Exception as e:
+        _log_api_exception("sonarr_queue_check", e)
+        return jsonify({'status': 'error', 'message': 'Queue check failed'})
 
 @api_bp.route('/api/sonarr/search-season/<int:series_id>/<int:season_number>', methods=['POST'])
 @login_required
@@ -3888,7 +4335,7 @@ def sonarr_search_season(series_id, season_number):
         return jsonify({'status': 'error', 'message': 'Failed to start search'})
     except Exception as e:
         _log_api_exception("sonarr_search_season", e)
-        return jsonify({'status': 'error', 'message': str(e)})
+        return jsonify({'status': 'error', 'message': 'Request failed'})
 
 @api_bp.route('/api/sonarr/refresh-season/<int:series_id>/<int:season_number>', methods=['POST'])
 @login_required
@@ -3934,7 +4381,7 @@ def sonarr_refresh_season(series_id, season_number):
         return jsonify({'status': 'success', 'message': f'Refresh started for season {season_number}'})
     except Exception as e:
         _log_api_exception("sonarr_refresh_season", e)
-        return jsonify({'status': 'error', 'message': str(e)})
+        return jsonify({'status': 'error', 'message': 'Request failed'})
 
 @api_bp.route('/api/sonarr/search-episode/<int:episode_id>', methods=['POST'])
 @login_required
@@ -3964,7 +4411,7 @@ def sonarr_search_episode(episode_id):
         return jsonify({'status': 'error', 'message': 'Failed to start search'})
     except Exception as e:
         _log_api_exception("sonarr_search_episode", e)
-        return jsonify({'status': 'error', 'message': str(e)})
+        return jsonify({'status': 'error', 'message': 'Request failed'})
 
 @api_bp.route('/api/sonarr/refresh-episode/<int:episode_id>', methods=['POST'])
 @login_required
@@ -4006,7 +4453,7 @@ def sonarr_refresh_episode(episode_id):
         return jsonify({'status': 'error', 'message': 'Failed to start refresh'})
     except Exception as e:
         _log_api_exception("sonarr_refresh_episode", e)
-        return jsonify({'status': 'error', 'message': str(e)})
+        return jsonify({'status': 'error', 'message': 'Request failed'})
 
 @api_bp.route('/api/radarr/download', methods=['POST'])
 @login_required
@@ -4205,7 +4652,7 @@ def radarr_download():
             return jsonify({'status': 'error', 'message': error_msg})
     except Exception as e:
         _log_api_exception("radarr_download", e)
-        return jsonify({'status': 'error', 'message': str(e)})
+        return jsonify({'status': 'error', 'message': 'Request failed'})
 
 @api_bp.route('/api/sonarr/search', methods=['POST'])
 @login_required
@@ -4222,6 +4669,7 @@ def sonarr_search():
     
     series_id = data.get('series_id')
     episode_ids = data.get('episode_ids', [])  # For specific episodes
+    season_number = data.get('season_number')   # Optional: when interactive search is from a season row
     search_type = data.get('type', 'auto')  # 'auto' or 'interactive'
     
     # Validate series_id
@@ -4250,6 +4698,10 @@ def sonarr_search():
     try:
         headers = {'X-Api-Key': s.sonarr_api_key}
         base_url = s.sonarr_url.rstrip('/')
+        if base_url.endswith('/api'):
+            base_url = base_url[:-4]
+        if base_url.endswith('/api/v3'):
+            base_url = base_url[:-7]
         
         if search_type == 'auto':
             # If no episode IDs provided, search for all missing episodes
@@ -4281,9 +4733,9 @@ def sonarr_search():
                 return jsonify({'status': 'error', 'message': 'Failed to start search'})
         
         elif search_type == 'interactive':
-            # Get episodes first
+            # Same flow as main Sonarr page: get episode(s), then fetch releases for the target episode
             episodes_url = f"{base_url}/api/v3/episode?seriesId={series_id}"
-            episodes_resp = requests.get(episodes_url, headers=headers, timeout=10)
+            episodes_resp = requests.get(episodes_url, headers=headers, timeout=15)
             if episodes_resp.status_code != 200:
                 return jsonify({'status': 'error', 'message': 'Failed to fetch episodes'})
             
@@ -4294,23 +4746,103 @@ def sonarr_search():
                 return eid is not None and int(eid) > 0
             missing_episodes = [ep for ep in episodes if not _ep_has_f(ep)]
             
-            if not missing_episodes:
-                return jsonify({'status': 'error', 'message': 'No missing episodes found'})
-            
-            # Get releases for first missing episode (or user can specify)
-            episode_id = episode_ids[0] if episode_ids else missing_episodes[0].get('id')
-            releases_url = f"{base_url}/api/v3/release?episodeId={episode_id}"
-            resp = requests.get(releases_url, headers=headers, timeout=10)
-            if resp.status_code == 200:
-                releases = resp.json()
-                return jsonify({'status': 'success', 'releases': releases, 'episode': missing_episodes[0]})
+            # Calendar sends episode_ids; season row sends season_number; main page sends only series_id (first missing)
+            if episode_ids:
+                episode_id = episode_ids[0]
+                # Find episode object for this id (might be in series or fetch single)
+                ep_for_response = next((ep for ep in episodes if ep.get('id') == episode_id), None)
+                if not ep_for_response:
+                    ep_url = f"{base_url}/api/v3/episode/{episode_id}"
+                    ep_resp = requests.get(ep_url, headers=headers, timeout=15)
+                    if ep_resp.status_code == 200:
+                        ep_for_response = ep_resp.json()
+                if not ep_for_response:
+                    return jsonify({'status': 'error', 'message': 'Episode not found'})
+            elif season_number is not None:
+                try:
+                    sn = int(season_number)
+                except (ValueError, TypeError):
+                    sn = None
+                if sn is None:
+                    return jsonify({'status': 'error', 'message': 'Invalid season number'})
+                # Episodes in this season (for picking one to search)
+                season_episodes = [ep for ep in episodes if ep.get('seasonNumber') == sn]
+                if not season_episodes:
+                    return jsonify({'status': 'error', 'message': f'No episodes found for season {sn}'})
+                # Prefer first missing in this season; else first episode of season (so we still get releases e.g. season packs)
+                missing_in_season = [ep for ep in missing_episodes if ep.get('seasonNumber') == sn]
+                if missing_in_season:
+                    ep_for_response = missing_in_season[0]
+                    episode_id = ep_for_response.get('id')
+                else:
+                    season_episodes.sort(key=lambda e: (e.get('episodeNumber') or 0))
+                    ep_for_response = season_episodes[0]
+                    episode_id = ep_for_response.get('id')
             else:
+                if not missing_episodes:
+                    return jsonify({'status': 'error', 'message': 'No missing episodes found'})
+                episode_id = missing_episodes[0].get('id')
+                ep_for_response = missing_episodes[0]
+            
+            # Trigger search first (like Sonarr UI) so indexers are queried and releases populate
+            command_url = f"{base_url}/api/v3/command"
+            payload = {'name': 'EpisodeSearch', 'episodeIds': [episode_id]}
+            try:
+                requests.post(command_url, json=payload, headers=headers, timeout=15)
+            except Exception:
+                pass
+            # Brief wait so Sonarr can populate releases
+            time.sleep(2)
+            
+            # Releases can take a long time when Sonarr is querying many indexers (60s)
+            releases_url = f"{base_url}/api/v3/release?episodeId={episode_id}"
+            resp = requests.get(releases_url, headers=headers, timeout=60)
+            if resp.status_code != 200:
                 return jsonify({'status': 'error', 'message': 'Failed to fetch releases'})
+            releases = resp.json()
+            if not isinstance(releases, list):
+                releases = []
+            # Current file info so frontend can show "downloaded" icon
+            current_file = None
+            try:
+                ep_url = f"{base_url}/api/v3/episode/{episode_id}"
+                ep_resp = requests.get(ep_url, headers=headers, timeout=15)
+                if ep_resp.status_code == 200:
+                    ep = ep_resp.json()
+                    ef = ep.get('episodeFile')
+                    if not isinstance(ef, dict) or not ef:
+                        eid = ep.get('episodeFileId')
+                        if eid:
+                            ef_url = f"{base_url}/api/v3/episodefile/{eid}"
+                            ef_resp = requests.get(ef_url, headers=headers, timeout=15)
+                            if ef_resp.status_code == 200:
+                                ef = ef_resp.json()
+                    if isinstance(ef, dict) and ef:
+                        rg = ef.get('releaseGroup')
+                        if rg and isinstance(rg, str):
+                            rg = rg.strip()
+                        else:
+                            rg = ''
+                        quality_name = 'Unknown'
+                        if ef.get('quality'):
+                            q = ef['quality']
+                            if isinstance(q, dict) and q.get('quality'):
+                                inner = q['quality']
+                                quality_name = (inner.get('name') if isinstance(inner, dict) else str(inner)) or 'Unknown'
+                            elif isinstance(q, str):
+                                quality_name = q
+                        current_file = {'releaseGroup': rg or '', 'quality': quality_name}
+            except Exception as e:
+                write_log("warning", "Sonarr", f"Could not fetch current file for downloaded icon: {e}")
+            return jsonify({'status': 'success', 'releases': releases, 'episode': ep_for_response, 'current_file': current_file})
         
         return jsonify({'status': 'error', 'message': 'Invalid search type'})
+    except requests.exceptions.Timeout as e:
+        _log_api_exception("sonarr_search", e)
+        return jsonify({'status': 'error', 'message': 'Sonarr took too long to search indexers. Try again or check Sonarr.'})
     except Exception as e:
         _log_api_exception("sonarr_search", e)
-        return jsonify({'status': 'error', 'message': str(e)})
+        return jsonify({'status': 'error', 'message': 'Request failed. Check the app logs for details.'})
 
 @api_bp.route('/api/sonarr/download', methods=['POST'])
 @login_required
@@ -4423,7 +4955,7 @@ def sonarr_download():
             return jsonify({'status': 'error', 'message': error_msg})
     except Exception as e:
         _log_api_exception("sonarr_download", e)
-        return jsonify({'status': 'error', 'message': str(e)})
+        return jsonify({'status': 'error', 'message': 'Request failed'})
 
 @api_bp.route('/api/sonarr/missing-episodes', methods=['GET'])
 @login_required
@@ -4464,4 +4996,337 @@ def sonarr_missing_episodes():
             return jsonify({'status': 'error', 'message': 'Failed to fetch episodes', 'episodes': []})
     except Exception as e:
         _log_api_exception("sonarr_missing_episodes", e)
-        return jsonify({'status': 'error', 'message': str(e), 'episodes': []})
+        return jsonify({'status': 'error', 'message': 'Request failed', 'episodes': []})
+
+
+@api_bp.route('/api/calendar/episode/<int:episode_id>', methods=['GET'])
+@login_required
+def get_calendar_episode_detail(episode_id):
+    """Fetch single episode detail from Sonarr for calendar modal."""
+    s = current_user.settings
+    if not s.sonarr_url or not s.sonarr_api_key:
+        return jsonify({'status': 'error', 'message': 'Sonarr not configured'})
+    try:
+        headers = {'X-Api-Key': s.sonarr_api_key}
+        base_url = s.sonarr_url.rstrip('/')
+        if base_url.endswith('/api'):
+            base_url = base_url[:-4]
+        if base_url.endswith('/api/v3'):
+            base_url = base_url[:-7]
+        ep_url = f"{base_url}/api/v3/episode/{episode_id}"
+        ep_resp = requests.get(ep_url, headers=headers, timeout=10)
+        if ep_resp.status_code == 404:
+            return jsonify({'status': 'error', 'message': 'Episode not found', 'deleted': True})
+        if ep_resp.status_code != 200:
+            return jsonify({'status': 'error', 'message': f'Failed to fetch episode (Status: {ep_resp.status_code})'})
+        ep = ep_resp.json()
+        series_id = ep.get('seriesId')
+        if not series_id:
+            return jsonify({'status': 'error', 'message': 'Invalid episode data'})
+        series_url = f"{base_url}/api/v3/series/{series_id}"
+        series_resp = requests.get(series_url, headers=headers, timeout=10)
+        series = series_resp.json() if series_resp.status_code == 200 else {}
+        series_title = series.get('title') or ep.get('seriesTitle') or 'Unknown'
+        title_slug = series.get('titleSlug')
+        quality_profile_id = series.get('qualityProfileId')
+        quality_profile_name = 'Unknown'
+        try:
+            qp_url = f"{base_url}/api/v3/qualityprofile"
+            qp_resp = requests.get(qp_url, headers=headers, timeout=5)
+            if qp_resp.status_code == 200:
+                for qp in (qp_resp.json() or []):
+                    if isinstance(qp, dict) and qp.get('id') == quality_profile_id:
+                        quality_profile_name = qp.get('name', 'Unknown')
+                        break
+        except Exception:
+            pass
+        sn = ep.get('seasonNumber')
+        en = ep.get('episodeNumber')
+        ep_title = ep.get('title') or ''
+        display_title = f"{series_title} - {sn or 0}x{en or 0}"
+        if ep_title:
+            display_title += f" - {ep_title}"
+        air_date = ep.get('airDate') or ep.get('airDateUtc') or ''
+        overview = ep.get('overview') or ''
+        sonarr_url = f"{base_url}/series/{title_slug}" if title_slug else f"{base_url}/series/{series_id}"
+        sonarr_interactive_search_url = f"{base_url}/episode/{episode_id}"
+        history_list = []
+        try:
+            hist_url = f"{base_url}/api/v3/history?episodeId={episode_id}"
+            hist_resp = requests.get(hist_url, headers=headers, timeout=5)
+            if hist_resp.status_code == 200:
+                hist_data = hist_resp.json()
+                recs = hist_data.get('records', []) if isinstance(hist_data, dict) else (hist_data if isinstance(hist_data, list) else [])
+                for h in (recs or [])[:30]:
+                    if isinstance(h, dict):
+                        date_utc = h.get('date') or h.get('downloadedAt') or ''
+                        evt = h.get('eventType') or 'Event'
+                        source_title = h.get('sourceTitle') or ''
+                        data_obj = h.get('data') if isinstance(h.get('data'), dict) else {}
+                        path = data_obj.get('droppedPath') or data_obj.get('path') or data_obj.get('importPath') or ''
+                        indexer = data_obj.get('indexer') or ''
+                        quality = ''
+                        if data_obj.get('quality'):
+                            q = data_obj['quality']
+                            if isinstance(q, dict) and q.get('quality'):
+                                quality = q['quality'].get('name', '') if isinstance(q.get('quality'), dict) else ''
+                            elif isinstance(q, dict):
+                                quality = q.get('name', '')
+                        history_list.append({
+                            'date': date_utc[:19] if isinstance(date_utc, str) else '',
+                            'eventType': evt,
+                            'sourceTitle': source_title,
+                            'path': path,
+                            'indexer': indexer,
+                            'quality': quality,
+                        })
+        except Exception:
+            pass
+        files = []
+        ef = ep.get('episodeFile')
+        if ef and isinstance(ef, dict):
+            path = ef.get('relativePath') or ef.get('path') or ''
+            size = ef.get('size', 0)
+            quality_name = 'Unknown'
+            if ef.get('quality'):
+                q = ef['quality']
+                if isinstance(q, dict) and q.get('quality'):
+                    quality_name = q['quality'].get('name', 'Unknown') if isinstance(q['quality'], dict) else str(q['quality'])
+                elif isinstance(q, dict):
+                    quality_name = q.get('name', 'Unknown')
+            langs = ef.get('language', {}).get('name', '') if isinstance(ef.get('language'), dict) else (ef.get('language') or '')
+            if not langs and ef.get('languages'):
+                langs = ', '.join(l.get('name', '') for l in ef['languages'] if isinstance(l, dict)) if isinstance(ef['languages'], list) else ''
+            cf = ef.get('customFormats') or []
+            formats = [f.get('name', '') for f in cf if isinstance(f, dict) and f.get('name')] if isinstance(cf, list) else []
+            cf_score = ef.get('customFormatScore')
+            if cf_score is not None:
+                try:
+                    cf_score = int(cf_score)
+                except (TypeError, ValueError):
+                    cf_score = None
+            files.append({
+                'path': path,
+                'size': size,
+                'languages': langs or 'Unknown',
+                'quality': quality_name,
+                'formats': formats,
+                'customFormatScore': cf_score,
+            })
+        return jsonify({
+            'status': 'success',
+            'type': 'tv',
+            'seriesId': series_id,
+            'episode': {
+                'id': ep.get('id'),
+                'title': display_title,
+                'seriesTitle': series_title,
+                'seasonNumber': sn,
+                'episodeNumber': en,
+                'airDate': air_date,
+                'overview': overview,
+                'qualityProfile': quality_profile_name,
+                'hasFile': ep.get('hasFile', False),
+                'monitored': ep.get('monitored', True),
+            },
+            'files': files,
+            'history': history_list,
+            'sonarrUrl': sonarr_url,
+            'sonarrInteractiveSearchUrl': sonarr_interactive_search_url,
+        })
+    except Exception as e:
+        _log_api_exception("get_calendar_episode_detail", e)
+        return jsonify({'status': 'error', 'message': 'Request failed'})
+
+
+@api_bp.route('/api/calendar/episode/<int:episode_id>/releases', methods=['GET'])
+@login_required
+def get_calendar_episode_releases(episode_id):
+    """Fetch available releases for an episode (for Search tab results)."""
+    s = current_user.settings
+    if not s.sonarr_url or not s.sonarr_api_key:
+        return jsonify({'status': 'error', 'message': 'Sonarr not configured', 'releases': []})
+    try:
+        headers = {'X-Api-Key': s.sonarr_api_key}
+        base_url = s.sonarr_url.rstrip('/')
+        if base_url.endswith('/api'):
+            base_url = base_url[:-4]
+        if base_url.endswith('/api/v3'):
+            base_url = base_url[:-7]
+        url = f"{base_url}/api/v3/release?episodeId={episode_id}"
+        r = requests.get(url, headers=headers, timeout=15)
+        if r.status_code != 200:
+            return jsonify({'status': 'error', 'message': 'Failed to fetch releases', 'releases': []})
+        raw = r.json()
+        releases = raw if isinstance(raw, list) else []
+        out = []
+        for rel in (releases or [])[:100]:
+            if not isinstance(rel, dict):
+                continue
+            title = rel.get('title') or rel.get('releaseTitle') or ''
+            size = rel.get('size', 0)
+            indexer = rel.get('indexer') or ''
+            quality_name = 'Unknown'
+            if rel.get('quality'):
+                q = rel['quality']
+                if isinstance(q, dict) and q.get('quality'):
+                    quality_name = q['quality'].get('name', 'Unknown') if isinstance(q.get('quality'), dict) else str(q.get('quality', ''))
+                elif isinstance(q, dict):
+                    quality_name = q.get('name', 'Unknown')
+            out.append({
+                'title': title,
+                'size': size,
+                'indexer': indexer,
+                'quality': quality_name,
+                'guid': rel.get('guid'),
+                'indexerId': rel.get('indexerId'),
+            })
+        return jsonify({'status': 'success', 'releases': out})
+    except Exception as e:
+        _log_api_exception("get_calendar_episode_releases", e)
+        return jsonify({'status': 'error', 'message': 'Request failed', 'releases': []})
+
+
+@api_bp.route('/api/calendar')
+@login_required
+def get_calendar():
+    """Fetch upcoming releases from Radarr (movies) and Sonarr (episodes)."""
+    s = current_user.settings
+    start = request.args.get('start')  # YYYY-MM-DD
+    end = request.args.get('end')      # YYYY-MM-DD
+    if not start or not end:
+        return jsonify({'status': 'error', 'message': 'start and end (YYYY-MM-DD) required', 'events': []})
+    from datetime import date as date_type
+    today_iso = date_type.today().isoformat()
+    events = []
+    # Radarr calendar (movies)
+    if s.radarr_url and s.radarr_api_key:
+        try:
+            headers = {'X-Api-Key': s.radarr_api_key}
+            base = s.radarr_url.rstrip('/')
+            if base.endswith('/api') or base.endswith('/api/v3'):
+                base = base.split('/api')[0].rstrip('/')
+            url = f"{base}/api/v3/calendar?start={start}&end={end}"
+            r = requests.get(url, headers=headers, timeout=10)
+            if r.status_code == 200:
+                from datetime import date as date_type
+                today = date_type.today().isoformat()
+                for m in (r.json() or []):
+                    rd = (m.get('physicalRelease') or m.get('inCinemas') or m.get('digitalRelease') or m.get('releaseDate')) or ''
+                    if isinstance(rd, str) and len(rd) >= 10:
+                        date_str = rd[:10]
+                    else:
+                        date_str = ''
+                    if date_str:
+                        has_file = m.get('hasFile') or bool(m.get('movieFile'))
+                        monitored = m.get('monitored', True)
+                        if date_str > today_iso and not has_file:
+                            status = 'unreleased'
+                        elif has_file and monitored:
+                            status = 'downloaded_monitored'
+                        elif has_file and not monitored:
+                            status = 'downloaded_unmonitored'
+                        elif not has_file and monitored:
+                            status = 'missing_monitored'
+                        else:
+                            status = 'missing_unmonitored'
+                        # queued would need queue API - leave as missing/unreleased for now
+                        events.append({
+                            'type': 'movie',
+                            'title': m.get('title') or 'Unknown',
+                            'date': date_str,
+                            'subtitle': '',
+                            'id': m.get('id'),
+                            'year': m.get('year'),
+                            'status': status,
+                        })
+        except Exception:
+            pass
+    # Sonarr calendar (episodes) - calendar often omits series title, so we fetch series list to fill in
+    if s.sonarr_url and s.sonarr_api_key:
+        try:
+            headers = {'X-Api-Key': s.sonarr_api_key}
+            base = s.sonarr_url.rstrip('/')
+            if base.endswith('/api') or base.endswith('/api/v3'):
+                base = base.split('/api')[0].rstrip('/')
+            series_id_to_title = {}
+            series_list_url = f"{base}/api/v3/series"
+            series_list_resp = requests.get(series_list_url, headers=headers, timeout=10)
+            if series_list_resp.status_code == 200:
+                for show in (series_list_resp.json() or []):
+                    sid = show.get('id')
+                    if sid is not None:
+                        series_id_to_title[sid] = show.get('title') or 'Unknown'
+            episode_ids_in_queue = set()
+            try:
+                queue_url = f"{base}/api/v3/queue"
+                queue_resp = requests.get(queue_url, headers=headers, timeout=5)
+                if queue_resp.status_code == 200:
+                    queue_data = queue_resp.json()
+                    queue_records = queue_data.get('records', []) if isinstance(queue_data, dict) else queue_data
+                    if isinstance(queue_records, list):
+                        for item in queue_records:
+                            eid = item.get('episodeId')
+                            if eid is None and item.get('episode'):
+                                eid = item.get('episode', {}).get('id')
+                            if eid is not None:
+                                episode_ids_in_queue.add(int(eid))
+            except Exception:
+                pass
+            url = f"{base}/api/v3/calendar?start={start}&end={end}"
+            r = requests.get(url, headers=headers, timeout=10)
+            if r.status_code == 200:
+                for ep in (r.json() or []):
+                    air = ep.get('airDate') or ep.get('airDateUtc') or ''
+                    if isinstance(air, str) and len(air) >= 10:
+                        date_str = air[:10]
+                    else:
+                        date_str = ''
+                    if date_str:
+                        series = ep.get('series') or {}
+                        series_title = (series.get('title') or ep.get('seriesTitle') or
+                                        series_id_to_title.get(ep.get('seriesId')) or 'Unknown')
+                        sn = ep.get('seasonNumber')
+                        en = ep.get('episodeNumber')
+                        ep_title = ep.get('title') or ''
+                        subtitle = f"S{sn or 0}E{en or 0}"
+                        if ep_title:
+                            subtitle += f" - {ep_title}"
+                        has_file = ep.get('hasFile') or bool(ep.get('episodeFile')) or (ep.get('episodeFileId') and int(ep.get('episodeFileId', 0)) > 0)
+                        monitored = ep.get('monitored', True)
+                        ep_id = ep.get('id')
+                        in_queue = ep_id is not None and int(ep_id) in episode_ids_in_queue
+                        is_premiere = (en == 1)  # first ep of any season = season premiere
+                        # future episodes are unaired even if in queue (e.g. "grab when available"); premiere = star only, not a color
+                        if date_str > today_iso:
+                            status = 'unaired'
+                        elif in_queue:
+                            status = 'downloading'
+                        elif has_file:
+                            status = 'downloaded'
+                        elif not monitored:
+                            status = 'unmonitored'
+                        else:
+                            # aired, no file, monitored - on_air if within last 7 days else missing
+                            try:
+                                air_d = date_type.fromisoformat(date_str)
+                                days_ago = (date_type.today() - air_d).days
+                                status = 'on_air' if 0 <= days_ago <= 7 else 'missing'
+                            except Exception:
+                                status = 'missing'
+                        events.append({
+                            'type': 'tv',
+                            'title': series_title,
+                            'date': date_str,
+                            'subtitle': subtitle,
+                            'id': ep.get('id'),
+                            'seriesId': ep.get('seriesId'),
+                            'seasonNumber': sn,
+                            'episodeNumber': en,
+                            'status': status,
+                            'is_premiere': is_premiere,
+                        })
+        except Exception:
+            pass
+    events.sort(key=lambda x: (x['date'], x['title']))
+    return jsonify({'status': 'success', 'events': events})

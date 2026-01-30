@@ -16,9 +16,9 @@ services:
     stop_signal: SIGTERM
     stop_grace_period: 30s
     
-    # Python-native healthcheck (No curl required)
+    # lightweight healthcheck (no auth, no redirect)
     healthcheck:
-      test: ["CMD", "python3", "-c", "import urllib.request; import sys; r = urllib.request.urlopen('http://localhost:5000/login'); sys.exit(0 if r.getcode() == 200 else 1)"]
+      test: ["CMD", "python3", "-c", "import urllib.request; import sys; r = urllib.request.urlopen('http://localhost:5000/health'); sys.exit(0 if r.getcode() == 200 else 1)"]
       interval: 30s
       timeout: 10s
       start_period: 40s
