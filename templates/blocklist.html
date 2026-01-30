@@ -59,6 +59,9 @@
 </div>
 
 <script>
+const API_TMDB_SEARCH_PROXY = "{{ url_for('api.tmdb_search_proxy') }}";
+const API_BLOCK_MOVIE = "{{ url_for('api.block_movie') }}";
+const API_UNBLOCK_MOVIE_BASE = "{{ url_for('api.unblock_movie', id=0) }}";
 // UI state
 let currentTab = 'movie';
 
@@ -93,7 +96,7 @@ searchInput.addEventListener('input', function(e) {
     // Determine type based on active tab.
     const searchType = currentTab; 
 
-    fetch(`/tmdb_search_proxy?query=${encodeURIComponent(query)}&type=${searchType}`)
+    fetch(API_TMDB_SEARCH_PROXY + '?query=' + encodeURIComponent(query) + '&type=' + encodeURIComponent(searchType))
         .then(res => res.json())
         .then(data => {
             suggestionsBox.innerHTML = '';
@@ -138,7 +141,7 @@ document.addEventListener('click', function(e) {
 function addBlock(title, type) {
     if(!confirm(`Block "${title}" from future recommendations?`)) return;
 
-    fetch('/block_movie', {
+    fetch(API_BLOCK_MOVIE, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -158,7 +161,7 @@ function addBlock(title, type) {
 function unblock(id) {
     if(!confirm("Unblock this title?")) return;
     
-    fetch('/unblock_movie/' + id, { method: 'POST' })
+    fetch(API_UNBLOCK_MOVIE_BASE.replace(/\/0$/, '/' + id), { method: 'POST' })
         .then(res => {
             if (res.ok) {
                 const row = document.getElementById('block-' + id);
@@ -169,7 +172,8 @@ function unblock(id) {
             } else {
                 alert("Error unblocking.");
             }
-        });
+        })
+        .catch(() => alert("Request failed. Please try again."));
 }
 </script>
 {% endblock %}

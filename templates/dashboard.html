@@ -168,6 +168,9 @@
 </div>
 
 <script>
+    const API_TMDB_SEARCH_PROXY = "{{ url_for('api.tmdb_search_proxy') }}";
+    const API_GET_LOCAL_TRENDING = "{{ url_for('get_local_trending') }}";
+    const API_RECOMMEND_FROM_TRENDING = "{{ url_for('recommend_from_trending') }}";
     document.addEventListener("DOMContentLoaded", function() {
         // Move the loader to <body> so it doesn't get clipped.
         const loader = document.getElementById('nuclear-loader');
@@ -204,20 +207,22 @@
         const query = this.value.trim();
         if (query.length < 2) { resultsDiv.style.display = 'none'; return; }
         debounceTimer = setTimeout(() => {
-            fetch(`/tmdb_search_proxy?query=${encodeURIComponent(query)}&type=movie`)
+            fetch(API_TMDB_SEARCH_PROXY + '?query=' + encodeURIComponent(query) + '&type=movie')
                 .then(res => res.json())
                 .then(data => {
                     if (data.results && data.results.length > 0) {
                         let html = '';
                         data.results.forEach(item => {
-                            const safeTitle = item.title.replace(/'/g, "\\'");
-                            html += `<div class="search-result-item" onclick="selectItem('${safeTitle}')">
-                                <img src="https://image.tmdb.org/t/p/w92${item.poster}" class="search-poster-thumb" onerror="this.style.display='none'">
-                                <div><div class="fw-bold">${escapeHtml(item.title)}</div><div class="fs-small text-muted">${item.year}</div></div></div>`;
+                            const safeTitleAttr = String(item.title || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                            const posterSrc = item.poster && String(item.poster).startsWith('/') ? 'https://image.tmdb.org/t/p/w92' + item.poster : '';
+                            html += `<div class="search-result-item" onclick="selectItem('${safeTitleAttr}')">
+                                <img src="${posterSrc || 'https://via.placeholder.com/92x138?text=No+Poster'}" class="search-poster-thumb" onerror="this.style.display='none'" alt="">
+                                <div><div class="fw-bold">${escapeHtml(String(item.title || ''))}</div><div class="fs-small text-muted">${escapeHtml(String(item.year || ''))}</div></div></div>`;
                         });
                         resultsDiv.innerHTML = html; resultsDiv.style.display = 'block';
                     } else { resultsDiv.style.display = 'none'; }
-                });
+                })
+                .catch(() => { resultsDiv.style.display = 'none'; });
         }, 300);
     });
 
@@ -274,18 +279,23 @@ let currentTrendingType = 'movie';
         const daysInput = document.getElementById('trending-days');
         const days = daysInput ? parseInt(daysInput.value) || 30 : 30;
         
-        fetch('/get_local_trending?type=' + type + '&days=' + days)
+        const trendController = new AbortController();
+        const trendTimeout = setTimeout(() => trendController.abort(), 15000);
+        fetch(API_GET_LOCAL_TRENDING + '?type=' + encodeURIComponent(type) + '&days=' + days, { signal: trendController.signal })
         .then(r => r.json())
         .then(data => {
+            clearTimeout(trendTimeout);
             if(data.status === 'success' && data.items.length > 0) {
                 let html = '';
                 data.items.forEach((item, idx) => {
-                    const poster = item.poster_path ? 'https://image.tmdb.org/t/p/w200' + item.poster_path : 'https://via.placeholder.com/200x300?text=No+Poster';
+                    const poster = item.poster_path && String(item.poster_path).startsWith('/') ? 'https://image.tmdb.org/t/p/w200' + item.poster_path : 'https://via.placeholder.com/200x300?text=No+Poster';
+                    const safeTitle = escapeHtml(String(item.title || ''));
+                    const safeTitleAttr = String(item.title || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
                     html += `
-                    <div class="t-card" title="${item.title}" onclick="selectItem('${item.title.replace(/'/g, "\\'")}')">
+                    <div class="t-card" title="${safeTitleAttr}" onclick="selectItem('${safeTitleAttr}')">
                         <div class="t-rank">#${idx + 1}</div>
-                        <img src="${poster}" class="t-poster">
-                        <div class="t-info">${item.title}</div>
+                        <img src="${poster}" class="t-poster" alt="">
+                        <div class="t-info">${safeTitle}</div>
                     </div>`;
                 });
                 grid.innerHTML = html;
@@ -293,11 +303,11 @@ let currentTrendingType = 'movie';
                 grid.innerHTML = '<div class="grid-col-full text-center text-muted" style="padding:50px;">No trending data found.</div>';
             }
         })
-        .catch(err => { console.error(err); grid.innerHTML = 'Error loading stats.'; });
+        .catch(err => { clearTimeout(trendTimeout); console.error(err); if (grid) grid.innerHTML = '<div class="grid-col-full text-center text-muted" style="padding:50px; color:#e74c3c;">Failed to load stats. Please try again.</div>'; });
     }
 
     function findSimilarToTrending() {
-        window.location.href = '/recommend_from_trending?type=' + currentTrendingType;
+        window.location.href = API_RECOMMEND_FROM_TRENDING + '?type=' + encodeURIComponent(currentTrendingType);
     }
 
     // Only initialize if the grid exists.

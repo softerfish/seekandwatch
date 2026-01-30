@@ -36,6 +36,12 @@
                 </button>
             </form>
 
+            <div id="recovery-success-msg" class="text-muted" style="margin-top:0.75rem; display:none;">
+                Password updated. You can log in with your new password.
+            </div>
+            <div id="recovery-link-wrap" class="auth-footer" style="margin-top:0.5rem;">
+                <a href="{{ url_for('reset_password_page') }}">Forgot password? Use a recovery code</a>
+            </div>
             <div class="auth-footer" id="auth-footer-text">
                 Welcome back to SeekAndWatch
             </div>
@@ -44,9 +50,18 @@
 </div>
 
 <script>
-    // UI state
-    let currentMode = 'login'; 
+    const CSRF_TOKEN = "{{ csrf_token() }}";
 
+    // UI state
+    let currentMode = 'login';
+
+    // Show recovery success message if we just reset password
+    if (window.location.search.includes('recovery=success')) {
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('recovery-success-msg').style.display = 'block';
+            history.replaceState({}, '', "{{ url_for('login') }}");
+        });
+    }
     // Honor server-provided state (e.g., deep link to register).
     {% if is_register %}
     document.addEventListener('DOMContentLoaded', () => setMode('register'));

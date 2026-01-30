@@ -35,8 +35,31 @@
 </div>
 
 <script>
+const BACKUP_DOWNLOAD_URL_PREFIX = "{{ url_for('api.download_backup', filename='') }}";
+const API_ADMIN_USERS = "{{ url_for('api.get_all_users') }}";
+const API_ADMIN_TOGGLE_ROLE = "{{ url_for('api.toggle_user_role') }}";
+const API_ADMIN_DELETE_USER = "{{ url_for('api.admin_delete_user') }}";
+const API_ADMIN_RESET_PASSWORD = "{{ url_for('api.admin_reset_password') }}";
+const API_RECOVERY_CODES_GENERATE = "{{ url_for('api.generate_recovery_codes') }}";
+const SETTINGS_CSRF = "{{ csrf_token() }}";
+const API_SCANNER_STATUS = "{{ url_for('api.scanner_status') }}";
+const API_SCANNER_SAVE = "{{ url_for('api.save_scanner_settings') }}";
+const API_SCANNER_RESET = "{{ url_for('api.reset_scanner') }}";
+const API_GET_RADARR_SONARR_CACHE_STATUS = "{{ url_for('api.get_radarr_sonarr_cache_status_route') }}";
+const API_SAVE_CACHE_SETTINGS = "{{ url_for('api.save_cache_settings') }}";
+const API_FORCE_CACHE_REFRESH = "{{ url_for('api.force_cache_refresh_route') }}";
+const API_GET_CACHE_STATUS = "{{ url_for('api.get_cache_status_route') }}";
+const API_FORCE_RADARR_SONARR_CACHE_REFRESH = "{{ url_for('api.force_radarr_sonarr_cache_refresh_route') }}";
+const API_RADARR_SONARR_SCANNER_SAVE = "{{ url_for('api.save_radarr_sonarr_scanner_settings') }}";
+const API_TEST_CONNECTION = "{{ url_for('api.test_connection') }}";
+const API_UPDATE_IGNORE_LIST = "{{ url_for('api.update_ignore_list') }}";
+const API_BACKUPS = "{{ url_for('api.get_backups_api') }}";
+const API_BACKUP_CREATE = "{{ url_for('api.trigger_backup') }}";
+const API_BACKUP_DELETE_BASE = "{{ url_for('api.delete_backup_api', filename='') }}";
+const API_BACKUP_RESTORE_BASE = "{{ url_for('api.run_restore', filename='') }}";
+const API_BACKUP_UPLOAD = "{{ url_for('api.upload_backup') }}";
 function loadUsers() {
-    fetch('/api/admin/users')
+    fetch(API_ADMIN_USERS)
     .then(r => r.json())
     .then(users => {
         if(users.error) return;
@@ -54,16 +77,20 @@ function loadUsers() {
             const roleColor = u.is_admin ? '#2ecc71' : '#777';
             const roleText = u.is_admin ? '🛡️ Admin' : '👤 User';
             const disableSelf = u.is_current ? 'disabled style="opacity:0.5; cursor:not-allowed;"' : '';
-            
+            const safeName = escapeHtml(String(u.username || ''));
+            const safeNameAttr = String(u.username || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/</g, '').replace(/>/g, '');
             html += `
             <tr>
-                <td style="font-weight:bold; color:white;">${u.username} ${u.is_current ? '(You)' : ''}</td>
+                <td style="font-weight:bold; color:white;">${safeName} ${u.is_current ? '(You)' : ''}</td>
                 <td style="color:${roleColor};">${roleText}</td>
                 <td class="text-right">
-                    <button onclick="toggleRole(${u.id})" class="btn-secondary" ${disableSelf} title="Toggle Admin Status" style="padding: 4px 10px; font-size: 0.8em;">
+                    <button onclick="openResetPasswordModal(${u.id}, '${safeNameAttr}')" class="btn-secondary" ${disableSelf} title="Set new password for this user" style="padding: 4px 10px; font-size: 0.8em;">
+                        🔑 Reset password
+                    </button>
+                    <button onclick="toggleRole(${u.id})" class="btn-secondary" ${disableSelf} title="Toggle Admin Status" style="margin-left:6px; padding: 4px 10px; font-size: 0.8em;">
                         ${u.is_admin ? 'Demote ▼' : 'Promote ▲'}
                     </button>
-                    <button onclick="deleteUser(${u.id}, '${u.username}')" class="btn-delete" ${disableSelf} style="margin-left:10px; padding: 4px 10px; font-size: 0.8em;">
+                    <button onclick="deleteUser(${u.id}, '${safeNameAttr}')" class="btn-delete" ${disableSelf} style="margin-left:6px; padding: 4px 10px; font-size: 0.8em;">
                         🗑️
                     </button>
                 </td>
@@ -75,7 +102,7 @@ function loadUsers() {
 }
 
 function toggleRole(id) {
-    fetch('/api/admin/toggle_role', {
+    fetch(API_ADMIN_TOGGLE_ROLE, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({user_id: id})
@@ -88,7 +115,7 @@ function toggleRole(id) {
 function deleteUser(id, name) {
     if(!confirm(`Are you sure you want to delete user "${name}"? This will delete their settings and blocklists.`)) return;
     
-    fetch('/api/admin/delete_user', {
+    fetch(API_ADMIN_DELETE_USER, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({user_id: id})
@@ -97,8 +124,118 @@ function deleteUser(id, name) {
         else alert(d.message);
     });
 }
+
+// admin reset password modal
+let resetPasswordUserId = null;
+function openResetPasswordModal(userId, username) {
+    resetPasswordUserId = userId;
+    document.getElementById('reset-password-username').textContent = username;
+    document.getElementById('reset-password-new').value = '';
+    document.getElementById('reset-password-confirm').value = '';
+    document.getElementById('modal-reset-password').classList.add('is-open');
+}
+function closeResetPasswordModal() {
+    document.getElementById('modal-reset-password').classList.remove('is-open');
+    resetPasswordUserId = null;
+}
+function submitResetPassword() {
+    const newPw = document.getElementById('reset-password-new').value;
+    const confirmPw = document.getElementById('reset-password-confirm').value;
+    if (newPw.length < 8) { alert('Password must be at least 8 characters.'); return; }
+    if (newPw !== confirmPw) { alert('Passwords do not match.'); return; }
+    const btn = document.getElementById('reset-password-submit-btn');
+    btn.disabled = true;
+    fetch(API_ADMIN_RESET_PASSWORD, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ user_id: resetPasswordUserId, new_password: newPw })
+    }).then(r => r.json()).then(d => {
+        btn.disabled = false;
+        if (d.status === 'success') { closeResetPasswordModal(); loadUsers(); alert(d.message); }
+        else alert(d.message);
+    }).catch(() => { btn.disabled = false; alert('Request failed.'); });
+}
+
+// recovery codes: generate and show once
+function generateRecoveryCodes() {
+    const btn = document.getElementById('btn-generate-codes');
+    if (btn) btn.disabled = true;
+    fetch(API_RECOVERY_CODES_GENERATE, { method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': SETTINGS_CSRF} })
+    .then(r => r.json())
+    .then(d => {
+        if (btn) btn.disabled = false;
+        if (d.status === 'success' && d.codes && d.codes.length) {
+            document.getElementById('recovery-codes-list').textContent = d.codes.join('\n');
+            document.getElementById('modal-recovery-codes').classList.add('is-open');
+        } else alert(d.message || 'Failed to generate codes.');
+    })
+    .catch(() => { if (btn) btn.disabled = false; alert('Request failed.'); });
+}
+function closeRecoveryCodesModal() {
+    document.getElementById('modal-recovery-codes').classList.remove('is-open');
+}
+function copyRecoveryCodes() {
+    const el = document.getElementById('recovery-codes-list');
+    if (!el) return;
+    var text = (el.textContent || el.innerText || '').trim();
+    if (!text) { alert('No codes to copy.'); return; }
+    function showCopied() { alert('Copied to clipboard.'); }
+    function tryFallback() {
+        try {
+            var sel = window.getSelection();
+            var range = document.createRange();
+            range.selectNodeContents(el);
+            sel.removeAllRanges();
+            sel.addRange(range);
+            var ok = document.execCommand('copy');
+            sel.removeAllRanges();
+            if (ok) showCopied();
+            else alert('Copy failed. Select the codes and copy manually.');
+        } catch (e) { alert('Copy failed. Select the codes and copy manually.'); }
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(showCopied).catch(tryFallback);
+    } else {
+        tryFallback();
+    }
+}
+
 </script>
+
+<!-- modal: recovery codes (shown once after generate) -->
+<div id="modal-recovery-codes" class="modal-overlay">
+    <div class="modal-box" style="max-width:500px;">
+        <h3>🔐 Save these recovery codes</h3>
+        <p class="text-muted">They are shown only once. Store them somewhere safe. Each code works once to reset your password if you forget it.</p>
+        <pre id="recovery-codes-list" style="background:#111; padding:12px; border-radius:8px; overflow-x:auto; font-size:0.9em; max-height:200px; overflow-y:auto;"></pre>
+        <div style="display:flex; gap:10px; margin-top:1rem;">
+            <button type="button" class="btn-secondary" onclick="copyRecoveryCodes()">Copy</button>
+            <button type="button" class="login-btn" onclick="closeRecoveryCodesModal()">Done</button>
+        </div>
+    </div>
+</div>
+
+<!-- modal: admin set password for another user -->
+<div id="modal-reset-password" class="modal-overlay">
+    <div class="modal-box" style="max-width:400px;">
+        <h3>Reset password</h3>
+        <p class="text-muted">Setting new password for <strong id="reset-password-username"></strong>. They can log in with it immediately.</p>
+        <div class="form-group">
+            <label>New password</label>
+            <input type="password" id="reset-password-new" placeholder="At least 8 characters" minlength="8" autocomplete="new-password">
+        </div>
+        <div class="form-group">
+            <label>Confirm new password</label>
+            <input type="password" id="reset-password-confirm" placeholder="Same again" minlength="8" autocomplete="new-password">
+        </div>
+        <div style="display:flex; gap:10px; margin-top:1rem;">
+            <button type="button" class="btn-secondary" onclick="closeResetPasswordModal()">Cancel</button>
+            <button type="button" class="login-btn" id="reset-password-submit-btn" onclick="submitResetPassword()">Set password</button>
+        </div>
+    </div>
+</div>
 {% endif %}
+
 
     <form id="settings-form" action="{{ url_for('settings') }}" method="POST" autocomplete="off">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>    
@@ -555,6 +692,12 @@ function deleteUser(id, name) {
                 </div>
             </div>
 
+            <div class="card setting-card border-purple">
+                <h3>🔐 Account recovery</h3>
+                <p class="text-muted">Generate one-time recovery codes. Save them somewhere safe; if you lose your password, use one code on the login page to set a new password. Old codes are invalid when you generate new ones. If you're the only admin and get locked out with no codes, the server owner can reset your password in the database.</p>
+                <button type="button" onclick="generateRecoveryCodes()" class="btn-secondary" id="btn-generate-codes" style="padding:8px 15px;">Generate recovery codes</button>
+            </div>
+
             <div class="card danger-zone">
                 <h3 style="color: var(--error); display: flex; align-items: center; gap: 10px; margin-top: 0;">
                     ⚠️ Danger Zone
@@ -739,7 +882,7 @@ document.addEventListener('DOMContentLoaded', function() {
     checkboxes.forEach(box => {
         box.addEventListener('change', function() {
             const checkedUsers = Array.from(checkboxes).filter(i => i.checked).map(i => i.value);
-            fetch('/update_ignore_list', {
+            fetch(API_UPDATE_IGNORE_LIST, {
                 method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ ignored_users: checkedUsers })
             }).then(r => r.json()).then(d => { if (d.status === 'success') showToast(); });
         });
@@ -789,7 +932,7 @@ document.addEventListener('DOMContentLoaded', function() {
 }); 
 
 function fetchStatus() {
-    fetch('/api/scanner/status').then(r => r.json()).then(data => {
+    fetch(API_SCANNER_STATUS).then(r => r.json()).then(data => {
         const toggle = document.getElementById('scan-toggle');
         if(toggle) toggle.checked = data.enabled;
         
@@ -811,13 +954,13 @@ function fetchStatus() {
         if(badge) badge.innerText = data.total_indexed + " Aliases Indexed";
         
         // Load Radarr/Sonarr scanner settings
-        fetch('/get_radarr_sonarr_cache_status').then(r => r.json()).then(rsData => {
+        fetch(API_GET_RADARR_SONARR_CACHE_STATUS).then(r => r.json()).then(rsData => {
             const rsToggle = document.getElementById('radarr-sonarr-toggle');
             const rsInterval = document.getElementById('radarr-sonarr-interval');
             if(rsToggle) rsToggle.checked = rsData.enabled || false;
             if(rsInterval) rsInterval.value = rsData.interval || 24;
             checkRadarrSonarrCacheStatus();
-        });
+        }).catch(() => {});
         
         const nextBadge = document.getElementById('next-scan-badge');
         if(nextBadge) {
@@ -863,24 +1006,28 @@ function saveScannerSettings() {
     const batch = document.getElementById('scan-batch').value;
     const interval = document.getElementById('scan-interval').value;
     
-    fetch('/api/scanner/save', {
+    fetch(API_SCANNER_SAVE, {
         method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({enabled, batch, interval})
     }).then(r => r.json()).then(data => {
         const btn = document.querySelector('button[onclick="saveScannerSettings()"]');
-        const oldText = btn.innerText;
-        btn.innerText = "Saved ✅";
-        setTimeout(() => { fetchStatus(); btn.innerText = oldText; }, 1000);
+        const oldText = btn ? btn.innerText : 'Save';
+        if (btn) btn.innerText = "Saved ✅";
+        setTimeout(() => { fetchStatus(); if (btn) btn.innerText = oldText; }, 1000);
+    }).catch(() => {
+        const btn = document.querySelector('button[onclick="saveScannerSettings()"]');
+        if (btn) btn.innerText = 'Save';
+        showModal('❌', 'Error', 'Could not save scanner settings. Please try again.', false);
     });
 }
 
 function saveCacheSetting() {
     const val = document.getElementById('cache-interval').value;
-    fetch('/save_cache_settings', {
+    fetch(API_SAVE_CACHE_SETTINGS, {
         method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({interval: val})
     }).then(r => r.json()).then(d => {
         if(d.status === 'success') showToast();
         else alert(d.message);
-    });
+    }).catch(() => { showModal('❌', 'Error', 'Could not save. Please try again.', false); });
 }
 
 function forceRefresh() {
@@ -888,7 +1035,7 @@ function forceRefresh() {
     btn.disabled = true; 
     btn.innerText = "Refreshing... ⏳";
     
-    fetch('/force_cache_refresh', {method: 'POST'})
+    fetch(API_FORCE_CACHE_REFRESH, {method: 'POST'})
     .then(r => r.json())
     .then(data => {
         if(data.status !== 'success') {
@@ -900,7 +1047,7 @@ function forceRefresh() {
 }
 
 function checkCacheStatus() {
-    fetch('/get_cache_status').then(r => r.json()).then(data => {
+    fetch(API_GET_CACHE_STATUS).then(r => r.json()).then(data => {
         const forceBtn = document.getElementById('btn-force');
         const txt = document.getElementById('last-updated');
         if(!forceBtn) return;
@@ -923,7 +1070,7 @@ function forceRadarrSonarrCacheRefresh() {
     btn.disabled = true; 
     btn.innerText = "Refreshing... ⏳";
     
-    fetch('/force_radarr_sonarr_cache_refresh', {method: 'POST'})
+    fetch(API_FORCE_RADARR_SONARR_CACHE_REFRESH, {method: 'POST'})
     .then(r => r.json())
     .then(data => {
         if(data.status !== 'success') {
@@ -945,7 +1092,7 @@ function forceRadarrSonarrCacheRefresh() {
 }
 
 function checkRadarrSonarrCacheStatus() {
-    fetch('/get_radarr_sonarr_cache_status').then(r => r.json()).then(data => {
+    fetch(API_GET_RADARR_SONARR_CACHE_STATUS).then(r => r.json()).then(data => {
         const countBadge = document.getElementById('radarr-sonarr-count-badge');
         const lastScan = document.getElementById('radarr-sonarr-last-scan');
         
@@ -964,7 +1111,7 @@ function saveRadarrSonarrScannerSettings() {
     const enabled = document.getElementById('radarr-sonarr-toggle').checked;
     const interval = document.getElementById('radarr-sonarr-interval').value;
     
-    fetch('/api/radarr_sonarr_scanner/save', {
+    fetch(API_RADARR_SONARR_SCANNER_SAVE, {
         method: 'POST', 
         headers: {'Content-Type': 'application/json'}, 
         body: JSON.stringify({enabled, interval})
@@ -1018,7 +1165,7 @@ function testService(service) {
     btn.innerText = "Testing...";
     btn.disabled = true;
 
-    fetch('/test_connection', {
+    fetch(API_TEST_CONNECTION, {
         method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)
     }).then(r => r.json()).then(data => {
         btn.disabled = false;
@@ -1031,10 +1178,27 @@ function testService(service) {
     });
 }
 
+function isValidUrlField(val) {
+    if (!val || !String(val).trim()) return true;
+    const v = String(val).trim().toLowerCase();
+    if (v.startsWith('javascript:') || v.startsWith('data:')) return false;
+    return v.startsWith('http://') || v.startsWith('https://');
+}
+
 document.addEventListener('submit', function(e) {
     // Only intercept the main settings form.
     if (e.target && e.target.id === 'settings-form') {
         e.preventDefault(); 
+        
+        // Validate URL fields before submit
+        const urlIds = ['plex_url', 'overseerr_url', 'tautulli_url', 'radarr_url', 'sonarr_url'];
+        for (const id of urlIds) {
+            const el = document.getElementById(id);
+            if (el && !isValidUrlField(el.value)) {
+                showModal('❌', 'Invalid URL', el.value ? 'URLs must start with http:// or https:// and cannot be javascript: or data:.' : '', false);
+                return;
+            }
+        }
         
         // Trim trailing slashes before save.
         ['plex_url', 'overseerr_url', 'tautulli_url'].forEach(id => {
@@ -1044,18 +1208,28 @@ document.addEventListener('submit', function(e) {
             }
         });
 
-        // Submit via fetch to keep the UI snappy.
         const btn = document.getElementById('main-save-btn');
+        if (!btn) return;
         const originalText = btn.innerText;
         btn.innerText = "Saving... ⏳"; 
         btn.disabled = true;
 
-        fetch(e.target.action, { method: 'POST', body: new FormData(e.target) })
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
+        
+        fetch(e.target.action, { method: 'POST', body: new FormData(e.target), signal: controller.signal })
         .then(response => response.json())
         .then(data => {
+            clearTimeout(timeoutId);
             btn.innerText = originalText; 
             btn.disabled = false;
             showModal(data.status==='success'?'✅':'❌', data.status==='success'?'Success!':'Error', data.message, data.status==='success');
+        })
+        .catch(err => {
+            clearTimeout(timeoutId);
+            btn.innerText = originalText; 
+            btn.disabled = false;
+            showModal('❌', 'Error', err.name === 'AbortError' ? 'Request timed out. Please try again.' : 'Could not save. Please try again.', false);
         });
     }
 });
@@ -1064,25 +1238,32 @@ function resetScannerIndex() {
     if(!confirm("🚨 Are you sure? This will wipe the alias database and force a full re-scan.")) return;
     
     const btn = document.querySelector('button[onclick="resetScannerIndex()"]');
+    if (!btn) return;
     const originalText = btn.innerText;
     btn.innerText = "Wiping...";
     btn.disabled = true;
 
-    fetch('/api/scanner/reset', {method: 'POST'})
+    fetch(API_SCANNER_RESET, {method: 'POST'})
     .then(r => r.json())
     .then(data => {
         btn.innerText = originalText;
         btn.disabled = false;
         showModal(data.status==='success'?'✅':'❌', 'Scanner Reset', data.message, false);
         if(data.status === 'success') fetchStatus();
+    })
+    .catch(() => {
+        btn.innerText = originalText;
+        btn.disabled = false;
+        showModal('❌', 'Error', 'Request failed. Please try again.', false);
     });
 }
 
 // Backups
 function loadBackups() {
-    fetch('/api/backups').then(r => r.json()).then(data => {
-        const div = document.getElementById('backup-list');
-        if(data.length === 0) { div.innerHTML = '<div style="text-align:center; color:#777;">No backups found.</div>'; return; }
+    const div = document.getElementById('backup-list');
+    fetch(API_BACKUPS).then(r => r.json()).then(data => {
+        if (!div) return;
+        if (!Array.isArray(data) || data.length === 0) { div.innerHTML = '<div style="text-align:center; color:#777;">No backups found.</div>'; return; }
         
         let html = '<table class="logs-table">';
         data.forEach(b => {
@@ -1090,17 +1271,34 @@ function loadBackups() {
                 <td style="padding:8px;">${b.date}</td>
                 <td style="padding:8px; color:#aaa;">${b.size}</td>
                 <td style="padding:8px; text-align:right;">
-                    <a href="/api/backup/download/${b.filename}" style="text-decoration:none; margin-right:10px;">⬇️</a>
+                    <a href="${BACKUP_DOWNLOAD_URL_PREFIX}${b.filename}" style="text-decoration:none; margin-right:10px;">⬇️</a>
                     <span onclick="restoreBackup('${b.filename}')" style="cursor:pointer; margin-right:10px;" title="Restore">♻️</span>
                     <span onclick="deleteBackup('${b.filename}')" style="cursor:pointer; color:#e74c3c;" title="Delete">🗑️</span>
                 </td></tr>`;
         });
         div.innerHTML = html + '</table>';
-    });
+    }).catch(() => { if (div) div.innerHTML = '<div style="text-align:center; color:#e74c3c;">Failed to load backups.</div>'; });
 }
-function createBackup() { fetch('/api/backup/create', {method: 'POST'}).then(r => r.json()).then(data => { loadBackups(); showModal('📦', 'Backup Created', data.message, false); }); }
-function deleteBackup(f) { if(confirm("Delete backup?")) fetch('/api/backup/delete/' + f, {method: 'DELETE'}).then(()=>loadBackups()); }
-function restoreBackup(f) { if(confirm("Overwrite DB?")) fetch('/api/backup/restore/' + f, {method: 'POST'}).then(r=>r.json()).then(d=>showModal('♻️', 'Restored', d.message, true)); }
+function createBackup() {
+    const btn = document.querySelector('button[onclick="createBackup()"]');
+    if (btn) { btn.disabled = true; btn.innerText = 'Creating...'; }
+    fetch(API_BACKUP_CREATE, {method: 'POST'})
+        .then(r => r.json())
+        .then(data => { loadBackups(); showModal('📦', 'Backup Created', data.message, false); })
+        .catch(() => showModal('❌', 'Error', 'Backup failed. Please try again.', false))
+        .finally(() => { if (btn) { btn.disabled = false; btn.innerText = '+ Backup Now'; } });
+}
+function deleteBackup(f) {
+    if (!confirm("Delete backup?")) return;
+    fetch(API_BACKUP_DELETE_BASE + f, {method: 'DELETE'}).then(()=>loadBackups()).catch(() => showModal('❌', 'Error', 'Delete failed. Please try again.', false));
+}
+function restoreBackup(f) {
+    if (!confirm("Overwrite DB?")) return;
+    fetch(API_BACKUP_RESTORE_BASE + f, {method: 'POST'})
+        .then(r=>r.json())
+        .then(d=>{ showModal('♻️', 'Restored', d.message, true); loadBackups(); })
+        .catch(() => showModal('❌', 'Error', 'Restore failed. Please try again.', false));
+}
 
 function triggerBackupUpload() {
     const input = document.getElementById('backup-upload-input');
@@ -1118,7 +1316,7 @@ function handleBackupUpload(files) {
     const formData = new FormData();
     formData.append('backup_file', file);
 
-    fetch('/api/backup/upload', { method: 'POST', body: formData })
+    fetch(API_BACKUP_UPLOAD, { method: 'POST', body: formData })
         .then(r => r.json())
         .then(d => {
             if (d.status === 'success') {
@@ -1128,7 +1326,8 @@ function handleBackupUpload(files) {
                 showModal('❌', 'Upload Failed', d.message || 'Upload failed.', false);
             }
         })
-        .catch(() => showModal('❌', 'Upload Failed', 'Could not upload backup.', false));
+        .catch(() => showModal('❌', 'Upload Failed', 'Could not upload backup.', false))
+        .finally(() => { if (input) input.value = ''; });
 }
 
 function escapeHtml(text) {

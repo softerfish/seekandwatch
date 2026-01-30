@@ -218,8 +218,13 @@
 .peers-none { color: #e74c3c; }
 
 .rejection-icon { color: #e74c3c; font-size: 1.2em; cursor: help; }
+.release-downloaded-icon { color: #2ecc71; font-size: 1.2em; font-weight: bold; cursor: help; }
 .custom-format-score { color: #00CC66; font-weight: 600; }
 .custom-format-score.zero { color: #888; }
+
+/* inline search results on movie/TV detail page (like main Radarr/Sonarr app) */
+.media-detail-search-results { background: #1a1a1a; border-radius: 8px; padding: 16px; border: 1px solid #333; margin-top: 8px; }
+.media-detail-search-results-header { margin-bottom: 12px; color: var(--accent-color); font-weight: 600; }
 </style>
 
 <!-- Search Modal -->
@@ -253,6 +258,29 @@
 <!-- Detail views are now rendered inline, modal removed -->
 
 <script>
+const API_MEDIA_REQUESTED = "{{ url_for('api.get_requested_media') }}";
+const API_MEDIA_MOVIES = "{{ url_for('api.get_movies') }}";
+const API_MEDIA_TV = "{{ url_for('api.get_tv_shows') }}";
+const API_RADARR_TOGGLE_MONITORED_BASE = "{{ url_for('api.toggle_radarr_monitored', movie_id=0) }}";
+const API_SONARR_TOGGLE_MONITORED_BASE = "{{ url_for('api.toggle_sonarr_monitored', series_id=0) }}";
+const API_RADARR_SEARCH = "{{ url_for('api.radarr_search') }}";
+const API_RADARR_DOWNLOAD = "{{ url_for('api.radarr_download') }}";
+const API_SONARR_SEARCH = "{{ url_for('api.sonarr_search') }}";
+const API_SONARR_DOWNLOAD = "{{ url_for('api.sonarr_download') }}";
+const API_SONARR_MISSING_EPISODES = "{{ url_for('api.sonarr_missing_episodes') }}";
+const API_RADARR_MOVIE_BASE = "{{ url_for('api.get_radarr_movie_detail', movie_id=0) }}";
+const API_SONARR_SERIES_BASE = "{{ url_for('api.get_sonarr_series_detail', series_id=0) }}";
+const API_SONARR_SEARCH_SEASON_BASE = "{{ url_for('api.sonarr_search_season', series_id=0, season_number=0) }}";
+const API_SONARR_REFRESH_SEASON_BASE = "{{ url_for('api.sonarr_refresh_season', series_id=0, season_number=0) }}";
+const API_SONARR_SEARCH_EPISODE_BASE = "{{ url_for('api.sonarr_search_episode', episode_id=0) }}";
+const API_SONARR_REFRESH_EPISODE_BASE = "{{ url_for('api.sonarr_refresh_episode', episode_id=0) }}";
+const API_RADARR_REFRESH_BASE = "{{ url_for('api.radarr_refresh_scan', movie_id=0) }}";
+const API_RADARR_SEARCH_SCAN_BASE = "{{ url_for('api.radarr_search_scan', movie_id=0) }}";
+const API_RADARR_QUEUE_CHECK_BASE = "{{ url_for('api.radarr_queue_check', movie_id=0) }}";
+const API_SONARR_REFRESH_BASE = "{{ url_for('api.sonarr_refresh_scan', series_id=0) }}";
+const API_SONARR_SEARCH_SCAN_BASE = "{{ url_for('api.sonarr_search_scan', series_id=0) }}";
+const API_SONARR_QUEUE_CHECK_BASE = "{{ url_for('api.sonarr_queue_check', series_id=0) }}";
+const MEDIA_CSRF = "{{ csrf_token() }}";
 let currentTab = 'requested';
 
 function switchMediaTab(evt, tabName) {
@@ -367,7 +395,7 @@ function loadRequested() {
     // Save page size preference to localStorage
     localStorage.setItem('pageSizeRequested', pageSize);
     
-    fetch(`/api/media/requested?status=${status}&source=${source}&sort=${sort}&page=${page}&page_size=${pageSize}`)
+    fetch(API_MEDIA_REQUESTED + '?status=' + encodeURIComponent(status) + '&source=' + encodeURIComponent(source) + '&sort=' + encodeURIComponent(sort) + '&page=' + page + '&page_size=' + pageSize)
         .then(r => r.json())
         .then(data => {
             if (data.status === 'error') {
@@ -492,7 +520,7 @@ function loadMovies() {
     // Save page size preference to localStorage
     localStorage.setItem('pageSizeMovies', pageSize);
     
-    const url = `/api/media/movies?monitored=${monitored}&has_file=${hasFile}&sort=${sort}&page=${page}&page_size=${pageSize}`;
+    const url = API_MEDIA_MOVIES + '?monitored=' + encodeURIComponent(monitored) + '&has_file=' + encodeURIComponent(hasFile) + '&sort=' + encodeURIComponent(sort) + '&page=' + page + '&page_size=' + pageSize;
     console.log('Fetching Radarr movies from:', url);
     
     fetch(url)
@@ -551,10 +579,10 @@ function loadMovies() {
                                     style="font-size: 0.75em; padding: 6px 10px; ${item.monitored ? 'background: rgba(231, 76, 60, 0.2); border-color: #e74c3c;' : 'background: rgba(0, 204, 102, 0.2); border-color: #00CC66;'}">
                                 ${item.monitored ? 'Unmonitor' : 'Monitor'}
                             </button>
-                            <button class="action-btn" onclick="event.stopPropagation(); radarrAutoSearch(${item.id}, '${escapeHtml(item.title)}')" style="font-size: 0.75em; padding: 6px 10px; background: rgba(0, 204, 102, 0.2); border-color: #00CC66;">
-                                🔍 Auto Search
+                            <button class="action-btn" onclick="event.stopPropagation(); radarrAutoSearch(${item.id}, '${escapeJsString(item.title)}')" style="font-size: 0.75em; padding: 6px 10px; background: rgba(0, 204, 102, 0.2); border-color: #00CC66;">
+                                🔍 Search Movie
                             </button>
-                            <button class="action-btn" onclick="event.stopPropagation(); radarrInteractiveSearch(${item.id}, '${escapeHtml(item.title)}')" style="font-size: 0.75em; padding: 6px 10px; background: rgba(52, 152, 219, 0.2); border-color: #3498db;">
+                            <button class="action-btn" onclick="event.stopPropagation(); radarrInteractiveSearch(${item.id}, '${escapeJsString(item.title)}')" style="font-size: 0.75em; padding: 6px 10px; background: rgba(52, 152, 219, 0.2); border-color: #3498db;">
                                 🎯 Interactive Search
                             </button>
                             ${item.radarrUrl ? `<button class="action-btn" onclick="event.stopPropagation(); window.open('${escapeHtml(String(item.radarrUrl || ''))}', '_blank')" style="font-size: 0.75em; padding: 6px 10px;">Open in Radarr</button>` : ''}
@@ -656,7 +684,7 @@ function loadTV() {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
     
-    fetch(`/api/media/tv?monitored=${monitored}&has_file=${hasFile}&sort=${sort}&page=${page}&page_size=${pageSize}`, {
+    fetch(API_MEDIA_TV + '?monitored=' + encodeURIComponent(monitored) + '&has_file=' + encodeURIComponent(hasFile) + '&sort=' + encodeURIComponent(sort) + '&page=' + page + '&page_size=' + pageSize, {
         signal: controller.signal
     })
         .then(r => {
@@ -705,13 +733,13 @@ function loadTV() {
                                     style="font-size: 0.75em; padding: 6px 10px; ${item.monitored ? 'background: rgba(231, 76, 60, 0.2); border-color: #e74c3c;' : 'background: rgba(0, 204, 102, 0.2); border-color: #00CC66;'}">
                                 ${item.monitored ? 'Unmonitor' : 'Monitor'}
                             </button>
-                            ${!item.has_file ? `<button class="action-btn" onclick="event.stopPropagation(); showMissingEpisodes(${item.id}, '${escapeHtml(item.title)}')" style="font-size: 0.75em; padding: 6px 10px; background: rgba(243, 156, 18, 0.2); border-color: #f39c12;">
+                            ${!item.has_file ? `<button class="action-btn" onclick="event.stopPropagation(); showMissingEpisodes(${item.id}, '${escapeJsString(item.title)}')" style="font-size: 0.75em; padding: 6px 10px; background: rgba(243, 156, 18, 0.2); border-color: #f39c12;">
                                 📋 Missing Episodes
                             </button>` : ''}
-                            ${!item.has_file ? `<button class="action-btn" onclick="event.stopPropagation(); sonarrAutoSearch(${item.id}, '${escapeHtml(item.title)}')" style="font-size: 0.75em; padding: 6px 10px; background: rgba(0, 204, 102, 0.2); border-color: #00CC66;">
-                                🔍 Auto Search
+                            ${!item.has_file ? `<button class="action-btn" onclick="event.stopPropagation(); sonarrAutoSearch(${item.id}, '${escapeJsString(item.title)}')" style="font-size: 0.75em; padding: 6px 10px; background: rgba(0, 204, 102, 0.2); border-color: #00CC66;">
+                                🔍 Search Monitored
                             </button>` : ''}
-                            ${!item.has_file ? `<button class="action-btn" onclick="event.stopPropagation(); sonarrInteractiveSearch(${item.id}, '${escapeHtml(item.title)}')" style="font-size: 0.75em; padding: 6px 10px; background: rgba(52, 152, 219, 0.2); border-color: #3498db;">
+                            ${!item.has_file ? `<button class="action-btn" onclick="event.stopPropagation(); sonarrInteractiveSearch(${item.id}, '${escapeJsString(item.title)}')" style="font-size: 0.75em; padding: 6px 10px; background: rgba(52, 152, 219, 0.2); border-color: #3498db;">
                                 🎯 Interactive Search
                             </button>` : ''}
                             ${item.sonarrUrl ? `<button class="action-btn" onclick="event.stopPropagation(); window.open('${escapeHtml(String(item.sonarrUrl || ''))}', '_blank')" style="font-size: 0.75em; padding: 6px 10px;">Open in Sonarr</button>` : ''}
@@ -801,9 +829,9 @@ function goToTVPage(page) {
 function toggleMonitored(service, id, monitored) {
     let url = '';
     if (service === 'radarr') {
-        url = `/api/radarr/toggle_monitored/${id}`;
+        url = API_RADARR_TOGGLE_MONITORED_BASE.replace(/\/0$/, '/' + id);
     } else if (service === 'sonarr') {
-        url = `/api/sonarr/toggle_monitored/${id}`;
+        url = API_SONARR_TOGGLE_MONITORED_BASE.replace(/\/0$/, '/' + id);
     } else {
         alert('Unknown service');
         return;
@@ -950,11 +978,18 @@ function escapeHtml(text) {
     }
 }
 
+// For embedding in single-quoted JS strings (e.g. onclick="foo('...')") so apostrophes don't break
+function escapeJsString(s) {
+    if (s == null || s === undefined) return '';
+    const str = String(s);
+    return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
 // Radarr search functions
 function radarrAutoSearch(movieId, title) {
     if (!confirm(`Start auto search for "${title}"?`)) return;
     
-    fetch('/api/radarr/search', {
+    fetch(API_RADARR_SEARCH, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({movie_id: movieId, type: 'auto'})
@@ -970,55 +1005,62 @@ function radarrAutoSearch(movieId, title) {
     .catch(err => alert('Error: ' + err.message));
 }
 
+// Interactive Search = you pick a download (always in modal)
 function radarrInteractiveSearch(movieId, title) {
     const safeTitle = title ? String(title) : 'Unknown';
     document.getElementById('searchModalTitle').textContent = `Search Results: ${safeTitle}`;
     document.getElementById('searchModalBody').innerHTML = '<div style="text-align: center; padding: 40px; color: #888;">Loading releases...</div>';
     document.getElementById('searchModal').style.display = 'block';
-    
-    fetch('/api/radarr/search', {
+
+    fetch(API_RADARR_SEARCH, {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': MEDIA_CSRF},
         body: JSON.stringify({movie_id: movieId, type: 'interactive'})
     })
     .then(r => r.json())
     .then(data => {
         if (data.status === 'success' && data.releases) {
-            displayRadarrReleases(data.releases, movieId, safeTitle);
+            displayRadarrReleases(data.releases, movieId, safeTitle, null, data.current_file || null);
         } else {
             document.getElementById('searchModalBody').innerHTML = `<div style="text-align: center; padding: 40px; color: #e74c3c;">${escapeHtml(String(data.message || 'No releases found'))}</div>`;
         }
     })
     .catch(err => {
-        document.getElementById('searchModalBody').innerHTML = `<div style="text-align: center; padding: 40px; color: #e74c3c;">Error: ${err.message}</div>`;
+        document.getElementById('searchModalBody').innerHTML = `<div style="text-align: center; padding: 40px; color: #e74c3c;">Error: ${escapeHtml(String(err.message || err))}</div>`;
     });
 }
 
-// Store releases and sort state for interactive search
+// Store releases and sort state for interactive search (targetEl = inline container or null for modal)
 let currentReleases = [];
 let currentMovieId = null;
 let currentTitle = '';
+let currentReleasesTargetEl = null; // when set, render into this element instead of modal
+let currentFileInfo = null; // { releaseGroup, quality } for "downloaded" icon
 let sortColumn = null;
 let sortDirection = 'asc'; // 'asc' or 'desc'
 
-function displayRadarrReleases(releases, movieId, title) {
+function displayRadarrReleases(releases, movieId, title, targetEl, currentFile) {
+    currentReleasesTargetEl = targetEl || null;
+    currentFileInfo = currentFile || null;
+    const dest = targetEl || document.getElementById('searchModalBody');
+    if (!dest) return;
+
     if (!releases || releases.length === 0) {
-        document.getElementById('searchModalBody').innerHTML = '<div style="text-align: center; padding: 40px; color: #888;">No releases found</div>';
+        dest.innerHTML = '<div style="text-align: center; padding: 40px; color: #888;">No releases found</div>';
         return;
     }
-    
+
     // Store releases and context for sorting
-    currentReleases = [...releases]; // Create a copy
+    currentReleases = [...releases];
     currentMovieId = movieId;
     currentTitle = title;
     sortColumn = null;
     sortDirection = 'asc';
-    
-    // Log first release structure for debugging
+
     if (releases.length > 0) {
         console.log('Sample Radarr release object:', releases[0]);
     }
-    
+
     renderRadarrReleasesTable();
 }
 
@@ -1086,7 +1128,11 @@ function renderRadarrReleasesTable() {
         </th>`;
     }
     
-    let html = '<div style="flex: 1; overflow-y: auto; overflow-x: auto; min-height: 0;">';
+    let html = '';
+    if (currentReleasesTargetEl) {
+        html += `<div class="media-detail-search-results-header" style="margin-bottom: 12px; color: var(--accent-color); font-weight: 600;">Search results: ${escapeHtml(currentTitle)}</div>`;
+    }
+    html += '<div style="flex: 1; overflow-y: auto; overflow-x: auto; min-height: 0;">';
     html += '<table class="releases-table" style="min-width: 1200px;">';
     html += '<thead><tr>';
     html += createSortableHeader('source', 'Source');
@@ -1162,6 +1208,10 @@ function renderRadarrReleasesTable() {
         const rejectionIcon = rejected ? 
             '<span class="rejection-icon" title="' + escapeHtml((release.rejections || []).join('; ') || 'Rejected') + '">⚠</span>' : 
             '';
+        // Already downloaded = only what Radarr reports (approved = this release is the one we have)
+        const isDownloaded = release.approved === true;
+        const downloadedIcon = isDownloaded ?
+            '<span class="release-downloaded-icon" title="Already downloaded">✓</span>' : '';
         
         // Safely get guid and indexerId
         const guid = release.guid ? String(release.guid).replace(/'/g, "\\'") : '';
@@ -1181,7 +1231,7 @@ function renderRadarrReleasesTable() {
         html += `<td>${escapeHtml(language)}</td>`;
         html += `<td>${escapeHtml(quality)}</td>`;
         html += `<td style="text-align: center;">${customFormatDisplay}</td>`;
-        html += `<td style="text-align: center;">${rejectionIcon}</td>`;
+        html += `<td style="text-align: center;">${downloadedIcon || rejectionIcon || '—'}</td>`;
         html += '<td style="white-space: nowrap;">';
         // Always show both buttons - normal download if allowed, override if not allowed or rejected
         // Store release data in window object to avoid escaping issues in onclick
@@ -1241,13 +1291,14 @@ function renderRadarrReleasesTable() {
     });
     
     html += '</tbody></table></div>';
-    const modalBody = document.getElementById('searchModalBody');
-    modalBody.style.display = 'flex';
-    modalBody.style.flexDirection = 'column';
-    modalBody.innerHTML = html;
-    
+    const target = currentReleasesTargetEl || document.getElementById('searchModalBody');
+    if (!target) return;
+    target.style.display = 'flex';
+    target.style.flexDirection = 'column';
+    target.innerHTML = html;
+
     // Attach event listeners to download buttons
-    modalBody.querySelectorAll('.radarr-download-btn').forEach(btn => {
+    target.querySelectorAll('.radarr-download-btn').forEach(btn => {
         btn.addEventListener('click', function() {
             const guid = this.getAttribute('data-guid');
             const indexerId = parseInt(this.getAttribute('data-indexer-id'));
@@ -1461,7 +1512,7 @@ function downloadRadarrRelease(guid, indexerId, movieId, title, releaseDataJson,
         }
     }
     
-    fetch('/api/radarr/download', {
+    fetch(API_RADARR_DOWNLOAD, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(payload)
@@ -1478,7 +1529,20 @@ function downloadRadarrRelease(guid, indexerId, movieId, title, releaseDataJson,
         const data = result.data;
         if (data.status === 'success') {
             alert('Download started!');
-            closeSearchModal();
+            // Re-fetch releases so "already downloaded" status updates (Radarr sets approved on the release we grabbed)
+            if (currentMovieId != null && currentTitle) {
+                fetch(API_RADARR_SEARCH, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': MEDIA_CSRF},
+                    body: JSON.stringify({ movie_id: currentMovieId, type: 'interactive' })
+                }).then(r => r.json()).then(refresh => {
+                    if (refresh.status === 'success' && refresh.releases) {
+                        displayRadarrReleases(refresh.releases, currentMovieId, currentTitle, null, refresh.current_file || null);
+                    }
+                }).catch(() => {});
+            } else {
+                closeSearchModal();
+            }
         } else {
             // Show more detailed error message
             const errorMsg = data.message || 'Failed to start download';
@@ -1512,7 +1576,7 @@ function downloadRadarrRelease(guid, indexerId, movieId, title, releaseDataJson,
 function sonarrAutoSearch(seriesId, title) {
     if (!confirm(`Start auto search for missing episodes of "${title}"?`)) return;
     
-    fetch('/api/sonarr/search', {
+    fetch(API_SONARR_SEARCH, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({series_id: seriesId, type: 'auto'})
@@ -1528,39 +1592,56 @@ function sonarrAutoSearch(seriesId, title) {
     .catch(err => alert('Error: ' + err.message));
 }
 
-function sonarrInteractiveSearch(seriesId, title) {
-    document.getElementById('searchModalTitle').textContent = `Search Results: ${title}`;
+// Interactive Search = you pick a download (always in modal). Optional seasonNumber when called from a season row.
+function sonarrInteractiveSearch(seriesId, title, seasonNumber) {
+    const subTitle = seasonNumber !== undefined && seasonNumber !== null ? `Season ${seasonNumber}` : '';
+    document.getElementById('searchModalTitle').textContent = subTitle ? `Search Results: ${title} – ${subTitle}` : `Search Results: ${title}`;
     document.getElementById('searchModalBody').innerHTML = '<div style="text-align: center; padding: 40px; color: #888;">Loading releases...</div>';
     document.getElementById('searchModal').style.display = 'block';
-    
-    fetch('/api/sonarr/search', {
+
+    const body = { series_id: seriesId, type: 'interactive' };
+    if (seasonNumber !== undefined && seasonNumber !== null) body.season_number = seasonNumber;
+
+    fetch(API_SONARR_SEARCH, {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({series_id: seriesId, type: 'interactive'})
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': MEDIA_CSRF},
+        body: JSON.stringify(body)
     })
     .then(r => r.json())
     .then(data => {
         if (data.status === 'success' && data.releases) {
-            displaySonarrReleases(data.releases, data.episode, seriesId, title);
+            displaySonarrReleases(data.releases, data.episode, seriesId, title, null, data.current_file || null);
         } else {
             document.getElementById('searchModalBody').innerHTML = `<div style="text-align: center; padding: 40px; color: #e74c3c;">${escapeHtml(String(data.message || 'No releases found'))}</div>`;
         }
     })
     .catch(err => {
-        document.getElementById('searchModalBody').innerHTML = `<div style="text-align: center; padding: 40px; color: #e74c3c;">Error: ${err.message}</div>`;
+        document.getElementById('searchModalBody').innerHTML = `<div style="text-align: center; padding: 40px; color: #e74c3c;">Error: ${escapeHtml(String(err.message || err))}</div>`;
     });
 }
 
-function displaySonarrReleases(releases, episode, seriesId, title) {
+function displaySonarrReleases(releases, episode, seriesId, title, targetEl, currentFile) {
+    const dest = targetEl || document.getElementById('searchModalBody');
+    if (!dest) return;
+    // store for re-fetch after grab (so status updates)
+    if (!targetEl) {
+        window._lastSonarrInteractiveSeriesId = seriesId;
+        window._lastSonarrInteractiveTitle = title;
+    }
+
     if (!releases || releases.length === 0) {
-        document.getElementById('searchModalBody').innerHTML = '<div style="text-align: center; padding: 40px; color: #888;">No releases found</div>';
+        dest.innerHTML = '<div style="text-align: center; padding: 40px; color: #888;">No releases found</div>';
         return;
     }
-    
+
     const epInfo = episode ? `S${String(episode.seasonNumber || 0).padStart(2, '0')}E${String(episode.episodeNumber || 0).padStart(2, '0')} - ${escapeHtml(episode.title || '')}` : '';
-    let html = `<div style="margin-bottom: 15px; padding: 10px; background: #1a1a1a; border-radius: 4px;"><strong>Episode:</strong> ${epInfo}</div>`;
+    let html = '';
+    if (targetEl) {
+        html += `<div class="media-detail-search-results-header" style="margin-bottom: 12px; color: var(--accent-color); font-weight: 600;">Search results: ${escapeHtml(title || '')}</div>`;
+    }
+    html += `<div style="margin-bottom: 15px; padding: 10px; background: #1a1a1a; border-radius: 4px;"><strong>Episode:</strong> ${epInfo}</div>`;
     html += '<div style="max-height: 60vh; overflow-y: auto;">';
-    
+
     releases.forEach(release => {
         const size = release.size ? formatSize(release.size) : 'Unknown';
         
@@ -1586,6 +1667,10 @@ function displaySonarrReleases(releases, episode, seriesId, title) {
             }
         }
         
+        // Already downloaded = only what Sonarr reports (approved = this release is the one we have)
+        const isDownloaded = release.approved === true;
+        const downloadedBadge = isDownloaded ? '<span class="release-downloaded-icon" title="Already downloaded" style="margin-left: 8px;">✓ Downloaded</span>' : '';
+        
         // Safely get guid, indexerId, and episodeId
         const guid = release.guid ? String(release.guid).replace(/'/g, "\\'") : '';
         const indexerId = release.indexerId || 0;
@@ -1595,7 +1680,7 @@ function displaySonarrReleases(releases, episode, seriesId, title) {
         html += `
             <div class="release-item">
                 <div class="release-header">
-                    <div class="release-title">${escapeHtml(releaseTitle)}</div>
+                    <div class="release-title">${escapeHtml(releaseTitle)}${downloadedBadge}</div>
                     <div class="release-size">${size}</div>
                 </div>
                 <div class="release-info">
@@ -1614,13 +1699,13 @@ function displaySonarrReleases(releases, episode, seriesId, title) {
         `;
     });
     html += '</div>';
-    document.getElementById('searchModalBody').innerHTML = html;
+    dest.innerHTML = html;
 }
 
 function downloadSonarrRelease(guid, indexerId, episodeId, title) {
     if (!confirm(`Download release for "${title}"?`)) return;
     
-    fetch('/api/sonarr/download', {
+    fetch(API_SONARR_DOWNLOAD, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({guid: guid, indexerId: indexerId, episodeId: episodeId})
@@ -1629,7 +1714,22 @@ function downloadSonarrRelease(guid, indexerId, episodeId, title) {
     .then(data => {
         if (data.status === 'success') {
             alert('Download started!');
-            closeSearchModal();
+            // Re-fetch releases so "already downloaded" status updates (Sonarr sets approved on the release we grabbed)
+            const seriesId = window._lastSonarrInteractiveSeriesId;
+            const seriesTitle = window._lastSonarrInteractiveTitle;
+            if (seriesId != null && seriesTitle) {
+                fetch(API_SONARR_SEARCH, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ series_id: seriesId, episode_ids: [episodeId], type: 'interactive' })
+                }).then(r => r.json()).then(refresh => {
+                    if (refresh.status === 'success' && refresh.releases) {
+                        displaySonarrReleases(refresh.releases, refresh.episode, seriesId, seriesTitle, null, refresh.current_file || null);
+                    }
+                }).catch(() => {});
+            } else {
+                closeSearchModal();
+            }
         } else {
             alert('Error: ' + (data.message || 'Failed to start download'));
         }
@@ -1647,7 +1747,7 @@ function showMissingEpisodes(seriesId, title) {
     document.getElementById('searchModalBody').innerHTML = '<div style="text-align: center; padding: 40px; color: #888;">Loading missing episodes...</div>';
     document.getElementById('searchModal').style.display = 'block';
     
-    fetch(`/api/sonarr/missing-episodes?series_id=${seriesId}`)
+    fetch(API_SONARR_MISSING_EPISODES + '?series_id=' + encodeURIComponent(seriesId))
     .then(r => r.json())
     .then(data => {
         if (data.status === 'success' && data.episodes && data.episodes.length > 0) {
@@ -1665,7 +1765,7 @@ function showMissingEpisodes(seriesId, title) {
                             ${ep.airDate ? `<div class="release-size">${ep.airDate}</div>` : ''}
                         </div>
                         <div class="release-actions">
-                            <button class="action-btn" onclick="sonarrSearchEpisode(${seriesId}, ${ep.id}, '${escapeHtml(title)}', '${seasonEp}')" 
+                            <button class="action-btn" onclick="sonarrSearchEpisode(${seriesId}, ${ep.id}, '${escapeJsString(title)}', '${escapeJsString(seasonEp)}')" 
                                     style="background: rgba(52, 152, 219, 0.2); border-color: #3498db;">
                                 Search
                             </button>
@@ -1688,7 +1788,7 @@ function sonarrSearchEpisode(seriesId, episodeId, title, episodeInfo) {
     document.getElementById('searchModalTitle').textContent = `Search Results: ${title} - ${episodeInfo}`;
     document.getElementById('searchModalBody').innerHTML = '<div style="text-align: center; padding: 40px; color: #888;">Loading releases...</div>';
     
-    fetch('/api/sonarr/search', {
+    fetch(API_SONARR_SEARCH, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({series_id: seriesId, episode_ids: [episodeId], type: 'interactive'})
@@ -1696,7 +1796,7 @@ function sonarrSearchEpisode(seriesId, episodeId, title, episodeInfo) {
     .then(r => r.json())
     .then(data => {
         if (data.status === 'success' && data.releases) {
-            displaySonarrReleases(data.releases, data.episode, seriesId, title);
+            displaySonarrReleases(data.releases, data.episode, seriesId, title, null, data.current_file || null);
         } else {
             document.getElementById('searchModalBody').innerHTML = `<div style="text-align: center; padding: 40px; color: #e74c3c;">${escapeHtml(String(data.message || 'No releases found'))}</div>`;
         }
@@ -1830,7 +1930,7 @@ function showMovieDetail(movieId, forceRefresh = false) {
         }
     }
     
-    fetch(`/api/radarr/movie/${movieId}`)
+    fetch(API_RADARR_MOVIE_BASE.replace(/\/0$/, '/' + movieId))
         .then(r => {
             if (r.status === 404) {
                 return {status: 'error', message: 'Movie not found - it may have been deleted from Radarr', deleted: true};
@@ -1914,7 +2014,7 @@ function showSeriesDetail(seriesId, forceRefresh = false) {
         }
     }
     
-    fetch(`/api/sonarr/series/${seriesId}`)
+    fetch(API_SONARR_SERIES_BASE.replace(/\/0$/, '/' + seriesId))
         .then(r => {
             if (r.status === 404) {
                 return {status: 'error', message: 'Series not found - it may have been deleted from Sonarr', deleted: true};
@@ -1966,22 +2066,24 @@ function goBackToList(type) {
         window.history.pushState({type: 'list', tab: type}, '', newUrl);
     }
     
-    // Hide detail container
+    // Hide detail container and clear current detail id so search uses modal from list view
     const detailContainer = type === 'movies' ? document.getElementById('movies-detail-container') : document.getElementById('tv-detail-container');
     if (detailContainer) {
         detailContainer.style.display = 'none';
     }
+    if (type === 'movies') window._currentDetailMovieId = null;
+    if (type === 'tv') window._currentDetailSeriesId = null;
     
     // Show list container
     const listContainer = type === 'movies' ? document.getElementById('movies-table-container') : document.getElementById('tv-table-container');
     if (listContainer) {
         listContainer.style.display = 'block';
-        // Restore stored HTML if available and not empty
+        // Restore stored HTML if available and not the Loading placeholder
         const storedHTML = type === 'movies' ? storedMoviesListHTML : storedTVListHTML;
-        if (storedHTML && storedHTML.trim().length > 0) {
+        if (storedHTML && storedHTML.trim().length > 0 && storedHTML.indexOf('Loading...') === -1) {
             listContainer.innerHTML = storedHTML;
         } else {
-            // If no stored HTML or it's empty, reload the data
+            // No stored HTML, empty, or was Loading - reload the list
             if (type === 'movies') {
                 loadMovies();
             } else if (type === 'tv') {
@@ -2033,8 +2135,11 @@ window.addEventListener('popstate', function(event) {
         moviesDetail.style.display = 'none';
         if (moviesList) {
             moviesList.style.display = 'block';
-            if (storedMoviesListHTML) {
+            if (storedMoviesListHTML && storedMoviesListHTML.indexOf('Loading...') === -1) {
                 moviesList.innerHTML = storedMoviesListHTML;
+            } else {
+                // Stored HTML was Loading placeholder or missing - reload the list
+                loadMovies();
             }
         }
     }
@@ -2042,8 +2147,10 @@ window.addEventListener('popstate', function(event) {
         tvDetail.style.display = 'none';
         if (tvList) {
             tvList.style.display = 'block';
-            if (storedTVListHTML) {
+            if (storedTVListHTML && storedTVListHTML.indexOf('Loading...') === -1) {
                 tvList.innerHTML = storedTVListHTML;
+            } else {
+                loadTV();
             }
         }
     }
@@ -2111,6 +2218,7 @@ function closeDetailModal() {
 }
 
 function renderMovieDetail(movie, container, movieId) {
+    window._currentDetailMovieId = movieId;
     // Safely extract and format runtime
     let runtime = '';
     if (movie.runtime && typeof movie.runtime === 'number') {
@@ -2151,9 +2259,9 @@ function renderMovieDetail(movie, container, movieId) {
                 🔄 Refresh & Scan
             </button>
             <button class="action-btn" onclick="radarrSearchScan(${movie.id})" style="padding: 8px 16px;">
-                🔍 Search & Scan
+                🔍 Search Movie
             </button>
-            <button class="action-btn" onclick="radarrInteractiveSearch(${movie.id}, '${escapeHtml(String(movie.title || ''))}');" style="padding: 8px 16px;">
+            <button class="action-btn" onclick="radarrInteractiveSearch(${movie.id}, '${escapeJsString(movie.title || '')}');" style="padding: 8px 16px;">
                 🎯 Interactive Search
             </button>
             <button class="action-btn" onclick="toggleMonitored('radarr', ${movie.id}, ${!movie.monitored})" style="padding: 8px 16px;">
@@ -2165,6 +2273,9 @@ function renderMovieDetail(movie, container, movieId) {
             ${movie.radarrUrl ? `<button class="action-btn" onclick="window.open('${escapeHtml(String(movie.radarrUrl || ''))}', '_blank')" style="padding: 8px 16px;">🔗 Open in Radarr</button>` : ''}
             ${cacheInfo}
         </div>
+        
+        <!-- Live search results (Search Movie) - above poster -->
+        <div id="movies-detail-search-results" class="media-detail-search-results" style="display: none; margin-bottom: 24px;"></div>
         
         <!-- Movie Header -->
         <div style="display: flex; gap: 20px; margin-bottom: 30px; flex-wrap: wrap;">
@@ -2551,6 +2662,7 @@ function renderMovieDetail(movie, container, movieId) {
 }
 
 function renderSeriesDetail(series, container, seriesId) {
+    window._currentDetailSeriesId = seriesId;
     // keep reference so episode row click can open detail modal
     window._currentSonarrSeries = series;
 
@@ -2692,13 +2804,13 @@ function renderSeriesDetail(series, container, seriesId) {
                         🔄 Refresh & Scan
                     </button>
                     <button class="action-btn" onclick="sonarrSearchScan(${series.id})" style="padding: 8px 16px; font-size: 0.9em;">
-                        🔍 Search & Monitored
+                        🔍 Search Monitored
                     </button>
-            <button class="action-btn" onclick="sonarrInteractiveSearch(${series.id}, '${escapeHtml(String(series.title || ''))}');" style="padding: 8px 16px; font-size: 0.9em;">
-                🎯 Interactive Search
-            </button>
                     ${series.sonarrUrl ? `<button class="action-btn" onclick="window.open('${escapeHtml(String(series.sonarrUrl || ''))}', '_blank')" style="padding: 8px 16px; font-size: 0.9em;">🔗 Open in Sonarr</button>` : ''}
                 </div>
+                
+                <!-- Live search results (Search Monitored) - above main content -->
+                <div id="tv-detail-search-results" class="media-detail-search-results" style="display: none; margin-bottom: 20px;"></div>
                 
                 <!-- Tags (if available) -->
                 ${series.tags && series.tags.length > 0 ? `
@@ -2877,9 +2989,10 @@ function renderSeriesDetail(series, container, seriesId) {
                             </span>
                             ${season.size > 0 ? `<span style="color: #aaa; font-size: 0.9em;">${formatSize(season.size)}</span>` : ''}
                         </div>
-                        <!-- Season Actions -->
+                        <!-- Season Actions (search, interactive search, refresh) -->
                         <div style="display: flex; gap: 5px; margin-right: 10px;">
                             <button onclick="event.stopPropagation(); searchSeason(${series.id}, ${seasonNum})" title="Search Season" style="background: transparent; border: none; color: #aaa; cursor: pointer; padding: 4px; font-size: 1em;">🔍</button>
+                            <button onclick="event.stopPropagation(); sonarrInteractiveSearch(${series.id}, '${escapeJsString(series.title || '')}', ${seasonNum})" title="Interactive Search" style="background: transparent; border: none; color: #aaa; cursor: pointer; padding: 4px; font-size: 1em;">🎯</button>
                             <button onclick="event.stopPropagation(); refreshSeason(${series.id}, ${seasonNum})" title="Refresh Season" style="background: transparent; border: none; color: #aaa; cursor: pointer; padding: 4px; font-size: 1em;">🔄</button>
                         </div>
                         <span class="season-toggle" style="color: #aaa; font-size: 1.2em; transition: transform 0.2s;">▼</span>
@@ -3119,24 +3232,42 @@ function closeEpisodeDetailModal() {
 }
 
 function searchSeason(seriesId, seasonNumber) {
-    // Trigger search for all monitored episodes in season
-    fetch(`/api/sonarr/search-season/${seriesId}/${seasonNumber}`, {method: 'POST'})
+    const inlineEl = document.getElementById('tv-detail-search-results');
+    if (inlineEl) {
+        inlineEl.style.display = 'block';
+        inlineEl.innerHTML = '<div class="media-detail-search-results-header" style="margin-bottom: 8px; color: var(--accent-color); font-weight: 600;">🔍 Search Season ' + seasonNumber + '</div><div class="search-monitored-status" style="color: #aaa; font-size: 0.95em;">Starting search…</div><div class="search-monitored-progress" style="color: #888; font-size: 0.9em; margin-top: 6px;"></div>';
+    }
+    fetch(API_SONARR_SEARCH_SEASON_BASE.replace(/\/0\/0$/, '/' + seriesId + '/' + seasonNumber), {method: 'POST'})
         .then(r => r.json())
         .then(data => {
             if (data.status === 'success') {
-                alert(`Search started for Season ${seasonNumber}!`);
                 clearCachedDetail('series', seriesId);
-                setTimeout(() => showSeriesDetail(seriesId, true), 2000);
+                if (inlineEl) {
+                    inlineEl.querySelector('.search-monitored-status').textContent = 'Sonarr is searching for missing episodes in this season and will grab the best match.';
+                    pollSonarrSearchStatus(seriesId, inlineEl);
+                } else {
+                    alert(`Search started for Season ${seasonNumber}!`);
+                }
             } else {
-                alert('Error: ' + (data.message || 'Failed to start search'));
+                if (inlineEl) {
+                    inlineEl.innerHTML = '<div class="media-detail-search-results-header" style="margin-bottom: 12px; color: var(--accent-color);">🔍 Search Season ' + seasonNumber + '</div><div style="padding: 16px; color: #e74c3c;">' + escapeHtml(String(data.message || 'Failed to start search')) + '</div>';
+                } else {
+                    alert('Error: ' + (data.message || 'Failed to start search'));
+                }
             }
         })
-        .catch(err => alert('Error: ' + err.message));
+        .catch(err => {
+            if (inlineEl) {
+                inlineEl.innerHTML = '<div class="media-detail-search-results-header" style="margin-bottom: 12px; color: var(--accent-color);">🔍 Search Season ' + seasonNumber + '</div><div style="padding: 16px; color: #e74c3c;">Error: ' + escapeHtml(String(err.message)) + '</div>';
+            } else {
+                alert('Error: ' + err.message);
+            }
+        });
 }
 
 function refreshSeason(seriesId, seasonNumber) {
     // Trigger refresh for season
-    fetch(`/api/sonarr/refresh-season/${seriesId}/${seasonNumber}`, {method: 'POST'})
+    fetch(API_SONARR_REFRESH_SEASON_BASE.replace(/\/0\/0$/, '/' + seriesId + '/' + seasonNumber), {method: 'POST'})
         .then(r => r.json())
         .then(data => {
             if (data.status === 'success') {
@@ -3151,19 +3282,37 @@ function refreshSeason(seriesId, seasonNumber) {
 }
 
 function searchEpisode(seriesId, episodeId, seasonNumber) {
-    // Trigger search for specific episode
-    fetch(`/api/sonarr/search-episode/${episodeId}`, {method: 'POST'})
+    const inlineEl = document.getElementById('tv-detail-search-results');
+    if (inlineEl) {
+        inlineEl.style.display = 'block';
+        inlineEl.innerHTML = '<div class="media-detail-search-results-header" style="margin-bottom: 8px; color: var(--accent-color); font-weight: 600;">🔍 Search Episode</div><div class="search-monitored-status" style="color: #aaa; font-size: 0.95em;">Starting search…</div><div class="search-monitored-progress" style="color: #888; font-size: 0.9em; margin-top: 6px;"></div>';
+    }
+    fetch(API_SONARR_SEARCH_EPISODE_BASE.replace(/\/0$/, '/' + episodeId), {method: 'POST'})
         .then(r => r.json())
         .then(data => {
             if (data.status === 'success') {
-                alert('Search started for episode!');
                 clearCachedDetail('series', seriesId);
-                setTimeout(() => showSeriesDetail(seriesId, true), 2000);
+                if (inlineEl) {
+                    inlineEl.querySelector('.search-monitored-status').textContent = 'Sonarr is searching for this episode and will grab the best match.';
+                    pollSonarrSearchStatus(seriesId, inlineEl);
+                } else {
+                    alert('Search started for episode!');
+                }
             } else {
-                alert('Error: ' + (data.message || 'Failed to start search'));
+                if (inlineEl) {
+                    inlineEl.innerHTML = '<div class="media-detail-search-results-header" style="margin-bottom: 12px; color: var(--accent-color);">🔍 Search Episode</div><div style="padding: 16px; color: #e74c3c;">' + escapeHtml(String(data.message || 'Failed to start search')) + '</div>';
+                } else {
+                    alert('Error: ' + (data.message || 'Failed to start search'));
+                }
             }
         })
-        .catch(err => alert('Error: ' + err.message));
+        .catch(err => {
+            if (inlineEl) {
+                inlineEl.innerHTML = '<div class="media-detail-search-results-header" style="margin-bottom: 12px; color: var(--accent-color);">🔍 Search Episode</div><div style="padding: 16px; color: #e74c3c;">Error: ' + escapeHtml(String(err.message)) + '</div>';
+            } else {
+                alert('Error: ' + err.message);
+            }
+        });
 }
 
 function manualImportEpisode(seriesId, episodeId, seasonNumber) {
@@ -3174,7 +3323,7 @@ function manualImportEpisode(seriesId, episodeId, seasonNumber) {
 
 function refreshEpisode(seriesId, episodeId, seasonNumber) {
     // Trigger refresh for specific episode
-    fetch(`/api/sonarr/refresh-episode/${episodeId}`, {method: 'POST'})
+    fetch(API_SONARR_REFRESH_EPISODE_BASE.replace(/\/0$/, '/' + episodeId), {method: 'POST'})
         .then(r => r.json())
         .then(data => {
             if (data.status === 'success') {
@@ -3189,7 +3338,7 @@ function refreshEpisode(seriesId, episodeId, seasonNumber) {
 }
 
 function radarrRefreshScan(movieId) {
-    fetch(`/api/radarr/refresh/${movieId}`, {method: 'POST'})
+    fetch(API_RADARR_REFRESH_BASE.replace(/\/0$/, '/' + movieId), {method: 'POST'})
         .then(r => r.json())
         .then(data => {
             if (data.status === 'success') {
@@ -3209,27 +3358,126 @@ function radarrRefreshScan(movieId) {
 }
 
 function radarrSearchScan(movieId) {
-    fetch(`/api/radarr/search-scan/${movieId}`, {method: 'POST'})
+    const useInline = (window._currentDetailMovieId === movieId);
+    const inlineEl = useInline ? document.getElementById('movies-detail-search-results') : null;
+    let title = 'Movie';
+    const h1 = document.querySelector('#movies-detail-container h1');
+    if (h1) title = (h1.textContent || '').trim().replace(/\s*\(\d{4}\)\s*$/, '').trim() || title;
+
+    fetch(API_RADARR_SEARCH_SCAN_BASE.replace(/\/0$/, '/' + movieId), {method: 'POST'})
         .then(r => r.json())
         .then(data => {
             if (data.status === 'success') {
-                // Clear cache since data may have changed
                 clearCachedDetail('movies', movieId);
-                alert('Search and scan started!');
-                // Refresh detail view if open
-                const detailContainer = document.getElementById('movies-detail-container');
-                if (detailContainer && detailContainer.style.display !== 'none') {
-                    showMovieDetail(movieId, true);
+                if (useInline && inlineEl) {
+                    inlineEl.style.display = 'block';
+                    inlineEl.innerHTML = `
+                        <div class="media-detail-search-results-header" style="margin-bottom: 8px; color: var(--accent-color); font-weight: 600;">🔍 Search Movie</div>
+                        <div class="search-movie-status" style="color: #aaa; font-size: 0.95em; line-height: 1.5;">
+                            Radarr is searching indexers and will automatically grab the best match for your quality profile.
+                        </div>
+                        <div class="search-movie-progress" style="color: #888; font-size: 0.9em; margin-top: 6px;"></div>
+                    `;
+                    pollRadarrSearchStatus(movieId, inlineEl);
+                } else {
+                    alert('Search Movie started! Radarr will grab the best match for your quality profile.');
+                }
+                // don't refresh detail when showing inline (would wipe the results area)
+                if (!useInline) {
+                    const detailContainer = document.getElementById('movies-detail-container');
+                    if (detailContainer && detailContainer.style.display !== 'none') {
+                        showMovieDetail(movieId, true);
+                    }
                 }
             } else {
-                alert('Error: ' + (data.message || 'Failed to start search'));
+                if (useInline && inlineEl) {
+                    inlineEl.style.display = 'block';
+                    inlineEl.innerHTML = `<div class="media-detail-search-results-header" style="margin-bottom: 12px; color: var(--accent-color);">🔍 Search Movie</div><div style="text-align: center; padding: 24px; color: #e74c3c;">${escapeHtml(String(data.message || 'Failed to start search'))}</div>`;
+                } else {
+                    alert('Error: ' + (data.message || 'Failed to start search'));
+                }
             }
         })
-        .catch(err => alert('Error: ' + err.message));
+        .catch(err => {
+            if (useInline && inlineEl) {
+                inlineEl.style.display = 'block';
+                inlineEl.innerHTML = `<div class="media-detail-search-results-header" style="margin-bottom: 12px; color: var(--accent-color);">🔍 Search Movie</div><div style="text-align: center; padding: 24px; color: #e74c3c;">Error: ${escapeHtml(String(err.message))}</div>`;
+            } else {
+                alert('Error: ' + err.message);
+            }
+        });
+}
+
+// Search Movie: poll lightweight queue-check so we see updates quickly (~4s in Radarr)
+const RADARR_SEARCH_POLL_MS = 1500;
+const RADARR_SEARCH_POLL_MAX = 10; // ~15s
+
+function pollRadarrSearchStatus(movieId, inlineEl) {
+    let pollCount = 0;
+
+    function setProgress(msg) {
+        const progressEl = inlineEl.querySelector('.search-movie-progress');
+        if (progressEl) progressEl.textContent = msg;
+    }
+
+    setProgress('Checking for queue updates…');
+
+    function doPoll() {
+        if (pollCount >= RADARR_SEARCH_POLL_MAX) {
+            const statusEl = inlineEl.querySelector('.search-movie-status');
+            const progressEl = inlineEl.querySelector('.search-movie-progress');
+            if (statusEl && statusEl.textContent.indexOf('Queued') === -1 && statusEl.textContent.indexOf('Downloading') === -1 && statusEl.textContent.indexOf('Paused') === -1) {
+                statusEl.innerHTML = 'Search finished. If nothing was grabbed, no release met your quality profile.';
+                if (progressEl) progressEl.innerHTML = 'Refresh the page or check the queue in Radarr.';
+            }
+            return;
+        }
+        pollCount += 1;
+        const elapsed = (pollCount * RADARR_SEARCH_POLL_MS) / 1000;
+        setProgress(`Checking for queue updates… (${elapsed}s)`);
+
+        fetch(API_RADARR_QUEUE_CHECK_BASE.replace(/\/0$/, '/' + movieId))
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'error') {
+                    if (pollCount < RADARR_SEARCH_POLL_MAX) setTimeout(doPoll, RADARR_SEARCH_POLL_MS);
+                    return;
+                }
+                if (data.inQueue && (data.queueStatus || data.queueTitle)) {
+                    const status = data.queueStatus || 'queued';
+                    const title = data.queueTitle || 'Release';
+                    const statusEl = inlineEl.querySelector('.search-movie-status');
+                    const progressEl = inlineEl.querySelector('.search-movie-progress');
+                    if (statusEl) {
+                        if (status === 'downloading') statusEl.innerHTML = `Downloading: <strong>${escapeHtml(title)}</strong>`;
+                        else if (status === 'paused') statusEl.innerHTML = `Paused: <strong>${escapeHtml(title)}</strong>`;
+                        else statusEl.innerHTML = `Queued: <strong>${escapeHtml(title)}</strong>`;
+                    }
+                    if (progressEl) progressEl.textContent = '';
+                    return;
+                }
+                // already have the best available – nothing to grab
+                if (!data.inQueue && data.hasFile) {
+                    const statusEl = inlineEl.querySelector('.search-movie-status');
+                    const progressEl = inlineEl.querySelector('.search-movie-progress');
+                    if (statusEl) statusEl.innerHTML = 'Already have the best available – nothing to grab.';
+                    if (progressEl) progressEl.textContent = '';
+                    return;
+                }
+                if (pollCount < RADARR_SEARCH_POLL_MAX) setTimeout(doPoll, RADARR_SEARCH_POLL_MS);
+            })
+            .catch(() => {
+                setProgress(`Check failed, retrying… (${pollCount}/${RADARR_SEARCH_POLL_MAX})`);
+                if (pollCount < RADARR_SEARCH_POLL_MAX) setTimeout(doPoll, RADARR_SEARCH_POLL_MS);
+            });
+    }
+
+    // first poll after 1.5s so we catch ~4s grabs quickly
+    setTimeout(doPoll, RADARR_SEARCH_POLL_MS);
 }
 
 function sonarrRefreshScan(seriesId) {
-    fetch(`/api/sonarr/refresh/${seriesId}`, {method: 'POST'})
+    fetch(API_SONARR_REFRESH_BASE.replace(/\/0$/, '/' + seriesId), {method: 'POST'})
         .then(r => r.json())
         .then(data => {
             if (data.status === 'success') {
@@ -3249,23 +3497,142 @@ function sonarrRefreshScan(seriesId) {
 }
 
 function sonarrSearchScan(seriesId) {
-    fetch(`/api/sonarr/search-scan/${seriesId}`, {method: 'POST'})
+    const useInline = (window._currentDetailSeriesId === seriesId);
+    const inlineEl = useInline ? document.getElementById('tv-detail-search-results') : null;
+    let title = 'Series';
+    const h1 = document.querySelector('#tv-detail-container h1');
+    if (h1) title = (h1.textContent || '').trim().replace(/\s*\(\d{4}\)\s*$/, '').trim() || title;
+
+    fetch(API_SONARR_SEARCH_SCAN_BASE.replace(/\/0$/, '/' + seriesId), {method: 'POST'})
         .then(r => r.json())
         .then(data => {
             if (data.status === 'success') {
-                // Clear cache since data may have changed
                 clearCachedDetail('series', seriesId);
-                alert('Search and scan started!');
-                // Refresh detail view if open
-                const detailContainer = document.getElementById('tv-detail-container');
-                if (detailContainer && detailContainer.style.display !== 'none') {
-                    showSeriesDetail(seriesId, true);
+                if (useInline && inlineEl) {
+                    inlineEl.style.display = 'block';
+                    inlineEl.innerHTML = `
+                        <div class="media-detail-search-results-header" style="margin-bottom: 8px; color: var(--accent-color); font-weight: 600;">🔍 Search Monitored</div>
+                        <div class="search-monitored-status" style="color: #aaa; font-size: 0.95em; line-height: 1.5;">
+                            Sonarr is searching all monitored episodes/seasons and will automatically grab the best match for each missing episode.
+                        </div>
+                        <div class="search-monitored-progress" style="color: #888; font-size: 0.9em; margin-top: 6px;"></div>
+                    `;
+                    pollSonarrSearchStatus(seriesId, inlineEl);
+                } else {
+                    alert('Search Monitored started! Sonarr will grab the best match for each missing episode.');
+                }
+                if (!useInline) {
+                    const detailContainer = document.getElementById('tv-detail-container');
+                    if (detailContainer && detailContainer.style.display !== 'none') {
+                        showSeriesDetail(seriesId, true);
+                    }
                 }
             } else {
-                alert('Error: ' + (data.message || 'Failed to start search'));
+                if (useInline && inlineEl) {
+                    inlineEl.style.display = 'block';
+                    inlineEl.innerHTML = `<div class="media-detail-search-results-header" style="margin-bottom: 12px; color: var(--accent-color);">🔍 Search Monitored</div><div style="text-align: center; padding: 24px; color: #e74c3c;">${escapeHtml(String(data.message || 'Failed to start search'))}</div>`;
+                } else {
+                    alert('Error: ' + (data.message || 'Failed to start search'));
+                }
             }
         })
-        .catch(err => alert('Error: ' + err.message));
+        .catch(err => {
+            if (useInline && inlineEl) {
+                inlineEl.style.display = 'block';
+                inlineEl.innerHTML = `<div class="media-detail-search-results-header" style="margin-bottom: 12px; color: var(--accent-color);">🔍 Search Monitored</div><div style="text-align: center; padding: 24px; color: #e74c3c;">Error: ${escapeHtml(String(err.message))}</div>`;
+            } else {
+                alert('Error: ' + err.message);
+            }
+        });
+}
+
+// Search Monitored: poll lightweight queue-check so we see updates quickly
+const SONARR_SEARCH_POLL_MS = 1500;
+const SONARR_SEARCH_POLL_MAX = 10; // ~15s
+
+function pollSonarrSearchStatus(seriesId, inlineEl) {
+    let pollCount = 0;
+
+    function setProgress(msg) {
+        const progressEl = inlineEl.querySelector('.search-monitored-progress');
+        if (progressEl) progressEl.textContent = msg;
+    }
+
+    setProgress('Checking for queue updates…');
+
+    function doPoll() {
+        if (pollCount >= SONARR_SEARCH_POLL_MAX) {
+            const statusEl = inlineEl.querySelector('.search-monitored-status');
+            const progressEl = inlineEl.querySelector('.search-monitored-progress');
+            const hasQueueResult = statusEl && statusEl.textContent.indexOf('in queue') !== -1;
+            if (statusEl && !hasQueueResult) {
+                statusEl.innerHTML = 'Search finished. If nothing was grabbed, no release met your quality profile for missing episodes.';
+            }
+            if (progressEl) {
+                progressEl.textContent = hasQueueResult ? 'Done. Refresh the page to see updates.' : 'Refresh the page or check the queue in Sonarr.';
+            }
+            return;
+        }
+        pollCount += 1;
+        const elapsed = (pollCount * SONARR_SEARCH_POLL_MS) / 1000;
+        setProgress(`Checking for queue updates… (${Math.round(elapsed)}s)`);
+
+        fetch(API_SONARR_QUEUE_CHECK_BASE.replace(/\/0$/, '/' + seriesId))
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'error') {
+                    if (pollCount >= SONARR_SEARCH_POLL_MAX) {
+                        const statusEl = inlineEl.querySelector('.search-monitored-status');
+                        const progressEl = inlineEl.querySelector('.search-monitored-progress');
+                        if (statusEl) statusEl.innerHTML = 'Search finished. If nothing was grabbed, no release met your quality profile for missing episodes.';
+                        if (progressEl) progressEl.textContent = 'Refresh the page or check the queue in Sonarr.';
+                        return;
+                    }
+                    setTimeout(doPoll, SONARR_SEARCH_POLL_MS);
+                    return;
+                }
+                const items = data.queueItems || [];
+                if (data.inQueue && items.length > 0) {
+                    const statusEl = inlineEl.querySelector('.search-monitored-status');
+                    const progressEl = inlineEl.querySelector('.search-monitored-progress');
+                    if (statusEl) {
+                        const titles = items.slice(0, 3).map(it => it.queueTitle || 'Episode').join(', ');
+                        const more = items.length > 3 ? ` +${items.length - 3} more` : '';
+                        statusEl.innerHTML = `${items.length} episode(s) in queue: <strong>${escapeHtml(titles)}</strong>${escapeHtml(more)}`;
+                    }
+                    if (progressEl) progressEl.textContent = 'Done. Refresh the page to see updates.';
+                    return;
+                }
+                // all monitored episodes already downloaded – nothing to grab
+                if (!data.inQueue && data.allMonitoredDownloaded) {
+                    const statusEl = inlineEl.querySelector('.search-monitored-status');
+                    const progressEl = inlineEl.querySelector('.search-monitored-progress');
+                    if (statusEl) statusEl.innerHTML = 'All episodes already downloaded – nothing to grab.';
+                    if (progressEl) progressEl.textContent = '';
+                    return;
+                }
+                if (pollCount >= SONARR_SEARCH_POLL_MAX) {
+                    const statusEl = inlineEl.querySelector('.search-monitored-status');
+                    const progressEl = inlineEl.querySelector('.search-monitored-progress');
+                    const hasQueueResult = statusEl && statusEl.textContent.indexOf('in queue') !== -1;
+                    if (statusEl && !hasQueueResult) statusEl.innerHTML = 'Search finished. If nothing was grabbed, no release met your quality profile for missing episodes.';
+                    if (progressEl) progressEl.textContent = hasQueueResult ? 'Done. Refresh the page to see updates.' : 'Refresh the page or check the queue in Sonarr.';
+                    return;
+                }
+                setTimeout(doPoll, SONARR_SEARCH_POLL_MS);
+            })
+            .catch(() => {
+                setProgress(`Check failed, retrying… (${pollCount}/${SONARR_SEARCH_POLL_MAX})`);
+                if (pollCount >= SONARR_SEARCH_POLL_MAX) {
+                    const progressEl = inlineEl.querySelector('.search-monitored-progress');
+                    if (progressEl) progressEl.textContent = 'Refresh the page or check the queue in Sonarr.';
+                    return;
+                }
+                setTimeout(doPoll, SONARR_SEARCH_POLL_MS);
+            });
+    }
+
+    setTimeout(doPoll, SONARR_SEARCH_POLL_MS);
 }
 
 // Close detail modal with ESC key

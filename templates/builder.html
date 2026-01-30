@@ -67,6 +67,13 @@
             <input type="range" id="c_rating" min="0" max="10" step="0.5" value="0" oninput="document.getElementById('rating-text').innerText = this.value" class="w-100" style="accent-color: var(--accent-color);">
         </div>
 
+        <div class="visibility-options">
+            <span class="visibility-label">Visible on:</span>
+            <label class="visibility-check"><input type="checkbox" id="c_visibility_home" checked> Home</label>
+            <label class="visibility-check"><input type="checkbox" id="c_visibility_library"> Library</label>
+            <label class="visibility-check"><input type="checkbox" id="c_visibility_friends"> Friends</label>
+        </div>
+
         <button onclick="previewMatches()" class="btn btn-secondary w-100">🔍 Preview Top 10 Matches</button>
         <button onclick="saveCollection()" class="btn btn-save">Create Collection & Schedule</button>
     </div>
@@ -81,13 +88,17 @@
 </div>
 
 <script>
+const API_TMDB_SEARCH_PROXY = "{{ url_for('api.tmdb_search_proxy') }}";
+const API_PREVIEW_CUSTOM_COLLECTION = "{{ url_for('api.preview_custom_collection') }}";
+const API_SAVE_CUSTOM_COLLECTION = "{{ url_for('api.save_custom_collection') }}";
+const URL_PLAYLISTS = "{{ url_for('playlists') }}";
 // Keyword tag helpers
 let selectedKeywords = [];
 
 document.getElementById('keyword-search').addEventListener('input', function(e) {
     const q = e.target.value;
     if(q.length < 3) { document.getElementById('keyword-results').style.display = 'none'; return; }
-    fetch(`/tmdb_search_proxy?type=keyword&query=${q}`).then(res => res.json()).then(data => {
+    fetch(API_TMDB_SEARCH_PROXY + '?type=keyword&query=' + encodeURIComponent(q)).then(res => res.json()).then(data => {
         const div = document.getElementById('keyword-results'); div.innerHTML = "";
         if (data.results) {
             data.results.forEach(k => {
@@ -142,10 +153,10 @@ function previewMatches() {
     list.innerHTML = '<li class="preview-list-item preview-list-item-loading">Loading matches...</li>'; 
     allBtn.style.display = 'none';
     
-    fetch('/preview_custom_collection', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) })
+    fetch(API_PREVIEW_CUSTOM_COLLECTION, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) })
     .then(res => res.json()).then(data => {
         list.innerHTML = "";
-        
+        if (!list) return;
         if(data.status === 'success' && data.items && data.items.length > 0) {
             let hasMissing = false;
             
@@ -184,7 +195,8 @@ function previewMatches() {
         } else { 
             list.innerHTML = `<li class="preview-list-item preview-list-item-empty">${escapeHtml(String(data.message || "No matches found."))}</li>`; 
         }
-    });
+    })
+    .catch(() => { if (list) list.innerHTML = '<li class="preview-list-item preview-list-item-empty">Request failed. Please try again.</li>'; });
 }
 
 function requestSingle(btn) {
@@ -228,7 +240,7 @@ function requestAllMissing() {
     
     if(items.length === 0) return;
     
-    fetch('/request_media', { 
+    fetch(API_REQUEST_MEDIA, { 
         method: 'POST', 
         headers: {'Content-Type': 'application/json'}, 
         body: JSON.stringify({ items: items }) 
@@ -251,20 +263,24 @@ function saveCollection() {
         min_rating: document.getElementById('c_rating').value, 
         year_start: document.getElementById('c_year_start').value, 
         year_end: document.getElementById('c_year_end').value, 
-        with_keywords: keywordString 
+        with_keywords: keywordString,
+        visibility_home: document.getElementById('c_visibility_home').checked,
+        visibility_library: document.getElementById('c_visibility_library').checked,
+        visibility_friends: document.getElementById('c_visibility_friends').checked
     };
     
-    fetch('/save_custom_collection', { 
+    fetch(API_SAVE_CUSTOM_COLLECTION, { 
         method: 'POST', 
         headers: {'Content-Type': 'application/json'}, 
         body: JSON.stringify(data) 
     }).then(res => res.json()).then(data => { 
         if(data.status === 'success') { 
-            window.location.href = '/playlists'; 
+            window.location.href = URL_PLAYLISTS; 
         } else { 
             alert("Error saving: " + data.message); 
         } 
-    });
+    })
+    .catch(() => alert('Request failed. Please try again.'));
 }
 </script>
 {% endblock %}

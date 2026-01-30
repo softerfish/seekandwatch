@@ -66,7 +66,7 @@
         </div>
 
         <div id="tab-config" class="k-section active">
-            <div class="k-group" style="border-left: 4px solid #e74c3c;">
+            <form class="k-group" style="border-left: 4px solid #e74c3c;" onsubmit="return false;" aria-label="Required connections">
                 <h4 class="mb-10" style="border-bottom:none;">🚨 Required Connections</h4>
                 <div class="mb-15 fs-small text-muted border-bottom pb-10">These are mandatory for Kometa to function.</div>
                 
@@ -78,16 +78,16 @@
 
                 <div class="k-input-row">
                     <label>Plex Token <span class="info-icon" title="Find this in the XML of any media item in Plex">ℹ️</span></label>
-                    <input type="password" id="plex_token" value="{{ settings.plex_token or '' }}" placeholder="X-Plex-Token" oninput="gen()">
+                    <input type="password" id="plex_token" value="{{ settings.plex_token or '' }}" placeholder="X-Plex-Token" oninput="gen()" autocomplete="off">
                 </div>
                 <div class="info-text">The X-Plex-Token used to authenticate.</div>
 
                 <div class="k-input-row">
                     <label>TMDB Key <span class="info-icon" title="API Key from themoviedb.org">ℹ️</span></label>
-                    <input type="password" id="tmdb_key" value="{{ settings.tmdb_key or '' }}" placeholder="API Key" oninput="gen()">
+                    <input type="password" id="tmdb_key" value="{{ settings.tmdb_key or '' }}" placeholder="API Key" oninput="gen()" autocomplete="off">
                 </div>
                 <div class="info-text">Required to look up metadata and posters.</div>
-            </div>
+            </form>
         </div>
 
         <div id="tab-global" class="k-section">
@@ -548,6 +548,11 @@
 </div>
 
 <script>
+const API_SAVE_KOMETA_CONFIG = "{{ url_for('api.save_kometa_config') }}";
+const API_GET_PLEX_LIBRARIES = "{{ url_for('api.get_plex_libraries') }}";
+const API_KOMETA_TEMPLATES = "{{ url_for('api.get_kometa_templates') }}";
+const API_KOMETA_TEMPLATES_SAVE = "{{ url_for('api.save_kometa_template') }}";
+const API_KOMETA_TEMPLATES_DELETE_BASE = "{{ url_for('api.delete_kometa_template', template_id=0) }}";
 // load saved config (handles the legacy array format too). Updated in-memory on save so Compare shows latest.
 let savedConfig = JSON.parse({{ settings.kometa_config|tojson if settings.kometa_config else 'null' }});
 let libraries = [];
@@ -794,8 +799,8 @@ function addVarRow(k = '', v = '') {
     const div = document.createElement('div');
     div.className = 'var-row';
     div.innerHTML = `
-        <input type="text" class="var-input key" placeholder="Variable (e.g. use_year)" value="${k}">
-        <input type="text" class="var-input val" placeholder="Value (e.g. true)" value="${v}">
+        <input type="text" class="var-input key" placeholder="Variable (e.g. use_year)" value="${escapeHtml(String(k))}">
+        <input type="text" class="var-input val" placeholder="Value (e.g. true)" value="${escapeHtml(String(v))}">
         <button class="btn-remove" onclick="this.parentElement.remove()" style="padding:0 10px;">&times;</button>
     `;
     document.getElementById('var-container').appendChild(div);
@@ -999,65 +1004,65 @@ function writeTemplateVars(vars, indent, commentMap = {}) {
     return out;
 }
 
-// save progress
+// save progress (defer heavy work so click handler returns quickly and we avoid "handler took Xms" violation)
 function saveProgress() {
     const btn = document.querySelector('button[onclick="saveProgress()"]');
     const oldText = btn.innerText;
     btn.innerText = "Saving...";
     btn.disabled = true;
 
-    // capture settings inputs
-    const currentSettings = {
-        cache: val('s_cache'),
-        cache_expiration: val('s_cache_expiration'),
-        asset_folders: val('s_asset_folders'),
-        show_missing: val('s_show_missing'),
-        sync_mode: val('s_sync_mode'),
-        delete_below_min: val('s_delete_below_min'),
-        minimum_items: val('s_minimum_items'),
-        artwork_quality: val('s_artwork_quality'),
-        run_order: val('s_run_order')
-    };
+    setTimeout(function doSave() {
+        const currentSettings = {
+            cache: val('s_cache'),
+            cache_expiration: val('s_cache_expiration'),
+            asset_folders: val('s_asset_folders'),
+            show_missing: val('s_show_missing'),
+            sync_mode: val('s_sync_mode'),
+            delete_below_min: val('s_delete_below_min'),
+            minimum_items: val('s_minimum_items'),
+            artwork_quality: val('s_artwork_quality'),
+            run_order: val('s_run_order')
+        };
 
-    const payload = {
-        libraries: libraries,
-        settings: currentSettings, // save the new settings object
-        templateVars: templateVars, // save template variables
-        libraryTemplateVars: libraryTemplateVars, // save per-library template vars
-        inlineComments: inlineComments, // keep inline yaml comments
-        plex_url: document.getElementById('plex_url').value,
-        plex_token: document.getElementById('plex_token').value,
-        tmdb_key: document.getElementById('tmdb_key').value
-    };
+        const payload = {
+            libraries: libraries,
+            settings: currentSettings,
+            templateVars: templateVars,
+            libraryTemplateVars: libraryTemplateVars,
+            inlineComments: inlineComments,
+            plex_url: document.getElementById('plex_url').value,
+            plex_token: document.getElementById('plex_token').value,
+            tmdb_key: document.getElementById('tmdb_key').value
+        };
 
-    fetch('/save_kometa_config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-    })
-    .then(r => r.json())
-    .then(data => {
-        if (data && data.status === 'success') {
-            // update in-memory saved config so Compare shows this state immediately
-            savedConfig = {
-                libraries: payload.libraries,
-                settings: payload.settings,
-                templateVars: payload.templateVars,
-                libraryTemplateVars: payload.libraryTemplateVars,
-                inlineComments: payload.inlineComments,
-                plex_url: payload.plex_url,
-                plex_token: payload.plex_token,
-                tmdb_key: payload.tmdb_key
-            };
-        }
-        btn.innerText = "Saved ✅";
-        setTimeout(() => { btn.innerText = oldText; btn.disabled = false; }, 2000);
-    })
-    .catch(e => {
-        alert("Connection Error");
-        btn.innerText = oldText;
-        btn.disabled = false;
-    });
+        fetch(API_SAVE_KOMETA_CONFIG, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data && data.status === 'success') {
+                savedConfig = {
+                    libraries: payload.libraries,
+                    settings: payload.settings,
+                    templateVars: payload.templateVars,
+                    libraryTemplateVars: payload.libraryTemplateVars,
+                    inlineComments: payload.inlineComments,
+                    plex_url: payload.plex_url,
+                    plex_token: payload.plex_token,
+                    tmdb_key: payload.tmdb_key
+                };
+            }
+            btn.innerText = "Saved ✅";
+            setTimeout(() => { btn.innerText = oldText; btn.disabled = false; }, 2000);
+        })
+        .catch(e => {
+            alert("Connection Error");
+            btn.innerText = oldText;
+            btn.disabled = false;
+        });
+    }, 0);
 }
 
 // fetch libraries
@@ -1065,7 +1070,7 @@ function fetchLibs() {
     const select = document.getElementById('temp_lib_name');
     select.innerHTML = '<option disabled selected>Loading...</option>';
     
-    fetch('/get_plex_libraries')
+    fetch(API_GET_PLEX_LIBRARIES)
         .then(r => r.json())
         .then(data => {
             if(data.status === 'success') {
@@ -1197,19 +1202,58 @@ function renderLibs() {
 
 function copyYaml() {
     const text = document.getElementById('output').innerText;
-    const textArea = document.createElement("textarea");
-    textArea.value = text;
-    textArea.style.position = "fixed";
-    textArea.style.left = "-9999px";
-    document.body.appendChild(textArea);
-    textArea.focus();
-    textArea.select();
-    try {
-        const successful = document.execCommand('copy');
-        if(successful) alert("Copied config.yml to clipboard!");
-        else alert("Copy failed. Please select text manually.");
-    } catch (err) { alert("Copy failed."); }
-    document.body.removeChild(textArea);
+    const btn = document.querySelector('button[onclick="copyYaml()"]');
+    const originalText = btn.innerText;
+
+    // Helper to update UI
+    const showSuccess = () => {
+        btn.innerText = "Copied! ✅";
+        btn.style.backgroundColor = "#27ae60"; // Optional: Green color
+        setTimeout(() => { 
+            btn.innerText = originalText; 
+            btn.style.backgroundColor = ""; // Reset color
+        }, 2000);
+    };
+
+    const showError = () => {
+        btn.innerText = "Failed ❌";
+        setTimeout(() => { btn.innerText = originalText; }, 2000);
+    };
+
+    // 1. Try Modern Async API (Cleaner, no DOM manipulation)
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text)
+            .then(showSuccess)
+            .catch(() => fallbackCopy(text)); // Failover to old method
+    } else {
+        fallbackCopy(text);
+    }
+
+    // 2. Legacy Fallback (Hidden Textarea)
+    function fallbackCopy(text) {
+        try {
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            
+            // Ensure it's not visible but part of DOM
+            textArea.style.position = "fixed";
+            textArea.style.left = "-9999px";
+            textArea.style.top = "0";
+            document.body.appendChild(textArea);
+            
+            textArea.focus();
+            textArea.select();
+            
+            const successful = document.execCommand('copy');
+            document.body.removeChild(textArea);
+            
+            if (successful) showSuccess();
+            else showError();
+        } catch (err) {
+            console.error("Copy failed", err);
+            showError();
+        }
+    }
 }
 
 // library templates
@@ -1256,7 +1300,7 @@ function saveAsTemplate() {
         templateVars: libTemplateVars
     };
     
-    fetch('/api/kometa_templates', {
+    fetch(API_KOMETA_TEMPLATES_SAVE, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(templateData)
@@ -1277,7 +1321,7 @@ function saveAsTemplate() {
 }
 
 function loadTemplates() {
-    fetch('/api/kometa_templates')
+    fetch(API_KOMETA_TEMPLATES)
         .then(r => r.json())
         .then(data => {
             if (data.status === 'success') {
@@ -1343,7 +1387,7 @@ function applyTemplate(idx) {
 function deleteTemplate(templateId) {
     if (!confirm('Delete this template?')) return;
     
-    fetch(`/api/kometa_templates/${templateId}`, {
+    fetch(API_KOMETA_TEMPLATES_DELETE_BASE.replace(/\/0$/, '/' + templateId), {
         method: 'DELETE'
     })
     .then(r => r.json())

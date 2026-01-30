@@ -55,10 +55,12 @@
                     <i class="fas fa-ban"></i>
                     <span>Blocklist</span>
                 </a>
+                {% if current_user.is_admin %}
                 <a href="{{ url_for('logs_page') }}" class="nav-item {% if request.endpoint == 'logs_page' %}active{% endif %}">
                     <i class="fas fa-file-alt"></i>
                     <span>Logs</span>
                 </a>
+                {% endif %}
                 <a href="{{ url_for('settings') }}" class="nav-item {% if request.endpoint == 'settings' %}active{% endif %}">
                     <i class="fas fa-cog"></i>
                     <span>Settings</span>
@@ -78,6 +80,10 @@
                 <a href="{{ url_for('media') }}#sonarr" class="nav-item {% if request.endpoint == 'media' %}media-nav-item{% endif %}" data-tab="tv">
                     <i class="fas fa-tv"></i>
                     <span>Sonarr</span>
+                </a>
+                <a href="{{ url_for('calendar_page') }}" class="nav-item {% if request.endpoint == 'calendar_page' %}active{% endif %}">
+                    <i class="fas fa-calendar-alt"></i>
+                    <span>Calendar</span>
                 </a>
             </div>
 
@@ -253,7 +259,7 @@
         document.getElementById('current-version-text').innerText = "Checking...";
 
         // If the confirm modal kicked this off, pass the force flag.
-        const url = forceGit ? '/trigger_update?force_git=true' : '/trigger_update';
+        const url = forceGit ? (API_TRIGGER_UPDATE + '?force_git=true') : API_TRIGGER_UPDATE;
 
         const headers = {
             'Content-Type': 'application/json',
@@ -344,6 +350,7 @@
     }
 
     const csrfToken = "{{ csrf_token() }}";
+    const API_TRIGGER_UPDATE = "{{ url_for('trigger_update_route') }}";
 
     const originalFetch = window.fetch;
     window.fetch = function(url, options) {
@@ -417,19 +424,15 @@
             .then(data => {
                 if (data && data.tag_name) {
                     const remoteVersion = data.tag_name.replace('v', '');
-                    if (latestVersionDisplay) {
-                        latestVersionDisplay.innerText = remoteVersion;
-                    }
+                    const showBadge = isUpdateAvailable(data.tag_name, localVersionRaw);
                     console.log("GitHub Latest:", remoteVersion);
-
-                    if (isUpdateAvailable(data.tag_name, localVersionRaw)) {
-                        console.log("Update found, enabling badge.");
-                        if (updateDotHeader) {
-                            updateDotHeader.style.display = 'block';
-                        }
-                    } else {
-                        console.log("Already up to date (or ahead).");
-                    }
+                    if (showBadge) console.log("Update found, enabling badge.");
+                    else console.log("Already up to date (or ahead).");
+                    // defer DOM updates to avoid forced reflow in same frame as other scripts
+                    requestAnimationFrame(function() {
+                        if (latestVersionDisplay) latestVersionDisplay.innerText = remoteVersion;
+                        if (updateDotHeader && showBadge) updateDotHeader.style.display = 'block';
+                    });
                 }
             })
             .catch(e => console.error("Update check failed", e));
@@ -586,6 +589,12 @@
 </div>
 
 <script>
+const API_REQUEST_MEDIA = "{{ url_for('api.request_media') }}";
+const API_RADARR_ADD = "{{ url_for('api.add_to_radarr') }}";
+const API_SONARR_ADD = "{{ url_for('api.add_to_sonarr') }}";
+const API_RADARR_QUALITY_PROFILES = "{{ url_for('api.get_radarr_quality_profiles') }}";
+const API_SONARR_QUALITY_PROFILES = "{{ url_for('api.get_sonarr_quality_profiles') }}";
+
 // keep track of what we're requesting
 let requestModalState = {
     mediaType: null,
@@ -695,10 +704,13 @@ function handleInstanceChange() {
 // grab quality profiles from radarr/sonarr
 function loadQualityProfiles(instance) {
     const qualitySelect = document.getElementById('request-quality-select');
-    
-    fetch(`/api/${instance}/quality-profiles`)
+    if (!qualitySelect) return;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    fetch(instance === 'radarr' ? API_RADARR_QUALITY_PROFILES : API_SONARR_QUALITY_PROFILES, { signal: controller.signal })
         .then(r => r.json())
         .then(data => {
+            clearTimeout(timeoutId);
             if (data.status === 'success' && data.profiles) {
                 qualitySelect.innerHTML = '<option value="">Any (Default)</option>';
                 data.profiles.forEach(profile => {
@@ -709,6 +721,7 @@ function loadQualityProfiles(instance) {
             }
         })
         .catch(err => {
+            clearTimeout(timeoutId);
             console.error('Error loading quality profiles:', err);
             qualitySelect.innerHTML = '<option value="">Any (Default)</option>';
         });
@@ -733,7 +746,7 @@ function submitRequest() {
     
     if (selectedInstance === 'overseerr') {
         // send to overseerr
-        fetch('/request_media', {
+        fetch(API_REQUEST_MEDIA, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
@@ -766,7 +779,7 @@ function submitRequest() {
         });
     } else if (selectedInstance === 'radarr') {
         // send to radarr
-        fetch('/api/radarr/add', {
+        fetch(API_RADARR_ADD, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
@@ -798,7 +811,7 @@ function submitRequest() {
         });
     } else if (selectedInstance === 'sonarr') {
         // send to sonarr
-        fetch('/api/sonarr/add', {
+        fetch(API_SONARR_ADD, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({

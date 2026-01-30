@@ -54,6 +54,8 @@
     <div id="tab-viewer" class="tab-content">
         <div style="text-align:center; color:#aaa; margin-bottom: 30px;">
             <p>A live view of all collections currently existing on your Plex server.</p>
+            <p class="viewer-visibility-hint">Use <strong>Home</strong>, <strong>Library</strong>, and <strong>Friends</strong> to match Plex’s Manage Recommendations (Library Recommended, Home, Friends' Home). In Plex: <strong>Settings → Manage → Libraries</strong>, then <strong>Manage Recommendations</strong>. There you can reorder collections and change which appear on Home, Library, or Friends. Requires Plex Pass and server 1.22.3+.</p>
+            <button type="button" id="viewer-refresh-btn" class="btn btn-secondary" onclick="refreshLibraryBrowser()" style="margin-top:8px;">Refresh list</button>
         </div>
 
         <div id="viewer-loading" style="text-align:center; padding:50px;">
@@ -94,6 +96,13 @@
                 <option value="" disabled selected>Loading Libraries...</option>
             </select>
         </div>
+
+        <div class="visibility-options">
+            <span class="visibility-label">Visible on:</span>
+            <label class="visibility-check"><input type="checkbox" id="import-visibility-home" checked> Home</label>
+            <label class="visibility-check"><input type="checkbox" id="import-visibility-library" checked> Library</label>
+            <label class="visibility-check"><input type="checkbox" id="import-visibility-friends"> Friends</label>
+        </div>
         
         <button onclick="analyzeList()" id="analyze-btn" class="btn-analyze">🔍 Analyze & Match</button>
         
@@ -104,10 +113,11 @@
 </div>
 
 <script>
+const API_SAVE_SCHEDULE_TIME = "{{ url_for('api.save_schedule_time') }}";
 function saveGlobalTime() {
     const t = document.getElementById('globalTime').value;
     const feedback = document.getElementById('save-time-feedback');
-    fetch('/save_schedule_time', {
+    fetch(API_SAVE_SCHEDULE_TIME, {
         method: 'POST',
         headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': '{{ csrf_token() }}'},
         body: 'time=' + encodeURIComponent(t)
@@ -125,16 +135,18 @@ function saveGlobalTime() {
 </script>
 
 {% if custom_presets %}
-<div class="category-header playlist-section" data-type="any">
-    <span>🛠️</span> Your Custom Collections
-</div>
-<div class="playlist-grid">
+<div class="category-block category-block--collapsed" data-type="any">
+    <button type="button" class="category-header category-header--toggle" aria-expanded="false" aria-controls="custom-collections-grid">
+        <span class="category-chevron" aria-hidden="true">▶</span>
+        <span>🛠️</span> Your Custom Collections
+    </button>
+    <div id="custom-collections-grid" class="playlist-grid category-grid" hidden>
     {% for key, playlist in custom_presets.items() %}
     <div class="card playlist-card" data-type="{{ playlist.media_type }}">
         <div>
             <div class="playlist-header-row">
                 <div class="playlist-icon">{% if 'Imported' in playlist.description %}📋{% else %}🛠️{% endif %}</div>
-                <button onclick="deleteCustom('{{ key }}')" class="btn-delete">Delete 🗑️</button>
+                <button onclick="deleteCollection('{{ key }}', event)" class="btn-delete">Delete 🗑️</button>
             </div>
             <h3 class="playlist-title">{{ playlist.title }}</h3>
             <p class="playlist-desc">{{ playlist.description }}</p>
@@ -170,6 +182,14 @@ function saveGlobalTime() {
                 </select>
             </div>
 
+            <div class="visibility-options visibility-options--card visibility-options--highlight">
+                <span class="visibility-label">Where it appears in Plex:</span>
+                <label class="visibility-check"><input type="checkbox" id="visibility-home-{{ key }}" onchange="saveSettings('{{ key }}')" {% if playlist.get('visibility_home', True) %}checked{% endif %}> Home</label>
+                <label class="visibility-check"><input type="checkbox" id="visibility-library-{{ key }}" onchange="saveSettings('{{ key }}')" {% if playlist.get('visibility_library', True) %}checked{% endif %}> Library recommended</label>
+                <label class="visibility-check"><input type="checkbox" id="visibility-friends-{{ key }}" onchange="saveSettings('{{ key }}')" {% if playlist.get('visibility_friends') %}checked{% endif %}> Friends</label>
+            </div>
+          <p class="visibility-hint">Check at least one so we try to set visibility. In Plex: <strong>Settings → Manage --> Libraries</strong>, then <strong>Manage Recommendations</strong>. There you can reorder collections and change which appear on Home, Library, or Friends.</p>
+
             <div class="sync-row" style="margin-top: 10px;">
                 <button onclick="previewCollection('{{ key }}', '{{ playlist.title|replace("'", "\\'") }}')" class="btn-preview" title="Preview Contents">👀</button>
                 <button onclick="createCollection('{{ key }}')" id="btn-{{ key }}" class="btn-sync">Sync Now 🪄</button>
@@ -182,16 +202,20 @@ function saveGlobalTime() {
         </div>
     </div>
     {% endfor %}
+    </div>
 </div>
 {% endif %}
 
 {% set categories = ['Regional Trending', 'International & World', 'Decades', 'Themes & Vibes', 'Awards & Acclaim', 'Studios & Networks', 'Genre (Movies)', 'Genre (TV)', 'Content Ratings'] %}
 
 {% for cat in categories %}
-<div class="category-header playlist-section" data-cat="{{ cat }}">
-    <span>📂</span> {{ cat }}
-</div>
-<div class="playlist-grid">
+{% set cat_id = cat|replace(' ', '-')|replace('&', '')|replace('(', '')|replace(')', '') %}
+<div class="category-block category-block--collapsed playlist-section" data-cat="{{ cat }}">
+    <button type="button" class="category-header category-header--toggle" aria-expanded="false" aria-controls="cat-{{ cat_id }}">
+        <span class="category-chevron" aria-hidden="true">▶</span>
+        <span>📂</span> {{ cat }}
+    </button>
+    <div id="cat-{{ cat_id }}" class="playlist-grid category-grid" hidden>
     {% for key, playlist in presets.items() %}
     {% if playlist.category == cat %}
     <div class="card playlist-card" data-type="{{ playlist.media_type }}">
@@ -239,18 +263,42 @@ function saveGlobalTime() {
                 {% endif %}
             </div>
 
+            {% set vis = (visibility or {}).get(key, {}) %}
+            <div class="visibility-options visibility-options--card visibility-options--highlight">
+                <span class="visibility-label">Where it appears in Plex:</span>
+                <label class="visibility-check"><input type="checkbox" id="visibility-home-{{ key }}" onchange="saveSettings('{{ key }}')" {% if vis.get('home', True) %}checked{% endif %}> Home</label>
+                <label class="visibility-check"><input type="checkbox" id="visibility-library-{{ key }}" onchange="saveSettings('{{ key }}')" {% if vis.get('library', True) %}checked{% endif %}> Library recommended</label>
+                <label class="visibility-check"><input type="checkbox" id="visibility-friends-{{ key }}" onchange="saveSettings('{{ key }}')" {% if vis.get('friends') %}checked{% endif %}> Friends</label>
+            </div>
+            <p class="visibility-hint">Check at least one so we try to set visibility. In Plex: <strong>Settings → Manage → Libraries</strong>, then <strong>Manage Recommendations</strong>. There you can reorder collections and change which appear on Home, Library, or Friends.</p>
+
             <div class="sync-row" style="margin-top: 10px;">
                 <button onclick="previewCollection('{{ key }}', '{{ playlist.title|replace("'", "\\'") }}')" class="btn-preview" title="Preview Contents">👀</button>
                 <button onclick="createCollection('{{ key }}')" id="btn-{{ key }}" class="btn-sync">Run Now 🪄</button>
+                {% if schedules.get(key) is not none %}
+                <button onclick="deleteCollection('{{ key }}', event)" class="btn-delete-inline" title="Remove from app and Plex">Delete 🗑️</button>
+                {% endif %}
             </div>
         </div>
     </div>
     {% endif %}
     {% endfor %}
+    </div>
 </div>
 {% endfor %}
 
 <script>
+const API_GET_CACHE_STATUS = "{{ url_for('api.get_cache_status_route') }}";
+const API_GET_PLEX_COLLECTIONS = "{{ url_for('api.get_plex_collections') }}";
+const API_PLEX_COLLECTION_VISIBILITY = "{{ url_for('api.set_plex_collection_visibility') }}";
+const API_GET_PLEX_LIBRARIES = "{{ url_for('api.get_plex_libraries') }}";
+const API_PREVIEW_PRESET_ITEMS_BASE = "{{ url_for('api.preview_preset_items', key='') }}";
+const API_CREATE_COLLECTION_BASE = "{{ url_for('api.create_collection', key='') }}";
+const API_DELETE_COLLECTION_BASE = "{{ url_for('api.delete_collection', key='') }}";
+const API_SCHEDULE_COLLECTION = "{{ url_for('api.schedule_collection') }}";
+const API_MATCH_BULK_TITLES = "{{ url_for('api.match_bulk_titles') }}";
+const API_CREATE_BULK_COLLECTION = "{{ url_for('api.create_bulk_collection') }}";
+
 function openTab(evt, tabName) {
         // Hide every tab panel first.
         var tabcontent = document.getElementsByClassName("tab-content");
@@ -274,10 +322,17 @@ function openTab(evt, tabName) {
 
     // Live collections viewer
     let viewerLoaded = false;
+    function refreshLibraryBrowser() {
+        viewerLoaded = false;
+        document.getElementById('viewer-loading').style.display = 'block';
+        document.getElementById('viewer-grid').style.display = 'none';
+        document.getElementById('viewer-grid').innerHTML = '';
+        loadLiveCollections();
+    }
     function loadLiveCollections() {
         if(viewerLoaded) return; // Avoid repeat API calls.
         
-        fetch('/get_plex_collections')
+        fetch(API_GET_PLEX_COLLECTIONS)
         .then(r => r.json())
         .then(data => {
             document.getElementById('viewer-loading').style.display = 'none';
@@ -287,29 +342,82 @@ function openTab(evt, tabName) {
             if(data.status === 'success' && data.collections.length > 0) {
                 let html = '';
                 data.collections.forEach(c => {
-                    const thumb = c.thumb || 'https://via.placeholder.com/200x300?text=No+Art';
+                    const thumb = (c.thumb && (c.thumb.startsWith('http://') || c.thumb.startsWith('https://'))) ? c.thumb : 'https://via.placeholder.com/200x300?text=No+Art';
+                    const url = (c.url && (c.url.startsWith('http://') || c.url.startsWith('https://'))) ? c.url : '#';
+                    const keyPath = escapeHtml(String(c.keyPath || c.key || ''));
+                    const home = !!c.visible_home;
+                    const lib = !!c.visible_library;
+                    const friends = !!c.visible_friends;
                     html += `
-                    <div class="viewer-card" onclick="window.open('${c.url}', '_blank')">
-                        <img src="${thumb}" style="width:100%; height:100%; object-fit:cover;">
-                        <div class="viewer-badge">${c.count}</div>
+                    <div class="viewer-card" data-url="${escapeHtml(url)}" role="button" tabindex="0">
+                        <img src="${escapeHtml(thumb)}" style="width:100%; height:100%; object-fit:cover;" alt="">
+                        <div class="viewer-badge">${escapeHtml(String(c.count || ''))}</div>
                         <div class="viewer-info">
-                            <div style="font-weight:bold; color:white; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${c.title}</div>
-                            <div style="font-size:0.8em; color:#ccc;">${c.library}</div>
+                            <div style="font-weight:bold; color:white; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(String(c.title || ''))}</div>
+                            <div style="font-size:0.8em; color:#ccc;">${escapeHtml(String(c.library || ''))}</div>
+                            <div class="viewer-visibility" onclick="event.stopPropagation();">
+                                <label class="viewer-check"><input type="checkbox" class="viewer-check-home" data-keypath="${keyPath}" ${home ? 'checked' : ''}> Home</label>
+                                <label class="viewer-check"><input type="checkbox" class="viewer-check-library" data-keypath="${keyPath}" ${lib ? 'checked' : ''}> Library</label>
+                                <label class="viewer-check"><input type="checkbox" class="viewer-check-friends" data-keypath="${keyPath}" ${friends ? 'checked' : ''}> Friends</label>
+                            </div>
                         </div>
                     </div>`;
                 });
                 grid.innerHTML = html;
+                // open collection URL on click (delegated; only allow http(s))
+                grid.querySelectorAll('.viewer-card').forEach(card => {
+                    card.addEventListener('click', function(e) {
+                        if (e.target.closest('.viewer-visibility')) return;
+                        const u = this.getAttribute('data-url');
+                        if (u && u !== '#' && (u.startsWith('http://') || u.startsWith('https://'))) window.open(u, '_blank');
+                    });
+                });
+                // save visibility when tickboxes change (same three columns as Plex Manage Recommendations)
+                grid.querySelectorAll('.viewer-check-home, .viewer-check-library, .viewer-check-friends').forEach(el => {
+                    el.addEventListener('change', function() {
+                        const keyPath = this.getAttribute('data-keypath');
+                        if (!keyPath) return;
+                        const card = this.closest('.viewer-card');
+                        const homeEl = card.querySelector('.viewer-check-home');
+                        const libEl = card.querySelector('.viewer-check-library');
+                        const friendsEl = card.querySelector('.viewer-check-friends');
+                        const visible_home = homeEl ? homeEl.checked : true;
+                        const visible_library = libEl ? libEl.checked : true;
+                        const visible_friends = friendsEl ? friendsEl.checked : false;
+                        fetch(API_PLEX_COLLECTION_VISIBILITY, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}' },
+                            body: JSON.stringify({ keyPath: keyPath, visible_home: visible_home, visible_library: visible_library, visible_friends: visible_friends })
+                        }).then(r => r.json()).then(data => {
+                            if (data.status !== 'success') {
+                                alert(data.message || 'Could not update visibility');
+                            } else if (data.message) {
+                                const banner = document.createElement('div');
+                                banner.className = 'viewer-save-banner';
+                                banner.textContent = data.message;
+                                grid.insertBefore(banner, grid.firstChild);
+                                setTimeout(() => banner.remove(), 8000);
+                            }
+                        }).catch(() => alert('Request failed'));
+                    });
+                });
                 viewerLoaded = true;
             } else {
-                grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:50px; color:#666;">No collections found.</div>';
+                grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:50px; color:#666;">No collections found. Make sure you have at least one Movie or TV library in Plex with collections. If you just created some, try <strong>Refresh list</strong> above.</div>';
             }
+        })
+        .catch(() => {
+            const loader = document.getElementById('viewer-loading');
+            const grid = document.getElementById('viewer-grid');
+            if (loader) loader.style.display = 'none';
+            if (grid) { grid.style.display = 'grid'; grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:50px; color:#e74c3c;">Failed to load collections. Check Plex connection in Settings and try <strong>Refresh list</strong>.</div>'; }
         });
     }
 // Check cache lockout so we don't fire while busy.
 setInterval(checkCacheStatus, 2000); 
 
 function checkCacheStatus() {
-    fetch('/get_cache_status').then(r => r.json()).then(data => {
+    fetch(API_GET_CACHE_STATUS).then(r => r.json()).then(data => {
         const btns = document.querySelectorAll('.btn-sync');
         const importBtn = document.getElementById('btn-import-open');
         const builderBtn = document.getElementById('btn-builder-nav');
@@ -345,19 +453,39 @@ function filterType(type) {
     cards.forEach(card => {
         card.style.display = (card.dataset.type === type) ? 'flex' : 'none';
     });
-    const grids = document.querySelectorAll('.playlist-grid');
-    grids.forEach(grid => {
+    const blocks = document.querySelectorAll('.category-block');
+    blocks.forEach(block => {
+        const grid = block.querySelector('.playlist-grid');
+        if (!grid) return;
         let hasVisible = false;
-        const children = grid.querySelectorAll('.playlist-card');
-        children.forEach(c => { if(c.style.display !== 'none') hasVisible = true; });
-        const header = grid.previousElementSibling;
-        if(header && header.classList.contains('category-header')) {
-            header.style.display = hasVisible ? 'flex' : 'none';
-            grid.style.display = hasVisible ? 'grid' : 'none';
-        }
+        grid.querySelectorAll('.playlist-card').forEach(c => { if (c.style.display !== 'none') hasVisible = true; });
+        block.style.display = hasVisible ? '' : 'none';
+        const header = block.querySelector('.category-header');
+        if (header) header.style.display = hasVisible ? 'flex' : 'none';
     });
 }
-document.addEventListener('DOMContentLoaded', () => { filterType('movie'); });
+
+// Collapsible category sections (minimized by default, click header to expand).
+function initCategoryToggles() {
+    document.querySelectorAll('.category-header--toggle').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const block = this.closest('.category-block');
+            const grid = block && block.querySelector('.playlist-grid');
+            if (!block || !grid) return;
+            const isCollapsed = block.classList.toggle('category-block--collapsed');
+            grid.hidden = isCollapsed;
+            grid.style.display = isCollapsed ? 'none' : 'grid';
+            this.setAttribute('aria-expanded', !isCollapsed);
+            const chevron = this.querySelector('.category-chevron');
+            if (chevron) chevron.textContent = isCollapsed ? '▶' : '▼';
+        });
+    });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    filterType('movie');
+    initCategoryToggles();
+});
 
 // Preview modal
 function previewCollection(key, title) {
@@ -367,9 +495,12 @@ function previewCollection(key, title) {
     document.getElementById('preview-modal').style.display = 'block';
     document.body.style.overflow = 'hidden';
     
-    fetch('/preview_preset_items/' + encodeURIComponent(key))
+    const previewController = new AbortController();
+    const previewTimeout = setTimeout(() => previewController.abort(), 15000);
+    fetch(API_PREVIEW_PRESET_ITEMS_BASE + encodeURIComponent(key), { signal: previewController.signal })
     .then(r => r.json())
     .then(data => {
+        clearTimeout(previewTimeout);
         if(data.status === 'success') {
             let html = '';
             data.items.forEach(item => {
@@ -377,16 +508,17 @@ function previewCollection(key, title) {
                 const status = item.owned ? '✅ Owned' : 'missing';
                 const poster = item.poster_path ? 'https://image.tmdb.org/t/p/w200' + item.poster_path : 'https://via.placeholder.com/200x300?text=No+Poster';
                 html += `<div class="preview-item" style="opacity: ${opacity};">
-                    <img src="${poster}" class="preview-poster">
-                    <div class="preview-title">${item.title}</div>
-                    <div class="preview-meta">${item.year} • ${status}</div>
+                    <img src="${escapeHtml(poster)}" class="preview-poster" alt="">
+                    <div class="preview-title">${escapeHtml(String(item.title || ''))}</div>
+                    <div class="preview-meta">${escapeHtml(String(item.year || ''))} • ${escapeHtml(String(status || ''))}</div>
                 </div>`;
             });
             grid.innerHTML = html;
         } else {
             grid.innerHTML = `<div style="color:var(--error); grid-column:1/-1; text-align:center;">Error: ${(data.message || 'Unknown error').replace(/</g, '&lt;')}</div>`;
         }
-    });
+    })
+    .catch(() => { clearTimeout(previewTimeout); grid.innerHTML = '<div style="color:var(--error); grid-column:1/-1; text-align:center;">Request failed or timed out.</div>'; });
 }
 
 function closePreviewModal() {
@@ -394,48 +526,89 @@ function closePreviewModal() {
     if (modal) { modal.style.display = 'none'; document.body.style.overflow = ''; }
 }
 
-// Delete a custom preset (from SeekAndWatch and Plex).
-function deleteCustom(key) {
-    if (!confirm("Delete this collection from SeekAndWatch AND Plex?")) return;
-    fetch('/delete_custom_collection/' + encodeURIComponent(key), { method: 'POST' })
+// Delete a collection (from app and Plex). Returns fast; Plex delete runs in background to avoid slow click handler.
+function deleteCollection(key, ev) {
+    if (!confirm("Delete this collection from the app and from Plex?")) return;
+    const btn = (ev && ev.target) ? ev.target : null;
+    if (btn) { btn.disabled = true; btn.textContent = 'Deleting…'; }
+    fetch(API_DELETE_COLLECTION_BASE + encodeURIComponent(key), {
+        method: 'POST',
+        headers: { 'X-CSRFToken': '{{ csrf_token() }}' }
+    })
     .then(res => res.json())
     .then(data => {
         if (data.status === 'success') {
-            alert(data.message || 'Collection deleted.');
             location.reload();
         } else {
+            if (btn) { btn.disabled = false; btn.textContent = 'Delete 🗑️'; }
             alert(data.message || 'Could not delete collection.');
         }
     })
-    .catch(() => alert('Could not delete collection.'));
+    .catch(() => {
+        if (btn) { btn.disabled = false; btn.textContent = 'Delete 🗑️'; }
+        alert('Request failed. Could not delete collection.');
+    });
 }
 
-// Run a preset now.
+// Legacy name for custom-card delete (same as deleteCollection).
+function deleteCustom(key) { deleteCollection(key); }
+
+// Run a preset now. Sends current visibility checkboxes so first run uses them.
 function createCollection(key) {
     const btn = document.getElementById('btn-' + key);
     if (!btn) return;
     const originalText = btn.innerText;
     btn.disabled = true; btn.innerText = "Processing... ⏳"; btn.style.background = "#555";
-    fetch('/create_collection/' + encodeURIComponent(key), {method: 'POST'})
+    const visHome = document.getElementById('visibility-home-' + key);
+    const visLib = document.getElementById('visibility-library-' + key);
+    const visFriends = document.getElementById('visibility-friends-' + key);
+    const body = JSON.stringify({
+        visibility_home: visHome ? visHome.checked : true,
+        visibility_library: visLib ? visLib.checked : true,
+        visibility_friends: visFriends ? visFriends.checked : false
+    });
+    const createController = new AbortController();
+    const createTimeout = setTimeout(() => createController.abort(), 60000);
+    fetch(API_CREATE_COLLECTION_BASE + encodeURIComponent(key), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}' },
+        body: body,
+        signal: createController.signal
+    })
     .then(r => r.json()).then(d => {
+        clearTimeout(createTimeout);
         if (d.status === 'success') { btn.innerText = "Done! ✅"; btn.style.background = "#2ecc71"; alert(d.message); }
         else { btn.innerText = "Error ❌"; btn.style.background = "#e74c3c"; alert(d.message); }
         setTimeout(() => { btn.innerText = originalText; btn.disabled = false; btn.style.background = "#333"; }, 3000);
+    })
+    .catch(() => {
+        clearTimeout(createTimeout);
+        btn.innerText = originalText; btn.disabled = false; btn.style.background = "#333";
+        alert('Request failed or timed out. Please try again.');
     });
 }
 
-// Save schedule settings (frequency + sync mode).
+// Save schedule settings (frequency + sync mode). When visibility checkboxes change, also push to Plex so it updates without running the collection again.
 function saveSettings(key) {
     const freqEl = document.getElementById('freq-' + key);
     const syncEl = document.getElementById('sync-' + key);
+    const visHomeEl = document.getElementById('visibility-home-' + key);
+    const visLibEl = document.getElementById('visibility-library-' + key);
+    const visFriendsEl = document.getElementById('visibility-friends-' + key);
     
     const freq = freqEl ? freqEl.value : 'manual';
     const sync = (syncEl && syncEl.value) ? syncEl.value : 'sync';
+    const visibility_home = (visHomeEl && visHomeEl.checked) ? '1' : '0';
+    const visibility_library = (visLibEl && visLibEl.checked) ? '1' : '0';
+    const visibility_friends = (visFriendsEl && visFriendsEl.checked) ? '1' : '0';
+    const visible_home = visHomeEl && visHomeEl.checked;
+    const visible_library = visLibEl && visLibEl.checked;
+    const visible_friends = visFriendsEl && visFriendsEl.checked;
 
-    fetch('/schedule_collection', {
+    fetch(API_SCHEDULE_COLLECTION, {
         method: 'POST',
         headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': '{{ csrf_token() }}'},
-        body: `preset_key=${encodeURIComponent(key)}&frequency=${encodeURIComponent(freq)}&sync_mode=${encodeURIComponent(sync)}`
+        body: `preset_key=${encodeURIComponent(key)}&frequency=${encodeURIComponent(freq)}&sync_mode=${encodeURIComponent(sync)}&visibility_home=${visibility_home}&visibility_library=${visibility_library}&visibility_friends=${visibility_friends}`
     })
     .then(r => r.json())
     .then(data => {
@@ -449,6 +622,17 @@ function saveSettings(key) {
         }
     })
     .catch(() => alert('Could not save settings'));
+
+    // push visibility to Plex immediately so the collection's Home/Library/Friends toggles update without running the collection again
+    fetch(API_PLEX_COLLECTION_VISIBILITY, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}' },
+        body: JSON.stringify({ preset_key: key, visible_home: visible_home, visible_library: visible_library, visible_friends: visible_friends })
+    }).then(r => r.json()).then(data => {
+        if (data.status !== 'success' && data.message && !data.message.includes('Collection not found')) {
+            console.warn('Visibility update:', data.message);
+        }
+    }).catch(() => {});
 }
 
 // Import modal
@@ -457,8 +641,9 @@ function openImportModal() { document.getElementById('import-modal').style.displ
 function closeImportModal() { document.getElementById('import-modal').style.display = 'none'; document.body.style.overflow = 'auto'; }
 
 function fetchLibraries() {
-    fetch('/get_plex_libraries').then(r => r.json()).then(data => {
+    fetch(API_GET_PLEX_LIBRARIES).then(r => r.json()).then(data => {
         const select = document.getElementById('import-library');
+        if (!select) return;
         if(data.status === 'success') {
             let html = '';
             data.libraries.forEach(lib => {
@@ -467,7 +652,7 @@ function fetchLibraries() {
             });
             select.innerHTML = html;
         } else { select.innerHTML = '<option disabled>Error fetching libraries</option>'; }
-    });
+    }).catch(() => { const s = document.getElementById('import-library'); if (s) s.innerHTML = '<option disabled>Failed to load libraries</option>'; });
 }
 
 function analyzeList() {
@@ -479,10 +664,14 @@ function analyzeList() {
     
     btn.innerText = "Analyzing... ⏳"; btn.disabled = true;
     
-    fetch('/match_bulk_titles', {
+    const analyzeController = new AbortController();
+    const analyzeTimeout = setTimeout(() => analyzeController.abort(), 60000);
+    fetch(API_MATCH_BULK_TITLES, {
         method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({titles: text, target_library: library})
+        body: JSON.stringify({titles: text, target_library: library}),
+        signal: analyzeController.signal
     }).then(res => res.json()).then(data => {
+        clearTimeout(analyzeTimeout);
         btn.innerText = "🔍 Analyze & Match"; btn.disabled = false;
         if(data.status === 'success') {
             const resDiv = document.getElementById('import-results');
@@ -502,6 +691,10 @@ function analyzeList() {
                 document.getElementById('create-import-btn').innerText = `✅ Create Collection (${matchedKeys.length} items)`;
             }
         }
+    }).catch(() => {
+        clearTimeout(analyzeTimeout);
+        btn.innerText = "🔍 Analyze & Match"; btn.disabled = false;
+        alert('Request failed or timed out. Please try again.');
     });
 }
 
@@ -509,14 +702,21 @@ function createImportedCollection() {
     const title = document.getElementById('import-title').value;
     const library = document.getElementById('import-library').value;
     if(!title) { alert("Please name your collection!"); return; }
-    
-    fetch('/create_bulk_collection', {
+    const payload = {
+        collection_title: title,
+        rating_keys: matchedKeys,
+        target_library: library,
+        visibility_home: document.getElementById('import-visibility-home').checked,
+        visibility_library: document.getElementById('import-visibility-library').checked,
+        visibility_friends: document.getElementById('import-visibility-friends').checked
+    };
+    fetch(API_CREATE_BULK_COLLECTION, {
         method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({collection_title: title, rating_keys: matchedKeys, target_library: library})
+        body: JSON.stringify(payload)
     }).then(res => res.json()).then(data => {
         if(data.status === 'success') { alert(data.message); closeImportModal(); location.reload(); } 
         else { alert(data.message); }
-    });
+    }).catch(() => alert('Request failed. Please try again.'));
 }
 
 document.addEventListener('keydown', function(e) {

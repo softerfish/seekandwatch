@@ -110,9 +110,13 @@
 </div>
 
 <script>
+const API_TOGGLE_LOGGING = "{{ url_for('api.toggle_logging') }}";
+const API_CLEAR_LOGS = "{{ url_for('api.clear_logs') }}";
+const API_SCANNER_LOGS_STREAM = "{{ url_for('api.stream_scanner_logs') }}";
+const API_SCANNER_LOG_SIZE = "{{ url_for('api.update_scanner_log_size') }}";
 function toggleLogging() {
     const enabled = document.getElementById('log-toggle').checked;
-    fetch('/toggle_logging', {
+    fetch(API_TOGGLE_LOGGING, {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({enabled: enabled})
     })
@@ -120,24 +124,26 @@ function toggleLogging() {
     .then(d => {
         if(d.status === 'success') location.reload();
         else alert("Error: " + d.message);
-    });
+    })
+    .catch(() => alert("Request failed. Please try again."));
 }
 
 function clearLogs() {
     if(!confirm("Are you sure you want to delete all history?")) return;
-    fetch('/clear_logs', {method: 'POST'})
+    fetch(API_CLEAR_LOGS, {method: 'POST'})
     .then(r => r.json())
     .then(d => {
         if(d.status === 'success') location.reload();
         else alert("Error: " + d.message);
-    });
+    })
+    .catch(() => alert("Request failed. Please try again."));
 }
 
 // Scanner log polling
 let scannerLogInterval;
 
 function refreshScannerLogs() {
-    fetch('/api/scanner/logs_stream')
+    fetch(API_SCANNER_LOGS_STREAM)
     .then(r => r.json())
     .then(data => {
         const term = document.getElementById('scanner-terminal');
@@ -145,12 +151,13 @@ function refreshScannerLogs() {
             term.innerText = data.logs;
             term.scrollTop = term.scrollHeight;
         }
-    });
+    })
+    .catch(() => {});
 }
 
 function updateScannerLogSize() {
     const size = document.getElementById('scanner-log-size').value;
-    fetch('/api/scanner/log_size', {
+    fetch(API_SCANNER_LOG_SIZE, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({scanner_log_size: parseInt(size)})

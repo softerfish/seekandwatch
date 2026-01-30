@@ -151,6 +151,12 @@
 <div id="server-data" class="d-none">{{ movies|tojson if movies else '[]' }}</div>
 
 <script>
+    const API_TMDB_SEARCH_PROXY = "{{ url_for('api.tmdb_search_proxy') }}";
+    const API_UPDATE_FILTERS = "{{ url_for('api.update_filters') }}";
+    const API_LOAD_MORE_RECS = "{{ url_for('api.load_more_recs') }}";
+    const API_BLOCK_MOVIE = "{{ url_for('api.block_movie') }}";
+    const API_GET_METADATA_MOVIE_BASE = "{{ url_for('api.get_metadata', media_type='movie', tmdb_id=0) }}";
+    const API_GET_METADATA_TV_BASE = "{{ url_for('api.get_metadata', media_type='tv', tmdb_id=0) }}";
     let page = 1;
     const useCriticFilter = "{{ use_critic_filter|lower }}"; 
     const serverMovies = JSON.parse(document.getElementById('server-data').textContent);
@@ -195,7 +201,7 @@
             const q = e.target.value;
             if(q.length < 3) { document.getElementById('keyword-results').style.display = 'none'; return; }
             
-            fetch(`/tmdb_search_proxy?type=keyword&query=${q}`)
+            fetch(API_TMDB_SEARCH_PROXY + '?type=keyword&query=' + encodeURIComponent(q))
                 .then(res => res.json())
                 .then(data => {
                     const div = document.getElementById('keyword-results'); 
@@ -287,25 +293,21 @@
         const ratingBoxes = document.querySelectorAll('.rating-filter-box:checked');
         const checkedRatings = Array.from(ratingBoxes).map(cb => cb.value);
         
-        document.querySelectorAll('.result-card').forEach(card => {
+        const cards = document.querySelectorAll('.result-card');
+        // batch reads first to avoid forced reflow (read innerText for all, then do all display writes)
+        const visibility = Array.from(cards).map(card => {
             const year = parseInt(card.dataset.year) || 0;
             const rating = parseFloat(card.dataset.rating) || 0;
             const runtime = parseInt(card.dataset.runtime) || 9999;
             const text = card.innerText.toLowerCase();
-            
-            let visible = true;
-            if(year < minYear) visible = false;
-            if(rating < minRating) visible = false;
-            if(runtime > maxRuntime) visible = false;
-            if(activeTags.length > 0) {
-                const hasAllTags = activeTags.every(tag => text.includes(tag));
-                if(!hasAllTags) visible = false;
-            }
-            if (checkedRatings.length > 0) {
-                const cardRating = card.dataset.contentRating || 'NR';
-                if (!checkedRatings.includes(cardRating)) visible = false;
-            }
-            card.style.display = visible ? 'block' : 'none';
+            const cardRating = card.dataset.contentRating || 'NR';
+            let visible = year >= minYear && rating >= minRating && runtime <= maxRuntime;
+            if (activeTags.length > 0) visible = visible && activeTags.every(tag => text.includes(tag));
+            if (checkedRatings.length > 0) visible = visible && checkedRatings.includes(cardRating);
+            return visible;
+        });
+        visibility.forEach((visible, i) => {
+            cards[i].style.display = visible ? 'block' : 'none';
         });
     }
 
@@ -333,7 +335,7 @@
             btn.style.display = 'inline-block';
         }
 
-        fetch('/api/update_filters', {
+        fetch(API_UPDATE_FILTERS, {
             method: 'POST', 
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ 
@@ -364,7 +366,7 @@
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 60000); 
 
-        fetch(`/load_more_recs?page=${page}&critic_filter=${useCriticFilter}`, { signal: controller.signal })
+        fetch(API_LOAD_MORE_RECS + '?page=' + page + '&critic_filter=' + encodeURIComponent(useCriticFilter), { signal: controller.signal })
             .then(r => {
                 clearTimeout(timeoutId);
                 return r.ok ? r.json() : Promise.reject(r.status);
@@ -427,7 +429,7 @@
         const card = e.target.closest('.result-card');
         if(card) card.style.opacity = '0.3';
 
-        fetch('/block_movie', {
+        fetch(API_BLOCK_MOVIE, {
             method:'POST', 
             headers:{'Content-Type':'application/json'},
             body:JSON.stringify({title:title, media_type:type})
@@ -559,7 +561,7 @@
         modal.style.alignItems = 'center';
         body.innerHTML = '<div class="modal-loading">Loading Trailer... <div class="loader-small"></div></div>';
 
-        fetch(`/get_metadata/${type}/${id}`)
+        fetch((type === 'movie' ? API_GET_METADATA_MOVIE_BASE : API_GET_METADATA_TV_BASE).replace(/\/0$/, '/' + id))
             .then(r => r.json())
             .then(data => {
                 if(data.trailer_key) {
@@ -583,7 +585,7 @@
         
         const mediaType = type || 'movie';
 
-        fetch(`/get_metadata/${mediaType}/${id}`)
+        fetch((mediaType === 'movie' ? API_GET_METADATA_MOVIE_BASE : API_GET_METADATA_TV_BASE).replace(/\/0$/, '/' + id))
             .then(r => {
                 if (!r.ok) throw new Error("Network response was not ok");
                 return r.json();

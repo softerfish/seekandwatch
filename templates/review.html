@@ -187,6 +187,8 @@ function toggleAllGenres(link) {
 // Keyword tag picker
 let selectedKeywords = [];
 
+const API_TMDB_SEARCH_PROXY = "{{ url_for('api.tmdb_search_proxy') }}";
+const API_BLOCK_MOVIE = "{{ url_for('api.block_movie') }}";
 document.getElementById('keyword-search').addEventListener('input', function(e) {
     const q = e.target.value;
     if(q.length < 3) { 
@@ -194,7 +196,7 @@ document.getElementById('keyword-search').addEventListener('input', function(e) 
         return; 
     }
     
-    fetch(`/tmdb_search_proxy?type=keyword&query=${q}`)
+    fetch(API_TMDB_SEARCH_PROXY + '?type=keyword&query=' + encodeURIComponent(q))
     .then(res => res.json())
     .then(data => {
         const div = document.getElementById('keyword-results'); 
@@ -212,6 +214,10 @@ document.getElementById('keyword-search').addEventListener('input', function(e) 
         } else {
             div.style.display = 'none';
         }
+    })
+    .catch(() => {
+        const div = document.getElementById('keyword-results');
+        if (div) div.style.display = 'none';
     });
 });
 
@@ -273,15 +279,17 @@ function toggleSelection(card) {
 function blockItem(e, title, type, btn) {
     e.stopPropagation();
     if(!confirm(`Permanently block "${title}" from future recommendations?`)) return;
-    fetch('/block_movie', {
+    fetch(API_BLOCK_MOVIE, {
         method:'POST', headers:{'Content-Type':'application/json'},
         body:JSON.stringify({title:title, media_type:type})
     }).then(r=>{
         if(r.ok) {
             const card = btn.closest('.selection-card');
             card.style.opacity='0'; setTimeout(()=>card.remove(),300);
+        } else {
+            alert('Request failed. Please try again.');
         }
-    });
+    }).catch(() => alert('Request failed. Please try again.'));
 }
 </script>
 {% endblock %}

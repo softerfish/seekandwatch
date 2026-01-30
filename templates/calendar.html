@@ -1,0 +1,742 @@
+{% extends "base.html" %}
+{% block page_title %}Calendar{% endblock %}
+{% block content %}
+
+<div class="calendar-container">
+    <div class="calendar-header">
+        <h2>📅 Release Calendar</h2>
+        <p class="text-muted">Upcoming movies and TV episodes from Radarr and Sonarr.</p>
+    </div>
+
+    {% if (not settings.radarr_url or not settings.radarr_api_key) and (not settings.sonarr_url or not settings.sonarr_api_key) %}
+    <div class="card setting-card" style="text-align: center; padding: 40px;">
+        <h3>⚠️ Radarr & Sonarr Not Configured</h3>
+        <p>Add Radarr and/or Sonarr URL and API key in <a href="{{ url_for('settings') }}">Settings</a> to see upcoming releases.</p>
+    </div>
+    {% else %}
+    <div class="calendar-controls">
+        <div class="calendar-view-toggle">
+            <button type="button" class="calendar-btn active" id="btn-calendar-view" onclick="setView('calendar')">Calendar</button>
+            <button type="button" class="calendar-btn" id="btn-list-view" onclick="setView('list')">List</button>
+        </div>
+        <div class="calendar-nav">
+            <button type="button" class="calendar-btn" id="btn-prev-month" onclick="prevMonth()">←</button>
+            <h3 class="calendar-month-title" id="calendar-month-title"></h3>
+            <button type="button" class="calendar-btn" id="btn-next-month" onclick="nextMonth()">→</button>
+        </div>
+        <div class="calendar-legends">
+            <div class="calendar-legend-block">
+                <span class="legend-block-title">Movies</span>
+                <span class="legend-item legend-clickable calendar-status-downloaded_monitored" data-status="downloaded_monitored" role="button" tabindex="0" title="click to show/hide"><span class="legend-bar"></span> Downloaded (monitored)</span>
+                <span class="legend-item legend-clickable calendar-status-downloaded_unmonitored" data-status="downloaded_unmonitored" role="button" tabindex="0" title="click to show/hide"><span class="legend-bar"></span> Downloaded (unmonitored)</span>
+                <span class="legend-item legend-clickable calendar-status-missing_monitored" data-status="missing_monitored" role="button" tabindex="0" title="click to show/hide"><span class="legend-bar"></span> Missing (monitored)</span>
+                <span class="legend-item legend-clickable calendar-status-missing_unmonitored" data-status="missing_unmonitored" role="button" tabindex="0" title="click to show/hide"><span class="legend-bar"></span> Missing (unmonitored)</span>
+                <span class="legend-item legend-clickable calendar-status-unreleased" data-status="unreleased" role="button" tabindex="0" title="click to show/hide"><span class="legend-bar"></span> Unreleased</span>
+            </div>
+            <div class="calendar-legend-block">
+                <span class="legend-block-title">TV</span>
+                <span class="legend-item legend-clickable calendar-status-unaired" data-status="unaired" role="button" tabindex="0" title="click to show/hide"><span class="legend-bar"></span> Unaired</span>
+                <span class="legend-item legend-clickable calendar-status-unmonitored" data-status="unmonitored" role="button" tabindex="0" title="click to show/hide"><span class="legend-bar"></span> Unmonitored</span>
+                <span class="legend-item legend-clickable calendar-status-on_air" data-status="on_air" role="button" tabindex="0" title="click to show/hide"><span class="legend-bar"></span> On Air</span>
+                <span class="legend-item legend-clickable calendar-status-missing" data-status="missing" role="button" tabindex="0" title="click to show/hide"><span class="legend-bar"></span> Missing</span>
+                <span class="legend-item legend-clickable calendar-status-downloading" data-status="downloading" role="button" tabindex="0" title="click to show/hide"><span class="legend-bar"></span> Downloading</span>
+                <span class="legend-item legend-clickable calendar-status-downloaded" data-status="downloaded" role="button" tabindex="0" title="click to show/hide"><span class="legend-bar"></span> Downloaded</span>
+                <span class="legend-helper">★ = season premiere</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="calendar-view" class="calendar-view-wrap">
+        <div class="calendar-grid" id="calendar-grid"></div>
+    </div>
+    <div id="list-view" class="calendar-list-wrap" style="display: none;">
+        <ul class="calendar-list" id="calendar-list"></ul>
+    </div>
+
+    <div id="calendar-loading" class="calendar-loading">Loading...</div>
+    <div id="calendar-empty" class="calendar-empty" style="display: none;">No releases in this range. Try another month or check Radarr/Sonarr are configured.</div>
+
+    <!-- detail modal: click an event to see info + search -->
+    <div id="calendar-detail-modal" class="calendar-detail-overlay" onclick="if(event.target===this) window.closeCalendarDetail&&closeCalendarDetail()">
+        <div class="calendar-detail-box">
+            <div class="calendar-detail-header">
+                <h3 class="calendar-detail-title" id="calendar-detail-title">-</h3>
+                <button type="button" class="calendar-detail-close" onclick="closeCalendarDetail()" aria-label="Close">×</button>
+            </div>
+            <div class="calendar-detail-tabs">
+                <button type="button" class="calendar-detail-tab active" data-tab="details">Details</button>
+                <button type="button" class="calendar-detail-tab" data-tab="history">History</button>
+                <button type="button" class="calendar-detail-tab" data-tab="search">Search</button>
+            </div>
+            <div id="calendar-detail-content" class="calendar-detail-content">
+                <div id="calendar-detail-loading" class="calendar-detail-loading">Loading...</div>
+                <div id="calendar-detail-details" class="calendar-detail-tab-pane" style="display: none;"></div>
+                <div id="calendar-detail-history" class="calendar-detail-tab-pane" style="display: none;"></div>
+                <div id="calendar-detail-search" class="calendar-detail-tab-pane" style="display: none;"></div>
+            </div>
+            <div class="calendar-detail-footer">
+                <button type="button" class="calendar-btn" id="calendar-detail-open-app" style="display: none;">Open in Sonarr</button>
+                <button type="button" class="calendar-btn" onclick="closeCalendarDetail()">Close</button>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+const API_CALENDAR = "{{ url_for('api.get_calendar') }}";
+const API_CALENDAR_EPISODE_BASE = "{{ url_for('api.get_calendar_episode_detail', episode_id=0) }}";
+const API_RADARR_MOVIE_BASE = "{{ url_for('api.get_radarr_movie_detail', movie_id=0) }}";
+const API_SONARR_SEARCH_EPISODE_BASE = "{{ url_for('api.sonarr_search_episode', episode_id=0) }}";
+const API_RADARR_SEARCH_SCAN_BASE = "{{ url_for('api.radarr_search_scan', movie_id=0) }}";
+const API_RADARR_QUEUE_CHECK_BASE = "{{ url_for('api.radarr_queue_check', movie_id=0) }}";
+const API_SONARR_QUEUE_CHECK_BASE = "{{ url_for('api.sonarr_queue_check', series_id=0) }}";
+const API_RADARR_SEARCH = "{{ url_for('api.radarr_search') }}";
+const API_RADARR_DOWNLOAD = "{{ url_for('api.radarr_download') }}";
+const API_SONARR_DOWNLOAD = "{{ url_for('api.sonarr_download') }}";
+const API_CALENDAR_EPISODE_RELEASES_BASE = "{{ url_for('api.get_calendar_episode_releases', episode_id=0) }}";
+const API_SONARR_SEARCH = "{{ url_for('api.sonarr_search') }}";
+const CALENDAR_CSRF = "{{ csrf_token() }}";
+
+const CALENDAR_SEARCH_POLL_MS = 1500;
+const CALENDAR_SEARCH_POLL_MAX = 10;
+(function() {
+    let currentYear, currentMonth;
+    let events = [];
+    let viewMode = 'calendar';
+    const hiddenStatuses = new Set();
+
+    function getStartEnd(y, m) {
+        const start = new Date(y, m - 1, 1);
+        const end = new Date(y, m, 0);
+        const pad = n => String(n).padStart(2, '0');
+        return {
+            start: start.getFullYear() + '-' + pad(start.getMonth() + 1) + '-' + pad(start.getDate()),
+            end: end.getFullYear() + '-' + pad(end.getMonth() + 1) + '-' + pad(end.getDate())
+        };
+    }
+
+    function setMonth(y, m) {
+        currentYear = y;
+        currentMonth = m;
+        const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+        document.getElementById('calendar-month-title').textContent = monthNames[m - 1] + ' ' + y;
+        loadCalendar();
+    }
+
+    function prevMonth() {
+        if (currentMonth === 1) {
+            currentYear--;
+            currentMonth = 12;
+        } else {
+            currentMonth--;
+        }
+        setMonth(currentYear, currentMonth);
+    }
+
+    function nextMonth() {
+        if (currentMonth === 12) {
+            currentYear++;
+            currentMonth = 1;
+        } else {
+            currentMonth++;
+        }
+        setMonth(currentYear, currentMonth);
+    }
+
+    function setView(mode) {
+        viewMode = mode;
+        document.getElementById('btn-calendar-view').classList.toggle('active', mode === 'calendar');
+        document.getElementById('btn-list-view').classList.toggle('active', mode === 'list');
+        document.getElementById('calendar-view').style.display = mode === 'calendar' ? 'block' : 'none';
+        document.getElementById('list-view').style.display = mode === 'list' ? 'block' : 'none';
+        if (mode === 'calendar') renderCalendar();
+        else renderList();
+    }
+
+    function loadCalendar() {
+        const wrap = document.getElementById('calendar-loading');
+        const emptyEl = document.getElementById('calendar-empty');
+        if (wrap) wrap.style.display = 'block';
+        if (emptyEl) emptyEl.style.display = 'none';
+        const { start, end } = getStartEnd(currentYear, currentMonth);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 20000);
+        fetch(API_CALENDAR + '?start=' + encodeURIComponent(start) + '&end=' + encodeURIComponent(end), { signal: controller.signal })
+            .then(r => r.json())
+            .then(data => {
+                clearTimeout(timeoutId);
+                if (wrap) wrap.style.display = 'none';
+                events = (data.events || []).filter(e => e.date);
+                if (viewMode === 'calendar') renderCalendar();
+                else renderList();
+                if (events.length === 0) {
+                    const e = document.getElementById('calendar-empty');
+                    if (e) e.style.display = 'block';
+                }
+            })
+            .catch(() => {
+                clearTimeout(timeoutId);
+                if (wrap) wrap.style.display = 'none';
+                events = [];
+                if (viewMode === 'calendar') renderCalendar();
+                else renderList();
+            });
+    }
+
+    function isEventVisible(ev) {
+        const status = ev.status || (ev.type === 'movie' ? 'unreleased' : 'missing');
+        return !hiddenStatuses.has(status);
+    }
+
+    function eventsForDay(dateStr) {
+        return events.filter(e => e.date === dateStr && isEventVisible(e));
+    }
+
+    function toggleFilter(status) {
+        if (hiddenStatuses.has(status)) hiddenStatuses.delete(status);
+        else hiddenStatuses.add(status);
+        updateLegendUI();
+        if (viewMode === 'calendar') renderCalendar();
+        else renderList();
+    }
+
+    function updateLegendUI() {
+        document.querySelectorAll('.legend-clickable[data-status]').forEach(el => {
+            const status = el.getAttribute('data-status');
+            el.classList.toggle('legend-off', hiddenStatuses.has(status));
+        });
+    }
+
+    function renderCalendar() {
+        const grid = document.getElementById('calendar-grid');
+        grid.innerHTML = '';
+        const pad = n => String(n).padStart(2, '0');
+        const first = new Date(currentYear, currentMonth - 1, 1);
+        const last = new Date(currentYear, currentMonth, 0);
+        let startDay = first.getDay();
+        const daysInMonth = last.getDate();
+        const head = document.createElement('div');
+        head.className = 'calendar-grid-header';
+        ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach(d => {
+            const c = document.createElement('div');
+            c.className = 'calendar-weekday';
+            c.textContent = d;
+            head.appendChild(c);
+        });
+        grid.appendChild(head);
+        const body = document.createElement('div');
+        body.className = 'calendar-grid-body';
+        let day = 1 - startDay;
+        for (let row = 0; row < 6; row++) {
+            for (let col = 0; col < 7; col++) {
+                const cell = document.createElement('div');
+                cell.className = 'calendar-day';
+                if (day >= 1 && day <= daysInMonth) {
+                    const dateStr = currentYear + '-' + pad(currentMonth) + '-' + pad(day);
+                    const dayEvents = eventsForDay(dateStr);
+                    cell.innerHTML = '<div class="calendar-day-num">' + day + '</div>';
+                    dayEvents.forEach(ev => {
+                        const pill = document.createElement('div');
+                        let status = ev.status || (ev.type === 'movie' ? 'unreleased' : 'missing');
+                        if (status === 'premiere') status = 'unaired';
+                        const statusClass = 'calendar-status-' + status;
+                        pill.className = 'calendar-event-pill calendar-event-clickable ' + statusClass;
+                        pill.title = (ev.type === 'movie' ? (ev.title + (ev.year ? ' (' + ev.year + ')' : '')) : ev.title) + (ev.subtitle ? ' - ' + ev.subtitle : '') + ' (click for details)';
+                        const isPremiere = ev.is_premiere === true || ev.status === 'premiere';
+                        const displayTitle = ev.type === 'movie' ? (ev.title + (ev.year ? ' (' + ev.year + ')' : '')) : (ev.title + ' ' + (ev.subtitle || '').split(' - ')[0]);
+                        pill.textContent = isPremiere ? '★ ' + displayTitle : displayTitle;
+                        pill.addEventListener('click', () => openCalendarDetail(ev));
+                        cell.appendChild(pill);
+                    });
+                } else {
+                    cell.classList.add('calendar-day-other');
+                }
+                body.appendChild(cell);
+                day++;
+            }
+        }
+        grid.appendChild(body);
+    }
+
+    function renderList() {
+        const ul = document.getElementById('calendar-list');
+        ul.innerHTML = '';
+        const byDate = {};
+        events.filter(isEventVisible).forEach(e => {
+            if (!byDate[e.date]) byDate[e.date] = [];
+            byDate[e.date].push(e);
+        });
+        const dates = Object.keys(byDate).sort();
+        dates.forEach(dateStr => {
+            byDate[dateStr].forEach(ev => {
+                const li = document.createElement('li');
+                let status = ev.status || (ev.type === 'movie' ? 'unreleased' : 'missing');
+                if (status === 'premiere') status = 'unaired';
+                const statusClass = 'calendar-status-' + status;
+                li.className = 'calendar-list-item calendar-event-clickable ' + statusClass;
+                let titleText = ev.type === 'movie' && ev.year ? escapeHtml(ev.title) + ' (' + ev.year + ')' : escapeHtml(ev.title);
+                if (ev.is_premiere === true || ev.status === 'premiere') titleText = '★ ' + titleText;
+                li.innerHTML = '<span class="calendar-list-date">' + dateStr + '</span> ' +
+                    '<span class="calendar-list-title">' + titleText + '</span>' +
+                    (ev.subtitle ? ' <span class="calendar-list-sub">' + escapeHtml(ev.subtitle) + '</span>' : '');
+                li.addEventListener('click', () => openCalendarDetail(ev));
+                ul.appendChild(li);
+            });
+        });
+    }
+
+    function escapeHtml(s) {
+        if (!s) return '';
+        const d = document.createElement('div');
+        d.textContent = s;
+        return d.innerHTML;
+    }
+
+    let currentDetailEvent = null;
+    let currentDetailData = null;
+
+    function openCalendarDetail(ev) {
+        currentDetailEvent = ev;
+        currentDetailData = null;
+        const modal = document.getElementById('calendar-detail-modal');
+        const titleEl = document.getElementById('calendar-detail-title');
+        const loadingEl = document.getElementById('calendar-detail-loading');
+        const detailsEl = document.getElementById('calendar-detail-details');
+        const historyEl = document.getElementById('calendar-detail-history');
+        const searchEl = document.getElementById('calendar-detail-search');
+        const openAppBtn = document.getElementById('calendar-detail-open-app');
+        ['details', 'history', 'search'].forEach(id => {
+            document.getElementById('calendar-detail-' + id).style.display = 'none';
+        });
+        loadingEl.style.display = 'block';
+        const displayTitle = ev.type === 'movie'
+            ? (ev.title + (ev.year ? ' (' + ev.year + ')' : ''))
+            : (ev.title + ' ' + (ev.subtitle || '').split(' - ')[0]);
+        titleEl.textContent = displayTitle;
+        modal.style.display = 'flex';
+        document.querySelectorAll('.calendar-detail-tab').forEach(t => t.classList.remove('active'));
+        document.querySelector('.calendar-detail-tab[data-tab="details"]').classList.add('active');
+        const detailUrl = ev.type === 'tv'
+            ? API_CALENDAR_EPISODE_BASE.replace(/\/0$/, '/' + ev.id)
+            : API_RADARR_MOVIE_BASE.replace(/\/0$/, '/' + ev.id);
+        const detailController = new AbortController();
+        const detailTimeoutId = setTimeout(() => detailController.abort(), 15000);
+        fetch(detailUrl, { signal: detailController.signal })
+            .then(r => r.json())
+            .then(data => {
+                clearTimeout(detailTimeoutId);
+                loadingEl.style.display = 'none';
+                if (data.status !== 'success') {
+                    detailsEl.innerHTML = '<p class="text-muted">' + escapeHtml(data.message || 'Failed to load') + '</p>';
+                    detailsEl.style.display = 'block';
+                    return;
+                }
+                currentDetailData = data;
+                if (ev.type === 'tv') {
+                    renderEpisodeDetails(data);
+                    openAppBtn.textContent = 'Open in Sonarr';
+                    openAppBtn.style.display = 'inline-block';
+                    openAppBtn.onclick = () => { if (data.sonarrUrl) window.open(data.sonarrUrl, '_blank'); };
+                } else {
+                    renderMovieDetails(data);
+                    openAppBtn.textContent = 'Open in Radarr';
+                    openAppBtn.style.display = 'inline-block';
+                    openAppBtn.onclick = () => { if (data.movie && data.movie.radarrUrl) window.open(data.movie.radarrUrl, '_blank'); };
+                }
+                renderDetailHistory(data, ev);
+                renderDetailSearch(data, ev);
+                detailsEl.style.display = 'block';
+            })
+            .catch(() => {
+                clearTimeout(detailTimeoutId);
+                loadingEl.style.display = 'none';
+                detailsEl.innerHTML = '<p class="text-muted">Failed to load details.</p>';
+                detailsEl.style.display = 'block';
+            });
+    }
+
+    function renderEpisodeDetails(data) {
+        const ep = data.episode || {};
+        const el = document.getElementById('calendar-detail-details');
+        const air = ep.airDate || '-';
+        const qp = ep.qualityProfile || '-';
+        const overview = ep.overview ? escapeHtml(ep.overview) : '<em>No synopsis</em>';
+        const files = data.files || [];
+        const file = files[0];
+        let fileHtml = '';
+        if (file && file.path) {
+            const size = file.size ? (Math.round(file.size / 1024 / 1024 * 10) / 10) + ' MiB' : '-';
+            const formats = (file.formats && file.formats.length) ? file.formats.join(', ') : '-';
+            const cfScore = file.customFormatScore != null ? String(file.customFormatScore) : '-';
+            fileHtml = '<div class="calendar-detail-section"><strong>File</strong><div class="calendar-detail-file"><div class="calendar-detail-file-path">' + escapeHtml(file.path) + '</div><div class="calendar-detail-file-meta">Size: ' + escapeHtml(String(size)) + ' · Languages: ' + escapeHtml(file.languages || '-') + ' · Quality: ' + escapeHtml(file.quality || '-') + (formats !== '-' ? ' · Custom formats: ' + escapeHtml(formats) : '') + (cfScore !== '-' ? ' · Custom format score: ' + escapeHtml(cfScore) : '') + '</div></div></div>';
+        }
+        el.innerHTML = '<div class="calendar-detail-section"><strong>Airs</strong> ' + escapeHtml(air) + '</div>' +
+            '<div class="calendar-detail-section"><strong>Quality Profile</strong> <span class="calendar-detail-pill">' + escapeHtml(qp) + '</span></div>' +
+            '<div class="calendar-detail-section"><strong>Synopsis</strong><p class="calendar-detail-overview">' + overview + '</p></div>' + fileHtml;
+    }
+
+    function renderMovieDetails(data) {
+        const m = data.movie || {};
+        const el = document.getElementById('calendar-detail-details');
+        const air = (m.inCinemas || m.physicalRelease || m.digitalRelease || m.releaseDate || '-');
+        const airStr = typeof air === 'string' && air.length >= 10 ? air.slice(0, 10) : (air || '-');
+        const firstFile = m.files && m.files[0];
+        const qp = (firstFile && firstFile.quality) || (m.qualityProfile && m.qualityProfile.name) || '-';
+        const overview = m.overview ? escapeHtml(m.overview) : '<em>No synopsis</em>';
+        const cfList = m.customFormats && m.customFormats.length ? m.customFormats.join(', ') : '-';
+        const cfScore = m.customFormatScore != null ? String(m.customFormatScore) : '-';
+        let fileHtml = '';
+        if (firstFile && firstFile.path) {
+            const size = firstFile.size ? (Math.round(firstFile.size / 1024 / 1024 * 10) / 10) + ' MiB' : '-';
+            fileHtml = '<div class="calendar-detail-section"><strong>File</strong><div class="calendar-detail-file"><div class="calendar-detail-file-path">' + escapeHtml(firstFile.path) + '</div><div class="calendar-detail-file-meta">Size: ' + escapeHtml(String(size)) + '</div></div></div>';
+        }
+        let cfHtml = '';
+        if (cfList !== '-' || cfScore !== '-') {
+            cfHtml = '<div class="calendar-detail-section"><strong>Custom formats</strong> ' + (cfList !== '-' ? escapeHtml(cfList) : '-') + (cfScore !== '-' ? ' · <strong>Score</strong> ' + escapeHtml(cfScore) : '') + '</div>';
+        }
+        el.innerHTML = '<div class="calendar-detail-section"><strong>Release</strong> ' + escapeHtml(airStr) + '</div>' +
+            '<div class="calendar-detail-section"><strong>Quality</strong> <span class="calendar-detail-pill">' + escapeHtml(qp) + '</span></div>' +
+            cfHtml +
+            '<div class="calendar-detail-section"><strong>Synopsis</strong><p class="calendar-detail-overview">' + overview + '</p></div>' + fileHtml;
+    }
+
+    function renderDetailHistory(data, ev) {
+        const el = document.getElementById('calendar-detail-history');
+        const url = ev.type === 'tv' ? (data.sonarrUrl || '') : (data.movie && data.movie.radarrUrl || '');
+        const history = data.history || [];
+        let html = '';
+        if (history.length > 0) {
+            html = '<ul class="calendar-detail-history-list">';
+            history.forEach(function (h) {
+                const d = (h.date || '').replace('T', ' ');
+                let desc = h.eventType || '';
+                if (h.sourceTitle) desc += ' - ' + h.sourceTitle;
+                if (h.path) desc += ' <span class="calendar-detail-history-path">' + escapeHtml(h.path) + '</span>';
+                if (h.indexer) desc += ' <span class="calendar-detail-history-meta">(indexer: ' + escapeHtml(h.indexer) + ')</span>';
+                if (h.quality) desc += ' <span class="calendar-detail-history-meta">' + escapeHtml(h.quality) + '</span>';
+                html += '<li><span class="calendar-detail-history-date">' + escapeHtml(d) + '</span> ' + desc + '</li>';
+            });
+            html += '</ul>';
+        }
+        html += (url ? '<p class="text-muted" style="margin-top: 12px;">View full history in the app.</p><a href="' + escapeHtml(url) + '" target="_blank" rel="noopener">Open in ' + (ev.type === 'tv' ? 'Sonarr' : 'Radarr') + '</a>' : '<p class="text-muted">No link available.</p>');
+        el.innerHTML = html || '<p class="text-muted">No history.</p>';
+    }
+
+    function renderDetailSearch(data, ev) {
+        const el = document.getElementById('calendar-detail-search');
+        const isMovie = ev.type === 'movie';
+        const searchDesc = isMovie
+            ? 'Search Movie: Radarr searches indexers and grabs the best match. Interactive Search: pick a release to download.'
+            : 'Search Episode: Sonarr searches for this episode and grabs the best match. Interactive Search: pick a release to download.';
+        el.innerHTML = '<div class="calendar-detail-search-actions">' +
+            '<button type="button" class="calendar-btn" id="calendar-search-btn">' + (isMovie ? 'Search Movie' : 'Search Episode') + '</button> ' +
+            '<button type="button" class="calendar-btn" id="calendar-interactive-search">Interactive Search</button>' +
+            (ev.type === 'tv' ? ' <button type="button" class="calendar-btn calendar-btn-secondary" id="calendar-refresh-releases">Refresh results</button>' : '') +
+            '</div>' +
+            '<div id="calendar-search-status-wrap" style="margin-top: 10px; display: none;"><div id="calendar-search-status" class="calendar-search-status" style="color: #aaa; font-size: 0.95em;"></div><div id="calendar-search-progress" class="calendar-search-progress" style="color: #888; font-size: 0.9em; margin-top: 4px;"></div></div>' +
+            '<p class="text-muted" style="margin-top: 8px;">' + searchDesc + '</p>' +
+            '<div id="calendar-search-results" class="calendar-search-results"></div>';
+
+        const statusWrap = document.getElementById('calendar-search-status-wrap');
+        const statusEl = document.getElementById('calendar-search-status');
+        const progressEl = document.getElementById('calendar-search-progress');
+        const resultsEl = document.getElementById('calendar-search-results');
+
+        function setProgress(msg) {
+            if (progressEl) progressEl.textContent = msg;
+        }
+
+        // Search Movie (Radarr) or Search Episode (Sonarr) – trigger search then poll queue
+        document.getElementById('calendar-search-btn').onclick = () => {
+            if (isMovie) {
+                statusWrap.style.display = 'block';
+                resultsEl.innerHTML = '';
+                statusEl.textContent = 'Radarr is searching indexers and will grab the best match for your quality profile.';
+                setProgress('Checking for queue updates…');
+                fetch(API_RADARR_SEARCH_SCAN_BASE.replace(/\/0$/, '/' + ev.id), { method: 'POST' })
+                    .then(r => r.json())
+                    .then(res => {
+                        if (res.status !== 'success') {
+                            statusEl.textContent = res.message || 'Failed to start search';
+                            setProgress('');
+                            return;
+                        }
+                        pollRadarrQueue(ev.id, statusEl, progressEl, statusWrap);
+                    })
+                    .catch(() => { statusEl.textContent = 'Request failed.'; setProgress(''); });
+            } else {
+                const seriesId = data.seriesId;
+                if (!seriesId) { alert('Series info not available.'); return; }
+                statusWrap.style.display = 'block';
+                resultsEl.innerHTML = '';
+                statusEl.textContent = 'Sonarr is searching for this episode and will grab the best match.';
+                setProgress('Checking for queue updates…');
+                fetch(API_SONARR_SEARCH_EPISODE_BASE.replace(/\/0$/, '/' + ev.id), { method: 'POST' })
+                    .then(r => r.json())
+                    .then(res => {
+                        if (res.status !== 'success') {
+                            statusEl.textContent = res.message || 'Failed to start search';
+                            setProgress('');
+                            return;
+                        }
+                        pollSonarrQueue(seriesId, statusEl, progressEl, statusWrap);
+                    })
+                    .catch(() => { statusEl.textContent = 'Request failed.'; setProgress(''); });
+            }
+        };
+
+        function pollRadarrQueue(movieId, statusEl, progressEl, wrap) {
+            let pollCount = 0;
+            function doPoll() {
+                if (pollCount >= CALENDAR_SEARCH_POLL_MAX) {
+                    if (statusEl && statusEl.textContent.indexOf('Queued') === -1 && statusEl.textContent.indexOf('Downloading') === -1 && statusEl.textContent.indexOf('Paused') === -1) {
+                        statusEl.textContent = 'Search finished. If nothing was grabbed, no release met your quality profile.';
+                        if (progressEl) progressEl.textContent = 'Refresh or check the queue in Radarr.';
+                    }
+                    return;
+                }
+                pollCount += 1;
+                const elapsed = (pollCount * CALENDAR_SEARCH_POLL_MS) / 1000;
+                if (progressEl) progressEl.textContent = 'Checking for queue updates… (' + elapsed + 's)';
+                fetch(API_RADARR_QUEUE_CHECK_BASE.replace(/\/0$/, '/' + movieId))
+                    .then(r => r.json())
+                    .then(d => {
+                        if (d.status === 'error') { setTimeout(doPoll, CALENDAR_SEARCH_POLL_MS); return; }
+                        if (d.inQueue && (d.queueStatus || d.queueTitle)) {
+                            const title = d.queueTitle || 'Release';
+                            if (d.queueStatus === 'downloading') statusEl.innerHTML = 'Downloading: <strong>' + escapeHtml(title) + '</strong>';
+                            else if (d.queueStatus === 'paused') statusEl.innerHTML = 'Paused: <strong>' + escapeHtml(title) + '</strong>';
+                            else statusEl.innerHTML = 'Queued: <strong>' + escapeHtml(title) + '</strong>';
+                            if (progressEl) progressEl.textContent = '';
+                            return;
+                        }
+                        if (!d.inQueue && d.hasFile) {
+                            statusEl.textContent = 'Already have the best available – nothing to grab.';
+                            if (progressEl) progressEl.textContent = '';
+                            return;
+                        }
+                        if (pollCount < CALENDAR_SEARCH_POLL_MAX) setTimeout(doPoll, CALENDAR_SEARCH_POLL_MS);
+                    })
+                    .catch(() => { if (progressEl) progressEl.textContent = 'Check failed, retrying…'; if (pollCount < CALENDAR_SEARCH_POLL_MAX) setTimeout(doPoll, CALENDAR_SEARCH_POLL_MS); });
+            }
+            setTimeout(doPoll, CALENDAR_SEARCH_POLL_MS);
+        }
+
+        function pollSonarrQueue(seriesId, statusEl, progressEl, wrap) {
+            let pollCount = 0;
+            function doPoll() {
+                if (pollCount >= CALENDAR_SEARCH_POLL_MAX) {
+                    if (statusEl && statusEl.textContent.indexOf('in queue') === -1) {
+                        statusEl.textContent = 'Search finished. If nothing was grabbed, no release met your quality profile.';
+                        if (progressEl) progressEl.textContent = 'Refresh or check the queue in Sonarr.';
+                    }
+                    return;
+                }
+                pollCount += 1;
+                const elapsed = (pollCount * CALENDAR_SEARCH_POLL_MS) / 1000;
+                if (progressEl) progressEl.textContent = 'Checking for queue updates… (' + elapsed + 's)';
+                fetch(API_SONARR_QUEUE_CHECK_BASE.replace(/\/0$/, '/' + seriesId))
+                    .then(r => r.json())
+                    .then(d => {
+                        if (d.status === 'error') { setTimeout(doPoll, CALENDAR_SEARCH_POLL_MS); return; }
+                        const items = d.queueItems || [];
+                        if (d.inQueue && items.length > 0) {
+                            const titles = items.slice(0, 3).map(it => it.queueTitle || 'Episode').join(', ');
+                            const more = items.length > 3 ? ' +' + (items.length - 3) + ' more' : '';
+                            statusEl.innerHTML = items.length + ' episode(s) in queue: <strong>' + escapeHtml(titles) + '</strong>' + escapeHtml(more);
+                            if (progressEl) progressEl.textContent = '';
+                            return;
+                        }
+                        if (!d.inQueue && d.allMonitoredDownloaded) {
+                            statusEl.textContent = 'All episodes already downloaded – nothing to grab.';
+                            if (progressEl) progressEl.textContent = '';
+                            return;
+                        }
+                        if (pollCount < CALENDAR_SEARCH_POLL_MAX) setTimeout(doPoll, CALENDAR_SEARCH_POLL_MS);
+                    })
+                    .catch(() => { if (progressEl) progressEl.textContent = 'Check failed, retrying…'; if (pollCount < CALENDAR_SEARCH_POLL_MAX) setTimeout(doPoll, CALENDAR_SEARCH_POLL_MS); });
+            }
+            setTimeout(doPoll, CALENDAR_SEARCH_POLL_MS);
+        }
+
+        // Interactive Search – fetch releases and show with Grab/Add buttons
+        document.getElementById('calendar-interactive-search').onclick = () => {
+            if (isMovie) {
+                resultsEl.innerHTML = '<p class="text-muted">Loading releases...</p>';
+                statusWrap.style.display = 'none';
+                fetch(API_RADARR_SEARCH, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CALENDAR_CSRF },
+                    body: JSON.stringify({ movie_id: ev.id, type: 'interactive' })
+                }).then(r => r.json()).then(res => {
+                    if (res.status !== 'success' || !res.releases) {
+                        resultsEl.innerHTML = '<p class="text-muted">' + escapeHtml(res.message || 'No releases found.') + '</p>';
+                        return;
+                    }
+                    const releases = res.releases;
+                    if (releases.length === 0) {
+                        resultsEl.innerHTML = '<p class="text-muted">No releases found for this movie.</p>';
+                        return;
+                    }
+                    window._calendarRadarrReleases = releases;
+                    window._calendarMovieId = ev.id;
+                    let html = '<p class="calendar-search-results-title"><strong>Releases (' + releases.length + ') – pick one to download</strong></p><ul class="calendar-search-results-list">';
+                    releases.forEach(function (r, i) {
+                        let quality = '-', indexer = '-';
+                        if (r.quality) {
+                            if (typeof r.quality === 'object' && r.quality.quality && r.quality.quality.name) quality = r.quality.quality.name;
+                            else if (typeof r.quality === 'object' && r.quality.name) quality = r.quality.name;
+                            else quality = String(r.quality);
+                        }
+                        if (r.indexer) {
+                            if (typeof r.indexer === 'object' && r.indexer.name) indexer = r.indexer.name;
+                            else indexer = String(r.indexer);
+                        }
+                        const title = r.title || r.releaseTitle || '-';
+                        const size = r.size ? (Math.round(r.size / 1024 / 1024 * 10) / 10) + ' MiB' : '-';
+                        html += '<li class="calendar-search-result-item"><span class="calendar-search-result-title">' + escapeHtml(title) + '</span> <span class="calendar-search-result-meta">' + escapeHtml(quality) + ' · ' + escapeHtml(indexer) + ' · ' + size + '</span> <button type="button" class="calendar-btn calendar-btn-small" onclick="window.calendarGrabRadarrRelease(' + i + ')">Grab</button></li>';
+                    });
+                    html += '</ul>';
+                    resultsEl.innerHTML = html;
+                }).catch(function () { resultsEl.innerHTML = '<p class="text-muted">Request failed.</p>'; });
+            } else {
+                const seriesId = data.seriesId;
+                if (!seriesId) { alert('Series info not available.'); return; }
+                resultsEl.innerHTML = '<p class="text-muted">Loading releases...</p>';
+                statusWrap.style.display = 'none';
+                fetch(API_SONARR_SEARCH, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CALENDAR_CSRF },
+                    body: JSON.stringify({ series_id: seriesId, episode_ids: [ev.id], type: 'interactive' })
+                }).then(r => r.json()).then(res => {
+                    if (res.status !== 'success' || !res.releases) {
+                        resultsEl.innerHTML = '<p class="text-muted">' + escapeHtml(res.message || 'No releases found.') + '</p>';
+                        return;
+                    }
+                    const releases = res.releases;
+                    if (releases.length === 0) {
+                        resultsEl.innerHTML = '<p class="text-muted">No releases found for this episode.</p>';
+                        return;
+                    }
+                    window._calendarSonarrReleases = releases;
+                    window._calendarEpisodeId = ev.id;
+                    let quality = '', indexer = '';
+                    let html = '<p class="calendar-search-results-title"><strong>Releases (' + releases.length + ') – pick one to download</strong></p><ul class="calendar-search-results-list">';
+                    releases.forEach(function (r, i) {
+                        if (r.quality) {
+                            if (typeof r.quality === 'object' && r.quality.quality && r.quality.quality.name) quality = r.quality.quality.name;
+                            else if (typeof r.quality === 'object' && r.quality.name) quality = r.quality.name;
+                            else quality = String(r.quality);
+                        } else quality = '-';
+                        if (r.indexer) {
+                            if (typeof r.indexer === 'object' && r.indexer.name) indexer = r.indexer.name;
+                            else indexer = String(r.indexer);
+                        } else indexer = '-';
+                        const title = r.title || r.releaseTitle || '-';
+                        const size = r.size ? (Math.round(r.size / 1024 / 1024 * 10) / 10) + ' MiB' : '-';
+                        html += '<li class="calendar-search-result-item"><span class="calendar-search-result-title">' + escapeHtml(title) + '</span> <span class="calendar-search-result-meta">' + escapeHtml(quality) + ' · ' + escapeHtml(indexer) + ' · ' + size + '</span> <button type="button" class="calendar-btn calendar-btn-small" onclick="window.calendarGrabSonarrRelease(' + i + ')">Add</button></li>';
+                    });
+                    html += '</ul>';
+                    resultsEl.innerHTML = html;
+                }).catch(function () { resultsEl.innerHTML = '<p class="text-muted">Request failed.</p>'; });
+            }
+        };
+
+        if (ev.type === 'tv') {
+            const refreshBtn = document.getElementById('calendar-refresh-releases');
+            if (refreshBtn && resultsEl) {
+                refreshBtn.onclick = () => { resultsEl.innerHTML = '<p class="text-muted">Loading...</p>'; loadSearchResults(ev.id, resultsEl); };
+            }
+        }
+    }
+
+    window.calendarGrabRadarrRelease = function(index) {
+        const releases = window._calendarRadarrReleases;
+        const movieId = window._calendarMovieId;
+        if (!releases || !releases[index] || movieId == null) return;
+        const r = releases[index];
+        if (!confirm('Download "' + (r.title || r.releaseTitle || 'release') + '"?')) return;
+        fetch(API_RADARR_DOWNLOAD, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CALENDAR_CSRF },
+            body: JSON.stringify({ guid: r.guid, indexerId: r.indexerId != null ? r.indexerId : 0, movieId: movieId, releaseData: r })
+        }).then(res => res.json()).then(data => {
+            if (data.status === 'success') alert('Download started!');
+            else alert('Error: ' + (data.message || 'Failed to start download'));
+        }).catch(() => alert('Request failed.'));
+    };
+
+    window.calendarGrabSonarrRelease = function(index) {
+        const releases = window._calendarSonarrReleases;
+        const episodeId = window._calendarEpisodeId;
+        if (!releases || !releases[index] || episodeId == null) return;
+        const r = releases[index];
+        if (!confirm('Download "' + (r.title || r.releaseTitle || 'release') + '"?')) return;
+        fetch(API_SONARR_DOWNLOAD, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CALENDAR_CSRF },
+            body: JSON.stringify({ guid: r.guid, indexerId: r.indexerId != null ? r.indexerId : 0, episodeId: episodeId })
+        }).then(res => res.json()).then(data => {
+            if (data.status === 'success') alert('Download started!');
+            else alert('Error: ' + (data.message || 'Failed to start download'));
+        }).catch(() => alert('Request failed.'));
+    };
+
+    function loadSearchResults(episodeId, container) {
+        if (!container) return;
+        fetch(API_CALENDAR_EPISODE_RELEASES_BASE.replace(/\/0$/, '/' + episodeId)).then(r => r.json()).then(data => {
+            if (data.status !== 'success' || !data.releases || data.releases.length === 0) {
+                container.innerHTML = '<p class="text-muted">No releases yet. Run Quick Search, then click Refresh results in a few seconds—Sonarr may need time to search indexers.</p>';
+                return;
+            }
+            let html = '<p class="calendar-search-results-title"><strong>Search results (' + data.releases.length + ')</strong></p><ul class="calendar-search-results-list">';
+            data.releases.forEach(function (r) {
+                const size = r.size ? (Math.round(r.size / 1024 / 1024 * 10) / 10) + ' MiB' : '-';
+                html += '<li class="calendar-search-result-item"><span class="calendar-search-result-title">' + escapeHtml(r.title || '-') + '</span> <span class="calendar-search-result-meta">' + escapeHtml(r.quality || '') + ' · ' + escapeHtml(r.indexer || '') + ' · ' + size + '</span></li>';
+            });
+            html += '</ul>';
+            container.innerHTML = html;
+        }).catch(function () {
+            container.innerHTML = '<p class="text-muted">Failed to load results.</p>';
+        });
+    }
+
+    function closeCalendarDetail() {
+        document.getElementById('calendar-detail-modal').style.display = 'none';
+    }
+
+    function switchDetailTab(tabName) {
+        document.querySelectorAll('.calendar-detail-tab').forEach(t => {
+            t.classList.toggle('active', t.getAttribute('data-tab') === tabName);
+        });
+        ['details', 'history', 'search'].forEach(id => {
+            document.getElementById('calendar-detail-' + id).style.display = id === tabName ? 'block' : 'none';
+        });
+    }
+
+    const now = new Date();
+    currentYear = now.getFullYear();
+    currentMonth = now.getMonth() + 1;
+    setMonth(currentYear, currentMonth);
+
+    document.querySelectorAll('.legend-clickable').forEach(el => {
+        el.addEventListener('click', () => { toggleFilter(el.getAttribute('data-status')); });
+        el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleFilter(el.getAttribute('data-status')); } });
+    });
+
+    document.querySelectorAll('.calendar-detail-tab').forEach(tab => {
+        tab.addEventListener('click', () => switchDetailTab(tab.getAttribute('data-tab')));
+    });
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') closeCalendarDetail();
+    });
+
+    window.closeCalendarDetail = closeCalendarDetail;
+    window.setView = setView;
+    window.prevMonth = prevMonth;
+    window.nextMonth = nextMonth;
+})();
+</script>
+
+{% endblock %}
