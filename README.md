@@ -1,6 +1,6 @@
 # SeekAndWatch
 
-![Version](https://img.shields.io/badge/version-1.5.0-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) (submitted) ![License](https://img.shields.io/badge/License-MIT-green.svg)
+![Version](https://img.shields.io/badge/version-1.5.1-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) (submitted) ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
 Self-hosted Plex companion: Smart Discovery from your watch history, add movies/shows via Radarr/Sonarr, Kometa builder, Plex collections, Overseerr, Tautulli. One dashboard -less scrolling, more watching.
 
@@ -155,6 +155,7 @@ Improvements and Bugfixes
 - 140+ ready to go 1 click plex collections to choose from
 - one time login recovery codes given upon registration and can be regenerated in settings
 - you can now change your password in settings
+- 1 click updater back to working again
 
 
 <details>
