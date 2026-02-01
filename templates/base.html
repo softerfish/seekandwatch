@@ -244,14 +244,23 @@
         const cancelBtn = document.getElementById('updateCancelBtn');
         const confirmBtn = document.getElementById('updateConfirmBtn');
 
-        title.innerText = `Update Available (v${version})`;
-        if (source === 'release') {
-            message.innerText = "Update now? This will download the latest GitHub release and may require a restart.";
-        } else {
-            message.innerText = "Update now? This will pull the latest code and may require a restart.";
+        if (!modal || !title || !message || !confirmBtn) {
+            if (confirm("Update available (v" + version + "). Update now? This may require a restart.")) {
+                smartUpdate(true);
+            }
+            return;
         }
 
-        cancelBtn.onclick = () => { modal.style.display = 'none'; };
+        if (title) title.innerText = "Update Available (v" + version + ")";
+        if (message) {
+            if (source === 'release') {
+                message.innerText = "Update now? This will download the latest GitHub release and may require a restart.";
+            } else {
+                message.innerText = "Update now? This will pull the latest code and may require a restart.";
+            }
+        }
+
+        if (cancelBtn) cancelBtn.onclick = () => { modal.style.display = 'none'; };
         confirmBtn.onclick = () => {
             modal.style.display = 'none';
             smartUpdate(true);
