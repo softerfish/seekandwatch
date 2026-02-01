@@ -42,7 +42,7 @@ from sqlalchemy.exc import OperationalError
 
 # basic app setup stuff
 
-VERSION = "1.4.1"
+VERSION = "1.5.0"
 
 UPDATE_CACHE = {
     'version': None,
