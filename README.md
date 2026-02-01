@@ -145,7 +145,7 @@ docker compose up -d
 
 ## Changelog
 
-v1.5.0
+v1.5.1
 **SeekAndWatch Cloud (beta)** – [https://www.SeekAndWatch.com](https://www.SeekAndWatch.com)
 - Hosted option so friends and family can request from your Plex server without needing access to Plex or Radarr/Sonarr. You approve or deny; requests sync to Radarr, Sonarr, or Overseerr.
 - To request access: [r/SeekAndWatch](https://www.reddit.com/r/SeekAndWatch) – post or send a mod a PM.
