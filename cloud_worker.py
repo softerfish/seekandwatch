@@ -133,7 +133,7 @@ def process_cloud_queue():
         if last_modified_header:
             headers['If-Modified-Since'] = last_modified_header
             
-        print(f"DEBUG: Sending Key ending in ...{settings.cloud_api_key[-6:]}", flush=True)
+        # Do not log API key or any part of it (security: clear-text logging)
         
         # --- NEW STEP: Sync Deletions ---
         sync_deletions(settings)
@@ -168,7 +168,7 @@ def process_cloud_queue():
             try:
                 data = response.json()
             except ValueError:
-                print(f"Cloud Error: Non-JSON response received. {response.text[:100]}")
+                print("Cloud Error: Non-JSON response received (response body not logged).")
                 return
 
             # --- FIX: Handle List vs Dict ---

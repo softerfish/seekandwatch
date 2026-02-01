@@ -1755,7 +1755,7 @@ def send_overseerr_request(settings, media_type, tmdb_id, uid=None):
         base_url = settings.overseerr_url.rstrip('/')
         url = f"{base_url}/api/v1/request"
         
-        print(f"Sending to Overseerr: {url} | Payload: {payload}", flush=True)
+        # Do not log URL or payload (may contain sensitive or PII; clear-text logging)
         r = requests.post(url, json=payload, headers=headers, timeout=10)
         
         if r.status_code in [200, 201]:
@@ -1764,11 +1764,11 @@ def send_overseerr_request(settings, media_type, tmdb_id, uid=None):
         try:
             error_data = r.json()
             error_msg = error_data.get('message', error_data.get('error', r.text))
-            # Log full response for debugging.
+            # Log only the safe message, not full response (clear-text logging of sensitive data)
             if media_type == 'tv':
-                print(f"Overseerr TV request error: {error_data}", flush=True)
-        except:
-            error_msg = f"HTTP Error {r.status_code}: {r.text[:200]}"
+                print(f"Overseerr TV request error: {error_msg}", flush=True)
+        except Exception:
+            error_msg = f"HTTP Error {r.status_code}"
 
         # Friendly error messages.
         error_lower = str(error_msg).lower()

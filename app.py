@@ -438,11 +438,11 @@ def trigger_update_route():
 
     except Exception as e:
         try:
-            import traceback
-            write_log("error", "Updater", traceback.format_exc())
+            # Do not log full traceback or exception message (clear-text logging of sensitive information)
+            write_log("error", "Updater", f"Update failed: {type(e).__name__}")
         except Exception:
             pass
-        print(f"Update Error: {e}", flush=True)
+        print("Update Error (see logs).", flush=True)
         return Response(json.dumps({'status': 'error', 'message': 'Update failed. Check logs for details.'}), mimetype='application/json')
         
 @app.context_processor

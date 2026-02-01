@@ -80,7 +80,8 @@ def _log_api_exception(context, exc):
         exc_type = type(exc).__name__ if exc else "Exception"
         write_log("error", "API", f"{context} failed ({exc_type})")
     except Exception:
-        current_app.logger.exception(context)
+        # Do not log context or exception details (clear-text logging of sensitive information)
+        current_app.logger.exception("API logging failed")
 
 def _error_response(message="Request failed", **extra):
     """Return standard error json; optional extra keys (e.g. profiles=[])."""
