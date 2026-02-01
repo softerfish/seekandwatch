@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block page_title %}Recovery codes{% endblock %}
+{% block content %}
+<div class="login-wrapper">
+    <div class="login-card">
+        <h3 class="auth-heading">🔐 Your recovery codes (save these now)</h3>
+        <p class="text-muted" style="margin-bottom:1rem;">These one-time codes are shown only once. Store them somewhere safe. If you forget your password, use one code on the <a href="{{ url_for('reset_password_page') }}">Reset password</a> page to set a new password. Each code works only once.</p>
+        <div class="auth-body">
+            <pre id="recovery-codes-list" style="background:#1e1e1e; color:#2ecc71; padding:15px; border-radius:8px; font-size:0.85rem; overflow-x:auto; text-align:left;">{{ codes | join('\n') }}</pre>
+            <button type="button" onclick="copyCodes()" class="login-btn" style="margin-top:10px; margin-bottom:15px;">Copy all codes</button>
+            <p class="text-muted" style="font-size:0.9rem;">When you've saved your codes, click below to continue.</p>
+            <a href="{{ url_for('welcome_codes_done') }}" class="login-btn" style="display:inline-block; text-decoration:none; text-align:center;">Continue to Dashboard</a>
+        </div>
+    </div>
+</div>
+<script>
+function copyCodes() {
+    var el = document.getElementById('recovery-codes-list');
+    var text = (el.textContent || el.innerText || '').trim();
+    if (!text) { alert('No codes to copy.'); return; }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function() { alert('Copied to clipboard.'); });
+    } else {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); alert('Copied to clipboard.'); } catch (e) { alert('Copy failed.'); }
+        document.body.removeChild(ta);
+    }
+}
+</script>
+{% endblock %}

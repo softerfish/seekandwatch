@@ -1,0 +1,252 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    /* 1. Fix Key Icon Alignment and Color */
+    .input-group-text {
+        background-color: #2a2a2a; /* Dark background */
+        border-color: #444;       /* Dark border */
+        color: #fff;              /* White Icon */
+        display: flex;
+        align-items: center;      /* Vertically align icon */
+    }
+
+    /* 2. Fix Input Field to match dark theme */
+    #cloudApiKey {
+        background-color: #1e1e1e;
+        border-color: #444;
+        color: #fff;
+    }
+    
+    /* 3. Ensure Warning Badge text is readable (Black on Yellow) */
+    .badge-warning {
+        color: #212529 !important; 
+    }
+
+    /* Promo dropdown */
+    #seekandwatch-promo .card-header {
+        cursor: pointer;
+        user-select: none;
+    }
+    #seekandwatch-promo .card-header .btn-close-promo {
+        cursor: pointer;
+        opacity: 0.8;
+    }
+    #seekandwatch-promo .card-header .btn-close-promo:hover {
+        opacity: 1;
+    }
+</style>
+
+<div class="container mt-4">
+    <!-- Promotional overview: default open, once closed stays closed (localStorage) -->
+    <div id="seekandwatch-promo" class="card mb-4 border-info" style="display: none;">
+        <div class="card-header bg-info text-dark d-flex justify-content-between align-items-center py-2">
+            <span class="font-weight-bold"><i class="fas fa-info-circle mr-1"></i> What is SeekAndWatch?</span>
+            <button type="button" class="btn btn-sm btn-outline-dark btn-close-promo" id="promo-dismiss" title="Close and don't show again" aria-label="Close">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="card-body bg-dark text-white">
+            <p class="mb-2"><strong>SeekAndWatch</strong> (<a href="https://seekandwatch.com" target="_blank" rel="noopener" class="text-info">seekandwatch.com</a>) lets your friends and family <strong>request movies and TV shows</strong> from your Plex server without needing access to Plex or Radarr/Sonarr. You stay in control: requests land here for you to approve or deny, then get sent to Radarr, Sonarr, or Overseerr.</p>
+            <p class="mb-2"><strong>How it works:</strong> Users sign up on SeekAndWatch, add your server with a connection key, and browse or search for titles. When they request something, it appears in this queue. You approve or deny; approved items are sent to your chosen handler (Radarr, Sonarr, or Overseerr/Jellyseerr).</p>
+            <p class="mb-2"><strong>Why it's safe:</strong> Your Plex URL and tokens stay on your machine. The cloud service only relays requests and connection keys; it does not store your media or control your server. You can revoke keys and turn off automation at any time.</p>
+            <p class="mb-2"><strong>Why use it:</strong> Give requesters a simple, familiar way to ask for content without exposing Radarr/Sonarr or teaching them Plex requests. One place to manage all incoming requests and automation.</p>
+            <p class="mb-0">
+                <span class="badge badge-warning text-dark">Beta</span> SeekAndWatch is currently in <strong>beta</strong>. To request access, go to <a href="https://www.reddit.com/r/SeekAndWatch/" target="_blank" rel="noopener" class="text-info font-weight-bold">r/SeekAndWatch</a> and either <strong>post for access</strong> or <strong>send a mod a PM</strong>.
+            </p>
+        </div>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2>Cloud Requests Management</h2>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header bg-dark text-white">
+            <h5 class="mb-0">Automation Settings</h5>
+        </div>
+        <div class="card-body bg-dark text-white">
+            <form method="POST" action="/save_cloud_settings">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <div class="form-group mb-4">
+                    <label for="cloudApiKey" class="font-weight-bold text-white">SeekAndWatch Cloud API Key</label>
+                    <div class="input-group">
+                        <div class="input-group-prepend">
+                            <span class="input-group-text"><i class="fas fa-key"></i></span>
+                        </div>
+                        <input type="password" class="form-control" name="cloud_api_key" id="cloudApiKey" 
+                               value="{{ settings.cloud_api_key or '' }}" 
+                               placeholder="Paste your key here (e.g. 8f9a...)" 
+                               autocomplete="off">
+                    </div>
+                    <small class="form-text text-muted">
+                        Get this key from your <a href="https://seekandwatch.com/dashboard.php" target="_blank" class="text-info">Cloud Dashboard</a> under "Local Server Connection".
+                    </small>
+                </div>
+
+                <div class="row">
+                    
+                    <div class="col-md-3">
+                        <div class="form-group">
+                            <label for="movieHandler" class="font-weight-bold text-white">Movies Handler</label>
+                            <select name="cloud_movie_handler" id="movieHandler" class="form-control" style="background:#1e1e1e; color:white; border-color:#444;">
+                                <option value="direct" {% if settings.cloud_movie_handler == 'direct' %}selected{% endif %}>
+                                    Direct (Radarr)
+                                </option>
+                                <option value="overseerr" {% if settings.cloud_movie_handler == 'overseerr' %}selected{% endif %}>
+                                    Overseerr / Jellyseerr
+                                </option>
+                            </select>
+                            <small class="form-text text-muted">Where to send approved movies.</small>
+                        </div>
+                    </div>
+
+                    <div class="col-md-3">
+                        <div class="form-group">
+                            <label for="tvHandler" class="font-weight-bold text-white">TV Shows Handler</label>
+                            <select name="cloud_tv_handler" id="tvHandler" class="form-control" style="background:#1e1e1e; color:white; border-color:#444;">
+                                <option value="direct" {% if settings.cloud_tv_handler == 'direct' %}selected{% endif %}>
+                                    Direct (Sonarr)
+                                </option>
+                                <option value="overseerr" {% if settings.cloud_tv_handler == 'overseerr' %}selected{% endif %}>
+                                    Overseerr / Jellyseerr
+                                </option>
+                            </select>
+                            <small class="form-text text-muted">Where to send approved shows.</small>
+                        </div>
+                    </div>
+
+                    <div class="col-md-3">
+                        <div class="form-group">
+                            <label class="font-weight-bold text-white">Automation</label>
+                            <div class="custom-control custom-switch mt-2">
+                                <input type="checkbox" class="custom-control-input" name="cloud_auto_approve" id="autoCheck" {% if settings.cloud_auto_approve %}checked{% endif %}>
+                                <label class="custom-control-label text-white" for="autoCheck">Auto-Approve Requests</label>
+                            </div>
+                            <small class="form-text text-muted">Skip manual approval.</small>
+                        </div>
+                    </div>
+
+                    <div class="col-md-3 d-flex align-items-center">
+                        <button type="submit" class="btn btn-primary btn-block mt-3">
+                            <i class="fas fa-save"></i> Save Settings
+                        </button>
+                    </div>
+
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-header bg-light d-flex justify-content-between align-items-center">
+            <h5 class="mb-0 text-dark">Pending Queue</h5>
+            <span class="badge badge-info">{{ requests|length }} Pending</span>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-striped mb-0">
+                    <thead class="thead-dark">
+                        <tr>
+                            <th scope="col" style="width: 40%;">Title</th>
+                            <th scope="col">Type</th>
+                            <th scope="col">Requested By</th>
+                            <th scope="col" class="text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for req in requests %}
+                        <tr>
+                            <td class="align-middle">
+                                <strong>{{ req.title }}</strong>
+                                <br>
+                                <small class="text-muted">TMDB ID: {{ req.tmdb_id }}</small>
+                            </td>
+                            <td class="align-middle">
+                                {% if req.media_type == 'movie' %}
+                                    <span class="badge badge-primary">Movie</span>
+                                {% else %}
+                                    <span class="badge badge-warning text-dark">TV Show</span>
+                                {% endif %}
+                            </td>
+                            <td class="align-middle">
+                                <i class="fas fa-user-circle text-secondary"></i> {{ req.requested_by }}
+                                <br>
+                                <small class="text-muted">{{ req.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
+                            </td>
+                            <td class="align-middle text-right">
+                                <form action="/approve_request/{{ req.id }}" method="POST" style="display:inline-block;">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="btn btn-success btn-sm" title="Approve & Download">
+                                        <i class="fas fa-check"></i> Approve
+                                    </button>
+                                </form>
+                                <form action="/deny_request/{{ req.id }}" method="POST" style="display:inline-block; margin-left: 5px;">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="btn btn-danger btn-sm" title="Deny & Remove" onclick="return confirm('Are you sure you want to deny this request?');">
+                                        <i class="fas fa-times"></i> Deny
+                                    </button>
+                                </form>
+                                
+                                <form action="/delete_request/{{ req.id }}" method="POST" style="display:inline-block; margin-left: 5px;">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="btn btn-sm btn-secondary" title="Delete (Local Only)" onclick="return confirm('Just delete this from the list?');">
+                                        <i class="fas fa-trash"></i>
+                                </button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="4" class="text-center py-5">
+                                <h4 class="text-muted">No pending requests</h4>
+                                <p class="text-muted">Your friends haven't requested anything yet.</p>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    var STORAGE_KEY = 'seekandwatch_promo_dismissed';
+    var promo = document.getElementById('seekandwatch-promo');
+    var dismissBtn = document.getElementById('promo-dismiss');
+
+    function isDismissed() {
+        try {
+            return localStorage.getItem(STORAGE_KEY) === 'true';
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function setDismissed() {
+        try {
+            localStorage.setItem(STORAGE_KEY, 'true');
+        } catch (e) {}
+        if (promo) promo.style.display = 'none';
+    }
+
+    if (promo) {
+        if (isDismissed()) {
+            promo.style.display = 'none';
+        } else {
+            promo.style.display = 'block';
+        }
+    }
+
+    if (dismissBtn) {
+        dismissBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            setDismissed();
+        });
+    }
+})();
+</script>
+{% endblock %}

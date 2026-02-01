@@ -40,6 +40,7 @@ const API_ADMIN_USERS = "{{ url_for('api.get_all_users') }}";
 const API_ADMIN_TOGGLE_ROLE = "{{ url_for('api.toggle_user_role') }}";
 const API_ADMIN_DELETE_USER = "{{ url_for('api.admin_delete_user') }}";
 const API_ADMIN_RESET_PASSWORD = "{{ url_for('api.admin_reset_password') }}";
+const API_CHANGE_PASSWORD = "{{ url_for('api.change_my_password') }}";
 const API_RECOVERY_CODES_GENERATE = "{{ url_for('api.generate_recovery_codes') }}";
 const SETTINGS_CSRF = "{{ csrf_token() }}";
 const API_SCANNER_STATUS = "{{ url_for('api.scanner_status') }}";
@@ -138,6 +139,37 @@ function closeResetPasswordModal() {
     document.getElementById('modal-reset-password').classList.remove('is-open');
     resetPasswordUserId = null;
 }
+function submitChangePassword() {
+    const currentPw = document.getElementById('change-pw-current').value;
+    const newPw = document.getElementById('change-pw-new').value;
+    const confirmPw = document.getElementById('change-pw-confirm').value;
+    const msgEl = document.getElementById('change-pw-message');
+    const btn = document.getElementById('btn-change-password');
+    msgEl.textContent = '';
+    msgEl.style.color = '';
+    if (!currentPw) { msgEl.textContent = 'Enter your current password.'; msgEl.style.color = '#e74c3c'; return; }
+    if (newPw.length < 8) { msgEl.textContent = 'New password must be at least 8 characters.'; msgEl.style.color = '#e74c3c'; return; }
+    if (newPw !== confirmPw) { msgEl.textContent = 'New password and confirmation do not match.'; msgEl.style.color = '#e74c3c'; return; }
+    btn.disabled = true;
+    fetch(API_CHANGE_PASSWORD, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': SETTINGS_CSRF},
+        body: JSON.stringify({ current_password: currentPw, new_password: newPw })
+    }).then(r => r.json()).then(d => {
+        btn.disabled = false;
+        if (d.status === 'success') {
+            msgEl.textContent = d.message || 'Password updated.';
+            msgEl.style.color = '#2ecc71';
+            document.getElementById('change-pw-current').value = '';
+            document.getElementById('change-pw-new').value = '';
+            document.getElementById('change-pw-confirm').value = '';
+        } else {
+            msgEl.textContent = d.message || 'Failed to change password.';
+            msgEl.style.color = '#e74c3c';
+        }
+    }).catch(() => { btn.disabled = false; msgEl.textContent = 'Request failed.'; msgEl.style.color = '#e74c3c'; });
+}
+
 function submitResetPassword() {
     const newPw = document.getElementById('reset-password-new').value;
     const confirmPw = document.getElementById('reset-password-confirm').value;
@@ -641,16 +673,6 @@ function copyRecoveryCodes() {
                     </div>
                 </div>                
             </div>
-            
-            <div class="card setting-card" style="margin-top: 30px; border-top: 4px solid #f1c40f;">
-                <h3>🚫 Content Management</h3>
-                <p class="text-muted">
-                    Manage your blocklist. Titles listed here will be excluded from all recommendations and searches.
-                </p>
-                <a href="{{ url_for('manage_blocklist') }}">
-                    <button class="btn btn-secondary" type="button">Manage Blocklist</button>
-                </a>
-            </div>
         </div>
 
         <div id="tab-system" class="tab-content">
@@ -690,6 +712,25 @@ function copyRecoveryCodes() {
                         <div style="text-align:center; color:#777;">Loading...</div>
                     </div>
                 </div>
+            </div>
+
+            <div class="card setting-card border-blue">
+                <h3>🔑 Change password</h3>
+                <p class="text-muted">Set a new password for your account. You must enter your current password.</p>
+                <div class="input-group" style="max-width: 320px; margin-bottom: 12px;">
+                    <label class="input-label">Current password</label>
+                    <input type="password" id="change-pw-current" placeholder="Current password" autocomplete="current-password" style="width: 100%; padding: 10px; background: #2a2a2a; border: 1px solid #444; color: white; border-radius: 6px;">
+                </div>
+                <div class="input-group" style="max-width: 320px; margin-bottom: 12px;">
+                    <label class="input-label">New password</label>
+                    <input type="password" id="change-pw-new" placeholder="At least 8 characters" minlength="8" autocomplete="new-password" style="width: 100%; padding: 10px; background: #2a2a2a; border: 1px solid #444; color: white; border-radius: 6px;">
+                </div>
+                <div class="input-group" style="max-width: 320px; margin-bottom: 12px;">
+                    <label class="input-label">Confirm new password</label>
+                    <input type="password" id="change-pw-confirm" placeholder="Same again" minlength="8" autocomplete="new-password" style="width: 100%; padding: 10px; background: #2a2a2a; border: 1px solid #444; color: white; border-radius: 6px;">
+                </div>
+                <div id="change-pw-message" style="margin-bottom: 10px; font-size: 0.9rem;"></div>
+                <button type="button" onclick="submitChangePassword()" class="btn-secondary" id="btn-change-password" style="padding:8px 15px;">Change password</button>
             </div>
 
             <div class="card setting-card border-purple">

@@ -102,6 +102,15 @@
                     <span>Reddit</span>
                 </a>
             </div>
+			
+			<div class="nav-section">
+                <div class="nav-section-header">Beta</div>
+                <a href="{{ url_for('requests_page') }}" class="nav-item {% if request.endpoint == 'requests_page' %}active{% endif %}">
+                    <i class="fas fa-cloud-download-alt"></i>
+                    <span>Requests</span>
+                </a>
+            </div>
+            
         </nav>
 
         <div class="sidebar-footer">
@@ -252,11 +261,12 @@
     }
 
     function smartUpdate(forceGit = false) {
+        const versionDisplay = document.getElementById('current-version-display');
         const badge = document.querySelector('.version-badge');
-        const originalText = document.getElementById('current-version-text').innerText;
+        const originalText = versionDisplay ? versionDisplay.innerText : '';
 
-        badge.style.opacity = "0.5";
-        document.getElementById('current-version-text').innerText = "Checking...";
+        if (badge) badge.style.opacity = "0.5";
+        if (versionDisplay) versionDisplay.innerText = "Checking...";
 
         // If the confirm modal kicked this off, pass the force flag.
         const url = forceGit ? (API_TRIGGER_UPDATE + '?force_git=true') : API_TRIGGER_UPDATE;

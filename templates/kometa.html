@@ -8,7 +8,8 @@
         This tool generates a <strong>foundational</strong> configuration. For help using this builder, see the 
         <a href="https://github.com/softerfish/seekandwatch/wiki/Kometa-Visual-Builder" target="_blank">SeekAndWatch Help Wiki ↗</a>. 
         For a full list of available collections, customization options, and advanced features, please consult the official 
-        <a href="https://kometa.wiki/en/latest/defaults/collections/" target="_blank">Kometa Defaults Documentation ↗</a>.
+        <a href="https://kometa.wiki/en/latest/defaults/collections/" target="_blank">Kometa Defaults (collections) ↗</a> and 
+        <a href="https://kometa.wiki/en/latest/defaults/overlays/" target="_blank">Kometa Overlay Defaults ↗</a>.
     </p>
     
     <div class="intro-tip-box">
@@ -294,6 +295,7 @@
                     <div class="k-check-grid">
                         <div class="k-check-item type-tv hidden"><label title="Overlays season/episode counts on TV posters."><input type="checkbox" class="t-opt ovl" value="episode_info" onchange="gen()"> Episode Info</label><button class="btn-gear" onclick="editVars('episode_info', event)">⚙️</button></div>
                         <div class="k-check-item type-movie"><label title="Overlays a badge if the movie has a post-credit scene."><input type="checkbox" class="t-opt ovl" value="mediastinger" onchange="gen()"> Mediastinger</label><button class="btn-gear" onclick="editVars('mediastinger', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay IMDb/TMDb/Rotten Tomatoes ratings on posters."><input type="checkbox" class="t-opt ovl" value="ratings" onchange="gen()"> Ratings</label><button class="btn-gear" onclick="editVars('ratings', event)">⚙️</button></div>
                         <div class="k-check-item type-tv hidden"><label title="Overlays 'Airing', 'Ended', or 'Canceled' status on show posters."><input type="checkbox" class="t-opt ovl" value="status" onchange="gen()"> Status</label><button class="btn-gear" onclick="editVars('status', event)">⚙️</button></div>
                     </div>
 
@@ -317,6 +319,7 @@
                         <div class="k-check-item type-all"><label title="Overlay resolution (4K, 1080p) and edition info."><input type="checkbox" class="t-opt ovl" value="resolution" onchange="gen()"> Resolution/Editions</label><button class="btn-gear" onclick="editVars('resolution', event)">⚙️</button></div>
                         <div class="k-check-item type-all"><label title="Overlay the content duration on the poster."><input type="checkbox" class="t-opt ovl" value="runtimes" onchange="gen()"> Runtimes</label><button class="btn-gear" onclick="editVars('runtimes', event)">⚙️</button></div>
                         <div class="k-check-item type-all"><label title="Overlay a badge if multiple versions of the item exist."><input type="checkbox" class="t-opt ovl" value="versions" onchange="gen()"> Versions</label><button class="btn-gear" onclick="editVars('versions', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay source format (REMUX, HDTV, Blu-Ray, DVD, etc.)."><input type="checkbox" class="t-opt ovl" value="video_format" onchange="gen()"> Video Format</label><button class="btn-gear" onclick="editVars('video_format', event)">⚙️</button></div>
                     </div>
 
                     <div class="k-sub-header">🏭 Production (Overlay)</div>
@@ -348,8 +351,101 @@
 <span class="y-cmnt"># Fill in the form on the left to generate config...</span>
         </div>
         <button onclick="copyYaml()" class="w-100 mt-15 px-15 py-15 fw-bold cursor-pointer" style="background:var(--accent-color); border:none; border-radius:6px;">📋 Copy to Clipboard</button>
+
+        <div id="overlay-preview-section" class="overlay-preview-section mt-20">
+            <h4 id="overlay-preview-title" class="text-white mb-10 fs-small">🎬 Sample overlay preview</h4>
+            <p class="text-muted fs-small mb-10">Shows how your selected overlays will look on a poster. Change overlays in Tab 3 to update.</p>
+            <div id="overlay-preview-posters" class="overlay-preview-posters">
+                <div id="overlay-preview-wrap-single" class="overlay-preview-wrap">
+                    <div id="overlay-preview-poster" class="overlay-preview-poster">
+                        <div class="overlay-preview-placeholder"></div>
+                        <div id="overlay-preview-badges"></div>
+                        <div id="overlay-preview-empty" class="overlay-preview-empty">Select overlays in Tab 3 to see preview</div>
+                    </div>
+                </div>
+                <div id="overlay-preview-wrap-tv" class="overlay-preview-wrap-tv" style="display: none;">
+                    <div class="overlay-preview-tv-column">
+                        <div class="overlay-preview-poster-label">Season</div>
+                        <div class="overlay-preview-poster overlay-preview-poster-small">
+                            <div class="overlay-preview-placeholder"></div>
+                            <div id="overlay-preview-badges-season" class="overlay-preview-badges"></div>
+                            <div id="overlay-preview-empty-season" class="overlay-preview-empty">Season</div>
+                        </div>
+                    </div>
+                    <div class="overlay-preview-tv-column">
+                        <div class="overlay-preview-poster-label">Episode</div>
+                        <div class="overlay-preview-poster overlay-preview-poster-small">
+                            <div class="overlay-preview-placeholder"></div>
+                            <div id="overlay-preview-badges-episode" class="overlay-preview-badges"></div>
+                            <div id="overlay-preview-empty-episode" class="overlay-preview-empty">Episode</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
+
+<style>
+.overlay-preview-section { padding: 12px 0; border-top: 1px solid var(--border-color); }
+.overlay-preview-poster {
+    position: relative;
+    width: 100%;
+    max-width: 200px;
+    aspect-ratio: 2/3;
+    border-radius: 8px;
+    overflow: hidden;
+    background: linear-gradient(145deg, #1a1a2e 0%, #16213e 100%);
+    margin: 0 auto;
+}
+.overlay-preview-placeholder {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(145deg, #1a1a2e 0%, #16213e 100%);
+}
+.overlay-preview-badges { position: absolute; inset: 0; pointer-events: none; }
+.overlay-preview-empty {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 12px;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+.overlay-preview-badges:not(:empty) ~ .overlay-preview-empty { display: none; }
+.overlay-preview-badge {
+    position: absolute;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 2px 5px;
+    border-radius: 3px;
+    white-space: nowrap;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.5);
+    line-height: 1.2;
+}
+.overlay-preview-badge.pos-tl { top: 6px; left: 6px; }
+.overlay-preview-badge.pos-tr { top: 6px; right: 6px; }
+.overlay-preview-badge.pos-bl { bottom: 6px; left: 6px; }
+.overlay-preview-badge.pos-br { bottom: 6px; right: 6px; }
+.overlay-preview-badge.pos-bc { bottom: 6px; left: 50%; transform: translateX(-50%); }
+.overlay-preview-badge.pos-tc { top: 6px; left: 50%; transform: translateX(-50%); }
+.overlay-preview-badge.rating { background: #333; color: #fff; border: 1px solid #555; }
+.overlay-preview-badge.media { background: #0a0a0a; color: var(--accent-color); border: 1px solid var(--accent-color); }
+.overlay-preview-badge.ribbon { background: linear-gradient(135deg, #e74c3c, #c0392b); color: #fff; }
+.overlay-preview-badge.misc { background: rgba(0,0,0,0.8); color: #fff; }
+.overlay-preview-badge.season-sample { background: rgba(0,0,0,0.85); color: #fff; font-size: 9px; }
+.overlay-preview-badge.episode-sample { background: rgba(0,0,0,0.85); color: var(--accent-color); font-size: 9px; margin-left: 2px; }
+.overlay-preview-season-episode-group { display: flex; flex-wrap: wrap; gap: 2px; position: absolute; bottom: 6px; left: 6px; }
+.overlay-preview-posters { min-height: 120px; }
+.overlay-preview-wrap-tv { display: flex; gap: 16px; align-items: flex-start; justify-content: center; flex-wrap: wrap; }
+.overlay-preview-wrap-tv .overlay-preview-poster-small { max-width: 180px; }
+.overlay-preview-wrap-tv .overlay-preview-poster-label { width: 100%; font-size: 11px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; text-align: center; }
+.overlay-preview-wrap-tv .overlay-preview-poster-small { margin: 0 auto; }
+.overlay-preview-tv-column { display: flex; flex-direction: column; align-items: center; }
+</style>
 
 <div id="var-modal" class="modal-overlay">
     <div class="modal-box">
@@ -656,7 +752,8 @@ function updateUndoRedoButtons() {
 // initialize history with current state
 saveToHistory();
 
-// map overlay keys to quick settings fields
+// map overlay keys to quick settings fields (per https://kometa.wiki/en/latest/defaults/overlays/)
+// Builder Level (Season/Episode) is only shown when library type is TV/Anime, not Movie
 const overlaySettingsMap = {
     'content_rating_au': ['builder_level', 'addon_position'],
     'commonsense': ['builder_level', 'addon_position'],
@@ -667,8 +764,160 @@ const overlaySettingsMap = {
     'content_rating_us_show': ['builder_level', 'addon_position'],
     'aspect': [],
     'audio_codec': ['builder_level', 'style'],
-    'language_count': ['builder_level', 'minimum', 'style']
+    'language_count': ['builder_level', 'minimum', 'style'],
+    'languages': ['builder_level'],
+    'resolution': ['builder_level'],
+    'runtimes': ['builder_level'],
+    'versions': ['builder_level'],
+    'network': ['builder_level'],
+    'studio': ['builder_level'],
+    'direct_play': ['builder_level'],
+    'ratings': ['builder_level'],
+    'video_format': ['builder_level']
 };
+
+// Overlay preview: every position/offset from Kometa wiki "Default Template Variable Values" (ref 1000×1500).
+// bottomPct = (vertical_offset/1500)*100; topPct for top-aligned. Same corner+offset = overlap.
+// https://kometa.wiki/en/latest/defaults/overlays/
+const overlayPreviewSamples = {
+    ribbon: { position: 'br', label: 'TOP 250', class: 'ribbon', bottomPct: 0 },
+    episode_info: { position: 'bl', seasonEpisode: true },
+    mediastinger: { position: 'tr', label: 'Post-Credit', class: 'misc', topPct: 14.33 },
+    status: { position: 'tl', label: 'Ended', class: 'misc', topPct: 22 },
+    content_rating_au: { position: 'bl', label: 'M', class: 'rating', bottomPct: 18 },
+    commonsense: { position: 'bl', label: '8+', class: 'rating', bottomPct: 18 },
+    content_rating_de: { position: 'bl', label: 'FSK 16', class: 'rating', bottomPct: 18 },
+    content_rating_nz: { position: 'bl', label: 'M', class: 'rating', bottomPct: 18 },
+    content_rating_uk: { position: 'bl', label: '15', class: 'rating', bottomPct: 18 },
+    content_rating_us_movie: { position: 'bl', label: 'PG-13', class: 'rating', bottomPct: 18 },
+    content_rating_us_show: { position: 'bl', label: 'TV-MA', class: 'rating', bottomPct: 18 },
+    aspect: { position: 'bc', label: '2.35:1', class: 'media', bottomPct: 0 },
+    audio_codec: { position: 'tc', label: 'Atmos', class: 'media', topPct: 1 },
+    language_count: { position: 'bc', label: 'Dual', class: 'misc', bottomPct: 2 },
+    languages: { position: 'tl', label: 'EN', class: 'misc', topPct: 1 },
+    resolution: { position: 'tl', label: '4K', class: 'media', topPct: 1 },
+    runtimes: { position: 'br', label: '2h 15m', class: 'misc', bottomPct: 2 },
+    versions: { position: 'br', label: '2', class: 'misc', bottomPct: 22 },
+    network: { position: 'bl', label: 'HBO', class: 'misc', bottomPct: 34 },
+    streaming: { position: 'bl', label: 'Netflix', class: 'misc', bottomPct: 26 },
+    studio: { position: 'bl', label: 'Pixar', class: 'misc', bottomPct: 10 },
+    direct_play: { position: 'bc', label: 'Direct Play Only', class: 'media', bottomPct: 10 },
+    ratings: { position: 'tl', label: '8.5', class: 'misc', topPct: 50 },
+    video_format: { position: 'bl', label: 'REMUX', class: 'media', bottomPct: 2 }
+};
+
+function getActiveOverlaysForPreview() {
+    const overlays = [];
+    document.querySelectorAll('.t-opt.ovl:checked').forEach(cb => {
+        const item = cb.closest('.k-check-item');
+        if (item && !item.classList.contains('hidden')) overlays.push(cb.value);
+    });
+    return overlays;
+}
+
+function renderOverlayBadgesInto(container, active, options) {
+    if (!container) return;
+    const { showSeasonBadgeOnly = false, showSeasonEpisodeGroup = false } = options || {};
+    container.innerHTML = '';
+    const hasSeasonEpisode = active.some(key => overlayPreviewSamples[key] && overlayPreviewSamples[key].seasonEpisode);
+    const blOffset = (hasSeasonEpisode && (showSeasonBadgeOnly || showSeasonEpisodeGroup)) ? 22 : 0;
+    if (hasSeasonEpisode && showSeasonBadgeOnly) {
+        const sBadge = document.createElement('span');
+        sBadge.className = 'overlay-preview-badge season-sample pos-bl';
+        sBadge.textContent = 'S3';
+        sBadge.title = 'Season overlay sample';
+        sBadge.style.bottom = '6px';
+        sBadge.style.left = '6px';
+        container.appendChild(sBadge);
+    }
+    if (hasSeasonEpisode && showSeasonEpisodeGroup) {
+        const group = document.createElement('div');
+        group.className = 'overlay-preview-season-episode-group';
+        const sBadge = document.createElement('span');
+        sBadge.className = 'overlay-preview-badge season-sample';
+        sBadge.textContent = 'S3';
+        sBadge.title = 'Season overlay sample';
+        const eBadge = document.createElement('span');
+        eBadge.className = 'overlay-preview-badge episode-sample';
+        eBadge.textContent = 'E10';
+        eBadge.title = 'Episode overlay sample';
+        group.appendChild(sBadge);
+        group.appendChild(eBadge);
+        container.appendChild(group);
+    }
+    const positions = { tl: [], tr: [], bl: [], br: [], bc: [], tc: [] };
+    active.forEach(key => {
+        const sample = overlayPreviewSamples[key] || { position: 'br', label: key.replace(/_/g, ' '), class: 'misc' };
+        if (sample.seasonEpisode) return;
+        const pos = sample.position || 'br';
+        if (!positions[pos]) positions[pos] = [];
+        const customLabel = templateVars[key] && templateVars[key].style;
+        const label = (typeof customLabel === 'string' && customLabel.trim()) ? customLabel.trim() : (sample.label || key);
+        positions[pos].push({ key, label: String(label), class: sample.class || 'misc', bottomPct: sample.bottomPct, topPct: sample.topPct });
+    });
+    Object.keys(positions).forEach(pos => {
+        positions[pos].forEach((item) => {
+            const span = document.createElement('span');
+            span.className = `overlay-preview-badge pos-${pos} ${item.class}`;
+            span.textContent = item.label;
+            if (pos === 'tl' || pos === 'tr' || pos === 'tc') {
+                span.style.top = (item.topPct != null ? item.topPct : 1) + '%';
+            } else if (pos === 'bl' || pos === 'br' || pos === 'bc') {
+                const pct = (item.bottomPct != null ? item.bottomPct : 2);
+                span.style.bottom = blOffset ? `calc(${pct}% + ${blOffset}px)` : (pct + '%');
+            }
+            container.appendChild(span);
+        });
+    });
+}
+
+function updateOverlayPreview() {
+    const container = document.getElementById('overlay-preview-badges');
+    const emptyEl = document.getElementById('overlay-preview-empty');
+    const titleEl = document.getElementById('overlay-preview-title');
+    const wrapSingle = document.getElementById('overlay-preview-wrap-single');
+    const wrapTv = document.getElementById('overlay-preview-wrap-tv');
+    const emptySeason = document.getElementById('overlay-preview-empty-season');
+    const emptyEpisode = document.getElementById('overlay-preview-empty-episode');
+    if (!container) return;
+    const rawLibType = document.getElementById('temp_lib_type')?.value || '';
+    const libType = (rawLibType === 'show') ? 'tv' : rawLibType;
+    if (titleEl) {
+        if (libType === 'movie') titleEl.textContent = '🎬 Sample overlay preview (Movie)';
+        else if (libType === 'tv') titleEl.textContent = '📺 Sample overlay preview (TV)';
+        else if (libType === 'anime') titleEl.textContent = '🏯 Sample overlay preview (Anime)';
+        else titleEl.textContent = '🎬 Sample overlay preview';
+    }
+    const active = getActiveOverlaysForPreview();
+    // Season/Episode preview only for TV/Anime (Plex may return type "show" for TV libraries)
+    const isTvOrAnime = (libType === 'tv' || libType === 'anime' || libType === 'show');
+
+    if (isTvOrAnime) {
+        if (wrapSingle) wrapSingle.style.display = 'none';
+        if (wrapTv) wrapTv.style.display = 'flex';
+        const seasonContainer = document.getElementById('overlay-preview-badges-season');
+        const episodeContainer = document.getElementById('overlay-preview-badges-episode');
+        if (active.length === 0) {
+            if (emptySeason) emptySeason.style.display = 'flex';
+            if (emptyEpisode) emptyEpisode.style.display = 'flex';
+            return;
+        }
+        if (emptySeason) emptySeason.style.display = 'none';
+        if (emptyEpisode) emptyEpisode.style.display = 'none';
+        renderOverlayBadgesInto(seasonContainer, active, { showSeasonBadgeOnly: true });
+        renderOverlayBadgesInto(episodeContainer, active, { showSeasonEpisodeGroup: true });
+    } else {
+        if (wrapSingle) wrapSingle.style.display = 'block';
+        if (wrapTv) wrapTv.style.display = 'none';
+        container.innerHTML = '';
+        if (active.length === 0) {
+            if (emptyEl) emptyEl.style.display = 'flex';
+            return;
+        }
+        if (emptyEl) emptyEl.style.display = 'none';
+        renderOverlayBadgesInto(container, active, { showSeasonEpisodeGroup: true });
+    }
+}
 
 // tab switching
 function switchTab(t) {
@@ -735,12 +984,15 @@ function editVars(key, e) {
     qsContainer.style.display = 'grid';
 
     if (isOverlay) {
-        // overlays only show the allowed quick settings
+        // overlays only show the allowed quick settings (per https://kometa.wiki/en/latest/defaults/overlays/)
+        const libType = document.getElementById('temp_lib_type')?.value || '';
+        const isMovie = (libType === 'movie');
         const allowedFields = overlaySettingsMap[key];
         
         if (allowedFields && allowedFields.length > 0) {
             allowedFields.forEach(field => {
-                // convert underscores to dashes (e.g. builder_level -> wrapper-qs-builder-level)
+                // Builder Level (Season/Episode) only applies to TV/Anime libraries, not Movie
+                if (field === 'builder_level' && isMovie) return;
                 const id = 'wrapper-qs-' + field.replace(/_/g, '-');
                 const el = document.getElementById(id);
                 if(el) el.style.display = 'block';
@@ -959,6 +1211,7 @@ function gen() {
     }
 
     document.getElementById('output').innerHTML = y;
+    updateOverlayPreview();
 }
 
 // small helpers
@@ -1157,7 +1410,7 @@ function editLib(idx) {
        select.value = lib.name;
     }
     
-    document.getElementById('temp_lib_type').value = lib.type;
+    document.getElementById('temp_lib_type').value = (lib.type === 'show') ? 'tv' : lib.type;
     toggleOptions(); 
     filterOpts();
 
@@ -1361,7 +1614,7 @@ function renderTemplatesList() {
 
 function applyTemplate(idx) {
     const template = libraryTemplates[idx];
-    document.getElementById('temp_lib_type').value = template.type;
+    document.getElementById('temp_lib_type').value = (template.type === 'show') ? 'tv' : template.type;
     filterOpts();
     
     // uncheck all first

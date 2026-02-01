@@ -512,7 +512,7 @@ const CALENDAR_SEARCH_POLL_MAX = 10;
                             return;
                         }
                         if (!d.inQueue && d.hasFile) {
-                            statusEl.textContent = 'Already have the best available – nothing to grab.';
+                            statusEl.textContent = 'Already have the best available; nothing to grab.';
                             if (progressEl) progressEl.textContent = '';
                             return;
                         }
@@ -560,7 +560,7 @@ const CALENDAR_SEARCH_POLL_MAX = 10;
             setTimeout(doPoll, CALENDAR_SEARCH_POLL_MS);
         }
 
-        // Interactive Search – fetch releases and show with Grab/Add buttons
+        // Interactive Search: fetch releases and show with Grab/Add buttons
         document.getElementById('calendar-interactive-search').onclick = () => {
             if (isMovie) {
                 resultsEl.innerHTML = '<p class="text-muted">Loading releases...</p>';
@@ -687,7 +687,7 @@ const CALENDAR_SEARCH_POLL_MAX = 10;
         if (!container) return;
         fetch(API_CALENDAR_EPISODE_RELEASES_BASE.replace(/\/0$/, '/' + episodeId)).then(r => r.json()).then(data => {
             if (data.status !== 'success' || !data.releases || data.releases.length === 0) {
-                container.innerHTML = '<p class="text-muted">No releases yet. Run Quick Search, then click Refresh results in a few seconds—Sonarr may need time to search indexers.</p>';
+                container.innerHTML = '<p class="text-muted">No releases yet. Run Quick Search, then click Refresh results in a few seconds. Sonarr may need time to search indexers.</p>';
                 return;
             }
             let html = '<p class="calendar-search-results-title"><strong>Search results (' + data.releases.length + ')</strong></p><ul class="calendar-search-results-list">';

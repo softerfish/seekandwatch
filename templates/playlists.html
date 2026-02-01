@@ -463,6 +463,45 @@ function filterType(type) {
         const header = block.querySelector('.category-header');
         if (header) header.style.display = hasVisible ? 'flex' : 'none';
     });
+    restoreOpenCategories();
+}
+
+// persist which category dropdowns are open per tab (Movies vs TV) so refresh / run list keeps them dropped down
+function getCurrentFilter() {
+    const btn = document.querySelector('.type-toggle-btn.active');
+    return (btn && btn.id === 'btn-tv') ? 'tv' : 'movie';
+}
+
+function saveOpenCategories() {
+    const filter = getCurrentFilter();
+    const open = [];
+    document.querySelectorAll('.category-block').forEach(block => {
+        const grid = block.querySelector('.playlist-grid');
+        if (!grid || !grid.id) return;
+        if (!block.classList.contains('category-block--collapsed')) open.push(grid.id);
+    });
+    try { sessionStorage.setItem('playlist-open-categories-' + filter, JSON.stringify(open)); } catch (e) {}
+}
+
+function restoreOpenCategories() {
+    const filter = getCurrentFilter();
+    try {
+        const raw = sessionStorage.getItem('playlist-open-categories-' + filter);
+        if (!raw) return;
+        const open = JSON.parse(raw);
+        if (!Array.isArray(open) || open.length === 0) return;
+        document.querySelectorAll('.category-block').forEach(block => {
+            const grid = block.querySelector('.playlist-grid');
+            const header = block.querySelector('.category-header--toggle');
+            const chevron = block.querySelector('.category-chevron');
+            if (!grid || !grid.id || open.indexOf(grid.id) === -1) return;
+            block.classList.remove('category-block--collapsed');
+            grid.hidden = false;
+            grid.style.display = 'grid';
+            if (header) header.setAttribute('aria-expanded', 'true');
+            if (chevron) chevron.textContent = '▼';
+        });
+    } catch (e) {}
 }
 
 // Collapsible category sections (minimized by default, click header to expand).
@@ -478,12 +517,14 @@ function initCategoryToggles() {
             this.setAttribute('aria-expanded', !isCollapsed);
             const chevron = this.querySelector('.category-chevron');
             if (chevron) chevron.textContent = isCollapsed ? '▶' : '▼';
+            saveOpenCategories();
         });
     });
 }
 
 document.addEventListener('DOMContentLoaded', () => {
     filterType('movie');
+    restoreOpenCategories();
     initCategoryToggles();
 });
 

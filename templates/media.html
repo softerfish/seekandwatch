@@ -1231,7 +1231,7 @@ function renderRadarrReleasesTable() {
         html += `<td>${escapeHtml(language)}</td>`;
         html += `<td>${escapeHtml(quality)}</td>`;
         html += `<td style="text-align: center;">${customFormatDisplay}</td>`;
-        html += `<td style="text-align: center;">${downloadedIcon || rejectionIcon || '—'}</td>`;
+        html += `<td style="text-align: center;">${downloadedIcon || rejectionIcon || '-'}</td>`;
         html += '<td style="white-space: nowrap;">';
         // Always show both buttons - normal download if allowed, override if not allowed or rejected
         // Store release data in window object to avoid escaping issues in onclick
@@ -1595,7 +1595,7 @@ function sonarrAutoSearch(seriesId, title) {
 // Interactive Search = you pick a download (always in modal). Optional seasonNumber when called from a season row.
 function sonarrInteractiveSearch(seriesId, title, seasonNumber) {
     const subTitle = seasonNumber !== undefined && seasonNumber !== null ? `Season ${seasonNumber}` : '';
-    document.getElementById('searchModalTitle').textContent = subTitle ? `Search Results: ${title} – ${subTitle}` : `Search Results: ${title}`;
+    document.getElementById('searchModalTitle').textContent = subTitle ? `Search Results: ${title}: ${subTitle}` : `Search Results: ${title}`;
     document.getElementById('searchModalBody').innerHTML = '<div style="text-align: center; padding: 40px; color: #888;">Loading releases...</div>';
     document.getElementById('searchModal').style.display = 'block';
 
@@ -3456,7 +3456,7 @@ function pollRadarrSearchStatus(movieId, inlineEl) {
                     if (progressEl) progressEl.textContent = '';
                     return;
                 }
-                // already have the best available – nothing to grab
+                // already have the best available; nothing to grab
                 if (!data.inQueue && data.hasFile) {
                     const statusEl = inlineEl.querySelector('.search-movie-status');
                     const progressEl = inlineEl.querySelector('.search-movie-progress');
