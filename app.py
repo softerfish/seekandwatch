@@ -61,7 +61,7 @@ def background_worker_launcher():
         except Exception as e:
             print(f"Cloud Worker Error: {e}", flush=True)
         # Wait 60 seconds before checking again
-        time.sleep(20)
+        time.sleep(60)
         
 def get_persistent_key():
     """Gets the secret key from env or file, or makes a new one if needed."""
