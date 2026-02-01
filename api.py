@@ -82,8 +82,11 @@ def _log_api_exception(context, exc):
     except Exception:
         current_app.logger.exception(context)
 
-def _error_response(message="Request failed"):
-    return jsonify({'status': 'error', 'message': message})
+def _error_response(message="Request failed", **extra):
+    """Return standard error json; optional extra keys (e.g. profiles=[])."""
+    out = {'status': 'error', 'message': message}
+    out.update(extra)
+    return jsonify(out)
 
 def _error_payload(message="Request failed"):
     return jsonify({'error': message})
@@ -97,6 +100,29 @@ def _safe_backup_path(filename):
     if os.path.commonpath([root, full]) != root:
         return None
     return full
+
+def _arr_api_list(data):
+    """Normalize *arr API response to a list (handles dict with records/data or plain list)."""
+    if data is None:
+        return []
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict):
+        return data.get('records', data.get('data', []))
+    return []
+
+def _arr_error_message(resp, default="Request failed"):
+    """Extract error message from a *arr API error response (dict, list of dicts, or text)."""
+    try:
+        data = resp.json()
+        if isinstance(data, dict):
+            return data.get("message", default)
+        if isinstance(data, list) and len(data) > 0:
+            first = data[0]
+            return first.get("message", default) if isinstance(first, dict) else str(first)
+    except Exception:
+        pass
+    return resp.text[:200] if resp.text else default
 
 # recommendation loading and filtering
 
@@ -618,7 +644,7 @@ def set_plex_collection_visibility():
             return jsonify({'status': 'success', 'message': 'Visibility updated. Refresh Manage Recommendations in Plex to see the change.'})
         except Exception as e:
             _log_api_exception("set_plex_collection_visibility", e)
-            return jsonify({'status': 'error', 'message': str(e) or 'Request failed'})
+            return jsonify({'status': 'error', 'message': 'Request failed. Check application logs.'})
     else:
         return jsonify({'status': 'error', 'message': 'keyPath or preset_key required'})
 
@@ -638,10 +664,7 @@ def set_plex_collection_visibility():
         })
     except Exception as e:
         _log_api_exception("set_plex_collection_visibility", e)
-        msg = str(e) or 'Request failed'
-        if '401' in msg or '403' in msg or 'forbidden' in msg.lower():
-            msg += ' (Plex Pass may be required for collection publishing.)'
-        return jsonify({'status': 'error', 'message': msg})
+        return jsonify({'status': 'error', 'message': 'Request failed. Check application logs. (Plex Pass may be required for collection publishing.)'})
 
 @api_bp.route('/match_bulk_titles', methods=['POST'])
 @login_required
@@ -761,30 +784,52 @@ def preview_preset_items(key):
     if not preset: return jsonify({'status': 'error', 'message': 'Preset not found'})
     
     try:
-        params = preset.get('tmdb_params', {}).copy()
-        params['api_key'] = s.tmdb_key
-        url = f"https://api.themoviedb.org/3/discover/{preset['media_type']}"
-        
         owned_keys = get_plex_cache(s)
         items = []
         media_type = preset.get('media_type', 'movie')
+
+        # list-based preset (curated list from TMDB)
+        list_id = preset.get('tmdb_list_id')
+        if list_id:
+            list_url = f"https://api.themoviedb.org/3/list/{list_id}?api_key={s.tmdb_key}&language=en-US"
+            r = requests.get(list_url, timeout=10).json()
+            raw = r.get('items', [])
+            for i in raw:
+                if (i.get('media_type') or media_type) != media_type:
+                    continue
+                it = {'id': i.get('id'), 'title': i.get('title'), 'name': i.get('name'), 'release_date': i.get('release_date'), 'first_air_date': i.get('first_air_date'), 'poster_path': i.get('poster_path'), 'media_type': i.get('media_type') or media_type}
+                is_owned = is_owned_item(it, owned_keys, media_type)
+                if not is_owned:
+                    items.append({
+                        'title': it.get('title') or it.get('name'),
+                        'year': (it.get('release_date') or it.get('first_air_date') or '')[:4],
+                        'poster_path': it.get('poster_path'),
+                        'owned': False,
+                        'tmdb_id': it.get('id')
+                    })
+                if len(items) >= 12:
+                    break
+            return jsonify({'status': 'success', 'items': items})
+
+        params = preset.get('tmdb_params', {}).copy()
+        params['api_key'] = s.tmdb_key
+        if 'language' not in params:
+            params['language'] = 'en-US'
+        url = f"https://api.themoviedb.org/3/discover/{preset['media_type']}"
         page = 1
-        max_pages = 5  # Don't search forever, limit to 5 pages
-        
-        # Keep fetching pages until we have 12 unowned items or run out of pages
+        max_pages = 5
+        # Horror TV: exclude Animation/Kids/Family (same post-filter as run_collection_logic)
+        exclude_horror_genres = {16, 10762, 10751} if key == 'genre_horror_tv' and media_type == 'tv' else None
         while len(items) < 12 and page <= max_pages:
             params['page'] = page
             r = requests.get(url, params=params, timeout=5).json()
             results = r.get('results', [])
-            
             if not results:
-                break  # No more results
-            
+                break
             for i in results:
-                # Use comprehensive ownership check (checks aliases, titles, original titles, etc.)
+                if exclude_horror_genres and (exclude_horror_genres & set(i.get('genre_ids') or [])):
+                    continue
                 is_owned = is_owned_item(i, owned_keys, media_type)
-                
-                # Only add items that aren't owned
                 if not is_owned:
                     items.append({
                         'title': i.get('title', i.get('name')),
@@ -793,11 +838,8 @@ def preview_preset_items(key):
                         'owned': False,
                         'tmdb_id': i.get('id')
                     })
-                
-                # Stop once we have 12 unowned items
                 if len(items) >= 12:
                     break
-            
             page += 1
         
         return jsonify({'status': 'success', 'items': items})
@@ -809,13 +851,17 @@ def preview_preset_items(key):
 @login_required
 def create_collection(key):
     s = current_user.settings
-    
+    if not s:
+        return jsonify({'status': 'error', 'message': 'Settings not found'})
+
     if key.startswith('custom_'):
         job = CollectionSchedule.query.filter_by(preset_key=key).first()
         preset = json.loads(job.configuration)
     else:
-        preset = PLAYLIST_PRESETS.get(key, {}).copy()
-        
+        preset = (PLAYLIST_PRESETS.get(key) or {}).copy()
+        if not preset:
+            return jsonify({'status': 'error', 'message': 'Preset not found'})
+
         # Merge user overrides (sync mode, visibility, etc.).
         job = CollectionSchedule.query.filter_by(preset_key=key).first()
         if job and job.configuration:
@@ -829,11 +875,10 @@ def create_collection(key):
             except: pass
     
     # Run Now sends current visibility checkboxes so first run (or any run) uses them
-    if request.get_json(silent=True):
-        data = request.get_json()
-        for vk in ('visibility_home', 'visibility_library', 'visibility_friends'):
-            if vk in data:
-                preset[vk] = bool(data[vk])
+    data = request.get_json(silent=True) or {}
+    for vk in ('visibility_home', 'visibility_library', 'visibility_friends'):
+        if vk in data:
+            preset[vk] = bool(data[vk])
             
     from flask import current_app
     success, msg = run_collection_logic(s, preset, key, app_obj=current_app._get_current_object())
@@ -1845,6 +1890,24 @@ def admin_delete_user():
         
     return jsonify({'status': 'error', 'message': 'User not found'})
 
+@api_bp.route('/api/account/change_password', methods=['POST'])
+@rate_limit_decorator("10 per hour")
+@login_required
+def change_my_password():
+    """Change the current user's password. Requires current password."""
+    data = request.json or {}
+    current_password = (data.get('current_password') or '').strip()
+    new_password = (data.get('new_password') or '').strip()
+    if not current_password or not new_password:
+        return jsonify({'status': 'error', 'message': 'Current password and new password are required.'})
+    if len(new_password) < 8:
+        return jsonify({'status': 'error', 'message': 'New password must be at least 8 characters.'})
+    if not check_password_hash(current_user.password_hash, current_password):
+        return jsonify({'status': 'error', 'message': 'Current password is incorrect.'})
+    current_user.password_hash = generate_password_hash(new_password, method='pbkdf2:sha256')
+    db.session.commit()
+    return jsonify({'status': 'success', 'message': 'Password updated. Use your new password next time you log in.'})
+
 @api_bp.route('/api/admin/reset_password', methods=['POST'])
 @rate_limit_decorator("10 per hour")
 @login_required
@@ -2745,13 +2808,14 @@ def get_media_overview():
 def add_to_radarr():
     """Add a movie to Radarr."""
     s = current_user.settings
+    if not s:
+        return _error_response('Settings not found')
     if not s.radarr_url or not s.radarr_api_key:
-        return jsonify({'status': 'error', 'message': 'Radarr not configured'})
-    
-    data = request.json
+        return _error_response('Radarr not configured')
+    data = request.json or {}
     tmdb_id = data.get('tmdb_id')
     if not tmdb_id:
-        return jsonify({'status': 'error', 'message': 'TMDB ID required'})
+        return _error_response('TMDB ID required')
     
     # Check if movie is already owned before attempting to add
     try:
@@ -2764,7 +2828,7 @@ def add_to_radarr():
                 tmdb_item = tmdb_check_resp.json()
                 if is_owned_item(tmdb_item, owned_keys, 'movie'):
                     movie_title = tmdb_item.get('title', 'This movie')
-                    return jsonify({'status': 'error', 'message': f'{movie_title} is already in your library'})
+                    return _error_response(f'{movie_title} is already in your library')
     except Exception as e:
         # If ownership check fails, continue anyway (don't block the request)
         write_log("warning", "Radarr", "Ownership check failed")
@@ -2772,92 +2836,29 @@ def add_to_radarr():
     try:
         headers = {'X-Api-Key': s.radarr_api_key}
         base_url = s.radarr_url.rstrip('/')
-        
-        # Get root folder and quality profile
-        root_folders_url = f"{base_url}/api/v3/rootfolder"
-        root_resp = requests.get(root_folders_url, headers=headers, timeout=5)
-        if root_resp.status_code != 200:
-            return jsonify({'status': 'error', 'message': 'Failed to fetch root folders'})
-        root_folders_data = root_resp.json()
-        # Handle both list and dict responses
-        if isinstance(root_folders_data, dict):
-            root_folders = root_folders_data.get('records', root_folders_data.get('data', []))
-        else:
-            root_folders = root_folders_data if isinstance(root_folders_data, list) else []
-        
-        # ensure root_folders is actually a list
-        if not isinstance(root_folders, list):
-            root_folders = []
-        
-        if not root_folders or len(root_folders) == 0:
-            return jsonify({'status': 'error', 'message': 'No root folders configured'})
-        
-        # Get path from first folder (handle both dict and string formats)
-        first_folder = root_folders[0]
-        if isinstance(first_folder, dict):
-            root_folder_path = first_folder.get('path')
-        elif isinstance(first_folder, (list, tuple)) and len(first_folder) > 0:
-            # nested list - try to extract path from first element
-            nested_item = first_folder[0]
-            root_folder_path = nested_item.get('path') if isinstance(nested_item, dict) else str(nested_item)
-        else:
-            root_folder_path = str(first_folder)
-        
-        if not root_folder_path:
-            return jsonify({'status': 'error', 'message': 'Failed to extract root folder path'})
-        
-        # Get quality profile - use provided one or default to first available
+
+        root_folder_path, root_err = _fetch_first_root_folder(base_url, headers)
+        if root_err:
+            return _error_response(root_err)
+
         quality_profile_id = data.get('quality_profile_id')
         if not quality_profile_id:
-            quality_profiles_url = f"{base_url}/api/v3/qualityprofile"
-            quality_resp = requests.get(quality_profiles_url, headers=headers, timeout=5)
-            if quality_resp.status_code != 200:
-                return jsonify({'status': 'error', 'message': 'Failed to fetch quality profiles'})
-            quality_profiles_data = quality_resp.json()
-            
-            # Handle both list and dict responses
-            if isinstance(quality_profiles_data, dict):
-                quality_profiles = quality_profiles_data.get('records', quality_profiles_data.get('data', []))
-            else:
-                quality_profiles = quality_profiles_data if isinstance(quality_profiles_data, list) else []
-            
-            if not quality_profiles or len(quality_profiles) == 0:
-                return jsonify({'status': 'error', 'message': 'No quality profiles configured'})
-            
-            # Get id from first profile (handle both dict and other formats)
-            first_profile = quality_profiles[0]
-            
-            if isinstance(first_profile, dict):
-                quality_profile_id = first_profile.get('id')
-            elif isinstance(first_profile, (int, str)):
-                quality_profile_id = int(first_profile) if isinstance(first_profile, str) and first_profile.isdigit() else first_profile
-            elif isinstance(first_profile, (list, tuple)):
-                # Nested list - try to extract ID from first element
-                if len(first_profile) > 0:
-                    nested_item = first_profile[0]
-                    if isinstance(nested_item, dict):
-                        quality_profile_id = nested_item.get('id')
-                    elif isinstance(nested_item, (int, str)):
-                        quality_profile_id = int(nested_item) if isinstance(nested_item, str) and nested_item.isdigit() else nested_item
-                    else:
-                        quality_profile_id = None
-                else:
-                    quality_profile_id = None
-            else:
-                quality_profile_id = None
-            
-            if not quality_profile_id:
-                return jsonify({'status': 'error', 'message': f'Failed to extract quality profile ID from response. Got: {type(first_profile)}'})
+            qp_list, qp_err = _fetch_quality_profiles(base_url, headers)
+            if qp_err or not qp_list:
+                return _error_response(qp_err or 'No quality profiles configured')
+            quality_profile_id = qp_list[0].get('id')
+            if quality_profile_id is None:
+                return _error_response('Failed to extract quality profile id')
         
         # Get movie details from TMDB
         if not s.tmdb_key:
-            return jsonify({'status': 'error', 'message': 'TMDB API key required'})
+            return _error_response('TMDB API key required')
         tmdb_url = f"https://api.themoviedb.org/3/movie/{tmdb_id}?api_key={s.tmdb_key}"
         tmdb_resp = requests.get(tmdb_url, timeout=5)
         if tmdb_resp.status_code != 200:
-            return jsonify({'status': 'error', 'message': 'Failed to fetch movie details'})
+            return _error_response('Failed to fetch movie details')
         tmdb_data = tmdb_resp.json()
-        
+
         # Add to Radarr
         add_url = f"{base_url}/api/v3/movie"
         payload = {
@@ -2884,23 +2885,48 @@ def add_to_radarr():
             write_log("info", "Radarr", f"Added {title} to Radarr")
             return jsonify({'status': 'success', 'message': f"Added {title} to Radarr"})
         else:
-            # handle error response - could be dict or list
-            try:
-                error_data = add_resp.json()
-                if isinstance(error_data, dict):
-                    error_msg = error_data.get('message', 'Failed to add movie')
-                elif isinstance(error_data, list) and len(error_data) > 0:
-                    # if it's a list, try to get message from first item
-                    first_error = error_data[0]
-                    error_msg = first_error.get('message', 'Failed to add movie') if isinstance(first_error, dict) else str(first_error)
-                else:
-                    error_msg = add_resp.text[:200] if add_resp.text else 'Failed to add movie'
-            except:
-                error_msg = add_resp.text[:200] if add_resp.text else 'Failed to add movie'
-            return jsonify({'status': 'error', 'message': error_msg})
+            return _error_response(_arr_error_message(add_resp, 'Failed to add movie'))
     except Exception as e:
         _log_api_exception("add_to_radarr", e)
-        return jsonify({'status': 'error', 'message': 'Request failed'})
+        return _error_response('Request failed')
+
+def _fetch_first_root_folder(base_url, headers):
+    """Fetch root folders from *arr API and return first path. Returns (path, None) or (None, error_message)."""
+    try:
+        resp = requests.get(f"{base_url}/api/v3/rootfolder", headers=headers, timeout=5)
+        if resp.status_code != 200:
+            return None, "Failed to fetch root folders"
+        root_folders = _arr_api_list(resp.json())
+        if not root_folders:
+            return None, "No root folders configured"
+        first = root_folders[0]
+        path = first.get('path') if isinstance(first, dict) else (str(first) if first else None)
+        if not path:
+            return None, "Failed to extract root folder path"
+        return path, None
+    except Exception as e:
+        _log_api_exception("_fetch_first_root_folder", e)
+        return None, "Request failed"
+
+def _fetch_quality_profiles(base_url, headers):
+    """Fetch quality profiles from a *arr API. Returns (profiles_list, None) or (None, error_message)."""
+    try:
+        url = f"{base_url}/api/v3/qualityprofile"
+        resp = requests.get(url, headers=headers, timeout=5)
+        if resp.status_code != 200:
+            return None, "Failed to fetch quality profiles"
+        raw = resp.json()
+        items = _arr_api_list(raw)
+        profiles = []
+        for p in items:
+            if isinstance(p, dict):
+                pid = p.get('id')
+                if pid is not None:
+                    profiles.append({'id': pid, 'name': p.get('name', 'Unknown')})
+        return profiles, None
+    except Exception as e:
+        _log_api_exception("_fetch_quality_profiles", e)
+        return None, "Request failed"
 
 @api_bp.route('/api/radarr/quality-profiles', methods=['GET'])
 @login_required
@@ -2908,86 +2934,43 @@ def get_radarr_quality_profiles():
     """grab quality profiles from radarr"""
     s = current_user.settings
     if not s.radarr_url or not s.radarr_api_key:
-        return jsonify({'status': 'error', 'message': 'Radarr not configured', 'profiles': []})
-    
-    try:
-        headers = {'X-Api-Key': s.radarr_api_key}
-        base_url = s.radarr_url.rstrip('/')
-        quality_profiles_url = f"{base_url}/api/v3/qualityprofile"
-        quality_resp = requests.get(quality_profiles_url, headers=headers, timeout=5)
-        if quality_resp.status_code != 200:
-            return jsonify({'status': 'error', 'message': 'Failed to fetch quality profiles', 'profiles': []})
-        quality_profiles_data = quality_resp.json()
-        
-        # Handle both list and dict responses
-        if isinstance(quality_profiles_data, dict):
-            quality_profiles = quality_profiles_data.get('records', quality_profiles_data.get('data', []))
-        else:
-            quality_profiles = quality_profiles_data if isinstance(quality_profiles_data, list) else []
-        
-        # Safely extract profiles - only process dict items
-        profiles = []
-        for p in quality_profiles:
-            if isinstance(p, dict):
-                profile_id = p.get('id')
-                profile_name = p.get('name', 'Unknown')
-                if profile_id is not None:
-                    profiles.append({'id': profile_id, 'name': profile_name})
-        
-        return jsonify({'status': 'success', 'profiles': profiles})
-    except Exception as e:
-        _log_api_exception("get_radarr_quality_profiles", e)
-        return jsonify({'status': 'error', 'message': 'Request failed', 'profiles': []})
+        return _error_response('Radarr not configured', profiles=[])
+    base_url = s.radarr_url.rstrip('/')
+    headers = {'X-Api-Key': s.radarr_api_key}
+    profiles, err = _fetch_quality_profiles(base_url, headers)
+    if err:
+        return _error_response(err, profiles=[])
+    return jsonify({'status': 'success', 'profiles': profiles})
 
 @api_bp.route('/api/sonarr/quality-profiles', methods=['GET'])
 @login_required
 def get_sonarr_quality_profiles():
     """grab quality profiles from sonarr"""
     s = current_user.settings
+    if not s:
+        return _error_response('Settings not found', profiles=[])
     if not s.sonarr_url or not s.sonarr_api_key:
-        return jsonify({'status': 'error', 'message': 'Sonarr not configured', 'profiles': []})
-    
-    try:
-        headers = {'X-Api-Key': s.sonarr_api_key}
-        base_url = s.sonarr_url.rstrip('/')
-        quality_profiles_url = f"{base_url}/api/v3/qualityprofile"
-        quality_resp = requests.get(quality_profiles_url, headers=headers, timeout=5)
-        if quality_resp.status_code != 200:
-            return jsonify({'status': 'error', 'message': 'Failed to fetch quality profiles', 'profiles': []})
-        quality_profiles_data = quality_resp.json()
-        
-        # Handle both list and dict responses
-        if isinstance(quality_profiles_data, dict):
-            quality_profiles = quality_profiles_data.get('records', quality_profiles_data.get('data', []))
-        else:
-            quality_profiles = quality_profiles_data if isinstance(quality_profiles_data, list) else []
-        
-        # Safely extract profiles - only process dict items
-        profiles = []
-        for p in quality_profiles:
-            if isinstance(p, dict):
-                profile_id = p.get('id')
-                profile_name = p.get('name', 'Unknown')
-                if profile_id is not None:
-                    profiles.append({'id': profile_id, 'name': profile_name})
-        
-        return jsonify({'status': 'success', 'profiles': profiles})
-    except Exception as e:
-        _log_api_exception("get_sonarr_quality_profiles", e)
-        return jsonify({'status': 'error', 'message': 'Request failed', 'profiles': []})
+        return _error_response('Sonarr not configured', profiles=[])
+    base_url = s.sonarr_url.rstrip('/')
+    headers = {'X-Api-Key': s.sonarr_api_key}
+    profiles, err = _fetch_quality_profiles(base_url, headers)
+    if err:
+        return _error_response(err, profiles=[])
+    return jsonify({'status': 'success', 'profiles': profiles})
 
 @api_bp.route('/api/sonarr/add', methods=['POST'])
 @login_required
 def add_to_sonarr():
     """Add a TV show to Sonarr."""
     s = current_user.settings
+    if not s:
+        return _error_response('Settings not found')
     if not s.sonarr_url or not s.sonarr_api_key:
-        return jsonify({'status': 'error', 'message': 'Sonarr not configured'})
-    
-    data = request.json
+        return _error_response('Sonarr not configured')
+    data = request.json or {}
     tmdb_id = data.get('tmdb_id')
     if not tmdb_id:
-        return jsonify({'status': 'error', 'message': 'TMDB ID required'})
+        return _error_response('TMDB ID required')
     
     # Check if TV show is already owned before attempting to add
     try:
@@ -3000,7 +2983,7 @@ def add_to_sonarr():
                 tmdb_item = tmdb_check_resp.json()
                 if is_owned_item(tmdb_item, owned_keys, 'tv'):
                     show_title = tmdb_item.get('name', 'This TV show')
-                    return jsonify({'status': 'error', 'message': f'{show_title} is already in your library'})
+                    return _error_response(f'{show_title} is already in your library')
     except Exception as e:
         # If ownership check fails, continue anyway (don't block the request)
         write_log("warning", "Sonarr", "Ownership check failed")
@@ -3008,36 +2991,27 @@ def add_to_sonarr():
     try:
         headers = {'X-Api-Key': s.sonarr_api_key}
         base_url = s.sonarr_url.rstrip('/')
-        
-        # Get root folder and quality profile
-        root_folders_url = f"{base_url}/api/v3/rootfolder"
-        root_resp = requests.get(root_folders_url, headers=headers, timeout=5)
-        if root_resp.status_code != 200:
-            return jsonify({'status': 'error', 'message': 'Failed to fetch root folders'})
-        root_folders = root_resp.json()
-        if not root_folders:
-            return jsonify({'status': 'error', 'message': 'No root folders configured'})
-        root_folder_path = root_folders[0].get('path')
-        
-        # Get quality profile - use provided one or default to first available
+
+        root_folder_path, root_err = _fetch_first_root_folder(base_url, headers)
+        if root_err:
+            return _error_response(root_err)
+
         quality_profile_id = data.get('quality_profile_id')
         if not quality_profile_id:
-            quality_profiles_url = f"{base_url}/api/v3/qualityprofile"
-            quality_resp = requests.get(quality_profiles_url, headers=headers, timeout=5)
-            if quality_resp.status_code != 200:
-                return jsonify({'status': 'error', 'message': 'Failed to fetch quality profiles'})
-            quality_profiles = quality_resp.json()
-            if not quality_profiles:
-                return jsonify({'status': 'error', 'message': 'No quality profiles configured'})
-            quality_profile_id = quality_profiles[0].get('id')
-        
+            qp_list, qp_err = _fetch_quality_profiles(base_url, headers)
+            if qp_err or not qp_list:
+                return _error_response(qp_err or 'No quality profiles configured')
+            quality_profile_id = qp_list[0].get('id')
+            if quality_profile_id is None:
+                return _error_response('Failed to extract quality profile id')
+
         # Get TV show details from TMDB
         if not s.tmdb_key:
-            return jsonify({'status': 'error', 'message': 'TMDB API key required'})
+            return _error_response('TMDB API key required')
         tmdb_url = f"https://api.themoviedb.org/3/tv/{tmdb_id}?api_key={s.tmdb_key}"
         tmdb_resp = requests.get(tmdb_url, timeout=5)
         if tmdb_resp.status_code != 200:
-            return jsonify({'status': 'error', 'message': 'Failed to fetch TV show details'})
+            return _error_response('Failed to fetch TV show details')
         tmdb_data = tmdb_resp.json()
         
         # Sonarr lookup: try TMDB ID first, then TVDB ID (from TMDB external_ids), then by title
@@ -3071,7 +3045,7 @@ def add_to_sonarr():
                     if not series_list and candidates:
                         series_list = [candidates[0]]
         if not series_list:
-            return jsonify({'status': 'error', 'message': 'Show not found in Sonarr lookup'})
+            return _error_response('Show not found in Sonarr lookup')
 
         series_data = series_list[0]
         
@@ -3102,11 +3076,10 @@ def add_to_sonarr():
             write_log("info", "Sonarr", f"Added {title} to Sonarr")
             return jsonify({'status': 'success', 'message': f"Added {title} to Sonarr"})
         else:
-            error_msg = add_resp.json().get('message', 'Failed to add show')
-            return jsonify({'status': 'error', 'message': error_msg})
+            return _error_response(_arr_error_message(add_resp, 'Failed to add show'))
     except Exception as e:
         _log_api_exception("add_to_sonarr", e)
-        return jsonify({'status': 'error', 'message': 'Request failed'})
+        return _error_response('Request failed')
 
 @api_bp.route('/api/radarr/toggle_monitored/<int:movie_id>', methods=['POST'])
 @login_required

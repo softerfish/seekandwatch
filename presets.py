@@ -116,8 +116,77 @@ PLAYLIST_PRESETS = {
 
     # more genres / niche
     'genre_romance_tv': {'title': 'Romance TV', 'category': 'Genre (TV)', 'icon': '💕', 'media_type': 'tv', 'description': 'Love stories.', 'tmdb_params': {'with_genres': '10749', 'sort_by': 'popularity.desc'}},
-    'genre_horror_tv': {'title': 'Horror TV', 'category': 'Genre (TV)', 'icon': '👻', 'media_type': 'tv', 'description': 'Spooky & supernatural.', 'tmdb_params': {'with_genres': '10765', 'sort_by': 'popularity.desc'}},
+    # tv has no Horror genre. use Drama + horror keyword (narrows to serious horror, not cartoons) and exclude Animation/Kids/Family
+    'genre_horror_tv': {'title': 'Horror TV', 'category': 'Genre (TV)', 'icon': '👻', 'media_type': 'tv', 'description': 'Spooky & supernatural.', 'tmdb_params': {'with_genres': '18', 'with_keywords': '315058', 'without_genres': '16|10762|10751', 'vote_count.gte': '300', 'vote_average.gte': '6.5', 'sort_by': 'vote_average.desc'}},
     'genre_mystery_tv': {'title': 'Mystery TV', 'category': 'Genre (TV)', 'icon': '🔍', 'media_type': 'tv', 'description': 'Whodunnits.', 'tmdb_params': {'with_genres': '9648', 'sort_by': 'popularity.desc'}},
     'new_releases_mov': {'title': 'New Releases', 'category': 'Decades', 'icon': '🆕', 'media_type': 'movie', 'description': 'This year.', 'tmdb_params': {'primary_release_date.gte': '2025-01-01', 'sort_by': 'popularity.desc'}},
     'best_rated_mov': {'title': 'Best Rated', 'category': 'Awards & Acclaim', 'icon': '⭐', 'media_type': 'movie', 'description': 'Top rated ever.', 'tmdb_params': {'vote_average.gte': '8.0', 'vote_count.gte': '2000', 'sort_by': 'vote_average.desc'}},
+
+    # --- TV decades, more themes, networks, international, genres ---
+
+    # TV Decades (first_air_date)
+    'tv_90s': {'title': 'The 1990s (TV)', 'category': 'Decades', 'icon': '📺', 'media_type': 'tv', 'description': 'Classic 90s shows.', 'tmdb_params': {'first_air_date.gte': '1990-01-01', 'first_air_date.lte': '1999-12-31', 'sort_by': 'popularity.desc'}},
+    'tv_2000s': {'title': 'The 2000s (TV)', 'category': 'Decades', 'icon': '💿', 'media_type': 'tv', 'description': 'Early 2000s TV.', 'tmdb_params': {'first_air_date.gte': '2000-01-01', 'first_air_date.lte': '2009-12-31', 'sort_by': 'popularity.desc'}},
+    'tv_2010s': {'title': 'The 2010s (TV)', 'category': 'Decades', 'icon': '📱', 'media_type': 'tv', 'description': 'Peak TV era.', 'tmdb_params': {'first_air_date.gte': '2010-01-01', 'first_air_date.lte': '2019-12-31', 'sort_by': 'popularity.desc'}},
+    'tv_2020s': {'title': 'The 2020s (TV)', 'category': 'Decades', 'icon': '🆕', 'media_type': 'tv', 'description': 'Current hits.', 'tmdb_params': {'first_air_date.gte': '2020-01-01', 'sort_by': 'popularity.desc'}},
+    'new_releases_tv': {'title': 'New TV', 'category': 'Decades', 'icon': '🆕', 'media_type': 'tv', 'description': 'This year.', 'tmdb_params': {'first_air_date.gte': '2025-01-01', 'sort_by': 'popularity.desc'}},
+
+    # More themes (movies)
+    'theme_noir': {'title': 'Film Noir', 'category': 'Themes & Vibes', 'icon': '🎩', 'media_type': 'movie', 'description': 'Shadow & style.', 'tmdb_params': {'with_keywords': '3795', 'sort_by': 'vote_average.desc', 'vote_count.gte': '100'}},
+    'theme_revenge': {'title': 'Revenge', 'category': 'Themes & Vibes', 'icon': '⚔️', 'media_type': 'movie', 'description': 'Payback.', 'tmdb_params': {'with_keywords': '424', 'sort_by': 'popularity.desc'}},
+    'theme_prison': {'title': 'Prison', 'category': 'Themes & Vibes', 'icon': '🔒', 'media_type': 'movie', 'description': 'Behind bars.', 'tmdb_params': {'with_keywords': '10489', 'sort_by': 'popularity.desc'}},
+    'theme_wedding': {'title': 'Wedding', 'category': 'Themes & Vibes', 'icon': '💒', 'media_type': 'movie', 'description': 'I dos & drama.', 'tmdb_params': {'with_keywords': '265710', 'sort_by': 'popularity.desc'}},
+    'theme_biopic': {'title': 'Biopics', 'category': 'Themes & Vibes', 'icon': '📜', 'media_type': 'movie', 'description': 'Based on real lives.', 'tmdb_params': {'with_keywords': '258', 'sort_by': 'vote_average.desc', 'vote_count.gte': '200'}},
+    'theme_halloween': {'title': 'Halloween & Horror', 'category': 'Themes & Vibes', 'icon': '🎃', 'media_type': 'movie', 'description': 'Spooky season.', 'tmdb_params': {'with_genres': '27', 'sort_by': 'popularity.desc'}},
+    'theme_valentine': {'title': 'Rom-Com & Valentine', 'category': 'Themes & Vibes', 'icon': '💝', 'media_type': 'movie', 'description': 'Love & laughs.', 'tmdb_params': {'with_genres': '10749', 'sort_by': 'popularity.desc'}},
+    'theme_apocalypse': {'title': 'Apocalypse & Survival', 'category': 'Themes & Vibes', 'icon': '🌍', 'media_type': 'movie', 'description': 'End of the world.', 'tmdb_params': {'with_keywords': '4414', 'sort_by': 'popularity.desc'}},
+    'theme_cyberpunk': {'title': 'Cyberpunk & Tech', 'category': 'Themes & Vibes', 'icon': '🤖', 'media_type': 'movie', 'description': 'High tech, low life.', 'tmdb_params': {'with_keywords': '818', 'with_genres': '878', 'sort_by': 'vote_average.desc'}},
+    'theme_war_movies': {'title': 'War & Military', 'category': 'Themes & Vibes', 'icon': '🪖', 'media_type': 'movie', 'description': 'Conflict & courage.', 'tmdb_params': {'with_genres': '10752', 'sort_by': 'popularity.desc'}},
+
+    # More themes (TV)
+    'theme_anthology_tv': {'title': 'Anthology Series', 'category': 'Themes & Vibes', 'icon': '📚', 'media_type': 'tv', 'description': 'New story each season.', 'tmdb_params': {'with_keywords': '210024', 'sort_by': 'vote_average.desc', 'vote_count.gte': '50'}},
+    'theme_sitcom_tv': {'title': 'Sitcoms', 'category': 'Themes & Vibes', 'icon': '😂', 'media_type': 'tv', 'description': 'Laugh tracks & life.', 'tmdb_params': {'with_genres': '35', 'sort_by': 'popularity.desc'}},
+    'theme_sci_fi_tv': {'title': 'Sci-Fi & Fantasy TV', 'category': 'Themes & Vibes', 'icon': '🛸', 'media_type': 'tv', 'description': 'Space & magic.', 'tmdb_params': {'with_genres': '10765', 'sort_by': 'popularity.desc'}},
+    'theme_cop_procedural_tv': {'title': 'Cop & Procedural', 'category': 'Themes & Vibes', 'icon': '🚔', 'media_type': 'tv', 'description': 'Case of the week.', 'tmdb_params': {'with_genres': '80', 'sort_by': 'popularity.desc'}},
+
+    # More international (movies + TV)
+    'japanese_cinema': {'title': 'Japanese Cinema', 'category': 'International & World', 'icon': '🇯🇵', 'media_type': 'movie', 'description': 'Japan film.', 'tmdb_params': {'with_original_language': 'ja', 'sort_by': 'popularity.desc'}},
+    'italian_cinema': {'title': 'Italian Cinema', 'category': 'International & World', 'icon': '🇮🇹', 'media_type': 'movie', 'description': 'Neorealism & more.', 'tmdb_params': {'with_original_language': 'it', 'sort_by': 'popularity.desc'}},
+    'mexican_cinema': {'title': 'Mexican Cinema', 'category': 'International & World', 'icon': '🇲🇽', 'media_type': 'movie', 'description': 'Mexico film.', 'tmdb_params': {'with_origin_country': 'MX', 'sort_by': 'popularity.desc'}},
+    'anime_tv': {'title': 'Anime (TV)', 'category': 'International & World', 'icon': '🗾', 'media_type': 'tv', 'description': 'Japanese animation.', 'tmdb_params': {'with_original_language': 'ja', 'with_genres': '16', 'sort_by': 'popularity.desc'}},
+    'spanish_tv': {'title': 'Spanish & Latin TV', 'category': 'International & World', 'icon': '🇪🇸', 'media_type': 'tv', 'description': 'Telenovelas & drama.', 'tmdb_params': {'with_original_language': 'es', 'sort_by': 'popularity.desc'}},
+    'australian_tv': {'title': 'Australian TV', 'category': 'International & World', 'icon': '🇦🇺', 'media_type': 'tv', 'description': 'Down under series.', 'tmdb_params': {'with_origin_country': 'AU', 'sort_by': 'popularity.desc'}},
+    'canadian_tv': {'title': 'Canadian TV', 'category': 'International & World', 'icon': '🇨🇦', 'media_type': 'tv', 'description': 'Canadian series.', 'tmdb_params': {'with_origin_country': 'CA', 'sort_by': 'popularity.desc'}},
+
+    # More studios & networks (FlixPatrol-style “Networks Top”)
+    'studio_dc': {'title': 'DC', 'category': 'Studios & Networks', 'icon': '🦇', 'media_type': 'movie', 'description': 'DC Comics films.', 'tmdb_params': {'with_companies': '174', 'sort_by': 'release_date.desc'}},
+    'studio_universal': {'title': 'Universal', 'category': 'Studios & Networks', 'icon': '🌐', 'media_type': 'movie', 'description': 'Universal Pictures.', 'tmdb_params': {'with_companies': '33', 'sort_by': 'popularity.desc'}},
+    'studio_warner': {'title': 'Warner Bros', 'category': 'Studios & Networks', 'icon': '🎬', 'media_type': 'movie', 'description': 'WB films.', 'tmdb_params': {'with_companies': '174', 'sort_by': 'popularity.desc'}},
+    'studio_paramount': {'title': 'Paramount', 'category': 'Studios & Networks', 'icon': '🏔️', 'media_type': 'movie', 'description': 'Paramount Pictures.', 'tmdb_params': {'with_companies': '4', 'sort_by': 'popularity.desc'}},
+    'network_hulu': {'title': 'Hulu Originals', 'category': 'Studios & Networks', 'icon': '🟢', 'media_type': 'tv', 'description': 'Hulu series.', 'tmdb_params': {'with_networks': '453', 'sort_by': 'popularity.desc'}},
+    'network_disney_plus': {'title': 'Disney+ Originals', 'category': 'Studios & Networks', 'icon': '✨', 'media_type': 'tv', 'description': 'Disney+ series.', 'tmdb_params': {'with_networks': '2739', 'sort_by': 'popularity.desc'}},
+    'network_prime': {'title': 'Prime Video', 'category': 'Studios & Networks', 'icon': '📦', 'media_type': 'tv', 'description': 'Amazon Originals.', 'tmdb_params': {'with_networks': '1024', 'sort_by': 'popularity.desc'}},
+    'network_fx': {'title': 'FX', 'category': 'Studios & Networks', 'icon': '📺', 'media_type': 'tv', 'description': 'FX series.', 'tmdb_params': {'with_networks': '3186', 'sort_by': 'vote_average.desc', 'vote_count.gte': '100'}},
+    'network_amc': {'title': 'AMC', 'category': 'Studios & Networks', 'icon': '🧟', 'media_type': 'tv', 'description': 'AMC drama.', 'tmdb_params': {'with_networks': '88', 'sort_by': 'vote_average.desc', 'vote_count.gte': '100'}},
+    'network_showtime': {'title': 'Showtime', 'category': 'Studios & Networks', 'icon': '📺', 'media_type': 'tv', 'description': 'Showtime series.', 'tmdb_params': {'with_networks': '67', 'sort_by': 'popularity.desc'}},
+    'network_cw': {'title': 'The CW', 'category': 'Studios & Networks', 'icon': '📺', 'media_type': 'tv', 'description': 'CW drama & genre.', 'tmdb_params': {'with_networks': '71', 'sort_by': 'popularity.desc'}},
+
+    # More genres (TV) – Fantasy, Thriller, Adventure
+    'genre_fantasy_tv': {'title': 'Fantasy TV', 'category': 'Genre (TV)', 'icon': '🐉', 'media_type': 'tv', 'description': 'Magic & myth.', 'tmdb_params': {'with_genres': '10765', 'sort_by': 'popularity.desc'}},
+    'genre_thriller_tv': {'title': 'Thriller TV', 'category': 'Genre (TV)', 'icon': '😱', 'media_type': 'tv', 'description': 'Suspense & mystery.', 'tmdb_params': {'with_genres': '9648', 'sort_by': 'popularity.desc'}},
+    'genre_adventure_tv': {'title': 'Adventure TV', 'category': 'Genre (TV)', 'icon': '🗺️', 'media_type': 'tv', 'description': 'Action & adventure.', 'tmdb_params': {'with_genres': '10759', 'sort_by': 'popularity.desc'}},
+    'genre_history_tv': {'title': 'History & Period TV', 'category': 'Genre (TV)', 'icon': '🏛️', 'media_type': 'tv', 'description': 'Period drama.', 'tmdb_params': {'with_genres': '36', 'sort_by': 'popularity.desc'}},
+    'genre_war_tv': {'title': 'War & Military TV', 'category': 'Genre (TV)', 'icon': '🪖', 'media_type': 'tv', 'description': 'Conflict on screen.', 'tmdb_params': {'with_genres': '10768', 'sort_by': 'popularity.desc'}},
+    'best_rated_tv': {'title': 'Best Rated TV', 'category': 'Awards & Acclaim', 'icon': '⭐', 'media_type': 'tv', 'description': 'Top rated ever.', 'tmdb_params': {'vote_average.gte': '8.0', 'vote_count.gte': '500', 'sort_by': 'vote_average.desc'}},
+
+    # Content ratings (more)
+    'rating_us_pg13': {'title': 'Rated PG-13', 'category': 'Content Ratings', 'icon': '🟠', 'media_type': 'movie', 'description': 'Teens and up.', 'tmdb_params': {'certification_country': 'US', 'certification': 'PG-13', 'sort_by': 'popularity.desc'}},
+    'rating_us_g': {'title': 'Rated G', 'category': 'Content Ratings', 'icon': '🟢', 'media_type': 'movie', 'description': 'All ages.', 'tmdb_params': {'certification_country': 'US', 'certification': 'G', 'sort_by': 'popularity.desc'}},
+    'rating_us_tvpg': {'title': 'TV-PG', 'category': 'Content Ratings', 'icon': '🟡', 'media_type': 'tv', 'description': 'Parental guidance.', 'tmdb_params': {'certification_country': 'US', 'certification': 'TV-PG', 'sort_by': 'popularity.desc'}},
+    'rating_us_tv14': {'title': 'TV-14', 'category': 'Content Ratings', 'icon': '🟠', 'media_type': 'tv', 'description': 'Ages 14+.', 'tmdb_params': {'certification_country': 'US', 'certification': 'TV-14', 'sort_by': 'popularity.desc'}},
+
+    # Documentary subcategories
+    'docu_nature_mov': {'title': 'Nature Docs', 'category': 'Genre (Movies)', 'icon': '🦁', 'media_type': 'movie', 'description': 'Wildlife & planet.', 'tmdb_params': {'with_genres': '99', 'with_keywords': '25836', 'sort_by': 'vote_average.desc'}},
+    'docu_crime_mov': {'title': 'True Crime Docs', 'category': 'Genre (Movies)', 'icon': '📋', 'media_type': 'movie', 'description': 'Real crime stories.', 'tmdb_params': {'with_genres': '99', 'with_keywords': '9714', 'sort_by': 'popularity.desc'}},
+    'docu_music_mov': {'title': 'Music Docs', 'category': 'Genre (Movies)', 'icon': '🎵', 'media_type': 'movie', 'description': 'Bands & musicians.', 'tmdb_params': {'with_genres': '99', 'sort_by': 'popularity.desc'}},
 }

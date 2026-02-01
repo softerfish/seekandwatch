@@ -82,6 +82,15 @@ class Settings(db.Model):
     radarr_sonarr_scanner_enabled = db.Column(db.Boolean, default=False)
     radarr_sonarr_scanner_interval = db.Column(db.Integer, default=24)  # hours
     last_radarr_sonarr_scan = db.Column(db.Integer, default=0)
+    
+    # SeekAndWatch web app
+    cloud_enabled = db.Column(db.Boolean, default=False)
+    cloud_api_key = db.Column(db.String(100))
+    cloud_auto_approve = db.Column(db.Boolean, default=False)
+    # direct = Radarr (for movies) or Sonarr (for TV)
+    # overseerr sends to Overseerr
+    cloud_movie_handler = db.Column(db.String(20), default='direct') 
+    cloud_tv_handler = db.Column(db.String(20), default='direct')
 
 class Blocklist(db.Model):
     __table_args__ = {'extend_existing': True}
@@ -167,5 +176,14 @@ class KometaTemplate(db.Model):
     ovls = db.Column(db.Text)  # JSON array of overlay names
     template_vars = db.Column(db.Text)  # JSON object of template variables
     created_at = db.Column(db.DateTime, default=datetime.now)
-    
     user = db.relationship('User', backref='kometa_templates')
+    
+class CloudRequest(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    cloud_id = db.Column(db.String(36), unique=True) # The ID from the PHP site
+    title = db.Column(db.String(255))
+    media_type = db.Column(db.String(20)) # 'movie' or 'tv'
+    tmdb_id = db.Column(db.Integer)
+    requested_by = db.Column(db.String(100))
+    status = db.Column(db.String(20), default='pending') # pending, approved, denied, completed
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)

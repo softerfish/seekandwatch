@@ -1,12 +1,14 @@
 # SeekAndWatch
 
-![Version](https://img.shields.io/badge/version-1.4.1-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) (submitted) ![License](https://img.shields.io/badge/License-MIT-green.svg)
+![Version](https://img.shields.io/badge/version-1.5.0-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) (submitted) ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
 Self-hosted Plex companion: Smart Discovery from your watch history, add movies/shows via Radarr/Sonarr, Kometa builder, Plex collections, Overseerr, Tautulli. One dashboard -less scrolling, more watching.
 
+**[SeekAndWatch Cloud](https://www.SeekAndWatch.com) (beta)** – Hosted option so friends and family can request from your Plex server without needing access to your apps. You approve or deny; requests sync to Radarr, Sonarr, or Overseerr. Zero port forwarding.
+
 If this saves you from endless scrolling, a star helps.
 
-**Documentation:** [Wiki](https://github.com/softerfish/seekandwatch/wiki) — install, Smart Discovery, Plex Collections, Radarr, Sonarr, Kometa builder, troubleshooting.
+**Documentation:** [Wiki](https://github.com/softerfish/seekandwatch/wiki) - install, Smart Discovery, Plex Collections, Radarr, Sonarr, Kometa builder, troubleshooting.
 
 ---
 
@@ -21,6 +23,7 @@ Goal: spend less time browsing, more time watching. It uses your watch history a
 ## Table of Contents
 
 - [Key Features](#key-features)
+- [SeekAndWatch Cloud (Beta)](#seekandwatch-cloud-beta)
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [How to Update](#how-to-update)
@@ -55,9 +58,9 @@ Goal: spend less time browsing, more time watching. It uses your watch history a
 
 ### Plex collections
 
-- **90+ preset collections** — decades, genres, studios, themes, international, awards. Categories are collapsible so you can focus on what you use.
-- **Visibility** — Home, Library recommended, and Friends checkboxes on every collection; changes apply to Plex right away (no need to run the collection again).
-- **Library Browser** — Live view of all collections on your Plex server with the same visibility toggles. In Plex you can reorder and change options under Settings → Manage → Libraries → Manage Recommendations.
+- **90+ preset collections** - decades, genres, studios, themes, international, awards. Categories are collapsible so you can focus on what you use.
+- **Visibility** - Home, Library recommended, and Friends checkboxes on every collection; changes apply to Plex right away (no need to run the collection again).
+- **Library Browser** - Live view of all collections on your Plex server with the same visibility toggles. In Plex you can reorder and change options under Settings → Manage → Libraries → Manage Recommendations.
 - Auto-update (daily/weekly/manual), sync strict or append-only, bulk list import (IMDb/Letterboxd/Reddit) with smart matching, custom builder.
 
 ### Library quality & requests
@@ -71,6 +74,18 @@ Goal: spend less time browsing, more time watching. It uses your watch history a
 
 - Backup/restore (including import); one-click updates for manual Docker installs (Unraid App Store installs update via App Store only).
 - System logs and health for scans and scheduled jobs; multi-user accounts with admin controls; security safeguards for logins, forms, and file handling.
+
+---
+
+## SeekAndWatch Cloud (Beta)
+
+**SeekAndWatch Cloud** is a hosted service that lets your friends and family request movies and TV shows from your Plex server without needing access to Plex, Radarr, or Sonarr. Requests land in your Cloud dashboard for you to approve or deny; approved requests sync to Radarr, Sonarr, or Overseerr on your self-hosted SeekAndWatch instance.
+
+- **Zero network config** – Your local server polls the Cloud for new requests. No port forwarding, VPNs, or exposing your IP.
+- **You stay in control** – Approve or deny each request; optional master invite codes for registration.
+- **Passkey & recovery** – Sign in with passkeys or password; one-time recovery codes for account recovery.
+
+Cloud is currently **in beta**. To request access: [r/SeekAndWatch](https://www.reddit.com/r/SeekAndWatch) – post or send a mod a PM.
 
 ---
 
@@ -130,6 +145,20 @@ docker compose up -d
 
 ## Changelog
 
+v1.5.0
+**SeekAndWatch Cloud (beta)** – [https://www.SeekAndWatch.com](https://www.SeekAndWatch.com)
+- Hosted option so friends and family can request from your Plex server without needing access to Plex or Radarr/Sonarr. You approve or deny; requests sync to Radarr, Sonarr, or Overseerr.
+- To request access: [r/SeekAndWatch](https://www.reddit.com/r/SeekAndWatch) – post or send a mod a PM.
+- Zero network config – your local server polls the Cloud for requests; no port forwarding or exposing your IP.
+
+Improvements and Bugfixes
+- 140+ ready to go 1 click plex collections to choose from
+- one time login recovery codes given upon registration and can be regenerated in settings
+- you can now change your password in settings
+
+
+<details>
+  <summary><b>Past Changelog</b></summary>
 v1.4.1
 Bugfixes and security:
 - GitHub CodeQL fixes
@@ -148,8 +177,6 @@ Features:
 Additional:
 - updated docker-compose
 
-<details>
-  <summary><b>Past Changelog</b></summary>
 v1.4.0
 This is a pretty huge update
 

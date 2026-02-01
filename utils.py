@@ -1164,7 +1164,7 @@ def get_radarr_sonarr_cache(media_type=None):
 
 def apply_collection_visibility(plex_collection, visible_home=False, visible_library=False, visible_friends=False):
     """Set where the collection appears: home, library recommended, shared users' home (friends).
-    Best-effort: if Plex rejects the prefs request (e.g. 400), we don't fail — sync still succeeds."""
+    Best-effort: if Plex rejects the prefs request (e.g. 400), we don't fail; sync still succeeds."""
     published = 1 if (visible_home or visible_library or visible_friends) else 0
     server = getattr(plex_collection, '_server', None)
     key = getattr(plex_collection, 'key', None) or (f"/library/metadata/{getattr(plex_collection, 'ratingKey', '')}")
@@ -1289,6 +1289,22 @@ def apply_collection_visibility(plex_collection, visible_home=False, visible_lib
         pass
     # if nothing worked, user can still set visibility in Plex (Manage Recommendations)
 
+def _get_plex_tmdb_id(plex_item):
+    """Get TMDB id from a Plex item's guids (so we only add the correct title, not fuzzy matches)."""
+    try:
+        guids = getattr(plex_item, 'guids', None) or []
+        for guid in guids:
+            gid = getattr(guid, 'id', None) or str(guid)
+            if not gid or 'tmdb' not in gid.lower():
+                continue
+            # e.g. "com.plexapp.agents.themoviedb://12345" or "tmdb://12345"
+            parts = gid.split('//')
+            if len(parts) >= 2 and parts[-1].strip().isdigit():
+                return int(parts[-1].strip())
+    except Exception:
+        pass
+    return None
+
 # collection syncing logic
 def run_collection_logic(settings, preset, key, app_obj=None):
     if is_system_locked(): return False, "System busy."
@@ -1298,41 +1314,91 @@ def run_collection_logic(settings, preset, key, app_obj=None):
 
     try:
         plex = PlexServer(settings.plex_url, settings.plex_token)
-        params = preset['tmdb_params'].copy()
-        params['api_key'] = settings.tmdb_key
+        want_type = preset.get('media_type', 'movie')
         tmdb_items = []
 
         # figure out if this is a trending collection (needs strict sync)
         category = preset.get('category', '')
         is_trending = 'Trending' in category or 'Trending' in preset.get('title', '')
-        
         max_pages = 1 if is_trending else 50
-        
         user_mode = preset.get('sync_mode', 'append')
         mode = 'sync' if is_trending else user_mode
 
-        # grab items from TMDB
-        if 'with_collection_id' in params:
-            col_id = params.pop('with_collection_id')
-            url = f"https://api.themoviedb.org/3/collection/{col_id}?api_key={settings.tmdb_key}&language=en-US"
-            data = requests.get(url, timeout=10).json()
-            tmdb_items = data.get('parts', [])
+        # source: curated TMDB list (list-based like other collection tools - better quality than raw discover)
+        list_id = preset.get('tmdb_list_id')
+        if list_id:
+            try:
+                list_url = f"https://api.themoviedb.org/3/list/{list_id}?api_key={settings.tmdb_key}&language=en-US"
+                list_data = requests.get(list_url, timeout=15).json()
+                raw_items = list_data.get('items', [])
+                for it in raw_items:
+                    mt = it.get('media_type') or want_type
+                    if mt != want_type:
+                        continue
+                    # normalize to same shape as discover (id, title/name, release_date/first_air_date)
+                    tmdb_items.append({
+                        'id': it.get('id'),
+                        'title': it.get('title') if mt == 'movie' else None,
+                        'name': it.get('name') if mt == 'tv' else None,
+                        'release_date': it.get('release_date'),
+                        'first_air_date': it.get('first_air_date'),
+                        'poster_path': it.get('poster_path'),
+                    })
+            except Exception as e:
+                write_log("error", "Sync", f"TMDB list fetch failed: {e}", app_obj=app_obj)
+                return False, "Could not load list from TMDB. Check list ID or try again later."
         else:
-            url = f"https://api.themoviedb.org/3/discover/{preset['media_type']}"
-            def fetch_page(p):
-                try:
-                    p_params = params.copy()
-                    p_params['page'] = p
-                    return requests.get(url, params=p_params, timeout=3).json().get('results', [])
-                except: return []
+            params = (preset.get('tmdb_params') or {}).copy()
+            params['api_key'] = settings.tmdb_key
+            # TMDB behaves more consistently with language set
+            if 'language' not in params:
+                params['language'] = 'en-US'
 
-            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-                results = executor.map(fetch_page, range(1, max_pages + 1))
-                for page_items in results:
-                    if page_items: tmdb_items.extend(page_items)
+            # grab items from TMDB (collection or discover)
+            if 'with_collection_id' in params:
+                col_id = params.pop('with_collection_id')
+                url = f"https://api.themoviedb.org/3/collection/{col_id}?api_key={settings.tmdb_key}&language=en-US"
+                data = requests.get(url, timeout=10).json()
+                tmdb_items = data.get('parts', [])
+            else:
+                url = f"https://api.themoviedb.org/3/discover/{want_type}"
+                def fetch_page(p):
+                    try:
+                        p_params = params.copy()
+                        p_params['page'] = p
+                        resp = requests.get(url, params=p_params, timeout=10)
+                        data = resp.json() if resp.ok else {}
+                        if not isinstance(data, dict):
+                            return []
+                        return data.get('results') or []
+                    except Exception:
+                        return []
+
+                with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+                    results = executor.map(fetch_page, range(1, max_pages + 1))
+                    for page_items in results:
+                        if page_items: tmdb_items.extend(page_items)
+
+        # only keep items that match preset type (movie has 'title', tv has 'name') so we never add wrong type (e.g. kids cartoons into horror)
+        want_type = preset.get('media_type', 'movie')
+        if want_type == 'tv':
+            tmdb_items = [i for i in tmdb_items if i.get('name')]
+        else:
+            tmdb_items = [i for i in tmdb_items if i.get('title')]
+
+        # post-filter: Horror TV must exclude Animation/Kids/Family (TMDB without_genres can be unreliable, so we filter here)
+        if key == 'genre_horror_tv' and want_type == 'tv':
+            exclude_genres = {16, 10762, 10751}  # Animation, Kids, Family
+            kept = []
+            for i in tmdb_items:
+                gids = i.get('genre_ids')
+                ids = set(gids) if isinstance(gids, list) else set()
+                if not (exclude_genres & ids):
+                    kept.append(i)
+            tmdb_items = kept
 
         # safety check - don't wipe collections if TMDB returns nothing
-        if not tmdb_items: 
+        if not tmdb_items:
             return False, "Aborted: No items returned from TMDB. Possible API outage?"
 
         # get list of what we own in plex
@@ -1366,28 +1432,39 @@ def run_collection_logic(settings, preset, key, app_obj=None):
         if not target_lib: 
             return False, f"No library found for {preset['media_type']}"
 
+        # match by TMDB id (guid) so we don't add wrong titles (e.g. kids cartoons into horror)
         found_items = []
         if potential_matches:
             for item in potential_matches:
-                # use the mapped title if we have it (from alias DB)
                 search_title = item.get('mapped_plex_title', item.get('title', item.get('name')))
+                if not search_title:
+                    continue
                 year = int((item.get('release_date') or item.get('first_air_date') or '0000')[:4])
-                
+                tmdb_id = item.get('id')
                 try:
                     results = target_lib.search(search_title)
+                    matched = None
                     for r in results:
-                        # if we have a mapped title, ID match is guaranteed
-                        if 'mapped_plex_title' in item:
-                             found_items.append(r)
-                             break
-                        else:
-                            # title match - verify the year is close (within 1 year)
+                        plex_tmdb = _get_plex_tmdb_id(r)
+                        if plex_tmdb is not None and tmdb_id is not None and plex_tmdb == tmdb_id:
+                            matched = r
+                            break
+                    if matched is None:
+                        # no guid match (e.g. legacy agent): only accept exact normalized title + year
+                        for r in results:
                             r_year = r.year if r.year else 0
-                            if r_year in [year, year-1, year+1]:
-                                found_items.append(r)
-                                break
-                except: pass
-        
+                            if r_year not in (year, year - 1, year + 1):
+                                continue
+                            r_title = (getattr(r, 'title', None) or '').strip()
+                            if normalize_title(r_title) != normalize_title(search_title):
+                                continue
+                            matched = r
+                            break
+                    if matched and matched not in found_items:
+                        found_items.append(matched)
+                except Exception:
+                    pass
+
         found_items = list(set(found_items))
 
         # Sync or append. Only treat as "existing" if title matches (case-insensitive, trimmed); Plex search can return partial matches.
@@ -1437,7 +1514,7 @@ def run_collection_logic(settings, preset, key, app_obj=None):
                     "If it doesn't show under Manage Recommendations, open the collection in Plex → ⋮ → Visible On → check the columns you want."
                 )
             return True, "No items found."
-        # existing collection is regular — we can add/remove items
+        # existing collection is regular, so we can add/remove items
         current_items = existing_col.items()
         current_ids = {x.ratingKey for x in current_items}
         new_ids = {x.ratingKey for x in found_items}
@@ -2321,3 +2398,175 @@ def perform_release_update():
     except Exception as e:
         write_log("error", "Release Update", f"Update failed: {str(e)}")
         return False, "Release update failed. Please check the logs for details."
+
+# SeekAndWatch cloud - helpers for *arr API (root + quality, no cross-import from api)
+def _arr_root_and_quality(base_url, headers):
+    """Fetch first root folder path and first quality profile id from *arr. Returns (root_path, quality_id, None) or (None, None, error_msg)."""
+    try:
+        rf_resp = requests.get(f"{base_url}/api/v3/rootfolder", headers=headers, timeout=5)
+        rf_data = rf_resp.json()
+        rf_list = rf_data if isinstance(rf_data, list) else (rf_data.get('records', rf_data.get('data', [])) if isinstance(rf_data, dict) else [])
+        if not rf_list or not isinstance(rf_list[0], dict):
+            return None, None, "No root folders configured."
+        root_path = rf_list[0].get('path')
+        if not root_path:
+            return None, None, "Could not get root folder path."
+        qp_resp = requests.get(f"{base_url}/api/v3/qualityprofile", headers=headers, timeout=5)
+        qp_data = qp_resp.json()
+        qp_list = qp_data if isinstance(qp_data, list) else (qp_data.get('records', qp_data.get('data', [])) if isinstance(qp_data, dict) else [])
+        if not qp_list or not isinstance(qp_list[0], dict):
+            return None, None, "No quality profiles configured."
+        quality_id = qp_list[0].get('id')
+        if quality_id is None:
+            return None, None, "Could not get quality profile id."
+        return root_path, quality_id, None
+    except Exception as e:
+        return None, None, str(e)
+
+def _arr_language_profile(base_url, headers):
+    """Fetch first language profile id from Sonarr. Returns (language_id, None) or (None, error_msg)."""
+    try:
+        lp_resp = requests.get(f"{base_url}/api/v3/languageprofile", headers=headers, timeout=5)
+        lp_data = lp_resp.json()
+        lp_list = lp_data if isinstance(lp_data, list) else (lp_data.get('records', lp_data.get('data', [])) if isinstance(lp_data, dict) else [])
+        if not lp_list or not isinstance(lp_list[0], dict):
+            return None, "No language profiles configured."
+        lang_id = lp_list[0].get('id')
+        if lang_id is None:
+            return None, "Could not get language profile id."
+        return lang_id, None
+    except Exception as e:
+        return None, str(e)
+
+def send_to_radarr_sonarr(settings, media_type, tmdb_id):
+    """
+    Sends a request directly to Radarr (movies) or Sonarr (tv).
+    Automatically detects root folder, quality profile (and language for Sonarr).
+    Returns (Success: bool, Message: str)
+    """
+    import requests
+
+    if not settings:
+        return False, "Settings not configured."
+
+    try:
+        # --- MOVIES (RADARR) ---
+        if media_type == 'movie':
+            if not settings.radarr_url or not settings.radarr_api_key:
+                return False, "Radarr not configured."
+
+            base_url = settings.radarr_url.rstrip('/')
+            headers = {"X-Api-Key": settings.radarr_api_key, "Content-Type": "application/json"}
+
+            root_path, quality_profile_id, err = _arr_root_and_quality(base_url, headers)
+            if err:
+                return False, f"Radarr: {err}"
+
+            # Build payload (all from API, no hardcoded ids)
+            payload = {
+                "tmdbId": tmdb_id,
+                "title": "Cloud Request",
+                "qualityProfileId": quality_profile_id,
+                "rootFolderPath": root_path,
+                "monitored": True,
+                "addOptions": {"searchForMovie": True}
+            }
+            
+            url = f"{base_url}/api/v3/movie"
+            
+            # Check if already exists
+            check = requests.get(f"{url}?tmdbId={tmdb_id}", headers=headers)
+            if check.status_code == 200 and len(check.json()) > 0:
+                return True, "Already in Radarr"
+
+            resp = requests.post(url, json=payload, headers=headers)
+            if resp.status_code in [200, 201]:
+                return True, "Added to Radarr"
+            else:
+                return False, f"Radarr Error: {resp.text}"
+
+        # --- TV SHOWS (SONARR) ---
+        elif media_type == 'tv':
+            if not settings.sonarr_url or not settings.sonarr_api_key:
+                return False, "Sonarr not configured."
+
+            base_url = settings.sonarr_url.rstrip('/')
+            headers = {"X-Api-Key": settings.sonarr_api_key, "Content-Type": "application/json"}
+
+            root_path, quality_profile_id, err = _arr_root_and_quality(base_url, headers)
+            if err:
+                return False, f"Sonarr: {err}"
+            language_profile_id, lang_err = _arr_language_profile(base_url, headers)
+            if lang_err:
+                return False, f"Sonarr: {lang_err}"
+
+            payload = {
+                "tvdbId": 0,
+                "tmdbId": tmdb_id,
+                "title": "Cloud Request",
+                "qualityProfileId": quality_profile_id,
+                "languageProfileId": language_profile_id,
+                "rootFolderPath": root_path,
+                "monitored": True,
+                "addOptions": {"searchForMissingEpisodes": True}
+            }
+            
+            # Sonarr Lookup first
+            lookup_url = f"{base_url}/api/v3/series/lookup?term=tmdb:{tmdb_id}"
+            
+            lookup = requests.get(lookup_url, headers=headers)
+            if lookup.status_code == 200 and len(lookup.json()) > 0:
+                series_data = lookup.json()[0]
+                payload['tvdbId'] = series_data.get('tvdbId')
+                payload['title'] = series_data.get('title')
+                payload['titleSlug'] = series_data.get('titleSlug')
+                
+                if series_data.get('id'): 
+                    return True, "Already in Sonarr"
+            else:
+                return False, "Could not find show in Sonarr lookup."
+
+            url = f"{base_url}/api/v3/series"
+            resp = requests.post(url, json=payload, headers=headers)
+            
+            if resp.status_code in [200, 201]:
+                return True, "Added to Sonarr"
+            else:
+                return False, f"Sonarr Error: {resp.text}"
+                
+    except Exception as e:
+        return False, f"Exception: {str(e)}"
+    
+    return False, "Unknown Media Type"
+
+def send_to_overseerr(settings, media_type, tmdb_id):
+    """
+    Sends a request to Overseerr.
+    Returns (Success: bool, Message: str)
+    """
+    import requests
+    
+    if not settings.overseerr_url or not settings.overseerr_api_key:
+        return False, "Overseerr not configured."
+
+    try:
+        payload = {
+            "mediaType": media_type,
+            "mediaId": tmdb_id,
+            "is4k": False
+        }
+        
+        url = f"{settings.overseerr_url.rstrip('/')}/api/v1/request"
+        headers = {"X-Api-Key": settings.overseerr_api_key, "Content-Type": "application/json"}
+        
+        resp = requests.post(url, json=payload, headers=headers)
+        
+        if resp.status_code in [200, 201]:
+            return True, "Sent to Overseerr"
+        elif resp.status_code == 409:
+            return True, "Already requested in Overseerr"
+        else:
+            return False, f"Overseerr Error {resp.status_code}"
+            
+    except Exception as e:
+        return False, f"Overseerr Exception: {str(e)}"

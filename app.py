@@ -25,7 +25,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFProtect
 from plexapi.server import PlexServer
-from models import db, Blocklist, CollectionSchedule, TmdbAlias, SystemLog, Settings, User, TmdbKeywordCache, TmdbRuntimeCache, RadarrSonarrCache, RecoveryCode
+from models import db, Blocklist, CollectionSchedule, TmdbAlias, SystemLog, Settings, User, TmdbKeywordCache, TmdbRuntimeCache, RadarrSonarrCache, RecoveryCode, CloudRequest
 from utils import (normalize_title, is_duplicate, is_owned_item, fetch_omdb_ratings, send_overseerr_request, 
                    run_collection_logic, create_backup, list_backups, restore_backup, 
                    prune_backups, BACKUP_DIR, CACHE_FILE, sync_remote_aliases, get_tmdb_aliases, 
@@ -49,6 +49,20 @@ UPDATE_CACHE = {
     'last_check': 0
 }
 
+def background_worker_launcher():
+    """Starts the cloud worker loop in a background thread safely."""
+    # Local import to prevent Circular Import Crash
+    from cloud_worker import process_cloud_queue
+    
+    print("--- Cloud Worker Thread Started ---", flush=True)
+    while True:
+        try:
+            process_cloud_queue()
+        except Exception as e:
+            print(f"Cloud Worker Error: {e}", flush=True)
+        # Wait 60 seconds before checking again
+        time.sleep(20)
+        
 def get_persistent_key():
     """Gets the secret key from env or file, or makes a new one if needed."""
     # check env first (docker usually sets this)
@@ -196,6 +210,21 @@ def run_migrations():
                 if 'sonarr_api_key' not in settings_columns:
                     print("--- [Migration] Adding 'sonarr_api_key' column ---")
                     conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN sonarr_api_key VARCHAR(200)"))
+                if 'cloud_enabled' not in settings_columns:
+                    print("--- [Migration] Adding 'cloud_enabled' column ---")
+                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN cloud_enabled BOOLEAN DEFAULT 0"))
+                if 'cloud_api_key' not in settings_columns:
+                    print("--- [Migration] Adding 'cloud_api_key' column ---")
+                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN cloud_api_key VARCHAR(100)"))
+                if 'cloud_auto_approve' not in settings_columns:
+                    print("--- [Migration] Adding 'cloud_auto_approve' column ---")
+                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN cloud_auto_approve BOOLEAN DEFAULT 0"))
+                if 'cloud_movie_handler' not in settings_columns:
+                    print("--- [Migration] Adding 'cloud_movie_handler' column ---")
+                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN cloud_movie_handler VARCHAR(20) DEFAULT 'direct'"))
+                if 'cloud_tv_handler' not in settings_columns:
+                    print("--- [Migration] Adding 'cloud_tv_handler' column ---")
+                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN cloud_tv_handler VARCHAR(20) DEFAULT 'direct'"))
                 
                 # Check if kometa_template table exists
                 try:
@@ -236,7 +265,6 @@ def run_migrations():
         except Exception as e:
             print(f"Admin Auto-Fix Error: {e}")
 
-        # create tables if they don't exist yet
         try: Blocklist.__table__.create(db.engine)
         except: pass
         try: CollectionSchedule.__table__.create(db.engine)
@@ -250,6 +278,8 @@ def run_migrations():
         try: RadarrSonarrCache.__table__.create(db.engine)
         except: pass
         try: RecoveryCode.__table__.create(db.engine)
+        except: pass
+        try: CloudRequest.__table__.create(db.engine)
         except: pass
         # add user_id to app_request so requested media is per-user (security)
         try:
@@ -317,6 +347,7 @@ def update_github_stats():
 # Start background thread.
 if not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
     threading.Thread(target=update_github_stats, daemon=True).start()
+    threading.Thread(target=background_worker_launcher, daemon=True).start()
 
 # Inject into all templates.
 @app.context_processor
@@ -479,8 +510,17 @@ def register():
             db.session.add(Settings(user_id=new_user.id))
             db.session.commit()
             
+            # Generate recovery codes and show once after registration
+            count = 10
+            plain_codes = [secrets.token_hex(8) for _ in range(count)]
+            for plain in plain_codes:
+                rec = RecoveryCode(user_id=new_user.id, code_hash=generate_password_hash(plain, method='pbkdf2:sha256'))
+                db.session.add(rec)
+            db.session.commit()
+            session['show_recovery_codes'] = plain_codes
+            
             login_user(new_user)
-            return redirect(url_for('dashboard'))
+            return redirect(url_for('welcome_codes'))
             
     return render_template('login.html', register=True)
     
@@ -494,6 +534,24 @@ def logout():
 def reset_password_page():
     """Page to reset your password using a one-time recovery code."""
     return render_template('reset_password.html')
+
+
+@app.route('/welcome_codes')
+@login_required
+def welcome_codes():
+    """Show recovery codes once after registration. Codes are in session; user must click Continue to clear."""
+    codes = session.get('show_recovery_codes')
+    if not codes:
+        return redirect(url_for('dashboard'))
+    return render_template('welcome_codes.html', codes=codes)
+
+
+@app.route('/welcome_codes_done', methods=['GET', 'POST'])
+@login_required
+def welcome_codes_done():
+    """Clear one-time recovery codes from session and go to dashboard."""
+    session.pop('show_recovery_codes', None)
+    return redirect(url_for('dashboard'))
 
 
 @app.route('/dashboard')
@@ -830,7 +888,7 @@ def review_history():
 @app.route('/generate', methods=['POST'])
 @login_required
 def generate():
-    s = Settings.query.filter_by(user_id=current_user.id).first()
+    s = current_user.settings
     owned_keys = get_plex_cache(s)
     
     # "I'm feeling lucky" mode - just grab random popular stuff
@@ -1157,7 +1215,7 @@ def reset_alias_db():
     # wipe alias DB to fix owned items showing up
     try:
         db.session.query(TmdbAlias).delete()
-        s = Settings.query.filter_by(user_id=current_user.id).first()
+        s = current_user.settings
         s.last_alias_scan = 0
         db.session.commit()
         return "<h1>Alias DB Wiped.</h1><p>The scanner will now restart from scratch. Please wait 10 minutes and check logs.</p><a href='" + url_for('dashboard') + "'>Back</a>"
@@ -1183,7 +1241,7 @@ def _get_plex_collection_titles(settings):
 @app.route('/playlists')
 @login_required
 def playlists():
-    s = Settings.query.filter_by(user_id=current_user.id).first()
+    s = current_user.settings
     current_time = s.schedule_time if s and s.schedule_time else "04:00"
 
     # Two-way delete: if collection was deleted in Plex, remove the sync from app
@@ -1251,7 +1309,7 @@ def playlists():
 @app.route('/settings', methods=['GET', 'POST'])
 @login_required
 def settings():
-    s = Settings.query.filter_by(user_id=current_user.id).first()
+    s = current_user.settings
     
     if request.method == 'POST':
         # validate URL fields before saving (no javascript:, data:; must be http(s) if set)
@@ -1400,7 +1458,7 @@ def logs_page():
         flash('Only admins can view system logs.', 'error')
         return redirect(url_for('dashboard'))
     logs = SystemLog.query.order_by(SystemLog.timestamp.desc()).limit(200).all()
-    s = Settings.query.filter_by(user_id=current_user.id).first()
+    s = current_user.settings
     
     # Count errors for summary
     error_count = SystemLog.query.filter(SystemLog.level.in_(['error', 'ERROR'])).count()
@@ -1426,7 +1484,7 @@ def delete_profile():
 @app.route('/builder')
 @login_required
 def builder():
-    s = Settings.query.filter_by(user_id=current_user.id).first()
+    s = current_user.settings
     try:
         g_url = f"https://api.themoviedb.org/3/genre/movie/list?api_key={s.tmdb_key}"
         genres = requests.get(g_url, timeout=10).json().get('genres', [])
@@ -1442,19 +1500,19 @@ def manage_blocklist():
 @app.route('/kometa')
 @login_required
 def kometa():
-    s = Settings.query.filter_by(user_id=current_user.id).first()
+    s = current_user.settings
     return render_template('kometa.html', settings=s)
 
 @app.route('/media')
 @login_required
 def media():
-    s = Settings.query.filter_by(user_id=current_user.id).first()
+    s = current_user.settings
     return render_template('media.html', settings=s)
 
 @app.route('/calendar')
 @login_required
 def calendar_page():
-    s = Settings.query.filter_by(user_id=current_user.id).first()
+    s = current_user.settings
     return render_template('calendar.html', settings=s)
 
 @app.route('/support')
@@ -1597,7 +1655,120 @@ def server_error(e):
 @app.route('/health')
 def health():
     return jsonify({'status': 'ok', 'version': VERSION}), 200
+    
+# SeekAndWatch cloud routes
 
+@app.route('/requests')
+@login_required
+def requests_page():
+    # Show the Requests Management Page
+    settings = current_user.settings
+    
+    # Pending Queue: only show requests that are still pending (not approved/denied)
+    pending_reqs = CloudRequest.query.filter(CloudRequest.status == 'pending').order_by(
+        CloudRequest.created_at.desc()
+    ).limit(100).all()
+    
+    return render_template('requests.html', requests=pending_reqs, settings=settings)
 
+@app.route('/save_cloud_settings', methods=['POST'])
+@login_required
+def save_cloud_settings():
+    settings = current_user.settings
+    new_key = request.form.get('cloud_api_key')
+    if new_key:
+        settings.cloud_api_key = new_key.strip()
+        settings.cloud_enabled = True  # Auto-enable if they save a key
+    
+    settings.cloud_movie_handler = request.form.get('cloud_movie_handler')
+    settings.cloud_tv_handler = request.form.get('cloud_tv_handler')
+    
+    # Checkbox logic
+    settings.cloud_auto_approve = 'cloud_auto_approve' in request.form
+    
+    db.session.commit()
+    flash("Cloud settings updated successfully", "success")
+    return redirect(url_for('requests_page'))
+
+@app.route('/approve_request/<int:req_id>', methods=['POST'])
+@login_required
+def approve_request(req_id):
+    # --- IMPORTANT: Local Import to prevent crash ---
+    from cloud_worker import process_item 
+    
+    req = CloudRequest.query.get_or_404(req_id)
+    settings = current_user.settings
+    
+    # Execute the download logic (sends to Radarr/Sonarr/Overseerr)
+    success = process_item(settings, req)
+    
+    if success:
+        flash(f"Approved and sent: {req.title}", "success")
+    else:
+        flash(f"Failed to send {req.title}. Check system logs.", "error")
+            
+    return redirect(url_for('requests_page'))
+
+@app.route('/deny_request/<int:req_id>', methods=['POST'])
+@login_required
+def deny_request(req_id):
+    req = CloudRequest.query.get_or_404(req_id)
+    req.status = 'denied'
+    db.session.commit()
+
+    # Tell the cloud so friends see "Denied" and it no longer shows as pending
+    if req.cloud_id:
+        try:
+            settings = current_user.settings
+            if settings and settings.cloud_api_key:
+                requests.post(
+                    "https://seekandwatch.com/api/acknowledge.php",
+                    headers={'X-Server-Key': settings.cloud_api_key},
+                    json={'request_id': req.cloud_id, 'status': 'failed'},
+                    timeout=5
+                )
+        except Exception as e:
+            print(f"Warning: Could not acknowledge deny to cloud: {e}")
+
+    flash(f"Denied request: {req.title}", "warning")
+    return redirect(url_for('requests_page'))
+    
+@app.route('/delete_request/<int:req_id>', methods=['POST'])
+@login_required
+def delete_request(req_id):
+    """
+    Deletes the request locally AND tells the Cloud to remove it.
+    """
+    req = CloudRequest.query.get_or_404(req_id)
+    title = req.title # Save for message
+    
+    # --- 1. TELL CLOUD TO DELETE ---
+    # If this request came from the cloud, we must kill it at the source
+    if req.cloud_id:
+        try:
+            settings = current_user.settings
+            if settings and settings.cloud_api_key:
+                # We send a "Delete Order" to the cloud
+                requests.post(
+                    "https://seekandwatch.com/api/delete.php",
+                    headers={'X-Server-Key': settings.cloud_api_key},
+                    json={'cloud_id': req.cloud_id},
+                    timeout=5
+                )
+        except Exception as e:
+            # If cloud fails (internet down?), we just log it and proceed to delete locally
+            print(f"Warning: Could not delete from cloud: {e}")
+    # -------------------------------
+
+    # --- 2. DELETE LOCALLY ---
+    try:
+        db.session.delete(req)
+        db.session.commit()
+        flash(f"Permanently deleted: {title}", "success")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error deleting request: {e}", "error")
+        
+    return redirect(url_for('requests_page'))
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
