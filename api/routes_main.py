@@ -220,10 +220,10 @@ def load_more_recs():
 def update_filters():
     data = request.json
     try: session['min_year'] = int(data.get('min_year', 0))
-    except: session['min_year'] = 0
+    except Exception: session['min_year'] = 0
         
     try: session['min_rating'] = float(data.get('min_rating', 0))
-    except: session['min_rating'] = 0
+    except Exception: session['min_rating'] = 0
     
     # Runtime filter
     try: 
@@ -656,7 +656,7 @@ def match_bulk_titles():
                     found = True
                     key = hits[0].ratingKey
                     final_title = hits[0].title
-            except: pass
+            except Exception: pass
             
             results.append({'query': t, 'title': final_title, 'found': found, 'key': key})
             
@@ -684,7 +684,7 @@ def create_bulk_collection():
         # add the rest of the items
         for k in keys[1:]:
             try: lib.fetchItem(k).addCollection(title)
-            except: pass
+            except Exception: pass
 
         # fetch the new collection and apply visibility (home / library / friends)
         # default at least library or home visible so it shows in Manage Recommendations
@@ -831,7 +831,7 @@ def create_collection(key):
                 for vk in ('visibility_home', 'visibility_library', 'visibility_friends'):
                     if vk in user_config:
                         preset[vk] = user_config[vk]
-            except: pass
+            except Exception: pass
     
     # Run Now sends current visibility checkboxes so first run (or any run) uses them
     data = request.get_json(silent=True) or {}
@@ -888,7 +888,7 @@ def schedule_collection():
     current_config = {}
     if job.configuration:
         try: current_config = json.loads(job.configuration)
-        except: current_config = {}
+        except Exception: current_config = {}
             
     current_config['sync_mode'] = sync_mode
     current_config['visibility_home'] = visibility_home
@@ -1638,7 +1638,7 @@ def manual_alias_sync():
     success, msg = sync_remote_aliases()
     status = 'success' if success else 'error'
     try: total = TmdbAlias.query.count()
-    except: total = 0
+    except Exception: total = 0
     return jsonify({'status': status, 'message': msg, 'count': total})
 
 # admin user management stuff
@@ -2546,7 +2546,7 @@ def get_media_overview():
                                     file_info = ep.get('episodeFile') if isinstance(ep.get('episodeFile'), dict) else {}
                                     if file_info:
                                         total_size += file_info.get('size', 0)
-                    except: pass
+                    except Exception: pass
                     
                     result['shows'].append({
                         'id': show.get('id'),
@@ -3047,7 +3047,7 @@ def get_radarr_movie_detail(movie_id):
             # Don't fail if queue check fails, just log it
             try:
                 write_log("warning", "Radarr", f"Failed to check queue: {e}")
-            except:
+            except Exception:
                 pass
         
         # Get movie files
