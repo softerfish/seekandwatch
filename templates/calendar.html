@@ -447,7 +447,7 @@ const CALENDAR_SEARCH_POLL_MAX = 10;
             if (progressEl) progressEl.textContent = msg;
         }
 
-        // Search Movie (Radarr) or Search Episode (Sonarr) – trigger search then poll queue
+        // Search Movie (Radarr) or Search Episode (Sonarr) - trigger search then poll queue
         document.getElementById('calendar-search-btn').onclick = () => {
             if (isMovie) {
                 statusWrap.style.display = 'block';
@@ -581,7 +581,7 @@ const CALENDAR_SEARCH_POLL_MAX = 10;
                     }
                     window._calendarRadarrReleases = releases;
                     window._calendarMovieId = ev.id;
-                    let html = '<p class="calendar-search-results-title"><strong>Releases (' + releases.length + ') – pick one to download</strong></p><ul class="calendar-search-results-list">';
+                    let html = '<p class="calendar-search-results-title"><strong>Releases (' + releases.length + ') - pick one to download</strong></p><ul class="calendar-search-results-list">';
                     releases.forEach(function (r, i) {
                         let quality = '-', indexer = '-';
                         if (r.quality) {
@@ -622,7 +622,7 @@ const CALENDAR_SEARCH_POLL_MAX = 10;
                     window._calendarSonarrReleases = releases;
                     window._calendarEpisodeId = ev.id;
                     let quality = '', indexer = '';
-                    let html = '<p class="calendar-search-results-title"><strong>Releases (' + releases.length + ') – pick one to download</strong></p><ul class="calendar-search-results-list">';
+                    let html = '<p class="calendar-search-results-title"><strong>Releases (' + releases.length + ') - pick one to download</strong></p><ul class="calendar-search-results-list">';
                     releases.forEach(function (r, i) {
                         if (r.quality) {
                             if (typeof r.quality === 'object' && r.quality.quality && r.quality.quality.name) quality = r.quality.quality.name;

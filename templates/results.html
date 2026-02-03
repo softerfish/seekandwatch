@@ -19,10 +19,6 @@
     <a href="{{ url_for('dashboard') }}" class="back-link">← Back to Dashboard</a>
     <h2 class="m-0">✨ Top Picks For You</h2>
     <div class="d-flex gap-10" style="align-items: center;">
-        <div class="view-toggle">
-            <button onclick="setViewMode('grid')" id="btn-grid" class="view-toggle-btn active" title="Grid View">⊞</button>
-            <button onclick="setViewMode('list')" id="btn-list" class="view-toggle-btn" title="List View">☰</button>
-        </div>
         <button class="btn btn-primary" onclick="spinWheel()">🎡 Spin Wheel</button>
     </div>
 </div>
@@ -92,10 +88,10 @@
         <div class="genre-selector">
             <div class="genre-header">
                 <strong>Genres</strong>
-                <a href="javascript:void(0)" onclick="toggleResultsGenres(this)" class="fs-small text-muted" style="text-decoration:underline;">Deselect All</a>
+                <a href="javascript:void(0)" onclick="toggleResultsGenres(this)" id="btn-toggle-results-genres" class="fs-small text-muted" style="text-decoration:underline;">Deselect All</a>
             </div>
             
-            <div class="genre-grid">
+            <div class="genre-grid" id="results-genre-grid">
                 {% for g in genres %}
                 <div class="genre-check {% if loop.index > 12 %}hidden-genre{% endif %}">
                     <input type="checkbox" class="genre-checkbox" value="{{ g.id }}" 
@@ -107,8 +103,8 @@
             </div>
 
             {% if genres|length > 12 %}
-            <div class="genre-expand" onclick="toggleGenreView(this)">
-                <span id="genre-arrow">▼</span> Show All ({{ genres|length }})
+            <div class="genre-expand expanded" onclick="toggleGenreView(this)" id="genre-expand-btn">
+                <span id="genre-arrow">▲</span> Show Less
             </div>
             {% endif %}
         </div>
@@ -157,11 +153,17 @@
     const API_BLOCK_MOVIE = "{{ url_for('api.block_movie') }}";
     const API_GET_METADATA_MOVIE_BASE = "{{ url_for('api.get_metadata', media_type='movie', tmdb_id=0) }}";
     const API_GET_METADATA_TV_BASE = "{{ url_for('api.get_metadata', media_type='tv', tmdb_id=0) }}";
+    const RESULTS_CSRF = "{{ csrf_token() }}";
     let page = 1;
     const useCriticFilter = "{{ use_critic_filter|lower }}"; 
-    const serverMovies = JSON.parse(document.getElementById('server-data').textContent);
+    let serverMovies = [];
+    try {
+        const el = document.getElementById('server-data');
+        if (el && el.textContent) serverMovies = JSON.parse(el.textContent);
+        if (!Array.isArray(serverMovies)) serverMovies = [];
+    } catch (e) { serverMovies = []; }
 
-    // Genre expand/collapse
+    // Genre expand/collapse (default open: expanded state on load is set below)
     function toggleGenreView(btn) {
         const hidden = document.querySelectorAll('.hidden-genre');
         const isExpanded = btn.classList.contains('expanded');
@@ -178,6 +180,26 @@
             btn.classList.add('expanded');
         }
     }
+
+    function updateResultsGenreToggleLabel(link) {
+        if (!link) return;
+        const boxes = document.querySelectorAll('.genre-checkbox');
+        const checked = Array.from(boxes).filter(cb => cb.checked).length;
+        link.innerText = checked === boxes.length ? "Deselect All" : "Select All";
+    }
+    window.updateResultsGenreToggleLabel = updateResultsGenreToggleLabel;
+
+    document.addEventListener('DOMContentLoaded', function() {
+        var expandBtn = document.getElementById('genre-expand-btn');
+        if (expandBtn) {
+            document.querySelectorAll('.hidden-genre').forEach(function(el) { el.style.display = 'flex'; });
+        }
+        var genreToggle = document.getElementById('btn-toggle-results-genres');
+        if (genreToggle && typeof updateResultsGenreToggleLabel === 'function') {
+            updateResultsGenreToggleLabel(genreToggle);
+            document.getElementById('results-genre-grid')?.addEventListener('change', function() { updateResultsGenreToggleLabel(genreToggle); });
+        }
+    });
 
     function toggleResultsGenres(link) {
         const boxes = document.querySelectorAll('.genre-checkbox');
@@ -255,29 +277,43 @@
     function init() {
         if (selectedKeywords.length > 0) renderTags();
 
-        const validMovies = (serverMovies || []).filter(m => m.title && m.title !== "Unknown" && (m.id || m.tmdb_id));
+        const validMovies = (serverMovies || []).filter(m => {
+            const title = m.title || m.name;
+            return title && title !== "Unknown" && (m.id || m.tmdb_id);
+        });
 
         if (validMovies.length > 0) {
             document.getElementById('loading').style.display = 'none';
             const grid = document.getElementById('results-grid');
-            grid.style.display = 'grid'; 
+            grid.classList.remove('d-none');
+            grid.style.display = 'grid';
             grid.innerHTML = '';
-            
-            validMovies.forEach(item => { 
-                try { grid.appendChild(createCard(item)); } catch(e) {} 
+
+            validMovies.forEach(item => {
+                try {
+                    const card = createCard(item);
+                    if (card) grid.appendChild(card);
+                } catch (e) {
+                    console.error('createCard error', e, item);
+                }
             });
-            
+
             if (document.getElementById('filter-year')) {
                 filterVisibleCards();
             }
-        } else { 
+        } else {
+            document.getElementById('loading').style.display = 'none';
+            const grid = document.getElementById('results-grid');
+            grid.classList.remove('d-none');
+            grid.style.display = 'block';
             if (document.getElementById('filter-year')) {
-                updateFilters();
+                grid.innerHTML = `<div class="empty-state"><h3>Recommendations didn't load</h3><p class="empty-state-text">The request may have timed out. Try again with <strong>fewer seed titles</strong> (e.g. 3–5) or use <strong>I'm Feeling Lucky</strong>.</p><a href="{{ url_for('dashboard') }}" class="btn btn-primary">Back to Dashboard</a></div>`;
             } else {
-                document.getElementById('loading').style.display = 'none';
-                document.getElementById('results-grid').innerHTML = '<div class="empty-state">No results found.</div>';
-                document.getElementById('results-grid').style.display = 'block';
+                grid.innerHTML = '<div class="empty-state">No results found.</div>';
             }
+            // Try to load first batch from API in case server-data was empty but cache has candidates
+            const btn = document.getElementById('load-more-btn');
+            if (btn) setTimeout(function() { loadMore(btn); }, 300);
         }
     }
 
@@ -337,7 +373,7 @@
 
         fetch(API_UPDATE_FILTERS, {
             method: 'POST', 
-            headers: {'Content-Type': 'application/json'},
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': RESULTS_CSRF},
             body: JSON.stringify({ 
                 genre_filter: genreList, 
                 min_year: year, 
@@ -346,10 +382,15 @@
                 keywords: tags,
                 rating_filter: ratingList 
             })
-        }).then(() => { 
-            loadMore(null); 
+        }).then(r => { 
+            if (r && r.ok) loadMore(null);
+            else {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('loading').innerHTML = '<h3 style="color:red">Server error updating filters. Try refreshing the page.</h3>';
+            }
         }).catch(err => {
             console.error(err);
+            document.getElementById('loading').style.display = 'none';
             document.getElementById('loading').innerHTML = '<h3 style="color:red">Server Error.</h3>';
         });
     }
@@ -377,7 +418,7 @@
                 grid.style.display = 'grid';
                 
                 if (!data || data.length === 0) {
-                    if (page === 1) {
+                    if (page === 1 && grid.children.length === 0) {
                         grid.innerHTML = '<div class="empty-state">No matches found for these filters.</div>';
                         if(btn) btn.style.display = 'none';
                     } else {
@@ -431,7 +472,7 @@
 
         fetch(API_BLOCK_MOVIE, {
             method:'POST', 
-            headers:{'Content-Type':'application/json'},
+            headers:{'Content-Type':'application/json', 'X-CSRFToken': RESULTS_CSRF},
             body:JSON.stringify({title:title, media_type:type})
         }).then(r=>{
             if(r.ok) {
@@ -591,7 +632,7 @@
                 return r.json();
             })
             .then(data => {
-                if(data.error) { body.innerHTML = `<div class="modal-error">Error: ${data.error}</div>`; return; }
+                if(data.error) { body.innerHTML = `<div class="modal-error">Error: ${escapeHtml(String(data.error || ''))}</div>`; return; }
                 
                 const poster = data.poster_path ? `https://image.tmdb.org/t/p/w500${data.poster_path}` : 'https://placehold.co/300x450/333/888?text=No+Poster';
                 const trailerBtn = `<button onclick="playTrailer(${id}, '${mediaType}')" class="btn-secondary modal-trailer-btn">▶ Watch Trailer</button>`;
@@ -655,22 +696,7 @@
         step();
     }
 
-    // View mode toggle (Grid/List)
-    function setViewMode(mode) {
-        localStorage.setItem('viewMode', mode);
-        const grid = document.getElementById('results-grid');
-        if (grid) {
-            grid.className = 'results-' + mode;
-        }
-        // Toggle active button
-        document.getElementById('btn-grid').classList.toggle('active', mode === 'grid');
-        document.getElementById('btn-list').classList.toggle('active', mode === 'list');
-    }
-
-    // Load saved view mode on page load
     document.addEventListener('DOMContentLoaded', function() {
-        const savedMode = localStorage.getItem('viewMode') || 'grid';
-        setViewMode(savedMode);
         init();
     });
 

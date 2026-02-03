@@ -90,8 +90,12 @@
         
         <textarea id="import-text" rows="10" placeholder="The Matrix&#10;Inception, Interstellar&#10;The Dark Knight (2008)" class="import-textarea"></textarea>
         
-        <div class="import-input-row">
-            <input type="text" id="import-title" placeholder="Collection Name">
+        <div class="import-field">
+            <label for="import-title" class="import-label">Collection Name</label>
+            <input type="text" id="import-title" placeholder="e.g. My Favorites" class="import-title-input">
+        </div>
+        <div class="import-field">
+            <label for="import-library" class="import-label">Library</label>
             <select id="import-library" class="import-select">
                 <option value="" disabled selected>Loading Libraries...</option>
             </select>
@@ -444,8 +448,12 @@ function checkCacheStatus() {
     });
 }
 
+const PLAYLISTS_TYPE_KEY = 'seekandwatch_playlists_type';
+
 // Filter cards by media type.
 function filterType(type) {
+    if (type !== 'movie' && type !== 'tv') type = 'movie';
+    try { localStorage.setItem(PLAYLISTS_TYPE_KEY, type); } catch (e) {}
     document.getElementById('btn-movie').classList.remove('active');
     document.getElementById('btn-tv').classList.remove('active');
     document.getElementById('btn-' + type).classList.add('active');
@@ -523,7 +531,10 @@ function initCategoryToggles() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    filterType('movie');
+    let savedType = 'movie';
+    try { savedType = localStorage.getItem(PLAYLISTS_TYPE_KEY) || 'movie'; } catch (e) {}
+    if (savedType !== 'movie' && savedType !== 'tv') savedType = 'movie';
+    filterType(savedType);
     restoreOpenCategories();
     initCategoryToggles();
 });
@@ -618,8 +629,21 @@ function createCollection(key) {
     })
     .then(r => r.json()).then(d => {
         clearTimeout(createTimeout);
-        if (d.status === 'success') { btn.innerText = "Done! ✅"; btn.style.background = "#2ecc71"; alert(d.message); }
-        else { btn.innerText = "Error ❌"; btn.style.background = "#e74c3c"; alert(d.message); }
+        if (d.status === 'success') {
+            btn.innerText = "Done! ✅"; btn.style.background = "#2ecc71"; alert(d.message);
+            // Show Delete button without refresh (collection now has a schedule; skip if card already has header Delete e.g. custom)
+            const syncRow = btn.closest('.sync-row');
+            const card = btn.closest('.playlist-card');
+            if (syncRow && !syncRow.querySelector('.btn-delete-inline') && card && !card.querySelector('.btn-delete')) {
+                const delBtn = document.createElement('button');
+                delBtn.type = 'button';
+                delBtn.className = 'btn-delete-inline';
+                delBtn.title = 'Remove from app and Plex';
+                delBtn.textContent = 'Delete 🗑️';
+                delBtn.onclick = function(ev) { deleteCollection(key, ev); };
+                syncRow.appendChild(delBtn);
+            }
+        } else { btn.innerText = "Error ❌"; btn.style.background = "#e74c3c"; alert(d.message); }
         setTimeout(() => { btn.innerText = originalText; btn.disabled = false; btn.style.background = "#333"; }, 3000);
     })
     .catch(() => {

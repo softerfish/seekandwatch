@@ -38,6 +38,21 @@
 
         <nav class="sidebar-nav">
             <div class="nav-section">
+                <div class="nav-section-header">SeekAndWatch Cloud</div>
+                <a href="{{ url_for('requests_page') }}" class="nav-item {% if request.endpoint == 'requests_page' %}active{% endif %}">
+                    <i class="fas fa-cloud-download-alt"></i>
+                    <span>Requests</span>
+                    {% if pending_requests_count is defined and pending_requests_count > 0 %}
+                    <span class="sidebar-requests-badge">{{ pending_requests_count }}</span>
+                    {% endif %}
+                </a>
+                <a href="{{ url_for('requests_settings_page') }}" class="nav-item {% if request.endpoint == 'requests_settings_page' %}active{% endif %}">
+                    <i class="fas fa-cog"></i>
+                    <span>Settings</span>
+                </a>
+            </div>
+
+            <div class="nav-section">
                 <div class="nav-section-header">Core</div>
                 <a href="{{ url_for('dashboard') }}" class="nav-item {% if request.endpoint == 'dashboard' %}active{% endif %}">
                     <i class="fas fa-home"></i>
@@ -68,6 +83,22 @@
             </div>
 
             <div class="nav-section">
+                <div class="nav-section-header">Support</div>
+                <a href="{{ url_for('support_us') }}" class="nav-item {% if request.endpoint == 'support_us' %}active{% endif %}">
+                    <i class="fas fa-heart"></i>
+                    <span>Support Us</span>
+                </a>
+                <a href="https://github.com/softerfish/seekandwatch/wiki" target="_blank" class="nav-item">
+                    <i class="fab fa-github"></i>
+                    <span>GitHub Wiki</span>
+                </a>
+                <a href="https://www.reddit.com/r/SeekAndWatch/" target="_blank" class="nav-item">
+                    <i class="fab fa-reddit icon-orange"></i>
+                    <span>Reddit</span>
+                </a>
+            </div>
+
+            <div class="nav-section">
                 <div class="nav-section-header">Apps</div>
                 <a href="{{ url_for('media') }}#requested" class="nav-item {% if request.endpoint == 'media' %}media-nav-item{% endif %}" data-tab="requested">
                     <i class="fas fa-clipboard-list"></i>
@@ -86,31 +117,6 @@
                     <span>Calendar</span>
                 </a>
             </div>
-
-            <div class="nav-section">
-                <div class="nav-section-header">Support</div>
-                <a href="{{ url_for('support_us') }}" class="nav-item {% if request.endpoint == 'support_us' %}active{% endif %}">
-                    <i class="fas fa-heart"></i>
-                    <span>Support Us</span>
-                </a>
-                <a href="https://github.com/softerfish/seekandwatch/wiki" target="_blank" class="nav-item">
-                    <i class="fab fa-github"></i>
-                    <span>GitHub Wiki</span>
-                </a>
-                <a href="https://www.reddit.com/r/SeekAndWatch/" target="_blank" class="nav-item">
-                    <i class="fab fa-reddit icon-orange"></i>
-                    <span>Reddit</span>
-                </a>
-            </div>
-			
-			<div class="nav-section">
-                <div class="nav-section-header">Beta</div>
-                <a href="{{ url_for('requests_page') }}" class="nav-item {% if request.endpoint == 'requests_page' %}active{% endif %}">
-                    <i class="fas fa-cloud-download-alt"></i>
-                    <span>Requests</span>
-                </a>
-            </div>
-            
         </nav>
 
         <div class="sidebar-footer">
@@ -135,6 +141,7 @@
             </div>
             <div class="header-right">
                 <div class="header-info-group">
+                    <a href="https://huntarr.io/" target="_blank" rel="noopener noreferrer" class="header-link header-link-friends" title="Huntarr – find missing &amp; upgrade media"><i class="fas fa-external-link-alt"></i><span>Friends: Huntarr</span></a>
                     <span class="version-info">
                         <span>Ver:</span>
                         <span id="current-version-display">{{ current_version|default('0.0.0') }}</span>
@@ -156,10 +163,10 @@
         </header>
 
         <!-- Page Content -->
-        <div class="main-content">
+        <div class="main-content content-pending">
     {% else %}
     <!-- Not authenticated - show login page without sidebar -->
-    <div class="container mt-4 main-content">
+    <div class="container mt-4 main-content content-pending">
     {% endif %}
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
@@ -400,6 +407,8 @@
     }
 
     document.addEventListener("DOMContentLoaded", function() {
+        // Reveal main content (avoids brief flash of previous/home layout on full-page load).
+        document.querySelectorAll('.main-content.content-pending').forEach(function(el) { el.classList.remove('content-pending'); });
         // Populate the GitHub stars in the header.
         const starCountHeader = document.getElementById('gh-star-count-header');
         if (starCountHeader) {
@@ -428,8 +437,6 @@
         // Check latest release to drive the red dot badge.
         const localVersionRaw = "{{ current_version|default('0.0.0') }}";
         const latestVersionDisplay = document.getElementById('latest-version-display');
-        console.log("My Local Version:", localVersionRaw);
-
         const updateDotHeader = document.getElementById('update-dot-header');
 
         fetch('https://api.github.com/repos/softerfish/seekandwatch/releases/latest')
@@ -444,13 +451,12 @@
                 if (data && data.tag_name) {
                     const remoteVersion = data.tag_name.replace('v', '');
                     const showBadge = isUpdateAvailable(data.tag_name, localVersionRaw);
-                    console.log("GitHub Latest:", remoteVersion);
-                    if (showBadge) console.log("Update found, enabling badge.");
-                    else console.log("Already up to date (or ahead).");
-                    // defer DOM updates to avoid forced reflow in same frame as other scripts
+                    // Defer DOM updates; re-query nodes so we don't touch detached nodes if the page changed (e.g. after navigate to /generate).
                     requestAnimationFrame(function() {
-                        if (latestVersionDisplay) latestVersionDisplay.innerText = remoteVersion;
-                        if (updateDotHeader && showBadge) updateDotHeader.style.display = 'block';
+                        const latestEl = document.getElementById('latest-version-display');
+                        const dotEl = document.getElementById('update-dot-header');
+                        if (latestEl) latestEl.innerText = remoteVersion;
+                        if (dotEl && showBadge) dotEl.style.display = 'block';
                     });
                 }
             })
@@ -486,7 +492,9 @@
                 'kometa': 'Kometa',
                 'manage_blocklist': 'Blocklist',
                 'logs_page': 'Logs',
-                'settings': 'Settings'
+                'settings': 'Settings',
+                'requests_page': 'Requests',
+                'requests_settings_page': 'Requests Settings'
             };
             const currentRoute = "{{ request.endpoint }}";
             if (routeMap[currentRoute]) {

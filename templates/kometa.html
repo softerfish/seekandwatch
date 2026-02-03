@@ -350,7 +350,7 @@
         <div class="yaml-box" id="output">
 <span class="y-cmnt"># Fill in the form on the left to generate config...</span>
         </div>
-        <button onclick="copyYaml()" class="w-100 mt-15 px-15 py-15 fw-bold cursor-pointer" style="background:var(--accent-color); border:none; border-radius:6px;">📋 Copy to Clipboard</button>
+        <button id="copy-yaml-btn" onclick="copyYaml()" class="w-100 mt-15 px-15 py-15 fw-bold cursor-pointer" style="background:var(--accent-color); border:none; border-radius:6px;">📋 Copy to Clipboard</button>
 
         <div id="overlay-preview-section" class="overlay-preview-section mt-20">
             <h4 id="overlay-preview-title" class="text-white mb-10 fs-small">🎬 Sample overlay preview</h4>
@@ -366,7 +366,7 @@
                 <div id="overlay-preview-wrap-tv" class="overlay-preview-wrap-tv" style="display: none;">
                     <div class="overlay-preview-tv-column">
                         <div class="overlay-preview-poster-label">Season</div>
-                        <div class="overlay-preview-poster overlay-preview-poster-small">
+                        <div class="overlay-preview-poster">
                             <div class="overlay-preview-placeholder"></div>
                             <div id="overlay-preview-badges-season" class="overlay-preview-badges"></div>
                             <div id="overlay-preview-empty-season" class="overlay-preview-empty">Season</div>
@@ -374,7 +374,7 @@
                     </div>
                     <div class="overlay-preview-tv-column">
                         <div class="overlay-preview-poster-label">Episode</div>
-                        <div class="overlay-preview-poster overlay-preview-poster-small">
+                        <div class="overlay-preview-poster">
                             <div class="overlay-preview-placeholder"></div>
                             <div id="overlay-preview-badges-episode" class="overlay-preview-badges"></div>
                             <div id="overlay-preview-empty-episode" class="overlay-preview-empty">Episode</div>
@@ -441,10 +441,9 @@
 .overlay-preview-season-episode-group { display: flex; flex-wrap: wrap; gap: 2px; position: absolute; bottom: 6px; left: 6px; }
 .overlay-preview-posters { min-height: 120px; }
 .overlay-preview-wrap-tv { display: flex; gap: 16px; align-items: flex-start; justify-content: center; flex-wrap: wrap; }
-.overlay-preview-wrap-tv .overlay-preview-poster-small { max-width: 180px; }
-.overlay-preview-wrap-tv .overlay-preview-poster-label { width: 100%; font-size: 11px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; text-align: center; }
-.overlay-preview-wrap-tv .overlay-preview-poster-small { margin: 0 auto; }
-.overlay-preview-tv-column { display: flex; flex-direction: column; align-items: center; }
+.overlay-preview-wrap-tv .overlay-preview-poster { width: 200px; min-width: 200px; }
+.overlay-preview-wrap-tv .overlay-preview-poster-label { width: 100%; max-width: 200px; font-size: 11px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; text-align: center; }
+.overlay-preview-tv-column { display: flex; flex-direction: column; align-items: center; flex: 0 0 auto; }
 </style>
 
 <div id="var-modal" class="modal-overlay">
@@ -1454,58 +1453,33 @@ function renderLibs() {
 }
 
 function copyYaml() {
-    const text = document.getElementById('output').innerText;
-    const btn = document.querySelector('button[onclick="copyYaml()"]');
+    const outputEl = document.getElementById('output');
+    const btn = document.getElementById('copy-yaml-btn');
+    if (!outputEl || !btn) return;
+    const text = (outputEl.textContent || outputEl.innerText || '').trim();
     const originalText = btn.innerText;
 
-    // Helper to update UI
     const showSuccess = () => {
         btn.innerText = "Copied! ✅";
-        btn.style.backgroundColor = "#27ae60"; // Optional: Green color
-        setTimeout(() => { 
-            btn.innerText = originalText; 
-            btn.style.backgroundColor = ""; // Reset color
+        btn.style.backgroundColor = "#27ae60";
+        setTimeout(() => {
+            btn.innerText = originalText;
+            btn.style.backgroundColor = "";
         }, 2000);
     };
 
-    const showError = () => {
+    const showError = (msg) => {
         btn.innerText = "Failed ❌";
         setTimeout(() => { btn.innerText = originalText; }, 2000);
+        if (msg) alert(msg);
     };
 
-    // 1. Try Modern Async API (Cleaner, no DOM manipulation)
     if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(text)
             .then(showSuccess)
-            .catch(() => fallbackCopy(text)); // Failover to old method
+            .catch(() => showError("Copy failed. Select the YAML output above and press Ctrl+C (or Cmd+C) to copy."));
     } else {
-        fallbackCopy(text);
-    }
-
-    // 2. Legacy Fallback (Hidden Textarea)
-    function fallbackCopy(text) {
-        try {
-            const textArea = document.createElement("textarea");
-            textArea.value = text;
-            
-            // Ensure it's not visible but part of DOM
-            textArea.style.position = "fixed";
-            textArea.style.left = "-9999px";
-            textArea.style.top = "0";
-            document.body.appendChild(textArea);
-            
-            textArea.focus();
-            textArea.select();
-            
-            const successful = document.execCommand('copy');
-            document.body.removeChild(textArea);
-            
-            if (successful) showSuccess();
-            else showError();
-        } catch (err) {
-            console.error("Copy failed", err);
-            showError();
-        }
+        showError("Copy not available. Select the YAML output above and press Ctrl+C (or Cmd+C) to copy.");
     }
 }
 

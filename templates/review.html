@@ -20,7 +20,7 @@
     <input type="hidden" name="keywords" id="final-keywords">
     
     <div class="step-header">
-        <h2 class="fw-800">Step 2: Curate & Filter</h2>
+        <h2 class="fw-800">Curate & filter</h2>
         <button type="submit" name="lucky_mode" value="true" class="btn btn-lucky-glow">
             🍀 I'm Feeling Lucky
         </button>
@@ -95,8 +95,8 @@
                 </div>
                 
                 {% if genres|length > 12 %}
-                <div class="genre-expand" onclick="toggleGenreView(this)">
-                    <span id="genre-arrow">▼</span> Show All ({{ genres|length }})
+                <div class="genre-expand expanded" onclick="toggleGenreView(this)" id="genre-expand-btn">
+                    <span id="genre-arrow">▲</span> Show Less
                 </div>
                 {% endif %}
             </div>
@@ -155,10 +155,11 @@
 <div id="loadingOverlay">
     <div class="spinner"></div>
     <h2 class="text-white mt-25">Analysing your taste...</h2>
+    <p id="loadingOverlayHint" class="text-white mt-10" style="opacity:0.9; font-size:1rem;"></p>
 </div>
 
 <script>
-// Genre expand/collapse
+// Genre expand/collapse (default open: expanded state on load is set below)
 function toggleGenreView(btn) {
     const hidden = document.querySelectorAll('.hidden-genre');
     const isExpanded = btn.classList.contains('expanded');
@@ -175,6 +176,26 @@ function toggleGenreView(btn) {
         btn.classList.add('expanded');
     }
 }
+
+function updateGenreToggleLabel(link) {
+    if (!link) return;
+    const boxes = document.querySelectorAll('input[name="genre_filter"]');
+    const checked = Array.from(boxes).filter(cb => cb.checked).length;
+    link.innerText = checked === boxes.length ? "Deselect All" : "Select All";
+}
+window.updateGenreToggleLabel = updateGenreToggleLabel;
+
+document.addEventListener('DOMContentLoaded', function() {
+    var expandBtn = document.getElementById('genre-expand-btn');
+    if (expandBtn) {
+        document.querySelectorAll('.hidden-genre').forEach(function(el) { el.style.display = 'flex'; });
+    }
+    var genreToggle = document.getElementById('btn-toggle-genres');
+    if (genreToggle && typeof updateGenreToggleLabel === 'function') {
+        updateGenreToggleLabel(genreToggle);
+        document.getElementById('genre-grid')?.addEventListener('change', function() { updateGenreToggleLabel(genreToggle); });
+    }
+});
 
 function toggleAllGenres(link) {
     const boxes = document.querySelectorAll('input[name="genre_filter"]');
@@ -251,9 +272,14 @@ function prepareKeywords() {
     document.getElementById('final-keywords').value = keywordString;
     // Show loading overlay and hide nuclear-loader if it exists
     const loadingOverlay = document.getElementById('loadingOverlay');
+    const hintEl = document.getElementById('loadingOverlayHint');
     if (loadingOverlay) {
         loadingOverlay.style.display = 'flex';
     }
+    if (hintEl) hintEl.textContent = '';
+    window._loadingHintTimer = setTimeout(function() {
+        if (hintEl) hintEl.textContent = 'Still working… This can take a minute with many seeds.';
+    }, 20000);
     const nuclearLoader = document.getElementById('nuclear-loader');
     if (nuclearLoader) {
         nuclearLoader.style.display = 'none';

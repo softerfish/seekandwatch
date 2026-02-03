@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block page_title %}Requests Settings{% endblock %}
+{% block content %}
+<style>
+    .input-group-text { background-color: #2a2a2a; border-color: #444; color: #fff; display: flex; align-items: center; }
+    #cloudApiKey { background-color: #1e1e1e; border-color: #444; color: #fff; }
+    .requests-settings-card .form-control { background: #1e1e1e; color: white; border-color: #444; }
+</style>
+
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Requests Settings</h2>
+        <a href="{{ url_for('requests_page') }}" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Back to Requests</a>
+    </div>
+
+    <div class="card mb-4 requests-settings-card">
+        <div class="card-header bg-dark text-white">
+            <h5 class="mb-0">SeekAndWatch Cloud</h5>
+        </div>
+        <div class="card-body bg-dark text-white">
+            <form method="POST" action="{{ url_for('save_cloud_settings') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <div class="form-group mb-4">
+                    <label for="cloudApiKey" class="font-weight-bold text-white">SeekAndWatch Cloud API Key</label>
+                    <input type="password" class="form-control" name="cloud_api_key" id="cloudApiKey"
+                           value="{{ settings.cloud_api_key or '' }}"
+                           placeholder="Paste your key here (e.g. 8f9a...)"
+                           autocomplete="off">
+                    <small class="form-text text-muted">
+                        Get this key from your <a href="https://seekandwatch.com/dashboard.php" target="_blank" class="text-info">Cloud Dashboard</a> under "Local Server Connection".
+                    </small>
+                </div>
+
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="movieHandler" class="font-weight-bold text-white">Movies Handler</label>
+                            <select name="cloud_movie_handler" id="movieHandler" class="form-control">
+                                <option value="direct" {% if settings.cloud_movie_handler == 'direct' %}selected{% endif %}>Radarr</option>
+                                <option value="overseerr" {% if settings.cloud_movie_handler == 'overseerr' %}selected{% endif %}>Overseerr / Jellyseerr</option>
+                            </select>
+                            <small class="form-text text-muted">Where to send approved movies.</small>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="tvHandler" class="font-weight-bold text-white">TV Shows Handler</label>
+                            <select name="cloud_tv_handler" id="tvHandler" class="form-control">
+                                <option value="direct" {% if settings.cloud_tv_handler == 'direct' %}selected{% endif %}>Sonarr</option>
+                                <option value="overseerr" {% if settings.cloud_tv_handler == 'overseerr' %}selected{% endif %}>Overseerr / Jellyseerr</option>
+                            </select>
+                            <small class="form-text text-muted">Where to send approved shows.</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group mb-4">
+                    <label class="font-weight-bold text-white d-flex align-items-center" style="gap: 10px;">
+                        <input type="checkbox" name="cloud_auto_approve" id="autoCheck" {% if settings.cloud_auto_approve %}checked{% endif %} style="width: 20px; height: 20px;">
+                        Auto-Approve Requests
+                    </label>
+                    <small class="form-text text-muted">Skip manual approval; approved items go straight to Radarr/Sonarr or Overseerr.</small>
+                </div>
+
+                <hr style="border-color: #444; margin: 24px 0;">
+
+                <h6 class="text-white mb-3">Enable API</h6>
+                <p class="text-muted small mb-2"><strong>What&rsquo;s sent:</strong> Your API key is used only to authenticate. The app receives pending requests from the Cloud and sends back acknowledgments when it adds items to Radarr/Sonarr or Overseerr (or when it deletes them). No library data is sent from this app; the Cloud gets library info from Plex when you sync on the dashboard.</p>
+                <p class="text-muted small mb-2"><strong>How it&rsquo;s sent:</strong> The app talks to the Cloud over HTTPS (your connection to the Cloud is encrypted; your local app can still run on HTTP at home). It polls the Cloud for new requests and may send acknowledge or delete notifications.</p>
+                <p class="text-muted small mb-3"><strong>How often:</strong> The app polls the Cloud about every 1–2 minutes.</p>
+                <div class="form-group mb-4">
+                    <label class="font-weight-bold text-white d-flex align-items-center" style="gap: 10px;">
+                        <input type="checkbox" name="cloud_sync_owned_enabled" id="syncOwnedCheck" {% if settings.cloud_sync_owned_enabled %}checked{% endif %} style="width: 20px; height: 20px;">
+                        Enable Cloud API
+                    </label>
+                </div>
+
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-save"></i> Save Settings
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

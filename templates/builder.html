@@ -148,7 +148,8 @@ function previewMatches() {
     const list = document.getElementById('preview-list'); 
     const allBtn = document.getElementById('request-all-btn');
     
-    // Show a quick loading state.
+    // Show a quick loading state. Remove d-none so display:block isn't overridden by !important.
+    area.classList.remove('d-none');
     area.style.display = 'block'; 
     list.innerHTML = '<li class="preview-list-item preview-list-item-loading">Loading matches...</li>'; 
     allBtn.style.display = 'none';

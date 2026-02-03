@@ -125,19 +125,18 @@
                 </label>
             </div>
             {% if plex_libraries %}
-            <div class="mb-20 text-left px-10 py-10" style="background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid #333;">
-                <label class="text-muted fs-normal d-block mb-10 text-center">
-                    🚫 Exclude Libraries (Optional)
-                </label>
-                
-                <div class="library-grid" style="max-height: 150px; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));">
-                    {% for lib in plex_libraries %}
-                    <div class="lib-check-item px-10">
-                        <input type="checkbox" id="dash-lib-{{ loop.index }}" name="ignored_libraries" value="{{ lib }}">
-                        <label for="dash-lib-{{ loop.index }}" class="fs-small">{{ lib }}</label>
+            <div class="mb-20 exclude-libraries-section">
+                <details class="exclude-libs-dropdown">
+                    <summary class="exclude-libs-trigger">🚫 Exclude Libraries (Optional)</summary>
+                    <div class="exclude-libs-panel">
+                        {% for lib in plex_libraries %}
+                        <label class="exclude-libs-option">
+                            <input type="checkbox" id="dash-lib-{{ loop.index }}" name="ignored_libraries" value="{{ lib }}">
+                            <span>{{ lib }}</span>
+                        </label>
+                        {% endfor %}
                     </div>
-                    {% endfor %}
-                </div>
+                </details>
             </div>
             {% endif %}
             <div class="scan-btn-group">

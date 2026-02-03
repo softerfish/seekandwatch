@@ -15,6 +15,7 @@
     <div class="settings-tabs">
         <button type="button" class="tab-link active" onclick="openTab(event, 'tab-apis')">APIs & Connections</button>
         <button type="button" class="tab-link" onclick="openTab(event, 'tab-scanners')">Scanners & Cache</button>
+        <button type="button" class="tab-link" onclick="openTab(event, 'tab-plex-library')">Plex Library</button>
         <button type="button" class="tab-link" onclick="openTab(event, 'tab-system')">System & Maintenance</button>
         
         {% if current_user.is_admin %}
@@ -131,6 +132,8 @@ let resetPasswordUserId = null;
 function openResetPasswordModal(userId, username) {
     resetPasswordUserId = userId;
     document.getElementById('reset-password-username').textContent = username;
+    var usernameField = document.getElementById('reset-password-username-field');
+    if (usernameField) usernameField.value = username || '';
     document.getElementById('reset-password-new').value = '';
     document.getElementById('reset-password-confirm').value = '';
     document.getElementById('modal-reset-password').classList.add('is-open');
@@ -233,44 +236,13 @@ function copyRecoveryCodes() {
 }
 
 </script>
-
-<!-- modal: recovery codes (shown once after generate) -->
-<div id="modal-recovery-codes" class="modal-overlay">
-    <div class="modal-box" style="max-width:500px;">
-        <h3>🔐 Save these recovery codes</h3>
-        <p class="text-muted">They are shown only once. Store them somewhere safe. Each code works once to reset your password if you forget it.</p>
-        <pre id="recovery-codes-list" style="background:#111; padding:12px; border-radius:8px; overflow-x:auto; font-size:0.9em; max-height:200px; overflow-y:auto;"></pre>
-        <div style="display:flex; gap:10px; margin-top:1rem;">
-            <button type="button" class="btn-secondary" onclick="copyRecoveryCodes()">Copy</button>
-            <button type="button" class="login-btn" onclick="closeRecoveryCodesModal()">Done</button>
-        </div>
-    </div>
-</div>
-
-<!-- modal: admin set password for another user -->
-<div id="modal-reset-password" class="modal-overlay">
-    <div class="modal-box" style="max-width:400px;">
-        <h3>Reset password</h3>
-        <p class="text-muted">Setting new password for <strong id="reset-password-username"></strong>. They can log in with it immediately.</p>
-        <div class="form-group">
-            <label>New password</label>
-            <input type="password" id="reset-password-new" placeholder="At least 8 characters" minlength="8" autocomplete="new-password">
-        </div>
-        <div class="form-group">
-            <label>Confirm new password</label>
-            <input type="password" id="reset-password-confirm" placeholder="Same again" minlength="8" autocomplete="new-password">
-        </div>
-        <div style="display:flex; gap:10px; margin-top:1rem;">
-            <button type="button" class="btn-secondary" onclick="closeResetPasswordModal()">Cancel</button>
-            <button type="button" class="login-btn" id="reset-password-submit-btn" onclick="submitResetPassword()">Set password</button>
-        </div>
-    </div>
-</div>
 {% endif %}
 
-
-    <form id="settings-form" action="{{ url_for('settings') }}" method="POST" autocomplete="off">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>    
+    <form id="settings-form-apis" action="{{ url_for('settings') }}" method="POST" autocomplete="off" aria-label="APIs and connections">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <input type="hidden" name="form_section" value="apis"/>
+        <fieldset class="settings-fieldset" style="border:none;margin:0;padding:0;min-width:0;">
+            <legend class="visually-hidden">APIs and connections</legend>
         <div id="tab-apis" class="tab-content active">
             {% if server_host %}
             <div id="auto-fill-banner" class="card" style="margin-bottom: 20px; border-left: 4px solid var(--accent-color); background: rgba(0, 204, 102, 0.1); display: none;">
@@ -308,7 +280,7 @@ function copyRecoveryCodes() {
                     <label class="input-label">Plex Token</label>
                     <div style="display: flex; gap: 10px;">
                         <div class="password-wrapper">
-                            <input type="password" id="plex_token" name="plex_token" value="{{ settings.plex_token or '' }}" autocomplete="new-password" style="width: 100%; padding-right: 40px;">
+                            <input type="password" id="plex_token" name="plex_token" value="{{ settings.plex_token or '' }}" autocomplete="off" style="width: 100%; padding-right: 40px;">
                             <button type="button" class="toggle-pass" onclick="toggleVisibility('plex_token', this)">👁️</button>
                         </div>
                         <button type="button" onclick="testService('plex')" class="btn-secondary">Test ⚡</button>
@@ -365,7 +337,7 @@ function copyRecoveryCodes() {
                     </details>
                     <div class="test-row">
                         <div class="password-wrapper">
-                            <input type="password" id="omdb_key" name="omdb_key" value="{{ settings.omdb_key or '' }}" placeholder="xxxxxx" autocomplete="new-password">
+                            <input type="password" id="omdb_key" name="omdb_key" value="{{ settings.omdb_key or '' }}" placeholder="xxxxxx" autocomplete="off">
                             <button type="button" class="toggle-pass" onclick="toggleVisibility('omdb_key', this)">👁️</button>
                         </div>
                         <button type="button" onclick="testService('omdb')" class="btn-secondary">Test ⚡</button>
@@ -425,7 +397,7 @@ function copyRecoveryCodes() {
                     </details>
                     <div style="display: flex; gap: 10px;">
                         <div class="password-wrapper">
-                            <input type="password" id="tautulli_api_key" name="tautulli_api_key" value="{{ settings.tautulli_api_key or '' }}" autocomplete="new-password" style="width: 100%; padding-right: 40px;">
+                            <input type="password" id="tautulli_api_key" name="tautulli_api_key" value="{{ settings.tautulli_api_key or '' }}" autocomplete="off" style="width: 100%; padding-right: 40px;">
                             <button type="button" class="toggle-pass" onclick="toggleVisibility('tautulli_api_key', this)">👁️</button>
                         </div>
                         <button type="button" onclick="testService('tautulli')" class="btn-secondary">Test ⚡</button>
@@ -479,7 +451,7 @@ function copyRecoveryCodes() {
                     </details>
                     <div style="display: flex; gap: 10px;">
                         <div class="password-wrapper">
-                            <input type="password" id="sonarr_api_key" name="sonarr_api_key" value="{{ settings.sonarr_api_key or '' }}" autocomplete="new-password" style="width: 100%; padding-right: 40px;">
+                            <input type="password" id="sonarr_api_key" name="sonarr_api_key" value="{{ settings.sonarr_api_key or '' }}" autocomplete="off" style="width: 100%; padding-right: 40px;">
                             <button type="button" class="toggle-pass" onclick="toggleVisibility('sonarr_api_key', this)">👁️</button>
                         </div>
                         <button type="button" onclick="testService('sonarr')" class="btn-secondary">Test ⚡</button>
@@ -487,7 +459,14 @@ function copyRecoveryCodes() {
                 </div>
             </div>
         </div>
-
+        <button type="submit" class="btn-save">Save APIs &amp; Connections 💾</button>
+        </fieldset>
+    </form>
+    <form id="settings-form-scanners" action="{{ url_for('settings') }}" method="POST" autocomplete="off" aria-label="Scanners and cache">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <input type="hidden" name="form_section" value="scanners"/>
+        <fieldset class="settings-fieldset" style="border:none;margin:0;padding:0;min-width:0;">
+            <legend class="visually-hidden">Scanners and cache</legend>
         <div id="tab-scanners" class="tab-content">
             <div class="card setting-card border-info">
                 <h3 style="display:flex; align-items:center; gap:10px;">
@@ -612,7 +591,7 @@ function copyRecoveryCodes() {
                     <div class="spacer-col-1"></div>
                     <div class="flex-item" style="display:flex; align-items:center; padding-bottom:12px;">
                         <input type="checkbox" id="scan-toggle" style="width:20px; height:20px; margin-right:10px;">
-                        <label for="scan-toggle" style="margin:0; cursor:pointer;">Enable Background Scan</label>
+                        <label for="scan-toggle" class="input-label" style="margin:0; cursor:pointer; display:inline;">Enable Background Scan</label>
                     </div>
                     <div class="flex-item" style="text-align:right; display: flex; gap: 10px;">
                         <button type="button" class="btn-danger" style="flex: 1;" onclick="resetScannerIndex()">
@@ -664,7 +643,7 @@ function copyRecoveryCodes() {
                     <div class="spacer-col-1"></div>
                     <div class="flex-item" style="display:flex; align-items:center; padding-bottom:12px;">
                         <input type="checkbox" id="radarr-sonarr-toggle" style="width:20px; height:20px; margin-right:10px;">
-                        <label for="radarr-sonarr-toggle" style="margin:0; cursor:pointer;">Enable Auto-Scan</label>
+                        <label for="radarr-sonarr-toggle" class="input-label" style="margin:0; cursor:pointer; display:inline;">Enable Auto-Scan</label>
                     </div>
                     <div class="flex-item" style="text-align:right;">
                         <button type="button" class="btn-primary" style="background:#2ecc71; color:white; border:none; flex: 1;" onclick="saveRadarrSonarrScannerSettings()">
@@ -674,7 +653,25 @@ function copyRecoveryCodes() {
                 </div>                
             </div>
         </div>
-
+        <button type="submit" class="btn-save">Save Scanners &amp; Cache 💾</button>
+        </fieldset>
+    </form>
+        <fieldset class="settings-fieldset" style="border:none;margin:0;padding:0;min-width:0;">
+            <legend class="visually-hidden">Plex library and cloud</legend>
+        <div id="tab-plex-library" class="tab-content">
+            <div class="card setting-card border-purple">
+                <h3>📤 Plex Library &amp; Cloud</h3>
+                <p class="text-muted small mb-0">
+                    <strong>Sync Library to Cloud</strong> and Cloud API settings are on the Requests Settings page. Use the link in the left sidebar to open <a href="{{ url_for('requests_settings_page') }}" style="color: var(--accent-color);">Requests Settings</a>.
+                </p>
+            </div>
+        </div>
+        </fieldset>
+    <form id="settings-form-system" action="{{ url_for('settings') }}" method="POST" autocomplete="off" aria-label="System and maintenance">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <input type="hidden" name="form_section" value="system"/>
+        <fieldset class="settings-fieldset" style="border:none;margin:0;padding:0;min-width:0;">
+            <legend class="visually-hidden">System and maintenance</legend>
         <div id="tab-system" class="tab-content">
             <div class="card setting-card border-blue">
                 <h3>🖥️ System Maintenance</h3>
@@ -751,13 +748,50 @@ function copyRecoveryCodes() {
                 </button>
             </div>
         </div>
-
-
-        <button type="submit" class="btn-save" id="main-save-btn">Save Configuration 💾</button>
+        <button type="submit" class="btn-save" id="main-save-btn">Save System &amp; Maintenance 💾</button>
+        </fieldset>
     </form>
 </div>
 
-<form id="delete-account-form" action="{{ url_for('delete_profile') }}" method="POST" onsubmit="return confirm('🚨 ARE YOU SURE? This cannot be undone.');" style="display:none;">
+{% if current_user.is_admin %}
+<!-- modal: recovery codes (shown once after generate) -->
+<div id="modal-recovery-codes" class="modal-overlay">
+    <div class="modal-box" style="max-width:500px;">
+        <h3>🔐 Save these recovery codes</h3>
+        <p class="text-muted">They are shown only once. Store them somewhere safe. Each code works once to reset your password if you forget it.</p>
+        <pre id="recovery-codes-list" style="background:#111; padding:12px; border-radius:8px; overflow-x:auto; font-size:0.9em; max-height:200px; overflow-y:auto;"></pre>
+        <div style="display:flex; gap:10px; margin-top:1rem;">
+            <button type="button" class="btn-secondary" onclick="copyRecoveryCodes()">Copy</button>
+            <button type="button" class="login-btn" onclick="closeRecoveryCodesModal()">Done</button>
+        </div>
+    </div>
+</div>
+<!-- modal: admin set password for another user (separate form, single action) -->
+<div id="modal-reset-password" class="modal-overlay">
+    <div class="modal-box" style="max-width:400px;">
+        <h3>Reset password</h3>
+        <p class="text-muted">Setting new password for <strong id="reset-password-username"></strong>. They can log in with it immediately.</p>
+        <form id="reset-password-form" method="dialog" onsubmit="submitResetPassword(); return false;" aria-label="Reset user password">
+            <label for="reset-password-username-field" class="visually-hidden">Username</label>
+            <input type="text" id="reset-password-username-field" name="username" value="" autocomplete="username" class="visually-hidden" tabindex="-1" aria-hidden="true">
+            <div class="form-group">
+                <label for="reset-password-new">New password</label>
+                <input type="password" id="reset-password-new" name="new_password" placeholder="At least 8 characters" minlength="8" autocomplete="new-password" required>
+            </div>
+            <div class="form-group">
+                <label for="reset-password-confirm">Confirm new password</label>
+                <input type="password" id="reset-password-confirm" name="confirm_password" placeholder="Same again" minlength="8" autocomplete="new-password" required>
+            </div>
+            <div style="display:flex; gap:10px; margin-top:1rem;">
+                <button type="button" class="btn-secondary" onclick="closeResetPasswordModal()">Cancel</button>
+                <button type="submit" class="login-btn" id="reset-password-submit-btn">Set password</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+<form id="delete-account-form" action="{{ url_for('delete_profile') }}" method="POST" onsubmit="return confirm('Are you sure? This cannot be undone.');" style="display:none;" aria-label="Delete account">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
 </form>
 
@@ -1227,11 +1261,12 @@ function isValidUrlField(val) {
 }
 
 document.addEventListener('submit', function(e) {
-    // Only intercept the main settings form.
-    if (e.target && e.target.id === 'settings-form') {
-        e.preventDefault(); 
-        
-        // Validate URL fields before submit
+    const form = e.target;
+    const isSettingsForm = form && (form.id === 'settings-form-apis' || form.id === 'settings-form-scanners' || form.id === 'settings-form-system');
+    if (!isSettingsForm) return;
+    e.preventDefault();
+
+    if (form.id === 'settings-form-apis') {
         const urlIds = ['plex_url', 'overseerr_url', 'tautulli_url', 'radarr_url', 'sonarr_url'];
         for (const id of urlIds) {
             const el = document.getElementById(id);
@@ -1240,39 +1275,34 @@ document.addEventListener('submit', function(e) {
                 return;
             }
         }
-        
-        // Trim trailing slashes before save.
         ['plex_url', 'overseerr_url', 'tautulli_url'].forEach(id => {
             const el = document.getElementById(id);
-            if (el) {
-                el.value = el.value.trim().replace(/\/+$/, '');
-            }
+            if (el) el.value = (el.value || '').trim().replace(/\/+$/, '');
         });
+    }
 
-        const btn = document.getElementById('main-save-btn');
-        if (!btn) return;
-        const originalText = btn.innerText;
-        btn.innerText = "Saving... ⏳"; 
-        btn.disabled = true;
+    const btn = form.querySelector('button[type="submit"]');
+    if (!btn) return;
+    const originalText = btn.innerText;
+    btn.innerText = "Saving... ⏳";
+    btn.disabled = true;
 
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000);
-        
-        fetch(e.target.action, { method: 'POST', body: new FormData(e.target), signal: controller.signal })
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    fetch(form.action, { method: 'POST', body: new FormData(form), signal: controller.signal })
         .then(response => response.json())
         .then(data => {
             clearTimeout(timeoutId);
-            btn.innerText = originalText; 
+            btn.innerText = originalText;
             btn.disabled = false;
-            showModal(data.status==='success'?'✅':'❌', data.status==='success'?'Success!':'Error', data.message, data.status==='success');
+            showModal(data.status === 'success' ? '✅' : '❌', data.status === 'success' ? 'Success!' : 'Error', data.message, data.status === 'success');
         })
         .catch(err => {
             clearTimeout(timeoutId);
-            btn.innerText = originalText; 
+            btn.innerText = originalText;
             btn.disabled = false;
             showModal('❌', 'Error', err.name === 'AbortError' ? 'Request timed out. Please try again.' : 'Could not save. Please try again.', false);
         });
-    }
 });
 
 function resetScannerIndex() {

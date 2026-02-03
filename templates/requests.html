@@ -23,6 +23,11 @@
         color: #212529 !important; 
     }
 
+    /* Pending Queue: Type badge text black for readability */
+    .pending-queue-type { color: #000 !important; }
+    /* Push action buttons 30% to the right within the column */
+    .pending-queue-actions { margin-left: 30%; }
+
     /* Promo dropdown */
     #seekandwatch-promo .card-header {
         cursor: pointer;
@@ -59,84 +64,7 @@
 
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h2>Cloud Requests Management</h2>
-    </div>
-
-    <div class="card mb-4">
-        <div class="card-header bg-dark text-white">
-            <h5 class="mb-0">Automation Settings</h5>
-        </div>
-        <div class="card-body bg-dark text-white">
-            <form method="POST" action="/save_cloud_settings">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
-                <div class="form-group mb-4">
-                    <label for="cloudApiKey" class="font-weight-bold text-white">SeekAndWatch Cloud API Key</label>
-                    <div class="input-group">
-                        <div class="input-group-prepend">
-                            <span class="input-group-text"><i class="fas fa-key"></i></span>
-                        </div>
-                        <input type="password" class="form-control" name="cloud_api_key" id="cloudApiKey" 
-                               value="{{ settings.cloud_api_key or '' }}" 
-                               placeholder="Paste your key here (e.g. 8f9a...)" 
-                               autocomplete="off">
-                    </div>
-                    <small class="form-text text-muted">
-                        Get this key from your <a href="https://seekandwatch.com/dashboard.php" target="_blank" class="text-info">Cloud Dashboard</a> under "Local Server Connection".
-                    </small>
-                </div>
-
-                <div class="row">
-                    
-                    <div class="col-md-3">
-                        <div class="form-group">
-                            <label for="movieHandler" class="font-weight-bold text-white">Movies Handler</label>
-                            <select name="cloud_movie_handler" id="movieHandler" class="form-control" style="background:#1e1e1e; color:white; border-color:#444;">
-                                <option value="direct" {% if settings.cloud_movie_handler == 'direct' %}selected{% endif %}>
-                                    Direct (Radarr)
-                                </option>
-                                <option value="overseerr" {% if settings.cloud_movie_handler == 'overseerr' %}selected{% endif %}>
-                                    Overseerr / Jellyseerr
-                                </option>
-                            </select>
-                            <small class="form-text text-muted">Where to send approved movies.</small>
-                        </div>
-                    </div>
-
-                    <div class="col-md-3">
-                        <div class="form-group">
-                            <label for="tvHandler" class="font-weight-bold text-white">TV Shows Handler</label>
-                            <select name="cloud_tv_handler" id="tvHandler" class="form-control" style="background:#1e1e1e; color:white; border-color:#444;">
-                                <option value="direct" {% if settings.cloud_tv_handler == 'direct' %}selected{% endif %}>
-                                    Direct (Sonarr)
-                                </option>
-                                <option value="overseerr" {% if settings.cloud_tv_handler == 'overseerr' %}selected{% endif %}>
-                                    Overseerr / Jellyseerr
-                                </option>
-                            </select>
-                            <small class="form-text text-muted">Where to send approved shows.</small>
-                        </div>
-                    </div>
-
-                    <div class="col-md-3">
-                        <div class="form-group">
-                            <label class="font-weight-bold text-white">Automation</label>
-                            <div class="custom-control custom-switch mt-2">
-                                <input type="checkbox" class="custom-control-input" name="cloud_auto_approve" id="autoCheck" {% if settings.cloud_auto_approve %}checked{% endif %}>
-                                <label class="custom-control-label text-white" for="autoCheck">Auto-Approve Requests</label>
-                            </div>
-                            <small class="form-text text-muted">Skip manual approval.</small>
-                        </div>
-                    </div>
-
-                    <div class="col-md-3 d-flex align-items-center">
-                        <button type="submit" class="btn btn-primary btn-block mt-3">
-                            <i class="fas fa-save"></i> Save Settings
-                        </button>
-                    </div>
-
-                </div>
-            </form>
-        </div>
+        <a href="{{ url_for('requests_settings_page') }}" class="btn btn-secondary"><i class="fas fa-cog"></i> Requests Settings</a>
     </div>
 
     <div class="card shadow-sm">
@@ -159,42 +87,42 @@
                         {% for req in requests %}
                         <tr>
                             <td class="align-middle">
-                                <strong>{{ req.title }}</strong>
+                                <strong>{{ req.title }}{% if req.year %} ({{ req.year }}){% endif %}</strong>
                                 <br>
-                                <small class="text-muted">TMDB ID: {{ req.tmdb_id }}</small>
+                                <small class="text-muted">
+                                    <a href="https://www.themoviedb.org/{{ req.media_type }}/{{ req.tmdb_id }}" target="_blank" rel="noopener" class="text-info">TMDB</a>
+                                    &middot;
+                                    <a href="https://www.themoviedb.org/{{ req.media_type }}/{{ req.tmdb_id }}/videos" target="_blank" rel="noopener" class="text-info">Trailer</a>
+                                    &middot; ID: {{ req.tmdb_id }}
+                                </small>
                             </td>
                             <td class="align-middle">
                                 {% if req.media_type == 'movie' %}
-                                    <span class="badge badge-primary">Movie</span>
+                                    <span class="badge badge-primary pending-queue-type">Movie</span>
                                 {% else %}
-                                    <span class="badge badge-warning text-dark">TV Show</span>
+                                    <span class="badge badge-warning pending-queue-type">TV Show</span>
                                 {% endif %}
                             </td>
                             <td class="align-middle">
-                                <i class="fas fa-user-circle text-secondary"></i> {{ req.requested_by }}
+                                <span class="req-by-name">{{ (req.requested_by or 'Requester').split()|first }}</span>
                                 <br>
-                                <small class="text-muted">{{ req.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
+                                <small class="text-muted">{{ req.created_at.strftime('%b %d, %Y %H:%M') }}</small>
                             </td>
                             <td class="align-middle text-right">
-                                <form action="/approve_request/{{ req.id }}" method="POST" style="display:inline-block;">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                    <button type="submit" class="btn btn-success btn-sm" title="Approve & Download">
-                                        <i class="fas fa-check"></i> Approve
-                                    </button>
-                                </form>
-                                <form action="/deny_request/{{ req.id }}" method="POST" style="display:inline-block; margin-left: 5px;">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                    <button type="submit" class="btn btn-danger btn-sm" title="Deny & Remove" onclick="return confirm('Are you sure you want to deny this request?');">
-                                        <i class="fas fa-times"></i> Deny
-                                    </button>
-                                </form>
-                                
-                                <form action="/delete_request/{{ req.id }}" method="POST" style="display:inline-block; margin-left: 5px;">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                    <button type="submit" class="btn btn-sm btn-secondary" title="Delete (Local Only)" onclick="return confirm('Just delete this from the list?');">
-                                        <i class="fas fa-trash"></i>
-                                </button>
-                                </form>
+                                <div class="d-flex flex-wrap gap-1 align-items-center justify-content-end pending-queue-actions">
+                                    <form action="/approve_request/{{ req.id }}" method="POST" class="d-inline m-0">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit" class="btn btn-success btn-sm" title="Approve & Download"><i class="fas fa-check"></i> Approve</button>
+                                    </form>
+                                    <form action="/deny_request/{{ req.id }}" method="POST" class="d-inline m-0">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit" class="btn btn-danger btn-sm" title="Deny" onclick="return confirm('Deny this request?');"><i class="fas fa-times"></i> Deny</button>
+                                    </form>
+                                    <form action="/delete_request/{{ req.id }}" method="POST" class="d-inline m-0">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit" class="btn btn-secondary btn-sm" title="Delete from list" onclick="return confirm('Remove from list?');"><i class="fas fa-trash"></i></button>
+                                    </form>
+                                </div>
                             </td>
                         </tr>
                         {% else %}

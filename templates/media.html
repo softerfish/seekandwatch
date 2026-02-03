@@ -3460,7 +3460,7 @@ function pollRadarrSearchStatus(movieId, inlineEl) {
                 if (!data.inQueue && data.hasFile) {
                     const statusEl = inlineEl.querySelector('.search-movie-status');
                     const progressEl = inlineEl.querySelector('.search-movie-progress');
-                    if (statusEl) statusEl.innerHTML = 'Already have the best available – nothing to grab.';
+                    if (statusEl) statusEl.innerHTML = 'Already have the best available - nothing to grab.';
                     if (progressEl) progressEl.textContent = '';
                     return;
                 }
@@ -3607,7 +3607,7 @@ function pollSonarrSearchStatus(seriesId, inlineEl) {
                 if (!data.inQueue && data.allMonitoredDownloaded) {
                     const statusEl = inlineEl.querySelector('.search-monitored-status');
                     const progressEl = inlineEl.querySelector('.search-monitored-progress');
-                    if (statusEl) statusEl.innerHTML = 'All episodes already downloaded – nothing to grab.';
+                    if (statusEl) statusEl.innerHTML = 'All episodes already downloaded - nothing to grab.';
                     if (progressEl) progressEl.textContent = '';
                     return;
                 }
