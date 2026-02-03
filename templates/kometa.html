@@ -1468,18 +1468,47 @@ function copyYaml() {
         }, 2000);
     };
 
-    const showError = (msg) => {
+    const showFailed = (msg) => {
         btn.innerText = "Failed ❌";
         setTimeout(() => { btn.innerText = originalText; }, 2000);
         if (msg) alert(msg);
     };
 
+    const showManualHint = (msg) => {
+        btn.innerText = "Use Ctrl+C";
+        setTimeout(() => { btn.innerText = originalText; }, 2500);
+        if (msg) alert(msg);
+    };
+
+    function fallbackCopy() {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        ta.style.top = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        ta.setSelectionRange(0, text.length);
+        let ok = false;
+        try { ok = document.execCommand('copy'); } catch (e) {}
+        document.body.removeChild(ta);
+        return ok;
+    }
+
     if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(text)
             .then(showSuccess)
-            .catch(() => showError("Copy failed. Select the YAML output above and press Ctrl+C (or Cmd+C) to copy."));
+            .catch(() => {
+                if (fallbackCopy()) showSuccess();
+                else showFailed("Copy failed. Select the YAML output above and press Ctrl+C (or Cmd+C) to copy.");
+            });
     } else {
-        showError("Copy not available. Select the YAML output above and press Ctrl+C (or Cmd+C) to copy.");
+        if (fallbackCopy()) showSuccess();
+        else {
+            try { outputEl.focus(); if (window.getSelection && document.createRange) { const r = document.createRange(); r.selectNodeContents(outputEl); window.getSelection().removeAllRanges(); window.getSelection().addRange(r); } } catch (e) {}
+            showManualHint("Clipboard not available in this context. The YAML above is selected — press Ctrl+C (or Cmd+C) to copy.");
+        }
     }
 }
 
