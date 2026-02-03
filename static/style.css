@@ -53,6 +53,19 @@ body.modal-open {
 a { text-decoration: none; color: inherit; transition: color 0.2s; }
 ul { list-style: none; padding: 0; margin: 0; }
 
+/* visually hidden: off-screen for accessibility, not type="hidden" */
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
 /* basic container styles */
 .container { 
     max-width: 1200px; 
@@ -232,6 +245,25 @@ ul { list-style: none; padding: 0; margin: 0; }
     color: var(--accent-color);
 }
 
+/* sidebar Requests pending count badge */
+.sidebar-requests-badge {
+    margin-left: auto;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    line-height: 20px;
+    text-align: center;
+    border-radius: 10px;
+    background-color: #e74c3c;
+    color: #fff;
+}
+
+.nav-item.active .sidebar-requests-badge {
+    background-color: rgba(255, 255, 255, 0.25);
+}
+
 /* sidebar footer */
 .sidebar-footer {
     padding: 12px;
@@ -352,6 +384,31 @@ ul { list-style: none; padding: 0; margin: 0; }
     white-space: nowrap;
 }
 
+/* Friends: Huntarr – pill style, extra spacing left of version info */
+.header-link-friends {
+    margin-right: 1.25rem;
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: linear-gradient(135deg, rgba(0, 204, 102, 0.18) 0%, rgba(0, 180, 90, 0.12) 100%);
+    border: 1px solid rgba(0, 204, 102, 0.35);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    transition: background 0.25s ease, border-color 0.25s ease, transform 0.2s ease, box-shadow 0.25s ease;
+}
+.header-link-friends i {
+    font-size: 0.75rem;
+    opacity: 0.9;
+}
+.header-link-friends:hover {
+    background: linear-gradient(135deg, rgba(0, 204, 102, 0.28) 0%, rgba(0, 180, 90, 0.2) 100%);
+    border-color: rgba(0, 204, 102, 0.55);
+    box-shadow: 0 0 14px rgba(0, 204, 102, 0.2);
+    transform: translateY(-1px);
+}
+.header-link-friends:active {
+    transform: translateY(0);
+}
+
 .version-update-link {
     position: relative;
 }
@@ -411,6 +468,10 @@ ul { list-style: none; padding: 0; margin: 0; }
     max-width: 1400px;
     margin: 0 auto;
     width: 100%;
+    transition: opacity 0.12s ease-out;
+}
+.main-content.content-pending {
+    opacity: 0;
 }
 
 /* responsive behavior */
@@ -555,6 +616,39 @@ input[type="text"], input[type="password"], input[type="number"], select, textar
     font-size: 1em;
 }
 input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent-color); }
+
+/* Checkbox style: white outline when unchecked, solid blue with white check when checked */
+input[type="checkbox"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    min-width: 18px;
+    min-height: 18px;
+    margin: 0;
+    border: 2px solid rgba(255, 255, 255, 0.7);
+    border-radius: 3px;
+    background: transparent;
+    cursor: pointer;
+    vertical-align: middle;
+    position: relative;
+    flex-shrink: 0;
+}
+input[type="checkbox"]:checked {
+    background: #3498db;
+    border-color: #3498db;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'%3E%3C/polyline%3E%3C/svg%3E");
+    background-size: 14px 14px;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+input[type="checkbox"]:hover {
+    border-color: rgba(255, 255, 255, 0.9);
+}
+input[type="checkbox"]:checked:hover {
+    background-color: #5dade2;
+    border-color: #5dade2;
+}
 
 .input-group { margin-bottom: 20px; }
 .input-label { display: block; font-weight: 600; margin-bottom: 8px; color: var(--text-color); }
@@ -961,6 +1055,91 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
     border-radius: 6px;
     margin-bottom: 20px;
 }
+.library-grid-centered {
+    justify-content: center;
+}
+
+/* Exclude Libraries: centered dropdown with tickboxes (dashboard) */
+.exclude-libraries-section {
+    text-align: center;
+}
+.exclude-libs-dropdown {
+    display: inline-block;
+    position: relative;
+    min-width: 220px;
+}
+.exclude-libs-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: rgba(0,0,0,0.2);
+    border: 1px solid #333;
+    border-radius: 8px;
+    color: #aaa;
+    font-size: 0.95em;
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+}
+.exclude-libs-trigger::-webkit-details-marker { display: none; }
+.exclude-libs-trigger::after {
+    content: "▾";
+    font-size: 0.85em;
+    opacity: 0.8;
+}
+.exclude-libs-dropdown[open] .exclude-libs-trigger::after {
+    transform: rotate(180deg);
+}
+.exclude-libs-trigger:hover {
+    background: rgba(0,0,0,0.35);
+    border-color: #444;
+    color: #ddd;
+}
+.exclude-libs-panel {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    top: calc(100% + 6px);
+    min-width: 200px;
+    max-width: 320px;
+    max-height: 200px;
+    overflow-y: auto;
+    padding: 8px;
+    background: #222;
+    border: 1px solid #333;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    z-index: 100;
+    display: grid;
+    gap: 4px;
+}
+.exclude-libs-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9em;
+    color: #ddd;
+    margin: 0;
+}
+.exclude-libs-option:hover {
+    background: #333;
+}
+.exclude-libs-option input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: #e74c3c;
+    flex-shrink: 0;
+}
+.exclude-libs-option span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
 .lib-check-item {
     display: flex;
     align-items: center;
@@ -977,10 +1156,6 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 }
 .lib-check-item input {
     margin-right: 10px;
-    width: 16px;
-    height: 16px;
-    accent-color: #e74c3c;
-    cursor: pointer;
 }
 .lib-check-item label {
     cursor: pointer;
@@ -1409,10 +1584,6 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 }
 .k-check-item input {
     margin-right: 12px;
-    accent-color: var(--accent-color);
-    width: 16px;
-    height: 16px;
-    cursor: pointer;
 }
 .k-check-item label {
     cursor: help;
@@ -2214,6 +2385,34 @@ details.help-box ol {
     border-radius: 5px;
     margin-bottom: 15px;
 }
+.import-field {
+    margin-bottom: 15px;
+}
+.import-field .import-select {
+    width: 100%;
+    box-sizing: border-box;
+}
+.import-label {
+    display: block;
+    font-size: 0.9em;
+    color: #aaa;
+    margin-bottom: 6px;
+}
+.import-title-input {
+    width: 100%;
+    min-width: 0;
+    padding: 10px 12px;
+    font-size: 1em;
+    background: #222;
+    color: #fff;
+    border: 1px solid #444;
+    border-radius: 6px;
+    box-sizing: border-box;
+}
+.import-title-input:focus {
+    border-color: var(--success, #2ecc71);
+    outline: none;
+}
 .import-input-row {
     display: flex;
     gap: 10px;
@@ -2430,7 +2629,7 @@ details.help-box ol {
     background: linear-gradient(to top, rgba(0,0,0,0.9), rgba(0,0,0,0));
     padding: 20px 10px 10px 10px;
 }
-/* tickboxes on Library Browser cards – show in Plex (Home / Library) */
+/* tickboxes on Library Browser cards - show in Plex (Home / Library) */
 .viewer-visibility {
     margin-top: 8px;
     display: flex;
@@ -2837,9 +3036,7 @@ details.help-box ol {
     cursor: pointer;
 }
 .genre-check input {
-    accent-color: var(--accent-color);
     margin-right: 10px;
-    cursor: pointer;
 }
 .genre-check label {
     cursor: pointer;
@@ -2919,37 +3116,6 @@ details.help-box ol {
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
     gap: 20px;
     width: 100%;
-}
-.results-list {
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
-    width: 100%;
-}
-.results-list .result-card {
-    display: flex;
-    flex-direction: row;
-    width: 100%;
-    max-width: 100%;
-}
-.results-list .poster-wrapper {
-    width: 150px;
-    min-width: 150px;
-    flex-shrink: 0;
-}
-.results-list .card-info {
-    flex: 1;
-    padding: 15px;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-}
-.results-list .movie-title {
-    font-size: 1.2em;
-    margin-bottom: 8px;
-    white-space: normal;
-    overflow: visible;
-    text-overflow: clip;
 }
 .result-card {
     background: var(--card-bg);
@@ -3057,6 +3223,7 @@ details.help-box ol {
     display: flex;
     align-items: center;
     gap: 6px;
+    margin-left: 10px;
 }
 .meta-sep {
     color: #444;
@@ -3106,33 +3273,6 @@ details.help-box ol {
 }
 
 /* view toggle (grid/list) */
-.view-toggle {
-    display: flex;
-    gap: 5px;
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    padding: 2px;
-    background: var(--card-bg);
-}
-.view-toggle-btn {
-    padding: 8px 12px;
-    border: none;
-    background: transparent;
-    color: var(--text-color);
-    cursor: pointer;
-    border-radius: 4px;
-    transition: all 0.2s;
-    font-size: 1.1em;
-    font-weight: bold;
-}
-.view-toggle-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
-}
-.view-toggle-btn.active {
-    background: var(--accent-color);
-    color: #000000;
-}
-
 /* =========================================
    13. review & selection page
    ========================================= */
@@ -3745,6 +3885,17 @@ details.help-box ol {
 /* =========================================
    19. logs page (logs.html)
    ========================================= */
+/* Sticky header on Logs page so controls stay visible when scrolling */
+.logs-page-header {
+    position: sticky;
+    top: 56px;
+    z-index: 99;
+    background-color: #000000;
+    padding-bottom: 20px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid rgba(10, 77, 34, 0.5);
+}
+
 .logs-header-row {
     display: flex;
     justify-content: space-between;
@@ -3766,21 +3917,24 @@ details.help-box ol {
 }
 .logs-table {
     width: 100%;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
     font-size: 0.9em;
     min-width: 600px;
 }
-.logs-table th {
-    background: rgba(0,0,0,0.95);
-    text-align: left;
-    border-bottom: 1px solid #0A4D22;
-    padding: 15px;
+.logs-table thead tr {
     position: sticky;
     top: 0;
     z-index: 10;
+}
+.logs-table th {
+    background: #0d0d0d;
+    text-align: left;
+    border-bottom: 1px solid #0A4D22;
+    padding: 15px;
     color: #AAAAAA;
     font-weight: bold;
-    backdrop-filter: blur(10px);
+    box-shadow: 0 1px 0 0 #0A4D22;
 }
 .logs-table td {
     padding: 12px 15px;
