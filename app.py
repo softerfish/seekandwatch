@@ -422,7 +422,7 @@ def trigger_update_route():
         # Check latest release.
         current_version = "Unknown"
         try: current_version = VERSION
-        except: pass
+        except Exception: pass
         latest = check_for_updates(current_version, "https://api.github.com/repos/softerfish/seekandwatch/releases/latest")
         if not latest and not force_update:
              return Response(json.dumps({'status': 'success', 'message': 'Up to date', 'action': 'none'}), mimetype='application/json')
@@ -513,7 +513,7 @@ def _no_users_exist():
     """Check if no users exist - used to exempt first registration/login from rate limiting."""
     try:
         return User.query.count() == 0
-    except:
+    except Exception:
         return False
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -622,7 +622,7 @@ def dashboard():
             latest = check_for_updates(VERSION, "https://raw.githubusercontent.com/softerfish/seekandwatch/main/app.py")
             if latest: UPDATE_CACHE['version'] = latest
             UPDATE_CACHE['last_check'] = now
-        except: pass
+        except Exception: pass
 
     new_version = None
     if UPDATE_CACHE['version'] and UPDATE_CACHE['version'] != VERSION:
@@ -636,7 +636,7 @@ def dashboard():
         if s.plex_url and s.plex_token:
             p = PlexServer(s.plex_url, s.plex_token, timeout=2)
             plex_libraries = [sec.title for sec in p.library.sections() if sec.type in ['movie', 'show']]
-    except: pass
+    except Exception: pass
        
     return render_template('dashboard.html', 
                            settings=s, 
@@ -692,7 +692,7 @@ def recommend_from_trending():
             try:
                 data = f.result().json()
                 final_recs.extend(data.get('results', []))
-            except: pass
+            except Exception: pass
 
     # remove duplicates and filter out stuff we already own
     seen = set()
@@ -733,7 +733,7 @@ def recommend_from_trending():
     try:
         g_url = f"https://api.themoviedb.org/3/genre/{m_type}/list?api_key={s.tmdb_key}"
         genres = requests.get(g_url, timeout=10).json().get('genres', [])
-    except: pass
+    except Exception: pass
             
     return render_template('results.html', movies=unique_recs[:40], 
                          genres=genres, current_genre=None, min_year=0, min_rating=0)
@@ -790,14 +790,14 @@ def review_history():
                     for section in plex.library.sections():
                         if section.title.lower() in ignored_lib_names:
                             ignored_lib_ids.append(str(section.key))
-                except: pass
+                except Exception: pass
             
             # build a map of plex user IDs to their display names
             user_map = {}
             try:
                 for acct in plex.systemAccounts():
                     user_map[int(acct.id)] = acct.name
-            except: pass
+            except Exception: pass
 
             try:
                 account = plex.myPlexAccount()
@@ -806,7 +806,7 @@ def review_history():
                         user_map[int(user.id)] = user.title
                 if account.id:
                     user_map[int(account.id)] = account.username or "Admin"
-            except: pass
+            except Exception: pass
 
             ignored = [u.strip().lower() for u in (s.ignored_users or '').split(',')]
             
@@ -1006,7 +1006,7 @@ def generate():
         try:
             g_url = f"https://api.themoviedb.org/3/genre/movie/list?api_key={s.tmdb_key}"
             genres = requests.get(g_url, timeout=10).json().get('genres', [])
-        except: pass
+        except Exception: pass
 
         # Fetch runtime in background for lucky results
         def async_fetch_runtime_lucky(app_obj, items, key):
@@ -1039,9 +1039,9 @@ def generate():
     session['keywords'] = request.form.get('keywords', '')
     
     try: session['min_year'] = int(request.form.get('min_year', 0))
-    except: session['min_year'] = 0
+    except Exception: session['min_year'] = 0
     try: session['min_rating'] = float(request.form.get('min_rating', 0))
-    except: session['min_rating'] = 0
+    except Exception: session['min_rating'] = 0
     
     if not selected_titles:
         flash('Please select at least one item.', 'error')
@@ -1632,10 +1632,10 @@ def settings():
         cache_age = dt.strftime('%Y-%m-%d %H:%M')
 
     try: keyword_count = TmdbKeywordCache.query.count()
-    except: keyword_count = 0
+    except Exception: keyword_count = 0
     
     try: runtime_count = TmdbRuntimeCache.query.count()
-    except: runtime_count = 0
+    except Exception: runtime_count = 0
     
     # Extract server IP/hostname from request for auto-fill (validate against allowlist; Host header can be spoofed)
     server_host = None
@@ -1718,7 +1718,7 @@ def builder():
     try:
         g_url = f"https://api.themoviedb.org/3/genre/movie/list?api_key={s.tmdb_key}"
         genres = requests.get(g_url, timeout=10).json().get('genres', [])
-    except: genres = []
+    except Exception: genres = []
     return render_template('builder.html', genres=genres)
 
 @app.route('/manage_blocklist')
@@ -1828,7 +1828,7 @@ def scheduled_tasks():
                          try:
                              user_config = json.loads(sch.configuration)
                              preset_data.update(user_config)
-                         except: pass
+                         except Exception: pass
                 
                 if preset_data:
                     success, msg = run_collection_logic(s, preset_data, sch.preset_key, app_obj=app)
