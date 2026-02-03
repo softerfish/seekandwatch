@@ -1,6 +1,7 @@
 """Helper functions and utilities used throughout the app."""
 
 import concurrent.futures
+import logging
 import datetime
 import difflib
 import ipaddress
@@ -25,14 +26,28 @@ from flask import flash, redirect, url_for, session, render_template, has_app_co
 from plexapi.server import PlexServer
 from werkzeug.utils import secure_filename
 
+from config import (
+    CONFIG_DIR,
+    get_backup_dir,
+    get_cache_file,
+    get_database_path,
+    get_lock_file,
+    get_scanner_log_file,
+    get_results_cache_file,
+    get_history_cache_file,
+)
 from models import db, CollectionSchedule, SystemLog, Settings, TmdbAlias, TmdbKeywordCache, TmdbRuntimeCache, RadarrSonarrCache
 from presets import PLAYLIST_PRESETS
 
-# Configuration
-BACKUP_DIR = '/config/backups'
-CACHE_FILE = '/config/plex_cache.json'
-LOCK_FILE = '/config/cache.lock'
-SCANNER_LOG_FILE = '/config/scanner.log'
+log = logging.getLogger(__name__)
+
+# Configuration (from config module so env override works)
+BACKUP_DIR = get_backup_dir()
+CACHE_FILE = get_cache_file()
+LOCK_FILE = get_lock_file()
+SCANNER_LOG_FILE = get_scanner_log_file()
+RESULTS_CACHE_FILE = get_results_cache_file()
+HISTORY_CACHE_FILE = get_history_cache_file()
 
 # in-memory caches (also persisted to disk)
 RESULTS_CACHE = {}
@@ -40,14 +55,12 @@ HISTORY_CACHE = {}
 TMDB_REC_CACHE = {}
 TMDB_REC_CACHE_LOCK = threading.Lock()
 
-RESULTS_CACHE_FILE = '/config/results_cache.json'
 RESULTS_CACHE_TTL = 60 * 60 * 24
-HISTORY_CACHE_FILE = '/config/history_cache.json'
 HISTORY_CACHE_TTL = 60 * 60
 TMDB_REC_CACHE_TTL = 60 * 60 * 24
 
 if not os.path.exists(BACKUP_DIR):
-    os.makedirs(BACKUP_DIR)
+    os.makedirs(BACKUP_DIR, exist_ok=True)
 
 def _now_ts():
     return int(time.time())
@@ -58,7 +71,8 @@ def _load_cache_file(path, ttl):
     try:
         with open(path, 'r', encoding='utf-8') as f:
             raw = json.loads(f.read())
-    except Exception:
+    except Exception as e:
+        log.debug("Load cache %s: %s", path, e)
         return {}
     now = _now_ts()
     cleaned = {}
@@ -75,8 +89,8 @@ def _save_cache_file(path, payload):
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, 'w', encoding='utf-8') as f:
             json.dump(payload, f)
-    except Exception:
-        pass
+    except Exception as e:
+        log.warning("Save cache %s: %s", path, e)
 
 def load_results_cache():
     global RESULTS_CACHE
@@ -113,7 +127,12 @@ def get_tmdb_rec_cache(key):
         if _now_ts() - entry.get('ts', 0) > TMDB_REC_CACHE_TTL:
             TMDB_REC_CACHE.pop(key, None)
             return None
-        return entry.get('results')
+        results = entry.get('results')
+        # treat empty list as cache miss so we refetch / try similar endpoint
+        if not results:
+            TMDB_REC_CACHE.pop(key, None)
+            return None
+        return results
 
 def set_tmdb_rec_cache(key, results):
     with TMDB_REC_CACHE_LOCK:
@@ -152,18 +171,24 @@ def diverse_sample(items, limit, bucket_fn=None):
 # session helper functions
 def get_session_filters():
     """Gets all the filter settings from the user's session."""
-    try: min_year = int(session.get('min_year', 0))
-    except: min_year = 0
-    
-    try: min_rating = float(session.get('min_rating', 0))
-    except: min_rating = 0
-    
+    try:
+        min_year = int(session.get('min_year', 0))
+    except (TypeError, ValueError):
+        min_year = 0
+
+    try:
+        min_rating = float(session.get('min_rating', 0))
+    except (TypeError, ValueError):
+        min_rating = 0
+
     genre = session.get('genre_filter')
     genre_filter = genre if genre and genre != 'all' else None
-    
+
     critic_enabled = session.get('critic_filter') == 'true'
-    try: threshold = int(session.get('critic_threshold', 70))
-    except: threshold = 70
+    try:
+        threshold = int(session.get('critic_threshold', 70))
+    except (TypeError, ValueError):
+        threshold = 70
     
     return min_year, min_rating, genre_filter, critic_enabled, threshold
 
@@ -187,8 +212,10 @@ def prefetch_keywords_parallel(items, api_key):
     try:
         existing = TmdbKeywordCache.query.filter(TmdbKeywordCache.tmdb_id.in_(target_ids)).all()
         for row in existing:
-            try: cached_map[row.tmdb_id] = json.loads(row.keywords)
-            except: cached_map[row.tmdb_id] = []
+            try:
+                cached_map[row.tmdb_id] = json.loads(row.keywords)
+            except (TypeError, ValueError):
+                cached_map[row.tmdb_id] = []
     except Exception as e:
         print(f"DB Read Error: {e}")
 
@@ -216,7 +243,8 @@ def prefetch_keywords_parallel(items, api_key):
             tags = [k['name'].lower() for k in raw_tags]
             
             return {'id': item['id'], 'type': item['media_type'], 'tags': tags}
-        except:
+        except Exception as e:
+            write_log("warning", "Utils", f"TMDB keywords fetch failed ({type(e).__name__})")
             return None
 
     new_entries = []
@@ -279,7 +307,8 @@ def item_matches_keywords(item, target_keywords):
     try:
         entry = TmdbKeywordCache.query.filter_by(tmdb_id=item['id']).first()
         api_tags = json.loads(entry.keywords) if entry else []
-    except:
+    except Exception as e:
+        write_log("warning", "Utils", f"Keyword cache lookup failed ({type(e).__name__})")
         api_tags = []
     
     if api_tags:
@@ -306,7 +335,7 @@ def prefetch_omdb_parallel(items, api_key):
             if r['Source'] == 'Rotten Tomatoes':
                 try:
                     rt_score = int(r['Value'].replace('%', ''))
-                except Exception:
+                except (TypeError, ValueError):
                     rt_score = 0
                 break
         return {'id': item.get('id'), 'rt_score': rt_score}
@@ -444,6 +473,20 @@ load_results_cache()
 load_history_cache()
     
 # logging functions
+def _sanitize_log_message(msg):
+    """Redact URLs and common secret patterns from log messages to avoid leaking credentials."""
+    if msg is None:
+        return ""
+    s = str(msg)
+    if not s:
+        return s
+    import re
+    # Redact URL-like strings (may contain tokens, API keys)
+    s = re.sub(r'https?://[^\s\'"]+', '[URL redacted]', s)
+    s = re.sub(r'(password|token|api_key|apikey|secret)=[^\s&]+', r'\1=[REDACTED]', s, flags=re.I)
+    return s
+
+
 def write_log(level, module, message, app_obj=None):
     # need to handle app context since this might be called from background threads
     try:
@@ -464,10 +507,10 @@ def write_log(level, module, message, app_obj=None):
         print(f"Logging Failed: {e}")
 
 def _write_log_internal(level, module, message):
-    # Actual logging logic.
+    # Actual logging logic. Sanitize message to avoid logging URLs/tokens.
     s = Settings.query.first()
     if s and (s.logging_enabled or level == 'error'):
-        log = SystemLog(level=level, category=module, message=str(message))
+        log = SystemLog(level=level, category=module, message=_sanitize_log_message(message))
         db.session.add(log)
         db.session.commit()
         
@@ -506,7 +549,8 @@ def write_scanner_log(message):
                     bak = SCANNER_LOG_FILE + ".bak"
                     if os.path.exists(bak): os.remove(bak)
                     os.rename(SCANNER_LOG_FILE, bak)
-                except: pass
+                except Exception as e:
+                    log.warning("Rotate scanner log: %s", e)
 
         with open(SCANNER_LOG_FILE, 'a', encoding='utf-8') as f:
             f.write(line)
@@ -522,7 +566,9 @@ def read_scanner_log(lines=100):
         with open(SCANNER_LOG_FILE, 'r', encoding='utf-8') as f:
             content = f.readlines()
             return "".join(content[-lines:])
-    except: return "Error reading logs."
+    except Exception as e:
+        log.warning("Read scanner log: %s", e)
+        return "Error reading logs."
 
 def normalize_title(title):
     if not title:
@@ -566,7 +612,8 @@ def get_tmdb_aliases(tmdb_id, media_type, settings):
         cached = TmdbAlias.query.filter_by(tmdb_id=tmdb_id, media_type=media_type).first()
         if cached:
             return json.loads(cached.aliases)
-    except:
+    except Exception as e:
+        write_log("warning", "Utils", f"Alias cache lookup failed ({type(e).__name__})")
         pass
 
     try:
@@ -578,9 +625,10 @@ def get_tmdb_aliases(tmdb_id, media_type, settings):
         
         # could store aliases here but we mainly just need the ID match
         # (the alias DB handles the rest)
-            
+
         return aliases
-    except:
+    except Exception as e:
+        write_log("warning", "Utils", f"get_tmdb_aliases failed ({type(e).__name__})")
         return []
 
 def sync_remote_aliases():
@@ -604,7 +652,9 @@ def run_alias_scan(app_obj):
             with open(cache_path, 'r') as f:
                 # cache is just a list of normalized titles now
                 owned_titles = json.load(f)
-        except: return
+        except Exception as e:
+            log.warning("Alias scan load cache: %s", e)
+            return
 
         # figure out which titles we haven't scanned yet
         existing_plex_titles = set([row.plex_title for row in TmdbAlias.query.with_entities(TmdbAlias.plex_title).all()])
@@ -793,8 +843,8 @@ def run_alias_scan(app_obj):
                                 if norm_plex_title in alt_titles:
                                     matches_alternative = True
                                     write_scanner_log(f"Found match via alternative title: '{title}' matches alternative for TMDB {tmdb_id}")
-                        except:
-                            pass  # Don't fail if alternative titles check fails
+                        except Exception as e:
+                            write_scanner_log(f"Alternative title check failed: {type(e).__name__}")
                     
                     # Check if this TMDB ID already exists with a different Plex title
                     existing_entry = TmdbAlias.query.filter_by(tmdb_id=tmdb_id, media_type=media_type).first()
@@ -850,15 +900,16 @@ def set_system_lock(status_msg="Busy"):
         with open(LOCK_FILE, 'w') as f:
             json.dump({'stage': status_msg}, f)
         return True
-    except:
+    except Exception as e:
+        write_log("warning", "Utils", f"Lock status write failed ({type(e).__name__})")
         return False
 
 def remove_system_lock():
     if os.path.exists(LOCK_FILE):
         try:
             os.remove(LOCK_FILE)
-        except:
-            pass
+        except OSError as e:
+            write_log("warning", "Utils", f"Could not remove lock file ({type(e).__name__})")
 
 def get_lock_status():
     if not os.path.exists(LOCK_FILE):
@@ -867,7 +918,8 @@ def get_lock_status():
         with open(LOCK_FILE, 'r') as f:
             data = json.load(f)
             return {'running': True, 'progress': data.get('stage', 'Busy')}
-    except:
+    except Exception as e:
+        write_log("warning", "Utils", f"Lock progress read failed ({type(e).__name__})")
         return {'running': True, 'progress': 'Unknown'}
 
 def refresh_plex_cache(app_obj):
@@ -923,7 +975,7 @@ def refresh_plex_cache(app_obj):
         except Exception as e:
             print(f"Cache Refresh Failed: {e}")
             write_log("error", "Cache", f"Refresh Failed: {str(e)}", app_obj=app_obj)
-            return False, str(e)
+            return False, "Refresh failed. Check application logs."
         finally:
             remove_system_lock()
 
@@ -938,7 +990,8 @@ def get_plex_cache(settings):
             if isinstance(content, dict) and 'data' in content:
                 return list(content['data'].keys())
             return content
-    except:
+    except Exception as e:
+        write_log("warning", "Utils", f"Plex cache load failed ({type(e).__name__})")
         return []
 
 def refresh_radarr_sonarr_cache(app_obj):
@@ -995,24 +1048,25 @@ def refresh_radarr_sonarr_cache(app_obj):
                                     if not year and movie.get('releaseDate'):
                                         try:
                                             year = int(str(movie.get('releaseDate'))[:4])
-                                        except:
+                                        except (ValueError, TypeError):
                                             pass
-                                    
+
                                     # normalize title
                                     norm_title = normalize_title(title) if title else ''
-                                    
+                                    # Radarr: hasFile = true when movie file exists on disk; false = "Not Available"
+                                    has_file = bool(movie.get('hasFile', False))
                                     # check if entry exists
                                     existing = RadarrSonarrCache.query.filter_by(
                                         tmdb_id=tmdb_id,
                                         media_type='movie',
                                         source='radarr'
                                     ).first()
-                                    
                                     if existing:
                                         # update existing entry
                                         existing.title = norm_title
                                         existing.original_title = title
                                         existing.year = year
+                                        existing.has_file = has_file
                                         existing.timestamp = datetime.now()
                                     else:
                                         # create new entry
@@ -1022,7 +1076,8 @@ def refresh_radarr_sonarr_cache(app_obj):
                                             source='radarr',
                                             title=norm_title,
                                             original_title=title,
-                                            year=year
+                                            year=year,
+                                            has_file=has_file
                                         )
                                         db.session.add(entry)
                                     
@@ -1071,7 +1126,8 @@ def refresh_radarr_sonarr_cache(app_obj):
                                                     tv_results = find_data.get('tv_results', [])
                                                     if tv_results and len(tv_results) > 0:
                                                         tmdb_id = tv_results[0].get('id')
-                                            except:
+                                            except Exception as e:
+                                                write_log("warning", "Utils", f"Radarr/Sonarr TV lookup failed ({type(e).__name__})")
                                                 pass
                                     
                                     if not tmdb_id:
@@ -1082,24 +1138,27 @@ def refresh_radarr_sonarr_cache(app_obj):
                                     if not year and show.get('firstAired'):
                                         try:
                                             year = int(str(show.get('firstAired'))[:4])
-                                        except:
+                                        except (ValueError, TypeError):
                                             pass
-                                    
+
                                     # normalize title
                                     norm_title = normalize_title(title) if title else ''
-                                    
+                                    # Sonarr: has episode files = episodeFileCount > 0; otherwise "Not Available"
+                                    stats = show.get('statistics') or {}
+                                    ep_file_count = stats.get('episodeFileCount') or 0
+                                    has_file = int(ep_file_count) > 0
                                     # check if entry exists
                                     existing = RadarrSonarrCache.query.filter_by(
                                         tmdb_id=tmdb_id,
                                         media_type='tv',
                                         source='sonarr'
                                     ).first()
-                                    
                                     if existing:
                                         # update existing entry
                                         existing.title = norm_title
                                         existing.original_title = title
                                         existing.year = year
+                                        existing.has_file = has_file
                                         existing.timestamp = datetime.now()
                                     else:
                                         # create new entry
@@ -1109,10 +1168,10 @@ def refresh_radarr_sonarr_cache(app_obj):
                                             source='sonarr',
                                             title=norm_title,
                                             original_title=title,
-                                            year=year
+                                            year=year,
+                                            has_file=has_file
                                         )
                                         db.session.add(entry)
-                                    
                                     sonarr_count += 1
                                 except Exception as e:
                                     continue
@@ -1136,31 +1195,66 @@ def refresh_radarr_sonarr_cache(app_obj):
         except Exception as e:
             print(f"Radarr/Sonarr Cache Refresh Failed: {e}")
             write_log("error", "RadarrSonarrCache", f"Refresh Failed: {str(e)}", app_obj=app_obj)
-            return False, str(e)
+            return False, "Refresh failed. Check application logs."
         finally:
             remove_system_lock()
 
 def get_radarr_sonarr_cache(media_type=None):
-    """Get cached items from Radarr/Sonarr. Returns set of normalized titles or TMDB IDs."""
+    """Get cached items from Radarr/Sonarr that have a file on disk. Returns set of normalized titles or TMDB IDs.
+    Only items with has_file=True count as 'owned' (Radarr: hasFile; Sonarr: episodeFileCount > 0).
+    Items in Radarr/Sonarr without a file are 'Not Available' and are not included here."""
     try:
         query = RadarrSonarrCache.query
         if media_type:
             query = query.filter_by(media_type=media_type)
-        
+        # only include items that have a file (backward compat: has_file may be missing -> treat as True)
         items = query.all()
-        # return both normalized titles and TMDB IDs for comprehensive checking
         titles = set()
         tmdb_ids = set()
-        
         for item in items:
+            if getattr(item, 'has_file', True) is not True:
+                continue
             if item.title:
                 titles.add(item.title)
             if item.tmdb_id and item.tmdb_id > 0:
                 tmdb_ids.add(item.tmdb_id)
-        
         return {'titles': titles, 'tmdb_ids': tmdb_ids}
-    except:
+    except Exception as e:
+        write_log("warning", "Utils", f"get_owned_tmdb_ids_for_cloud failed ({type(e).__name__})")
         return {'titles': set(), 'tmdb_ids': set()}
+
+
+def get_owned_tmdb_ids_for_cloud():
+    """Build lists of owned movie and TV TMDB IDs (Radarr/Sonarr cache with has_file + Plex alias table) for Cloud sync.
+    Used so SeekAndWatch Cloud can show 'Already in library' and hide those from friends. Returns (movie_ids, tv_ids)."""
+    movie_ids = set()
+    tv_ids = set()
+    try:
+        for media_type, id_set in [('movie', movie_ids), ('tv', tv_ids)]:
+            cache = get_radarr_sonarr_cache(media_type)
+            id_set.update(cache.get('tmdb_ids') or [])
+        # Plex-originated: TmdbAlias has tmdb_id for items found in Plex (alias scan)
+        for row in TmdbAlias.query.filter(TmdbAlias.tmdb_id > 0).all():
+            mid = getattr(row, 'tmdb_id', None)
+            mtype = getattr(row, 'media_type', None)
+            if mid and mtype == 'movie':
+                movie_ids.add(mid)
+            elif mid and mtype == 'tv':
+                tv_ids.add(mid)
+    except Exception as e:
+        log.debug("Get owned IDs: %s", e)
+    return (list(movie_ids), list(tv_ids))
+
+
+def owned_list_hash_for_cloud(movie_ids, tv_ids):
+    """Canonical SHA-256 hash of owned movie + TV TMDB IDs for cloud sync.
+    Same format as cloud (sorted comma-joined movies, pipe, sorted comma-joined tv)."""
+    import hashlib
+    movies_part = ','.join(str(x) for x in sorted(movie_ids))
+    tv_part = ','.join(str(x) for x in sorted(tv_ids))
+    payload = movies_part + '|' + tv_part
+    return hashlib.sha256(payload.encode()).hexdigest()
+
 
 def apply_collection_visibility(plex_collection, visible_home=False, visible_library=False, visible_friends=False):
     """Set where the collection appears: home, library recommended, shared users' home (friends).
@@ -1205,8 +1299,8 @@ def apply_collection_visibility(plex_collection, visible_home=False, visible_lib
                 q = {'promotedToRecommended': '1' if visible_library else '0', 'promotedToOwnHome': '1' if visible_home else '0', 'promotedToSharedHome': '1' if visible_friends else '0'}
                 server.query('/hubs/sections/%s/manage/%s?%s' % (section_id, hub_id, urlencode(q)), method=server._session.put)
                 return
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug("Collection visibility (hubs): %s", e)
 
     # fallback: editAdvanced (prefs as query string on PUT)
     if getattr(plex_collection, 'editAdvanced', None):
@@ -1224,12 +1318,12 @@ def apply_collection_visibility(plex_collection, visible_home=False, visible_lib
                     kwargs['promotedToLibrary'] = 1 if visible_library else 0
                 if 'promotedToSharedHome' in ids:
                     kwargs['promotedToSharedHome'] = 1 if visible_friends else 0
-            except Exception:
-                pass
+            except Exception as e:
+                log.debug("Collection prefs: %s", e)
             plex_collection.editAdvanced(**kwargs)
             return
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug("Collection editAdvanced: %s", e)
 
     # or use plexapi’s visibility() if it’s available
     try:
@@ -1239,8 +1333,8 @@ def apply_collection_visibility(plex_collection, visible_home=False, visible_lib
         elif getattr(hub, 'edit', None):
             hub.edit(promotedToOwnHome=int(visible_home), promotedToLibrary=int(visible_library), promotedToSharedHome=int(visible_friends))
         return
-    except Exception:
-        pass
+    except Exception as e:
+        log.debug("Collection visibility(): %s", e)
 
     # last resort: raw prefs PUT (body then query string)
     prefs_data = {}
@@ -1265,7 +1359,8 @@ def apply_collection_visibility(plex_collection, visible_home=False, visible_lib
         ]:
             if pref_id in supported_ids:
                 prefs_data[pref_id] = '1' if value else '0'
-    except Exception:
+    except Exception as e:
+        log.debug("Collection preferences(): %s", e)
         supported_ids = set()
 
     if not prefs_data or 'collectionPublished' not in prefs_data:
@@ -1279,14 +1374,14 @@ def apply_collection_visibility(plex_collection, visible_home=False, visible_lib
     try:
         server.query(prefs_path, method=server._session.put, data=prefs_data)
         return
-    except Exception:
-        pass
+    except Exception as e:
+        log.debug("Collection visibility prefs (PUT data): %s", e)
     try:
         prefs_url = f"{prefs_path}?{urlencode(prefs_data)}"
         server.query(prefs_url, method=server._session.put)
         return
-    except Exception:
-        pass
+    except Exception as e:
+        log.debug("Collection visibility edit: %s", e)
     # if nothing worked, user can still set visibility in Plex (Manage Recommendations)
 
 def _get_plex_tmdb_id(plex_item):
@@ -1301,8 +1396,8 @@ def _get_plex_tmdb_id(plex_item):
             parts = gid.split('//')
             if len(parts) >= 2 and parts[-1].strip().isdigit():
                 return int(parts[-1].strip())
-    except Exception:
-        pass
+    except Exception as e:
+        log.debug("Parse Plex section ID: %s", e)
     return None
 
 # collection syncing logic
@@ -1371,7 +1466,8 @@ def run_collection_logic(settings, preset, key, app_obj=None):
                         if not isinstance(data, dict):
                             return []
                         return data.get('results') or []
-                    except Exception:
+                    except Exception as e:
+                        log.debug("TMDB recommendations: %s", e)
                         return []
 
                 with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
@@ -1410,7 +1506,8 @@ def run_collection_logic(settings, preset, key, app_obj=None):
             rows = TmdbAlias.query.with_entities(TmdbAlias.tmdb_id, TmdbAlias.plex_title).all()
             for r in rows:
                 id_map[r.tmdb_id] = r.plex_title
-        except: pass
+        except Exception as e:
+            log.warning("Load alias map for preset: %s", e)
 
         # match TMDB items to what we own
         potential_matches = []
@@ -1462,8 +1559,8 @@ def run_collection_logic(settings, preset, key, app_obj=None):
                             break
                     if matched and matched not in found_items:
                         found_items.append(matched)
-                except Exception:
-                    pass
+                except Exception as e:
+                    log.debug("Plex search match: %s", e)
 
         found_items = list(set(found_items))
 
@@ -1478,8 +1575,8 @@ def run_collection_logic(settings, preset, key, app_obj=None):
                 if col_title.lower() == want_lower:
                     existing_col = col
                     break
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug("Search collection: %s", e)
 
         # If existing collection is smart, create a new regular one with a suffix (so you don't have to delete the smart one)
         if existing_col and getattr(existing_col, 'smart', False):
@@ -1513,6 +1610,8 @@ def run_collection_logic(settings, preset, key, app_obj=None):
                     f"Created '{preset['title']}' with {len(found_items)} items. "
                     "If it doesn't show under Manage Recommendations, open the collection in Plex → ⋮ → Visible On → check the columns you want."
                 )
+            if not owned_titles and not id_map:
+                return True, "No items found. Run Sync Engine and Background Alias Discovery in Settings first so the app knows what you have in Plex."
             return True, "No items found."
         # existing collection is regular, so we can add/remove items
         current_items = existing_col.items()
@@ -1574,9 +1673,10 @@ def is_owned_item(tmdb_item, owned_keys, media_type):
         radarr_sonarr_cache = get_radarr_sonarr_cache(media_type)
         if tmdb_id in radarr_sonarr_cache['tmdb_ids']:
             return True
-    except:
+    except Exception as e:
+        write_log("warning", "Utils", f"Radarr/Sonarr cache tmdb check failed ({type(e).__name__})")
         pass
-    
+
     # Check alias database (most reliable for Plex)
     # If alias exists with valid tmdb_id, we own this item
     # The alias scan only creates entries for items found in Plex
@@ -1612,7 +1712,8 @@ def is_owned_item(tmdb_item, owned_keys, media_type):
             radarr_sonarr_cache = get_radarr_sonarr_cache(media_type)
             if norm_title in radarr_sonarr_cache['titles']:
                 return True
-        except:
+        except Exception as e:
+            write_log("warning", "Utils", f"Radarr/Sonarr cache title check failed ({type(e).__name__})")
             pass
         
         # Check for common title variations (handles regional differences, etc.)
@@ -1699,7 +1800,8 @@ def fetch_omdb_ratings(title, year, api_key):
         r = requests.get(url, timeout=2)
         if r.status_code == 200:
             return r.json().get('Ratings', [])
-    except: pass
+    except Exception as e:
+        log.debug("OMDB ratings: %s", e)
     return []
     
 def send_overseerr_request(settings, media_type, tmdb_id, uid=None):
@@ -1743,9 +1845,9 @@ def send_overseerr_request(settings, media_type, tmdb_id, uid=None):
                             season_num = s.get('season_number', 0)
                             if season_num > 0:
                                 seasons.append(season_num)
-                    except:
+                    except (ValueError, TypeError, KeyError):
                         pass
-            
+
             # If still no seasons, can't request.
             if not seasons:
                 return False, "No seasons available to request (all seasons may already be available, requested, or unavailable)"
@@ -1767,7 +1869,8 @@ def send_overseerr_request(settings, media_type, tmdb_id, uid=None):
             # Log only the safe message, not full response (clear-text logging of sensitive data)
             if media_type == 'tv':
                 print(f"Overseerr TV request error: {error_msg}", flush=True)
-        except Exception:
+        except Exception as e:
+            log.debug("Overseerr response parse: %s", e)
             error_msg = f"HTTP Error {r.status_code}"
 
         # Friendly error messages.
@@ -1800,7 +1903,8 @@ def check_for_updates(current_version, url):
                     
                     if remote != local:
                         return remote
-            except:
+            except Exception:
+                # response may be raw file (e.g. app.py) not JSON; fallback to regex below
                 pass
 
             # fallback: regex search in the raw file (for older releases)
@@ -1827,8 +1931,9 @@ def handle_lucky_mode(settings):
         movies = [{'id': p['id'], 'title': p['title'], 'year': (p.get('release_date') or '')[:4], 'poster_path': p.get('poster_path'), 'overview': p.get('overview'), 'vote_average': p.get('vote_average'), 'media_type': 'movie'} for p in data]
         
         return movies
-            
-    except: pass
+
+    except Exception as e:
+        write_log("warning", "Utils", f"handle_lucky_mode failed ({type(e).__name__})")
     return None
 
 # backup/restore functions
@@ -1837,8 +1942,9 @@ def create_backup():
     filepath = os.path.join(BACKUP_DIR, filename)
     
     with zipfile.ZipFile(filepath, 'w', zipfile.ZIP_DEFLATED) as zipf:
-        if os.path.exists('/config/seekandwatch.db'):
-            zipf.write('/config/seekandwatch.db', arcname='seekandwatch.db')
+        db_path = get_database_path()
+        if os.path.exists(db_path):
+            zipf.write(db_path, arcname='seekandwatch.db')
         if os.path.exists(CACHE_FILE):
             zipf.write(CACHE_FILE, arcname='plex_cache.json')
             
@@ -1857,7 +1963,8 @@ def list_backups():
             size_str = f"{round(sz / 1024, 2)} KB" if sz < 1024*1024 else f"{round(sz / (1024*1024), 2)} MB"
             date = datetime.datetime.fromtimestamp(os.path.getmtime(path)).strftime('%Y-%m-%d %H:%M')
             backups.append({'filename': f, 'size': size_str, 'date': date})
-        except: pass
+        except OSError as e:
+            write_log("warning", "Utils", f"list_backups stat failed ({type(e).__name__}): {f}")
     return backups
 
 def restore_backup(filename):
@@ -1873,8 +1980,8 @@ def restore_backup(filename):
         return False, "Invalid backup path"
     if not os.path.exists(filepath): return False, "File not found"
     try:
-        target_dir = "/config"
-        
+        target_dir = CONFIG_DIR
+
         # Validate it's actually a zip file.
         if not zipfile.is_zipfile(filepath):
             return False, "Invalid backup file (not a ZIP archive)"
@@ -1940,15 +2047,17 @@ def prune_backups(days=7):
         if not f.endswith('.zip'): continue
         path = os.path.join(BACKUP_DIR, f)
         if os.path.getmtime(path) < cutoff:
-            try: os.remove(path)
-            except: pass
+            try:
+                os.remove(path)
+            except OSError as e:
+                write_log("warning", "Utils", f"Prune backup remove failed ({type(e).__name__}): {path}")
 
 def reset_stuck_locks():
     """
     Called on startup.
     Deletes any stale 'cache.lock' files from the config folder.
     """
-    lock_file = '/config/cache.lock'
+    lock_file = LOCK_FILE
     
     if os.path.exists(lock_file):
         try:
@@ -1975,8 +2084,8 @@ def validate_url(url):
         # resolve all IPs for this host
         try:
             addr_info = socket.getaddrinfo(hostname, None)
-        except:
-            return False, "Could not resolve hostname"
+        except (socket.gaierror, OSError) as e:
+            return False, f"Could not resolve hostname ({type(e).__name__})"
 
         # check all resolved IPs
         for res in addr_info:
@@ -2023,7 +2132,8 @@ def prefetch_tv_states_parallel(items, api_key):
             url = f"https://api.themoviedb.org/3/tv/{item['id']}?api_key={api_key}"
             data = requests.get(url, timeout=2).json()
             return {'id': item['id'], 'status': data.get('status', 'Unknown')}
-        except:
+        except Exception as e:
+            write_log("warning", "Utils", f"Overseerr status fetch failed ({type(e).__name__})")
             return None
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
@@ -2067,7 +2177,8 @@ def prefetch_ratings_parallel(items, api_key):
             if not rating or rating == '': rating = "NR"
             
             return {'id': item['id'], 'rating': rating}
-        except:
+        except Exception as e:
+            write_log("warning", "Utils", f"OMDB rating fetch failed ({type(e).__name__})")
             return None
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
@@ -2092,7 +2203,7 @@ def get_tautulli_trending(media_type='movie', days=30, settings=None):
             days = int(days)
             if days < 1: days = 1
             if days > 365: days = 365
-        except:
+        except (ValueError, TypeError):
             days = 30
         
         url = f"{s.tautulli_url.rstrip('/')}/api/v2?apikey={s.tautulli_api_key}&cmd=get_home_stats&time_range={days}&stats_count=10"
@@ -2125,10 +2236,11 @@ def get_tautulli_trending(media_type='movie', days=30, settings=None):
                                 'tmdb_id': tmdb_id,
                                 'media_type': media_type
                             })
-                    except:
+                    except Exception as e:
+                        write_log("warning", "Utils", f"Tautulli history item failed ({type(e).__name__})")
                         continue
                 break
-                
+
         return trending_items[:5]
 
     except Exception as e:
@@ -2146,8 +2258,8 @@ def is_docker():
         if os.path.isfile(path):
             with open(path, 'r') as f:
                 return any('docker' in line for line in f)
-    except Exception:
-        pass
+    except Exception as e:
+        log.debug("Docker check: %s", e)
     return False
 
 def is_unraid():
@@ -2161,17 +2273,18 @@ def is_unraid():
     return False
 
 def is_git_repo():
-    """Checks if .git exists in app dir or /config."""
+    """Checks if .git exists in app dir or config dir."""
     app_dir = get_app_root()
-    return os.path.isdir(os.path.join(app_dir, '.git')) or os.path.isdir('/config/.git')
+    return os.path.isdir(os.path.join(app_dir, '.git')) or os.path.isdir(os.path.join(CONFIG_DIR, '.git'))
 
 def get_app_root():
     """Figures out where the app code actually lives."""
     env_root = os.environ.get("APP_DIR")
     if env_root and os.path.isdir(env_root):
         return env_root
-    if os.path.isdir("/config/app"):
-        return "/config/app"
+    app_subdir = os.path.join(CONFIG_DIR, "app")
+    if os.path.isdir(app_subdir):
+        return app_subdir
     return os.path.dirname(os.path.abspath(__file__))
 
 def is_app_dir_writable():
@@ -2232,7 +2345,7 @@ def _copy_tree(src, dst):
             allowed_src_dirs.append(temp_path)
     
     # only allow copying to these directories
-    allowed_dst_dirs = ['/config', '/config/app']
+    allowed_dst_dirs = [CONFIG_DIR, os.path.join(CONFIG_DIR, 'app')]
     app_root = get_app_root()
     if app_root and app_root not in allowed_dst_dirs:
         allowed_dst_dirs.append(app_root)
@@ -2278,15 +2391,15 @@ def perform_git_update():
     """
     try:
         # only allow updates from these directories
-        allowed_cwd_dirs = ['/config', '/config/app']
+        allowed_cwd_dirs = [CONFIG_DIR, os.path.join(CONFIG_DIR, 'app')]
         app_root = get_app_root()
         if app_root and app_root not in allowed_cwd_dirs:
             allowed_cwd_dirs.append(app_root)
         
         # figure out where the git repo is
         cwd = None
-        if os.path.isdir('/config/.git'):
-            cwd = '/config'
+        if os.path.isdir(os.path.join(CONFIG_DIR, '.git')):
+            cwd = CONFIG_DIR
         elif app_root and os.path.isdir(os.path.join(app_root, '.git')):
             cwd = app_root
         
@@ -2327,10 +2440,10 @@ def perform_git_update():
                 return False, "Security validation failed: requirements path is not a file"
             
             subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-r', req_abs], shell=False)
-             
+
         return True, "Update Successful! Restarting..."
     except Exception as e:
-        write_log("error", "Git Update", f"Update failed: {str(e)}")
+        write_log("error", "Git Update", f"Update failed: {type(e).__name__}")
         return False, "Git update failed. Please check the logs for details."
 
 def perform_release_update():
@@ -2376,7 +2489,7 @@ def perform_release_update():
         req_path = os.path.join(app_dir, "requirements.txt")
         if os.path.exists(req_path):
             # Validate requirements.txt path
-            allowed_dirs = ['/config', '/config/app']
+            allowed_dirs = [CONFIG_DIR, os.path.join(CONFIG_DIR, 'app')]
             if app_dir not in allowed_dirs:
                 allowed_dirs.append(app_dir)
             
@@ -2396,7 +2509,7 @@ def perform_release_update():
 
         return True, "Release Update Successful! Restarting..."
     except Exception as e:
-        write_log("error", "Release Update", f"Update failed: {str(e)}")
+        write_log("error", "Release Update", f"Update failed: {type(e).__name__}")
         return False, "Release update failed. Please check the logs for details."
 
 # SeekAndWatch cloud - helpers for *arr API (root + quality, no cross-import from api)
@@ -2535,7 +2648,7 @@ def send_to_radarr_sonarr(settings, media_type, tmdb_id):
                 return False, f"Sonarr Error: {resp.text}"
                 
     except Exception as e:
-        return False, f"Exception: {str(e)}"
+        return False, "Request failed. Check application logs."
     
     return False, "Unknown Media Type"
 
@@ -2569,4 +2682,4 @@ def send_to_overseerr(settings, media_type, tmdb_id):
             return False, f"Overseerr Error {resp.status_code}"
             
     except Exception as e:
-        return False, f"Overseerr Exception: {str(e)}"
+        return False, "Request failed. Check application logs."

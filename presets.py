@@ -38,7 +38,7 @@ PLAYLIST_PRESETS = {
     'theme_disaster': {'title': 'Disaster', 'category': 'Themes & Vibes', 'icon': '🌪️', 'media_type': 'movie', 'description': 'End of the world.', 'tmdb_params': {'with_keywords': '4414|10549', 'sort_by': 'revenue.desc'}},
     'theme_highschool': {'title': 'High School', 'category': 'Themes & Vibes', 'icon': '🎒', 'media_type': 'movie', 'description': 'Coming of age.', 'tmdb_params': {'with_keywords': '6270', 'sort_by': 'popularity.desc'}},
     'theme_standup': {'title': 'Stand-Up', 'category': 'Themes & Vibes', 'icon': '🎤', 'media_type': 'movie', 'description': 'Comedy specials.', 'tmdb_params': {'with_keywords': '9716', 'sort_by': 'release_date.desc'}},
-    'theme_miniseries': {'title': 'Miniseries', 'category': 'Themes & Vibes', 'icon': '📚', 'media_type': 'tv', 'description': 'Limited series.', 'tmdb_params': {'with_keywords': '210024', 'sort_by': 'vote_average.desc', 'vote_count.gte': '100'}},
+    'theme_miniseries': {'title': 'Miniseries', 'category': 'Themes & Vibes', 'icon': '📚', 'media_type': 'tv', 'description': 'Limited series.', 'tmdb_params': {'with_keywords': '11162', 'sort_by': 'vote_average.desc', 'vote_count.gte': '100'}},
 
     # Awards
     'oscar_winners': {'title': 'Oscar Winners', 'category': 'Awards & Acclaim', 'icon': '🏆', 'media_type': 'movie', 'description': 'Best Picture Winners.', 'tmdb_params': {'with_keywords': '528', 'sort_by': 'vote_average.desc', 'vote_count.gte': '500'}},
@@ -101,7 +101,7 @@ PLAYLIST_PRESETS = {
     'theme_christmas': {'title': 'Holiday & Christmas', 'category': 'Themes & Vibes', 'icon': '🎄', 'media_type': 'movie', 'description': 'Seasonal cheer.', 'tmdb_params': {'with_keywords': '207317', 'sort_by': 'popularity.desc'}},
     'theme_martial_arts': {'title': 'Martial Arts', 'category': 'Themes & Vibes', 'icon': '🥋', 'media_type': 'movie', 'description': 'Kung fu & action.', 'tmdb_params': {'with_keywords': '3780', 'sort_by': 'vote_average.desc'}},
     'theme_road_movie': {'title': 'Road Movies', 'category': 'Themes & Vibes', 'icon': '🛣️', 'media_type': 'movie', 'description': 'Journeys & escapes.', 'tmdb_params': {'with_keywords': '9715', 'sort_by': 'popularity.desc'}},
-    'theme_true_crime_tv': {'title': 'True Crime', 'category': 'Themes & Vibes', 'icon': '📋', 'media_type': 'tv', 'description': 'Real cases.', 'tmdb_params': {'with_genres': '80', 'with_keywords': '210024', 'sort_by': 'popularity.desc'}},
+    'theme_true_crime_tv': {'title': 'True Crime', 'category': 'Themes & Vibes', 'icon': '📋', 'media_type': 'tv', 'description': 'Real cases.', 'tmdb_params': {'with_genres': '80', 'sort_by': 'popularity.desc'}},
 
     # more international
     'spanish_cinema': {'title': 'Spanish Language', 'category': 'International & World', 'icon': '🇪🇸', 'media_type': 'movie', 'description': 'Spain & Latin America.', 'tmdb_params': {'with_original_language': 'es', 'sort_by': 'popularity.desc'}},
@@ -144,7 +144,7 @@ PLAYLIST_PRESETS = {
     'theme_war_movies': {'title': 'War & Military', 'category': 'Themes & Vibes', 'icon': '🪖', 'media_type': 'movie', 'description': 'Conflict & courage.', 'tmdb_params': {'with_genres': '10752', 'sort_by': 'popularity.desc'}},
 
     # More themes (TV)
-    'theme_anthology_tv': {'title': 'Anthology Series', 'category': 'Themes & Vibes', 'icon': '📚', 'media_type': 'tv', 'description': 'New story each season.', 'tmdb_params': {'with_keywords': '210024', 'sort_by': 'vote_average.desc', 'vote_count.gte': '50'}},
+    'theme_anthology_tv': {'title': 'Anthology Series', 'category': 'Themes & Vibes', 'icon': '📚', 'media_type': 'tv', 'description': 'New story each season.', 'tmdb_params': {'with_keywords': '11162', 'sort_by': 'vote_average.desc', 'vote_count.gte': '50'}},
     'theme_sitcom_tv': {'title': 'Sitcoms', 'category': 'Themes & Vibes', 'icon': '😂', 'media_type': 'tv', 'description': 'Laugh tracks & life.', 'tmdb_params': {'with_genres': '35', 'sort_by': 'popularity.desc'}},
     'theme_sci_fi_tv': {'title': 'Sci-Fi & Fantasy TV', 'category': 'Themes & Vibes', 'icon': '🛸', 'media_type': 'tv', 'description': 'Space & magic.', 'tmdb_params': {'with_genres': '10765', 'sort_by': 'popularity.desc'}},
     'theme_cop_procedural_tv': {'title': 'Cop & Procedural', 'category': 'Themes & Vibes', 'icon': '🚔', 'media_type': 'tv', 'description': 'Case of the week.', 'tmdb_params': {'with_genres': '80', 'sort_by': 'popularity.desc'}},
@@ -171,7 +171,7 @@ PLAYLIST_PRESETS = {
     'network_showtime': {'title': 'Showtime', 'category': 'Studios & Networks', 'icon': '📺', 'media_type': 'tv', 'description': 'Showtime series.', 'tmdb_params': {'with_networks': '67', 'sort_by': 'popularity.desc'}},
     'network_cw': {'title': 'The CW', 'category': 'Studios & Networks', 'icon': '📺', 'media_type': 'tv', 'description': 'CW drama & genre.', 'tmdb_params': {'with_networks': '71', 'sort_by': 'popularity.desc'}},
 
-    # More genres (TV) – Fantasy, Thriller, Adventure
+    # More genres (TV) - Fantasy, Thriller, Adventure
     'genre_fantasy_tv': {'title': 'Fantasy TV', 'category': 'Genre (TV)', 'icon': '🐉', 'media_type': 'tv', 'description': 'Magic & myth.', 'tmdb_params': {'with_genres': '10765', 'sort_by': 'popularity.desc'}},
     'genre_thriller_tv': {'title': 'Thriller TV', 'category': 'Genre (TV)', 'icon': '😱', 'media_type': 'tv', 'description': 'Suspense & mystery.', 'tmdb_params': {'with_genres': '9648', 'sort_by': 'popularity.desc'}},
     'genre_adventure_tv': {'title': 'Adventure TV', 'category': 'Genre (TV)', 'icon': '🗺️', 'media_type': 'tv', 'description': 'Action & adventure.', 'tmdb_params': {'with_genres': '10759', 'sort_by': 'popularity.desc'}},

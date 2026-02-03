@@ -5,6 +5,9 @@ import time
 import os
 import re
 import sys
+
+import config
+from config import CONFIG_DIR, DATABASE_URI, SECRET_KEY_FILE
 import requests
 import random
 import json
@@ -17,8 +20,10 @@ import sqlalchemy
 import concurrent.futures
 import secrets
 import subprocess
+
 from flask import Flask, Blueprint, request, jsonify, session, send_from_directory, render_template, redirect, url_for, flash
 from flask_login import login_required, current_user, LoginManager, login_user, logout_user
+from auth_decorators import admin_required
 from flask_apscheduler import APScheduler
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_limiter import Limiter
@@ -42,7 +47,7 @@ from sqlalchemy.exc import OperationalError
 
 # basic app setup stuff
 
-VERSION = "1.5.1"
+VERSION = "1.5.2"
 
 UPDATE_CACHE = {
     'version': None,
@@ -50,52 +55,48 @@ UPDATE_CACHE = {
 }
 
 def background_worker_launcher():
-    """Starts the cloud worker loop in a background thread safely."""
+    """Starts the cloud worker loop in a background thread safely. Uses jitter and backoff to avoid hammering the cloud."""
     # Local import to prevent Circular Import Crash
-    from cloud_worker import process_cloud_queue
-    
+    from cloud_worker import process_cloud_queue, get_poll_sleep_seconds
+
     print("--- Cloud Worker Thread Started ---", flush=True)
     while True:
         try:
             process_cloud_queue()
         except Exception as e:
             print(f"Cloud Worker Error: {e}", flush=True)
-        # Wait 60 seconds before checking again
-        time.sleep(60)
+        sleep_sec = get_poll_sleep_seconds()
+        time.sleep(sleep_sec)
         
 def get_persistent_key():
     """Gets the secret key from env or file, or makes a new one if needed."""
-    # check env first (docker usually sets this)
     env_key = os.environ.get('SECRET_KEY')
-    if env_key: 
+    if env_key:
         return env_key
-    
-    # otherwise look for a saved key file
-    key_path = '/config/secret.key'
+
+    key_path = SECRET_KEY_FILE
     try:
         if os.path.exists(key_path):
             with open(key_path, 'r') as f:
                 return f.read().strip()
-        else:
-            # no key found, make a new one and save it
-            new_key = secrets.token_hex(32)
-            with open(key_path, 'w') as f:
-                f.write(new_key)
-            return new_key
-    except:
-        # if we can't write to disk (read-only fs), just return a temp key
-        # not ideal but better than crashing
+        new_key = secrets.token_hex(32)
+        with open(key_path, 'w') as f:
+            f.write(new_key)
+        return new_key
+    except OSError as e:
+        print(f"--- WARNING: Could not persist SECRET_KEY to disk ({type(e).__name__}); using temporary key. Set SECRET_KEY env or ensure {CONFIG_DIR!r} is writable. ---", flush=True)
         return secrets.token_hex(32)
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = get_persistent_key()
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////config/seekandwatch.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URI
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 # Limit request body size (mitigates CVE-2024-49767 / multipart exhaustion)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB
-# session cookie hardening (set SESSION_COOKIE_SECURE = True in production when using HTTPS)
+# Session cookie hardening. Set SECURE_COOKIE=1 (or SESSION_COOKIE_SECURE=1) when serving over HTTPS.
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SECURE'] = os.environ.get('SECURE_COOKIE', '').strip() in ('1', 'true', 'yes') or os.environ.get('SESSION_COOKIE_SECURE', '').strip() in ('1', 'true', 'yes')
 csrf = CSRFProtect(app)
 
 # Rate limiting to prevent abuse.
@@ -115,6 +116,16 @@ db.init_app(app)
 login_manager = LoginManager()
 login_manager.login_view = 'login'
 login_manager.init_app(app)
+
+
+@app.after_request
+def add_security_headers(response):
+    """Add security-related response headers."""
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    return response
+
 
 # db commit with retry (helps when sqlite is briefly locked)
 def commit_with_retry(max_retries=3):
@@ -147,8 +158,10 @@ def _valid_url(val):
 def run_migrations():
     """Adds any missing DB columns and makes sure there's always at least one admin."""
     with app.app_context():
-        try: db.create_all()
-        except: pass
+        try:
+            db.create_all()
+        except Exception as e:
+            print(f"--- [Migration] create_all: {type(e).__name__} ---", flush=True)
         
         # add any missing columns to existing tables
         try:
@@ -225,6 +238,15 @@ def run_migrations():
                 if 'cloud_tv_handler' not in settings_columns:
                     print("--- [Migration] Adding 'cloud_tv_handler' column ---")
                     conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN cloud_tv_handler VARCHAR(20) DEFAULT 'direct'"))
+                if 'cloud_sync_owned_enabled' not in settings_columns:
+                    print("--- [Migration] Adding 'cloud_sync_owned_enabled' column ---")
+                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN cloud_sync_owned_enabled BOOLEAN DEFAULT 1"))
+                if 'cloud_sync_owned_interval_hours' not in settings_columns:
+                    print("--- [Migration] Adding 'cloud_sync_owned_interval_hours' column ---")
+                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN cloud_sync_owned_interval_hours INTEGER DEFAULT 24"))
+                if 'last_owned_sync_at' not in settings_columns:
+                    print("--- [Migration] Adding 'last_owned_sync_at' column ---")
+                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN last_owned_sync_at DATETIME"))
                 
                 # Check if kometa_template table exists
                 try:
@@ -246,7 +268,7 @@ def run_migrations():
                     """))
                     
         except Exception as e:
-            print(f"Migration Warning: {e}")
+            print(f"--- [Migration] Schema: {type(e).__name__}: {e} ---", flush=True)
 
         # if somehow there are no admins, make the first user an admin
         # (shouldn't happen but better safe than sorry)
@@ -263,24 +285,22 @@ def run_migrations():
                         conn.commit()
                         print("--- [Startup] AUTO-FIX: No admins found. Promoted the first user to Admin. ---")
         except Exception as e:
-            print(f"Admin Auto-Fix Error: {e}")
+            print(f"--- [Migration] Admin auto-fix: {type(e).__name__}: {e} ---", flush=True)
 
-        try: Blocklist.__table__.create(db.engine)
-        except: pass
-        try: CollectionSchedule.__table__.create(db.engine)
-        except: pass
-        try: TmdbAlias.__table__.create(db.engine)
-        except: pass
-        try: TmdbKeywordCache.__table__.create(db.engine)
-        except: pass
-        try: TmdbRuntimeCache.__table__.create(db.engine)
-        except: pass
-        try: RadarrSonarrCache.__table__.create(db.engine)
-        except: pass
-        try: RecoveryCode.__table__.create(db.engine)
-        except: pass
-        try: CloudRequest.__table__.create(db.engine)
-        except: pass
+        for model_name, model in [
+            ('Blocklist', Blocklist),
+            ('CollectionSchedule', CollectionSchedule),
+            ('TmdbAlias', TmdbAlias),
+            ('TmdbKeywordCache', TmdbKeywordCache),
+            ('TmdbRuntimeCache', TmdbRuntimeCache),
+            ('RadarrSonarrCache', RadarrSonarrCache),
+            ('RecoveryCode', RecoveryCode),
+            ('CloudRequest', CloudRequest),
+        ]:
+            try:
+                model.__table__.create(db.engine, checkfirst=True)
+            except Exception as e:
+                print(f"--- [Migration] Create table {model_name}: {type(e).__name__} ---", flush=True)
         # add user_id to app_request so requested media is per-user (security)
         try:
             inspector = sqlalchemy.inspect(db.engine)
@@ -297,6 +317,32 @@ def run_migrations():
                             conn.commit()
         except Exception as ex:
             print(f"Migration Warning (app_request user_id): {ex}")
+
+        # cloud_request: optional year column for release year from cloud
+        try:
+            inspector = sqlalchemy.inspect(db.engine)
+            if 'cloud_request' in inspector.get_table_names():
+                cloud_req_columns = [c['name'] for c in inspector.get_columns('cloud_request')]
+                if 'year' not in cloud_req_columns:
+                    with db.engine.connect() as conn:
+                        conn.execute(sqlalchemy.text("ALTER TABLE cloud_request ADD COLUMN year VARCHAR(4)"))
+                        conn.commit()
+                        print("--- [Migration] Added 'year' column to cloud_request ---")
+        except Exception as ex:
+            print(f"Migration Warning (cloud_request year): {ex}")
+
+        # radarr_sonarr_cache: has_file so we only treat "has file" as owned (Radarr: "Not Available" = no file)
+        try:
+            inspector = sqlalchemy.inspect(db.engine)
+            if 'radarr_sonarr_cache' in inspector.get_table_names():
+                cache_columns = [c['name'] for c in inspector.get_columns('radarr_sonarr_cache')]
+                if 'has_file' not in cache_columns:
+                    with db.engine.connect() as conn:
+                        conn.execute(sqlalchemy.text("ALTER TABLE radarr_sonarr_cache ADD COLUMN has_file BOOLEAN DEFAULT 1"))
+                        conn.commit()
+                        print("--- [Migration] Added 'has_file' column to radarr_sonarr_cache ---")
+        except Exception as ex:
+            print(f"Migration Warning (radarr_sonarr_cache has_file): {ex}")
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -373,9 +419,6 @@ def trigger_update_route():
     force_update = request.args.get('force_git') == 'true'
     
     try:
-        if not current_user.is_admin:
-            return Response(json.dumps({'status': 'error', 'message': 'Unauthorized'}), mimetype='application/json')
-
         # Check latest release.
         current_version = "Unknown"
         try: current_version = VERSION
@@ -449,6 +492,17 @@ def trigger_update_route():
 def inject_version():
     return dict(version=VERSION)
 
+@app.context_processor
+def inject_pending_requests_count():
+    """Inject pending cloud request count for sidebar badge."""
+    if not current_user.is_authenticated:
+        return dict(pending_requests_count=0)
+    try:
+        count = CloudRequest.query.filter(CloudRequest.status == 'pending').count()
+        return dict(pending_requests_count=count)
+    except Exception:
+        return dict(pending_requests_count=0)
+
 @app.route('/')
 def index():
     if current_user.is_authenticated:
@@ -491,7 +545,7 @@ def register():
         username = (request.form.get('username') or '').strip()
         password = (request.form.get('password') or '')
         if len(username) < 1 or len(username) > 150:
-            flash('Username must be 1–150 characters.')
+            flash('Username must be 1-150 characters.')
         elif len(password) < 8:
             flash('Password must be at least 8 characters.')
         elif User.query.filter_by(username=username).first():
@@ -601,7 +655,7 @@ def get_local_trending():
         days = int(days)
         if days < 1: days = 1
         if days > 365: days = 365
-    except:
+    except (ValueError, TypeError):
         days = 30
     items = get_tautulli_trending(m_type, days=days, settings=current_user.settings)
     return jsonify({'status': 'success', 'items': items})
@@ -704,10 +758,12 @@ def review_history():
     session['critic_threshold'] = request.form.get('critic_threshold', 70)
     
     candidates = []
-    
+    providers = []
+    genres = []
+
     future_mode = request.form.get('future_mode') == 'true'
     include_obscure = request.form.get('include_obscure') == 'true'
-    
+
     try:
         # manual search
         if manual_query:
@@ -831,8 +887,8 @@ def review_history():
                             thumb = h.grandparentThumb or h.thumb
                         else:
                             thumb = h.thumb
-                    except:
-                        pass
+                    except Exception as e:
+                        write_log("warning", "App", f"Plex poster/thumb fetch failed ({type(e).__name__})")
 
                     candidates.append({
                         'title': title,
@@ -859,23 +915,28 @@ def review_history():
         write_log("error", "Review History", f"Scan failed: {str(e)}")
         flash("Scan failed. Please check your Plex connection and try again.", "error")
         return redirect(url_for('dashboard'))
-        
-    # get providers and genres for filters
-    providers = []
-    try:
-        reg = s.tmdb_region.split(',')[0] if s.tmdb_region else 'US'
-        p_url = f"https://api.themoviedb.org/3/watch/providers/{media_type}?api_key={s.tmdb_key}&watch_region={reg}"
-        p_data = requests.get(p_url, timeout=10).json().get('results', [])
-        providers = sorted(p_data, key=lambda x: x.get('display_priority', 999))[:30]
-    except Exception as e:
-        write_log("warning", "Review History", f"Failed to fetch providers: {str(e)}")
 
-    genres = []
-    try:
-        g_url = f"https://api.themoviedb.org/3/genre/{media_type}/list?api_key={s.tmdb_key}"
-        genres = requests.get(g_url, timeout=10).json().get('genres', [])
-    except Exception as e:
-        write_log("warning", "Review History", f"Failed to fetch genres: {str(e)}")
+    # fetch providers and genres in parallel
+    def _fetch_providers():
+        try:
+            reg = s.tmdb_region.split(',')[0] if s.tmdb_region else 'US'
+            p_url = f"https://api.themoviedb.org/3/watch/providers/{media_type}?api_key={s.tmdb_key}&watch_region={reg}"
+            p_data = requests.get(p_url, timeout=10).json().get('results', [])
+            providers[:] = sorted(p_data, key=lambda x: x.get('display_priority', 999))[:30]
+        except Exception as e:
+            write_log("warning", "Review History", f"Failed to fetch providers: {str(e)}")
+    def _fetch_genres():
+        try:
+            g_url = f"https://api.themoviedb.org/3/genre/{media_type}/list?api_key={s.tmdb_key}"
+            genres[:] = requests.get(g_url, timeout=10).json().get('genres', [])
+        except Exception as e:
+            write_log("warning", "Review History", f"Failed to fetch genres: {str(e)}")
+    t_prov = threading.Thread(target=_fetch_providers)
+    t_gen = threading.Thread(target=_fetch_genres)
+    t_prov.start()
+    t_gen.start()
+    t_prov.join()
+    t_gen.join()
 
     return render_template('review.html', 
                            movies=candidates, 
@@ -889,6 +950,12 @@ def review_history():
 @login_required
 def generate():
     s = current_user.settings
+    if not s:
+        flash("No settings found. Please complete Settings (e.g. TMDB API key) first.", "error")
+        return redirect(url_for('dashboard'))
+    if not (s.tmdb_key or '').strip():
+        flash("TMDB API key is required for recommendations. Add it in Settings > APIs & Connections.", "error")
+        return redirect(url_for('dashboard'))
     owned_keys = get_plex_cache(s)
     
     # "I'm feeling lucky" mode - just grab random popular stuff
@@ -911,7 +978,8 @@ def generate():
                     data = requests.get(url, timeout=10).json().get('results', [])
                     raw_candidates = [{'id': p['id'], 'title': p['title'], 'year': (p.get('release_date') or '')[:4], 'poster_path': p.get('poster_path'), 'overview': p.get('overview'), 'vote_average': p.get('vote_average'), 'media_type': 'movie'} for p in data]
                     random.shuffle(raw_candidates)
-                except:
+                except Exception as e:
+                    write_log("warning", "App", f"Recommend-from-trending page fetch failed ({type(e).__name__})")
                     break
             
             for item in raw_candidates:
@@ -946,6 +1014,11 @@ def generate():
                 prefetch_runtime_parallel(items, key)
         threading.Thread(target=async_fetch_runtime_lucky, args=(app, lucky_result, s.tmdb_key)).start()
 
+        # Ensure every item has 'title' for frontend (lucky is movies-only but keep consistent)
+        for item in lucky_result:
+            if not item.get('title') and item.get('name'):
+                item['title'] = item['name']
+
         RESULTS_CACHE[current_user.id] = {'candidates': lucky_result, 'next_index': len(lucky_result)}
         return render_template('results.html', 
                                movies=lucky_result, 
@@ -975,20 +1048,34 @@ def generate():
         return redirect(url_for('dashboard'))
 
     blocked = set([b.title for b in Blocklist.query.filter_by(user_id=current_user.id).all()])
-    
+
     recommendations = []
     seen_ids = set()
     seed_ids = []
-    
-    # resolve titles to TMDB IDs
-    for title in selected_titles:
+
+    def resolve_title_to_id(title):
         try:
             search_url = f"https://api.themoviedb.org/3/search/{media_type}?api_key={s.tmdb_key}&query={title}"
             r = requests.get(search_url, timeout=10).json()
             if r.get('results'):
-                seed_ids.append(r['results'][0]['id'])
-        except: pass
-            
+                return r['results'][0]['id']
+        except Exception:
+            pass
+        return None
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+        resolved = list(executor.map(resolve_title_to_id, selected_titles))
+    seed_ids = [tid for tid in resolved if tid is not None]
+    # Cap seeds to avoid long timeouts (TMDB calls scale with seed count)
+    max_seeds = 10
+    if len(seed_ids) > max_seeds:
+        write_log("info", "Generate", f"Capping seeds from {len(seed_ids)} to {max_seeds} to reduce timeout risk.")
+        seed_ids = seed_ids[:max_seeds]
+    if not seed_ids:
+        write_log("warning", "Generate", "No TMDB IDs resolved from selected titles; check TMDB API key and titles.")
+        flash("Could not find any of the selected titles on TMDB. Check your TMDB API key in Settings.", "error")
+        return redirect(url_for('dashboard'))
+
     future_mode = request.form.get('future_mode') == 'true'
     include_obscure = request.form.get('include_obscure') == 'true'
     today = datetime.datetime.now().strftime('%Y-%m-%d')
@@ -997,7 +1084,7 @@ def generate():
         # keep cache key simple - we'll shuffle results after combining all seeds
         cache_key = f"{media_type}:{tmdb_id}:{'future' if future_mode else 'recs'}:{today}"
         cached = get_tmdb_rec_cache(cache_key)
-        if cached is not None:
+        if cached:
             return cached
 
         try:
@@ -1030,16 +1117,70 @@ def generate():
                 data = requests.get(disc_url, params=params).json()
                 results = data.get('results', [])
             else:
-                # fetch more pages to ensure we have enough unowned items to filter from
+                # fetch 2 pages per seed; skip TMDB error responses (e.g. status_code in body)
                 results = []
-                for page_num in range(1, 5):  # pages 1-4 (reduced from 5 to speed up)
+                for page_num in range(1, 3):
                     rec_url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}/recommendations?api_key={s.tmdb_key}&language=en-US&page={page_num}"
                     page_data = requests.get(rec_url, timeout=10).json()
+                    if page_data.get('status_code'):
+                        write_log("warning", "Generate", f"TMDB recommendations error for {media_type} {tmdb_id}: {page_data.get('status_message', page_data.get('status_code'))}")
+                        continue  # TMDB error response, skip this page
                     results.extend(page_data.get('results', []))
 
-            set_tmdb_rec_cache(cache_key, results)
+                # recommendations often empty for niche titles; fall back to similar (genre/keyword-based)
+                if not results:
+                    similar_key = f"{media_type}:{tmdb_id}:similar:{today}"
+                    cached_similar = get_tmdb_rec_cache(similar_key)
+                    if cached_similar:
+                        results = cached_similar
+                    else:
+                        for page_num in range(1, 3):
+                            sim_url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}/similar?api_key={s.tmdb_key}&language=en-US&page={page_num}"
+                            sim_data = requests.get(sim_url, timeout=10).json()
+                            if sim_data.get('status_code'):
+                                write_log("warning", "Generate", f"TMDB similar error for {media_type} {tmdb_id}: {sim_data.get('status_message', sim_data.get('status_code'))}")
+                                continue
+                            results.extend(sim_data.get('results', []))
+                        if results:
+                            set_tmdb_rec_cache(similar_key, results)
+
+                # still empty: discover by this title's genres so we always get something per seed
+                if not results:
+                    disc_key = f"{media_type}:{tmdb_id}:discover:{today}"
+                    cached_disc = get_tmdb_rec_cache(disc_key)
+                    if cached_disc:
+                        results = cached_disc
+                    else:
+                        try:
+                            details_url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}?api_key={s.tmdb_key}"
+                            details = requests.get(details_url, timeout=10).json()
+                            if not details.get('status_code'):
+                                genres = details.get('genres', [])[:3]
+                                if genres:
+                                    genre_str = "|".join(str(g['id']) for g in genres)
+                                    disc_url = f"https://api.themoviedb.org/3/discover/{media_type}"
+                                    params = {
+                                        'api_key': s.tmdb_key,
+                                        'language': 'en-US',
+                                        'sort_by': 'popularity.desc',
+                                        'with_genres': genre_str,
+                                        'page': 1
+                                    }
+                                    if not include_obscure:
+                                        params['with_original_language'] = 'en'
+                                    data = requests.get(disc_url, params=params, timeout=10).json()
+                                    if not data.get('status_code'):
+                                        results = data.get('results', [])
+                                        if results:
+                                            set_tmdb_rec_cache(disc_key, results)
+                        except Exception as disc_e:
+                            write_log("warning", "Generate", f"Discover fallback for {tmdb_id} failed: {disc_e}")
+
+            if results:
+                set_tmdb_rec_cache(cache_key, results)
             return results
-        except Exception:
+        except Exception as e:
+            write_log("warning", "Generate", f"Fetch seed {tmdb_id} failed: {type(e).__name__}: {e}")
             return []
 
     # fetch recommendations from all seeds, filtering owned items as we go
@@ -1047,10 +1188,41 @@ def generate():
     with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
         for results in executor.map(fetch_seed_results, seed_ids):
             all_results.extend(results)
+    raw_count = len(all_results)
+    used_last_resort = False
+
+    # last-resort: if every seed returned nothing (e.g. cache was empty, API flakiness), get popular discover
+    if raw_count == 0:
+        try:
+            disc_url = f"https://api.themoviedb.org/3/discover/{media_type}"
+            base_params = {'api_key': s.tmdb_key, 'language': 'en-US', 'sort_by': 'popularity.desc'}
+            if not include_obscure:
+                base_params['with_original_language'] = 'en'
+            all_results = []
+            # random starting page (1–10), fetch 6 pages (~120 results) so we get plenty after filtering
+            start_page = random.randint(1, 10)
+            for page_num in range(start_page, start_page + 6):
+                params = dict(base_params, page=page_num)
+                data = requests.get(disc_url, params=params, timeout=10).json()
+                if data.get('status_code'):
+                    break
+                all_results.extend(data.get('results', []))
+            if all_results:
+                raw_count = len(all_results)
+                used_last_resort = True
+        except Exception as e:
+            write_log("warning", "Generate", f"Last-resort discover failed: {e}")
+
+    if used_last_resort:
+        write_log("info", "Generate", f"TMDB returned {raw_count} raw recommendations (last-resort discover; seeds had 0).")
+    else:
+        write_log("info", "Generate", f"TMDB returned {raw_count} raw recommendations from {len(seed_ids)} seeds.")
     
     # shuffle all results once before processing to get variety
     random.shuffle(all_results)
     
+    # vote threshold: 10 so niche/seasonal titles still pass; use 20 only when we have plenty of raw recs
+    vote_min = 10 if raw_count < 100 else 20
     # now filter and process
     for item in all_results:
         if item['id'] in seen_ids: continue
@@ -1061,7 +1233,7 @@ def generate():
             if item.get('original_language') != 'en': continue
             
             # skip stuff with very few votes (probably not great)
-            if not future_mode and item.get('vote_count', 0) < 20: continue
+            if not future_mode and item.get('vote_count', 0) < vote_min: continue
         
         item['media_type'] = media_type
         date = item.get('release_date') or item.get('first_air_date')
@@ -1080,7 +1252,8 @@ def generate():
         
         recommendations.append(item)
         seen_ids.add(item['id'])
-            
+    if raw_count and not recommendations:
+        write_log("warning", "Generate", f"All {raw_count} raw recs were filtered out (lang/vote/blocked/owned). Try enabling International & Obscure.")
     # sort by score (popularity + votes)
     recommendations.sort(key=lambda x: x.get('score', 0), reverse=True)
     if include_obscure:
@@ -1112,8 +1285,11 @@ def generate():
     }
     save_results_cache()
     
-    # apply filters
+    # apply filters (use form values; session was set earlier)
     min_year, min_rating, genre_filter, critic_enabled, threshold = get_session_filters()
+    # "All genres" selected (long list) = no genre filter
+    if isinstance(genre_filter, list) and len(genre_filter) >= 15:
+        genre_filter = None
     rating_filter = request.form.getlist('rating_filter')
     session['rating_filter'] = rating_filter
     raw_keywords = session.get('keywords', '')
@@ -1163,9 +1339,11 @@ def generate():
         if genre_filter and genre_filter != 'all':
             try:
                 allowed_ids = [int(g) for g in genre_filter] if isinstance(genre_filter, list) else [int(genre_filter)]
-                item_genres = item.get('genre_ids', [])
-                if not any(gid in allowed_ids for gid in item_genres): continue
-            except: pass
+                item_genres = item.get('genre_ids') or []
+                if item_genres and not any(gid in allowed_ids for gid in item_genres):
+                    continue
+            except Exception:
+                pass
             
         # check if it matches the keyword filter
         if target_keywords:
@@ -1183,7 +1361,9 @@ def generate():
                         break
                 if rt_score > 0:
                     item['rt_score'] = rt_score
-            if critic_enabled and (item.get('rt_score') or 0) < threshold:
+            # Only exclude by critic when we have an actual RT score below threshold; missing score = include
+            rt = item.get('rt_score') or 0
+            if critic_enabled and rt > 0 and rt < threshold:
                 continue
 
         final_list.append(item)
@@ -1193,7 +1373,20 @@ def generate():
 
     RESULTS_CACHE[current_user.id]['next_index'] = idx
     save_results_cache()
-    
+
+    # ensure every item has a 'title' key (TMDB TV uses 'name')
+    for item in final_list:
+        if not item.get('title') and item.get('name'):
+            item['title'] = item['name']
+
+    if not final_list:
+        write_log("warning", "Generate", f"No results after filters (had {len(unique_recs)} recs, seeds={len(seed_ids)}). Try lowering min rating/year or enabling International & Obscure.")
+        if raw_count == 0:
+            flash("TMDB returned no recommendations for your selected titles. Try different titles or enable International & Obscure.", "error")
+        else:
+            flash("No recommendations matched your filters. Try lowering min rating/year or enabling International & Obscure.", "error")
+        return redirect(url_for('dashboard'))
+
     g_url = f"https://api.themoviedb.org/3/genre/{media_type}/list?api_key={s.tmdb_key}"
     try: genres = requests.get(g_url, timeout=10).json().get('genres', [])
     except Exception as e:
@@ -1312,57 +1505,87 @@ def settings():
     s = current_user.settings
     
     if request.method == 'POST':
-        # validate URL fields before saving (no javascript:, data:; must be http(s) if set)
-        url_fields = ['plex_url', 'overseerr_url', 'tautulli_url', 'radarr_url', 'sonarr_url']
-        for field in url_fields:
-            val = request.form.get(field)
-            if not _valid_url(val):
-                return jsonify({'status': 'error', 'message': f'Invalid URL in {field.replace("_", " ")}. Use http:// or https:// only.'}), 400
-        s.plex_url = request.form.get('plex_url')
-        s.plex_token = request.form.get('plex_token')
-        s.tmdb_key = request.form.get('tmdb_key')
-        s.tmdb_region = request.form.get('tmdb_region')
-        s.omdb_key = request.form.get('omdb_key')
-        s.overseerr_url = request.form.get('overseerr_url')
-        s.overseerr_api_key = request.form.get('overseerr_api_key')
-        s.tautulli_url = request.form.get('tautulli_url')
-        s.tautulli_api_key = request.form.get('tautulli_api_key')
-        s.radarr_url = request.form.get('radarr_url')
-        s.radarr_api_key = request.form.get('radarr_api_key')
-        s.sonarr_url = request.form.get('sonarr_url')
-        s.sonarr_api_key = request.form.get('sonarr_api_key')
-        s.backup_interval = int(request.form.get('backup_interval', 2))
-        s.backup_retention = int(request.form.get('backup_retention', 7))
-        
-        try: s.keyword_cache_size = int(request.form.get('keyword_cache_size', 3000))
-        except: s.keyword_cache_size = 3000
-        
-        try: s.runtime_cache_size = int(request.form.get('runtime_cache_size', 3000))
-        except: s.runtime_cache_size = 3000
-        
-        try:
-            commit_with_retry()
-        except Exception as e:
-            db.session.rollback()
-            write_log("error", "Settings", f"Save failed: {type(e).__name__}")
-            return jsonify({'status': 'error', 'message': 'Database save failed. Please try again.'}), 500
-        
-        # Max log size
-        try: s.max_log_size = int(request.form.get('max_log_size', 5))
-        except: s.max_log_size = 5
-        
-        try: s.scanner_log_size = int(request.form.get('scanner_log_size', 10))
-        except: s.scanner_log_size = 10
-        
-        ignored_libs = request.form.getlist('ignored_libraries')
-        s.ignored_libraries = ",".join(ignored_libs)
-        
-        try:
-            commit_with_retry()
-        except Exception as e:
-            db.session.rollback()
-            write_log("error", "Settings", f"Save failed: {type(e).__name__}")
-            return jsonify({'status': 'error', 'message': 'Database save failed. Please try again.'}), 500
+        form_section = request.form.get('form_section', '').strip()
+        # Partial updates: only update fields for the submitted section (one form per action)
+        update_apis = form_section == 'apis' or not form_section
+        update_scanners = form_section == 'scanners' or not form_section
+        update_system = form_section == 'system' or not form_section
+
+        if update_apis:
+            url_fields = ['plex_url', 'overseerr_url', 'tautulli_url', 'radarr_url', 'sonarr_url']
+            for field in url_fields:
+                val = request.form.get(field)
+                if val and not _valid_url(val):
+                    return jsonify({'status': 'error', 'message': f'Invalid URL in {field.replace("_", " ")}. Use http:// or https:// only.'}), 400
+            s.plex_url = request.form.get('plex_url')
+            s.plex_token = request.form.get('plex_token')
+            s.tmdb_key = request.form.get('tmdb_key')
+            s.tmdb_region = request.form.get('tmdb_region')
+            s.omdb_key = request.form.get('omdb_key')
+            s.overseerr_url = request.form.get('overseerr_url')
+            s.overseerr_api_key = request.form.get('overseerr_api_key')
+            s.tautulli_url = request.form.get('tautulli_url')
+            s.tautulli_api_key = request.form.get('tautulli_api_key')
+            s.radarr_url = request.form.get('radarr_url')
+            s.radarr_api_key = request.form.get('radarr_api_key')
+            s.sonarr_url = request.form.get('sonarr_url')
+            s.sonarr_api_key = request.form.get('sonarr_api_key')
+            try:
+                commit_with_retry()
+            except Exception as e:
+                db.session.rollback()
+                write_log("error", "Settings", f"Save failed: {type(e).__name__}")
+                return jsonify({'status': 'error', 'message': 'Database save failed. Please try again.'}), 500
+
+        if update_scanners:
+            try:
+                s.keyword_cache_size = int(request.form.get('keyword_cache_size', 3000))
+            except (TypeError, ValueError):
+                s.keyword_cache_size = 3000
+            try:
+                s.runtime_cache_size = int(request.form.get('runtime_cache_size', 3000))
+            except (TypeError, ValueError):
+                s.runtime_cache_size = 3000
+            if 'max_log_size' in request.form:
+                try:
+                    s.max_log_size = int(request.form.get('max_log_size', 5))
+                except (TypeError, ValueError):
+                    s.max_log_size = 5
+            if 'scanner_log_size' in request.form:
+                try:
+                    s.scanner_log_size = int(request.form.get('scanner_log_size', 10))
+                except (TypeError, ValueError):
+                    s.scanner_log_size = 10
+            if 'ignored_libraries' in request.form or request.form.getlist('ignored_libraries'):
+                ignored_libs = request.form.getlist('ignored_libraries')
+                s.ignored_libraries = ",".join(ignored_libs)
+            try:
+                commit_with_retry()
+            except Exception as e:
+                db.session.rollback()
+                write_log("error", "Settings", f"Save failed: {type(e).__name__}")
+                return jsonify({'status': 'error', 'message': 'Database save failed. Please try again.'}), 500
+
+        if update_system:
+            try:
+                s.backup_interval = int(request.form.get('backup_interval', 2))
+            except (TypeError, ValueError):
+                s.backup_interval = 2
+            try:
+                s.backup_retention = int(request.form.get('backup_retention', 7))
+            except (TypeError, ValueError):
+                s.backup_retention = 7
+            if 'cloud_sync_owned_enabled' in request.form:
+                s.cloud_sync_owned_enabled = True
+            elif form_section == 'system':
+                s.cloud_sync_owned_enabled = False
+            try:
+                commit_with_retry()
+            except Exception as e:
+                db.session.rollback()
+                write_log("error", "Settings", f"Save failed: {type(e).__name__}")
+                return jsonify({'status': 'error', 'message': 'Database save failed. Please try again.'}), 500
+
         return jsonify({'status': 'success', 'message': 'Settings saved successfully.', 'msg': 'Settings saved successfully.'})
 
     # get plex users for ignore list
@@ -1375,11 +1598,15 @@ def settings():
                 account = p.myPlexAccount()
                 plex_users = [u.title for u in account.users()]
                 if account.username: plex_users.insert(0, account.username)
-            except:
+            except Exception as e:
+                write_log("warning", "Settings", f"Plex account users fetch failed ({type(e).__name__})")
                 # Fallback: Try to guess from connected clients/system
-                try: plex_users.append(p.myPlexAccount().username)
-                except: pass
-    except: pass
+                try:
+                    plex_users.append(p.myPlexAccount().username)
+                except Exception:
+                    pass
+    except Exception:
+        pass
     
     current_ignored = (s.ignored_users or '').split(',')
 
@@ -1410,33 +1637,38 @@ def settings():
     try: runtime_count = TmdbRuntimeCache.query.count()
     except: runtime_count = 0
     
-    # Extract server IP/hostname from request for auto-fill
+    # Extract server IP/hostname from request for auto-fill (validate against allowlist; Host header can be spoofed)
     server_host = None
     try:
         host_header = request.host
-        # Remove port if present (e.g., "192.168.1.50:5000" -> "192.168.1.50")
         if ':' in host_header:
-            server_host = host_header.split(':')[0]
+            server_host = host_header.split(':')[0].strip().lower()
         else:
-            server_host = host_header
-        # Don't use localhost/127.0.0.1 - try to get actual IP
-        if server_host in ['localhost', '127.0.0.1', '0.0.0.0']:
-            # Try to get the actual server IP from the request
-            forwarded_for = request.headers.get('X-Forwarded-For')
-            if forwarded_for:
-                server_host = forwarded_for.split(',')[0].strip()
-            elif request.remote_addr and request.remote_addr not in ['127.0.0.1', '::1']:
-                server_host = request.remote_addr
-            else:
-                # Fallback: try to detect from socket
-                try:
-                    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                    sock.connect(("8.8.8.8", 80))
-                    server_host = sock.getsockname()[0]
-                    sock.close()
-                except:
-                    server_host = None
-    except:
+            server_host = (host_header or "").strip().lower()
+        allowed_hosts = getattr(config, 'PLEX_URL_SUGGESTION_ALLOWED_HOSTS', None) or ['localhost', '127.0.0.1', '0.0.0.0']
+        if server_host and server_host not in [h.lower() for h in allowed_hosts]:
+            server_host = None
+        if server_host:
+            # Don't use localhost/127.0.0.1 - try to get actual IP for the suggestion
+            if server_host in ['localhost', '127.0.0.1', '0.0.0.0']:
+                # Try to get the actual server IP from the request
+                forwarded_for = request.headers.get('X-Forwarded-For')
+                if forwarded_for:
+                    server_host = forwarded_for.split(',')[0].strip()
+                elif request.remote_addr and request.remote_addr not in ['127.0.0.1', '::1']:
+                    server_host = request.remote_addr
+                else:
+                    # Fallback: try to detect from socket
+                    try:
+                        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                        sock.connect(("8.8.8.8", 80))
+                        server_host = sock.getsockname()[0]
+                        sock.close()
+                    except OSError as e:
+                        write_log("warning", "Settings", f"Socket bind failed ({type(e).__name__})")
+                        server_host = None
+    except Exception as e:
+        write_log("warning", "Settings", f"Plex base URL detection failed ({type(e).__name__})")
         server_host = None
 
     return render_template('settings.html', 
@@ -1453,10 +1685,8 @@ def settings():
 
 @app.route('/logs_page')
 @login_required
+@admin_required
 def logs_page():
-    if not current_user.is_admin:
-        flash('Only admins can view system logs.', 'error')
-        return redirect(url_for('dashboard'))
     logs = SystemLog.query.order_by(SystemLog.timestamp.desc()).limit(200).all()
     s = current_user.settings
     
@@ -1534,9 +1764,13 @@ def scheduled_tasks():
         if datetime.datetime.now().hour == 4 and datetime.datetime.now().minute == 0:
             prune_backups()
             
-        # cache refresh + collection schedule (no request context here; uses first user's settings for global cache/schedule)
-        s = Settings.query.first()
-        if not s: return
+        # cache refresh + collection schedule (no request context; use config user or first row)
+        if getattr(config, 'SCHEDULER_USER_ID', None) is not None:
+            s = Settings.query.filter_by(user_id=config.SCHEDULER_USER_ID).first()
+        else:
+            s = Settings.query.first()
+        if not s:
+            return
         
         if os.path.exists(CACHE_FILE):
             mod_time = os.path.getmtime(CACHE_FILE)
@@ -1549,7 +1783,7 @@ def scheduled_tasks():
         # check if any collections need to run
         try:
             target_hour, target_minute = map(int, (s.schedule_time or "04:00").split(':'))
-        except:
+        except (ValueError, TypeError, AttributeError):
             target_hour, target_minute = 4, 0
             
         now = datetime.datetime.now()
@@ -1630,14 +1864,20 @@ scheduler.add_job(id='master_task', func=scheduled_tasks, trigger='interval', mi
 try:
     from api import api_bp
     app.register_blueprint(api_bp)
-    # Make limiter available to blueprint
     import api
+    api.limiter = limiter
 except ImportError as e:
+    import traceback
     print(f"error: failed to import api module: {e}")
+    traceback.print_exc()
     print(f"Current working directory: {os.getcwd()}")
     print(f"Files in current directory: {os.listdir('.')}")
     raise
-api.limiter = limiter
+except Exception as e:
+    import traceback
+    print(f"error: api blueprint registration failed: {e}")
+    traceback.print_exc()
+    raise
 
 
 # global error handlers so users see a friendly page instead of a crash
@@ -1671,6 +1911,14 @@ def requests_page():
     
     return render_template('requests.html', requests=pending_reqs, settings=settings)
 
+
+@app.route('/requests/settings')
+@login_required
+def requests_settings_page():
+    settings = current_user.settings
+    return render_template('requests_settings.html', settings=settings)
+
+
 @app.route('/save_cloud_settings', methods=['POST'])
 @login_required
 def save_cloud_settings():
@@ -1682,13 +1930,12 @@ def save_cloud_settings():
     
     settings.cloud_movie_handler = request.form.get('cloud_movie_handler')
     settings.cloud_tv_handler = request.form.get('cloud_tv_handler')
-    
-    # Checkbox logic
     settings.cloud_auto_approve = 'cloud_auto_approve' in request.form
-    
+    settings.cloud_sync_owned_enabled = 'cloud_sync_owned_enabled' in request.form
+
     db.session.commit()
     flash("Cloud settings updated successfully", "success")
-    return redirect(url_for('requests_page'))
+    return redirect(url_for('requests_settings_page'))
 
 @app.route('/approve_request/<int:req_id>', methods=['POST'])
 @login_required

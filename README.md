@@ -1,12 +1,12 @@
 # SeekAndWatch
 
-![Version](https://img.shields.io/badge/version-1.5.1-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) (submitted) ![License](https://img.shields.io/badge/License-MIT-green.svg)
+![Version](https://img.shields.io/badge/version-1.5.2-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) (submitted) ![License](https://img.shields.io/badge/License-MIT-green.svg)
+
+If this app saves you from endless scrolling, a star for the project helps a lot.
 
 Self-hosted Plex companion: Smart Discovery from your watch history, add movies/shows via Radarr/Sonarr, Kometa builder, Plex collections, Overseerr, Tautulli. One dashboard -less scrolling, more watching.
 
 **[SeekAndWatch Cloud](https://www.SeekAndWatch.com) (beta)** – Hosted option so friends and family can request from your Plex server without needing access to your apps. You approve or deny; requests sync to Radarr, Sonarr, or Overseerr. Zero port forwarding.
-
-If this saves you from endless scrolling, a star helps.
 
 **Documentation:** [Wiki](https://github.com/softerfish/seekandwatch/wiki) - install, Smart Discovery, Plex Collections, Radarr, Sonarr, Kometa builder, troubleshooting.
 
@@ -145,6 +145,33 @@ docker compose up -d
 
 ## Changelog
 
+v1.5.2
+**SeekAndWatch Cloud (beta)** – [https://www.SeekAndWatch.com](https://www.SeekAndWatch.com)
+- server owners can get notifications of new requests and users will get a notification when it's approved or denied
+- added trailers, tmdb ratings, and several genres as well as an upcoming category
+- added Passkey support
+- bugfixes
+- we now filter out titles already owned in your Plex database from being requested using login with plex or syncing your library with plex
+- you can import members on your server by linking to Plex
+- emails when a user requests/filled/security warnings
+- server owners can revoke invites, control who can request what, or an across the board setting
+
+Local app
+- a complete overhaul of the api file
+- Smart Disvovery has been revamped. Each search should be pretty different now
+- Plex Collections now have a delete button without refreshing the page
+- several bugfixes
+- small cosmetic fixes
+- SeekAndWatch Cloud now shows who made the request, tmdb link and a trailer
+- Plex Collections will remember what dropdown category you have clicked to open and what tab you're on (movies or tv)
+- fixed Collection Name in Import List plus you can now add these on Plex Home, Library Recommendations and Friends
+- fixed preview matches on Custom Builder
+- SeekAndWatch now checks with Sonarr and Radarr if you actually have the file before allowing you to request. We used to show a recommendation and allow you to request and then give you an error you already have that in Radarr or Sonarr even if you do not have the file. Now we do not show you these as options to request and is tagges as owned
+- fixed preview overlay for TV shrinking to a small box
+
+
+<details>
+  <summary><b>Past Changelog</b></summary>
 v1.5.1
 **SeekAndWatch Cloud (beta)** – [https://www.SeekAndWatch.com](https://www.SeekAndWatch.com)
 - Hosted option so friends and family can request from your Plex server without needing access to Plex or Radarr/Sonarr. You approve or deny; requests sync to Radarr, Sonarr, or Overseerr.
@@ -157,9 +184,6 @@ Improvements and Bugfixes
 - you can now change your password in settings
 - 1 click updater back to working again
 
-
-<details>
-  <summary><b>Past Changelog</b></summary>
 v1.4.1
 Bugfixes and security:
 - GitHub CodeQL fixes
@@ -187,7 +211,6 @@ New features:
 - all Settings API URLs will auto-fill based on the IP SeekAndWatch is installed on
 - a complete new layout. The old style was getting cluttered too fast
 - Radarr & Sonarr Scanner separate background scanner that syncs your Radarr/Sonarr libraries into the app. Items in Radarr/Sonarr are treated as "owned" and excluded from Smart Discovery (in addition to Plex). Configurable in Settings (enable/disable, scan interval, "Force refresh")
-
 
 Tweaks and bugfixes:
 - all logs on one page now in the logs section on the left navbar
@@ -301,7 +324,6 @@ This release has a lot of bugfixes, changes and many tweaks to improve speed and
 - started to overhaul the Plex collection manager. Trending lists are now fully syncable. All other lists the user can now choose between syncing and adaptive. 
 - we now scan 50 pages of tmdb lists for collection creation
 - added a notice to update if available
-
 
 v1.0.2
 - added Login | Register for login screen to make it more clear

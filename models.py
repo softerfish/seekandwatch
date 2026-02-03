@@ -91,6 +91,9 @@ class Settings(db.Model):
     # overseerr sends to Overseerr
     cloud_movie_handler = db.Column(db.String(20), default='direct') 
     cloud_tv_handler = db.Column(db.String(20), default='direct')
+    cloud_sync_owned_enabled = db.Column(db.Boolean, default=True)  # "Enable Cloud API" in UI: when True, worker polls Cloud for requests (default on)
+    cloud_sync_owned_interval_hours = db.Column(db.Integer, default=24)  # 12, 24, or 168 (weekly)
+    last_owned_sync_at = db.Column(db.DateTime, nullable=True)  # last successful sync to Cloud
 
 class Blocklist(db.Model):
     __table_args__ = {'extend_existing': True}
@@ -164,6 +167,7 @@ class RadarrSonarrCache(db.Model):
     title = db.Column(db.String(200))  # normalized title
     original_title = db.Column(db.String(200))  # original title from API
     year = db.Column(db.Integer)  # release year
+    has_file = db.Column(db.Boolean, default=True)  # Radarr hasFile / Sonarr has episode files; False = "Not Available"
     timestamp = db.Column(db.DateTime, default=datetime.now)
 
 class KometaTemplate(db.Model):
@@ -185,5 +189,6 @@ class CloudRequest(db.Model):
     media_type = db.Column(db.String(20)) # 'movie' or 'tv'
     tmdb_id = db.Column(db.Integer)
     requested_by = db.Column(db.String(100))
+    year = db.Column(db.String(4), nullable=True)  # release year from cloud (optional)
     status = db.Column(db.String(20), default='pending') # pending, approved, denied, completed
     created_at = db.Column(db.DateTime, default=datetime.utcnow)

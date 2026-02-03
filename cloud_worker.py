@@ -1,21 +1,34 @@
 import requests
 import time
 import random
+from datetime import datetime
 from app import app, db
 from models import Settings, CloudRequest, AppRequest
 
 # cloud processing uses these (defined in utils.py only; api.py has HTTP endpoints, not these helpers)
+from config import CLOUD_URL, SCHEDULER_USER_ID
 from utils import send_to_radarr_sonarr, send_to_overseerr
 
 # CONFIGURATION
-# Update this if your domain is different
-CLOUD_URL = "https://seekandwatch.com" 
-# Base interval ranges (Jitter will be used between these two numbers)
-POLL_INTERVAL_MIN = 60
-POLL_INTERVAL_MAX = 90
+# Base interval ranges (jitter between these so installs don't all hit at once)
+POLL_INTERVAL_MIN = 75
+POLL_INTERVAL_MAX = 120
+# After 429 we back off: next N cycles use interval * BACKOFF_MULT; then decay back to 1
+BACKOFF_MULT_AFTER_429 = 2.0
+BACKOFF_CYCLES = 3
+BACKOFF_CAP_SEC = 300
 
-# Global variable to store the last time we got data (For HTTP 304 Optimization)
+# Global state
 last_modified_header = None
+backoff_remaining = 0  # cycles left to use longer sleep after 429
+
+
+def get_poll_sleep_seconds():
+    """Return how many seconds to sleep before next poll (jitter + backoff). Use from app or __main__."""
+    base = random.randint(POLL_INTERVAL_MIN, POLL_INTERVAL_MAX)
+    if backoff_remaining > 0:
+        return min(BACKOFF_CAP_SEC, int(base * BACKOFF_MULT_AFTER_429))
+    return base
 
 def process_item(settings, req_db):
     """
@@ -117,14 +130,17 @@ def sync_deletions(settings):
         print(f"Sync Warning: {e}")
 
 def process_cloud_queue():
-    global last_modified_header
-    
+    global last_modified_header, backoff_remaining
+
     with app.app_context():
-        # 1. Get Local Settings
-        settings = Settings.query.first()
-        
-        # Basic checks to see if we should run
-        if not settings or not settings.cloud_enabled or not settings.cloud_api_key:
+        # 1. Get Local Settings (use config user when set for multi-user isolation)
+        if SCHEDULER_USER_ID is not None:
+            settings = Settings.query.filter_by(user_id=SCHEDULER_USER_ID).first()
+        else:
+            settings = Settings.query.first()
+
+        # Basic checks to see if we should run (cloud_sync_owned_enabled = "Enable Cloud API" in UI)
+        if not settings or not settings.cloud_enabled or not settings.cloud_api_key or not settings.cloud_sync_owned_enabled:
             return
 
         headers = {'X-Server-Key': settings.cloud_api_key}
@@ -146,11 +162,12 @@ def process_cloud_queue():
             if response.status_code == 304:
                 return
 
-            # --- HANDLE 429 (Throttled) ---
+            # --- HANDLE 429 (Throttled): respect Retry-After and back off next cycles ---
             if response.status_code == 429:
                 retry_after = int(response.headers.get('Retry-After', 60))
-                retry_after = min(max(1, retry_after), 120)
-                print(f"Cloud throttle: waiting {retry_after}s (Retry-After).")
+                retry_after = min(max(1, retry_after), 300)
+                backoff_remaining = BACKOFF_CYCLES
+                print(f"Cloud throttle: waiting {retry_after}s (Retry-After). Next {BACKOFF_CYCLES} cycles will use longer intervals.")
                 time.sleep(retry_after)
                 return
 
@@ -161,9 +178,11 @@ def process_cloud_queue():
                 print(f"Cloud Error: Server returned status {response.status_code}")
                 return
             
-            # If we got 200 OK, save the new Last-Modified header for next time
+            # If we got 200 OK, save the new Last-Modified header and decay backoff
             if 'Last-Modified' in response.headers:
                 last_modified_header = response.headers['Last-Modified']
+            if backoff_remaining > 0:
+                backoff_remaining -= 1
 
             try:
                 data = response.json()
@@ -171,21 +190,19 @@ def process_cloud_queue():
                 print("Cloud Error: Non-JSON response received (response body not logged).")
                 return
 
-            # --- FIX: Handle List vs Dict ---
+            # --- Handle poll response: object { pending_requests } or legacy array (library sync is done via Plex API on cloud)
             requests_list = []
-
             if isinstance(data, list):
                 requests_list = data
-            elif isinstance(data, dict) and 'error' in data:
-                print(f"Cloud Error: {data['error']}")
-                return
-
-            if not requests_list:
-                return # Empty queue
+            elif isinstance(data, dict):
+                if 'error' in data:
+                    print(f"Cloud Error: {data['error']}")
+                    return
+                requests_list = data.get('pending_requests', [])
 
             # 3. Process the list of requests
             new_count = 0
-            for r in requests_list:
+            for r in (requests_list or []):
                 # Normalize cloud id to string so we match our DB (cloud may send int or string in JSON)
                 rid = r.get('id')
                 rid_str = str(rid) if rid is not None else None
@@ -202,6 +219,7 @@ def process_cloud_queue():
                     media_type=r['media_type'],
                     tmdb_id=r['tmdb_id'],
                     requested_by=r.get('requested_by', 'Unknown'),
+                    year=r.get('year'),
                     status='pending'
                 )
                 db.session.add(new_req)
@@ -225,11 +243,7 @@ def process_cloud_queue():
 
 if __name__ == "__main__":
     print("Starting Cloud Worker...")
-    print(f"Polling {CLOUD_URL} with jitter ({POLL_INTERVAL_MIN}-{POLL_INTERVAL_MAX}s).")
+    print(f"Polling {CLOUD_URL} with jitter ({POLL_INTERVAL_MIN}-{POLL_INTERVAL_MAX}s). Backoff after 429.")
     while True:
         process_cloud_queue()
-        
-        # JITTER: Sleep for a random time between 60 and 90 seconds
-        # This prevents all 2000 users from hitting the server at the exact same second
-        sleep_time = random.randint(POLL_INTERVAL_MIN, POLL_INTERVAL_MAX)
-        time.sleep(sleep_time)
+        time.sleep(get_poll_sleep_seconds())

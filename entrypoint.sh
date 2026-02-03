@@ -48,8 +48,9 @@ if [ -d "/config/app" ] && [ -f "/config/app/app.py" ] && [ ! -f "/config/app.py
 fi
 
 # 4. Detect if /config contains app files (normal case - users mount app directory as /config)
+# API is a package (api/ with __init__.py), not api.py
 IS_APP_DIR=false
-if [ -f "/config/app.py" ] && [ -f "/config/api.py" ] && [ -d "/config/templates" ]; then
+if [ -f "/config/app.py" ] && [ -d "/config/api" ] && [ -f "/config/api/__init__.py" ] && [ -d "/config/templates" ]; then
     IS_APP_DIR=true
 fi
 
@@ -61,7 +62,8 @@ if [ "$IS_APP_DIR" = "true" ]; then
     
     # Check if there's a nested app structure and flatten it recursively
     # IMPORTANT: Detect version mismatches to avoid mixing incompatible files
-    CRITICAL_FILES="api.py utils.py models.py presets.py app.py"
+    # api = package directory (api/ with __init__.py), not api.py
+    CRITICAL_FILES="api utils.py models.py presets.py app.py auth_decorators.py"
     
     # Function to extract version from app.py
     get_version_from_app() {
@@ -74,11 +76,14 @@ if [ "$IS_APP_DIR" = "true" ]; then
     }
     
     # Function to check if a directory structure is "complete" (has all critical files)
+    # api = package dir (api/ and api/__init__.py), others are files
     is_complete_structure() {
         local dir="$1"
         local missing=0
         for crit_file in $CRITICAL_FILES; do
-            if [ ! -f "$dir/$crit_file" ]; then
+            if [ "$crit_file" = "api" ]; then
+                [ -d "$dir/api" ] && [ -f "$dir/api/__init__.py" ] || missing=$((missing + 1))
+            elif [ ! -f "$dir/$crit_file" ]; then
                 missing=$((missing + 1))
             fi
         done
@@ -99,15 +104,20 @@ if [ "$IS_APP_DIR" = "true" ]; then
         else
             app_completeness["/config"]="incomplete"
         fi
-        # Get average modification time of critical files
+        # Get average modification time of critical files (api = api/__init__.py)
         total_time=0
         file_count=0
         for crit_file in $CRITICAL_FILES; do
-            if [ -f "/config/$crit_file" ]; then
-                file_time=$(stat -f%m "/config/$crit_file" 2>/dev/null || stat -c%Y "/config/$crit_file" 2>/dev/null || echo "0")
-                total_time=$((total_time + file_time))
-                file_count=$((file_count + 1))
+            if [ "$crit_file" = "api" ]; then
+                [ -f "/config/api/__init__.py" ] || continue
+                ref="/config/api/__init__.py"
+            else
+                [ -f "/config/$crit_file" ] || continue
+                ref="/config/$crit_file"
             fi
+            file_time=$(stat -f%m "$ref" 2>/dev/null || stat -c%Y "$ref" 2>/dev/null || echo "0")
+            total_time=$((total_time + file_time))
+            file_count=$((file_count + 1))
         done
         if [ $file_count -gt 0 ]; then
             app_timestamps["/config"]=$((total_time / file_count))
@@ -127,15 +137,20 @@ if [ "$IS_APP_DIR" = "true" ]; then
             else
                 app_completeness["$current_path"]="incomplete"
             fi
-            # Get average modification time
+            # Get average modification time (api = api/__init__.py)
             total_time=0
             file_count=0
             for crit_file in $CRITICAL_FILES; do
-                if [ -f "$current_path/$crit_file" ]; then
-                    file_time=$(stat -f%m "$current_path/$crit_file" 2>/dev/null || stat -c%Y "$current_path/$crit_file" 2>/dev/null || echo "0")
-                    total_time=$((total_time + file_time))
-                    file_count=$((file_count + 1))
+                if [ "$crit_file" = "api" ]; then
+                    [ -f "$current_path/api/__init__.py" ] || continue
+                    ref="$current_path/api/__init__.py"
+                else
+                    [ -f "$current_path/$crit_file" ] || continue
+                    ref="$current_path/$crit_file"
                 fi
+                file_time=$(stat -f%m "$ref" 2>/dev/null || stat -c%Y "$ref" 2>/dev/null || echo "0")
+                total_time=$((total_time + file_time))
+                file_count=$((file_count + 1))
             done
             if [ $file_count -gt 0 ]; then
                 app_timestamps["$current_path"]=$((total_time / file_count))
@@ -270,8 +285,8 @@ else
     # If /config is empty or missing files, copy from image
     APP_DIR="/config"
     
-    # Check if /config already has app files
-    if [ -f "/config/app.py" ] && [ -f "/config/api.py" ]; then
+    # Check if /config already has app files (api = package directory)
+    if [ -f "/config/app.py" ] && [ -d "/config/api" ] && [ -f "/config/api/__init__.py" ]; then
         echo "Using existing app files in /config"
     else
         # /config is empty or missing files, copy from image
@@ -304,7 +319,7 @@ if [ "$IS_APP_DIR" != "true" ]; then
 
         # Detect and fix nested app/app structure (recursively handles any depth)
         # IMPORTANT: Detect version mismatches to avoid mixing incompatible files
-        CRITICAL_FILES="api.py utils.py models.py presets.py app.py"
+        CRITICAL_FILES="api utils.py models.py presets.py app.py auth_decorators.py"
         
         # Function to extract version from app.py
         get_version_from_app() {
@@ -317,16 +332,17 @@ if [ "$IS_APP_DIR" != "true" ]; then
             fi
         }
         
-        # Function to check if a directory structure is "complete" (has all critical files)
+        # Function to check if a directory structure is "complete" (api = package dir)
         is_complete_structure() {
             local dir="$1"
             local missing=0
             for crit_file in $CRITICAL_FILES; do
-                if [ ! -f "$dir/$crit_file" ]; then
+                if [ "$crit_file" = "api" ]; then
+                    [ -d "$dir/api" ] && [ -f "$dir/api/__init__.py" ] || missing=$((missing + 1))
+                elif [ ! -f "$dir/$crit_file" ]; then
                     missing=$((missing + 1))
                 fi
             done
-            # Consider complete if missing 1 or fewer critical files (some might be optional)
             [ $missing -le 1 ]
         }
         
@@ -344,15 +360,20 @@ if [ "$IS_APP_DIR" != "true" ]; then
             else
                 app_completeness["/config/app"]="incomplete"
             fi
-            # Get average modification time of critical files
+            # Get average modification time (api = api/__init__.py)
             total_time=0
             file_count=0
             for crit_file in $CRITICAL_FILES; do
-                if [ -f "/config/app/$crit_file" ]; then
-                    file_time=$(stat -f%m "/config/app/$crit_file" 2>/dev/null || stat -c%Y "/config/app/$crit_file" 2>/dev/null || echo "0")
-                    total_time=$((total_time + file_time))
-                    file_count=$((file_count + 1))
+                if [ "$crit_file" = "api" ]; then
+                    [ -f "/config/app/api/__init__.py" ] || continue
+                    ref="/config/app/api/__init__.py"
+                else
+                    [ -f "/config/app/$crit_file" ] || continue
+                    ref="/config/app/$crit_file"
                 fi
+                file_time=$(stat -f%m "$ref" 2>/dev/null || stat -c%Y "$ref" 2>/dev/null || echo "0")
+                total_time=$((total_time + file_time))
+                file_count=$((file_count + 1))
             done
             if [ $file_count -gt 0 ]; then
                 app_timestamps["/config/app"]=$((total_time / file_count))
@@ -372,15 +393,20 @@ if [ "$IS_APP_DIR" != "true" ]; then
                 else
                     app_completeness["$current_path"]="incomplete"
                 fi
-                # Get average modification time
+                # Get average modification time (api = api/__init__.py)
                 total_time=0
                 file_count=0
                 for crit_file in $CRITICAL_FILES; do
-                    if [ -f "$current_path/$crit_file" ]; then
-                        file_time=$(stat -f%m "$current_path/$crit_file" 2>/dev/null || stat -c%Y "$current_path/$crit_file" 2>/dev/null || echo "0")
-                        total_time=$((total_time + file_time))
-                        file_count=$((file_count + 1))
+                    if [ "$crit_file" = "api" ]; then
+                        [ -f "$current_path/api/__init__.py" ] || continue
+                        ref="$current_path/api/__init__.py"
+                    else
+                        [ -f "$current_path/$crit_file" ] || continue
+                        ref="$current_path/$crit_file"
                     fi
+                    file_time=$(stat -f%m "$ref" 2>/dev/null || stat -c%Y "$ref" 2>/dev/null || echo "0")
+                    total_time=$((total_time + file_time))
+                    file_count=$((file_count + 1))
                 done
                 if [ $file_count -gt 0 ]; then
                     app_timestamps["$current_path"]=$((total_time / file_count))
@@ -506,9 +532,9 @@ if [ "$IS_APP_DIR" != "true" ]; then
 
         echo "⚠️ Legacy layout detected. Save a backup ZIP to your desktop before continuing."
         # Move old root app files into the live app folder, comparing timestamps
-        CRITICAL_FILES="api.py utils.py models.py presets.py app.py"
+        CRITICAL_FILES="api utils.py models.py presets.py app.py auth_decorators.py"
         if [ -d "/config/app" ]; then
-            for path in api.py app.py utils.py models.py presets.py requirements.txt README.md docker-compose.yml Dockerfile entrypoint.sh icon.png templates static images .gitignore; do
+            for path in api app.py utils.py models.py presets.py auth_decorators.py requirements.txt README.md docker-compose.yml Dockerfile entrypoint.sh icon.png templates static images .gitignore; do
                 if [ -e "/config/$path" ]; then
                     # Check if this is a critical file
                     is_critical=false
@@ -547,9 +573,9 @@ fi
 # Legacy: Move files from /config root to /config/app (only for old installations)
 # This is kept for backward compatibility but shouldn't be needed anymore
 # Skip this if /config IS the app directory (normal case now)
-CRITICAL_FILES="api.py utils.py models.py presets.py app.py"
+CRITICAL_FILES="api utils.py models.py presets.py app.py auth_decorators.py"
 if [ "$IS_APP_DIR" != "true" ] && [ -d "/config/app" ]; then
-    for path in api.py app.py utils.py models.py presets.py requirements.txt README.md docker-compose.yml Dockerfile entrypoint.sh icon.png templates static images .gitignore; do
+    for path in api app.py utils.py models.py presets.py auth_decorators.py requirements.txt README.md docker-compose.yml Dockerfile entrypoint.sh icon.png templates static images .gitignore; do
         if [ -e "/config/$path" ]; then
             # Move to /config/app if it doesn't exist there, or if it's newer
             if [ ! -e "/config/app/$path" ] || [ "/config/$path" -nt "/config/app/$path" ]; then
@@ -560,7 +586,7 @@ if [ "$IS_APP_DIR" != "true" ] && [ -d "/config/app" ]; then
                 # File exists in app and is newer or same
                 # Check if this is a critical file - never delete those
                 is_critical=false
-                for crit_file in api.py utils.py models.py presets.py app.py; do
+                for crit_file in api utils.py models.py presets.py app.py; do
                     if [ "$path" = "$crit_file" ]; then
                         is_critical=true
                         break
@@ -584,8 +610,8 @@ fi
 # BUT: Never delete critical files from CLEANUP_ROOT - they might be backups
 # Skip this if /config IS the app directory
 if [ "$IS_APP_DIR" != "true" ] && [ -n "$CLEANUP_ROOT" ] && [ -d "$CLEANUP_ROOT" ]; then
-    CRITICAL_FILES="api.py utils.py models.py presets.py app.py"
-    for path in api.py app.py utils.py models.py presets.py requirements.txt README.md docker-compose.yml Dockerfile entrypoint.sh icon.png templates static images .gitignore; do
+    CRITICAL_FILES="api utils.py models.py presets.py app.py auth_decorators.py"
+    for path in api app.py utils.py models.py presets.py auth_decorators.py requirements.txt README.md docker-compose.yml Dockerfile entrypoint.sh icon.png templates static images .gitignore; do
         if [ -e "$CLEANUP_ROOT/$path" ]; then
             # Check if this is a critical file - don't delete those
             is_critical=false
@@ -615,35 +641,56 @@ if [ -d "$APP_DIR" ]; then
     cp -an /app/. "$APP_DIR/" 2>/dev/null || true
     
     # Ensure critical files exist and are valid - ALWAYS ensure they're good
+    # api = package directory (api/ with __init__.py), others are files
     # Priority: 1) Image, 2) /config root backup (if APP_DIR is not /config), 3) existing APP_DIR (if valid)
-    CRITICAL_FILES="api.py utils.py models.py presets.py app.py"
+    CRITICAL_FILES="api utils.py models.py presets.py app.py auth_decorators.py"
     for file in $CRITICAL_FILES; do
         file_needs_restore=false
-        restore_source=""
         
-        # Check if file exists and is valid
-        if [ ! -f "$APP_DIR/$file" ]; then
-            file_needs_restore=true
-            echo "WARNING: $file missing from $APP_DIR"
-        elif [ ! -s "$APP_DIR/$file" ]; then
-            file_needs_restore=true
-            echo "WARNING: $file is empty in $APP_DIR"
-        else
-            # File exists, check if it's suspiciously small (likely corrupted)
-            file_size=$(stat -f%z "$APP_DIR/$file" 2>/dev/null || stat -c%s "$APP_DIR/$file" 2>/dev/null || echo "0")
-            if [ "$file_size" -lt 100 ]; then
+        if [ "$file" = "api" ]; then
+            # api = package directory
+            if [ ! -d "$APP_DIR/api" ] || [ ! -f "$APP_DIR/api/__init__.py" ]; then
                 file_needs_restore=true
-                echo "WARNING: $file appears corrupted (only $file_size bytes) in $APP_DIR"
+                echo "WARNING: api package (api/ with __init__.py) missing from $APP_DIR"
+            fi
+        else
+            # Regular file
+            if [ ! -f "$APP_DIR/$file" ]; then
+                file_needs_restore=true
+                echo "WARNING: $file missing from $APP_DIR"
+            elif [ ! -s "$APP_DIR/$file" ]; then
+                file_needs_restore=true
+                echo "WARNING: $file is empty in $APP_DIR"
+            else
+                file_size=$(stat -f%z "$APP_DIR/$file" 2>/dev/null || stat -c%s "$APP_DIR/$file" 2>/dev/null || echo "0")
+                if [ "$file_size" -lt 100 ]; then
+                    file_needs_restore=true
+                    echo "WARNING: $file appears corrupted (only $file_size bytes) in $APP_DIR"
+                fi
             fi
         fi
         
-        # Restore if needed - prefer image, fallback to /config root (only if APP_DIR is not /config)
+        # Restore if needed
         if [ "$file_needs_restore" = "true" ]; then
-            if [ -f "/app/$file" ]; then
+            if [ "$file" = "api" ]; then
+                if [ -d "/app/api" ] && [ -f "/app/api/__init__.py" ]; then
+                    echo "Restoring api package from Docker image to $APP_DIR..."
+                    cp -r "/app/api" "$APP_DIR/"
+                elif [ "$APP_DIR" != "/config" ] && [ -d "/config/api" ]; then
+                    echo "Restoring api package from /config root backup to $APP_DIR..."
+                    cp -r "/config/api" "$APP_DIR/"
+                else
+                    echo "ERROR: api package not found in Docker image!"
+                    echo "       This package is required (api/ with __init__.py). Please ensure the api/ directory is in your source when building the Docker image."
+                    echo "       Current APP_DIR: $APP_DIR"
+                    echo ""
+                    echo "CRITICAL: Missing required api package. The application cannot start without it."
+                    exit 1
+                fi
+            elif [ -f "/app/$file" ]; then
                 echo "Restoring $file from Docker image to $APP_DIR..."
                 cp "/app/$file" "$APP_DIR/$file"
             elif [ "$APP_DIR" != "/config" ] && [ -f "/config/$file" ]; then
-                # Only check /config root backup if APP_DIR is not /config itself
                 echo "Restoring $file from /config root backup to $APP_DIR..."
                 cp "/config/$file" "$APP_DIR/$file"
             else
@@ -655,16 +702,17 @@ if [ -d "$APP_DIR" ]; then
                 echo "       Current APP_DIR: $APP_DIR"
                 echo ""
                 echo "CRITICAL: Missing required file $file. The application cannot start without it."
-                echo "          Please restore $file from your source repository or backup."
                 exit 1
             fi
         fi
     done
     
-    # Final verification - ensure all critical files exist before starting
+    # Final verification - ensure all critical files/dirs exist before starting
     missing_critical=false
     for file in $CRITICAL_FILES; do
-        if [ ! -f "$APP_DIR/$file" ] || [ ! -s "$APP_DIR/$file" ]; then
+        if [ "$file" = "api" ]; then
+            [ -d "$APP_DIR/api" ] && [ -f "$APP_DIR/api/__init__.py" ] || { echo "ERROR: api package still missing or invalid after restoration!"; missing_critical=true; }
+        elif [ ! -f "$APP_DIR/$file" ] || [ ! -s "$APP_DIR/$file" ]; then
             echo "ERROR: Critical file $file is still missing or empty after restoration attempts!"
             missing_critical=true
         fi
@@ -686,13 +734,15 @@ if [ -d "$APP_DIR" ]; then
             echo "Cleaning up empty /config/app directory..."
             rmdir /config/app 2>/dev/null || true
         else
-            # Check if /config/app has any critical files that aren't in /config
+            # Check if /config/app has any critical files that aren't in /config (api = package dir)
             has_critical_in_app=false
             for file in $CRITICAL_FILES; do
-                if [ -f "/config/app/$file" ] && [ ! -f "/config/$file" ]; then
-                    has_critical_in_app=true
-                    break
+                if [ "$file" = "api" ]; then
+                    [ -d "/config/app/api" ] && [ -f "/config/app/api/__init__.py" ] && [ ! -f "/config/api/__init__.py" ] && has_critical_in_app=true
+                else
+                    [ -f "/config/app/$file" ] && [ ! -f "/config/$file" ] && has_critical_in_app=true
                 fi
+                [ "$has_critical_in_app" = "true" ] && break
             done
             
             if [ "$has_critical_in_app" = "false" ]; then
