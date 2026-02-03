@@ -24,3 +24,6 @@ plex_cache.json
 # --- IDE Settings (Optional but recommended) ---
 .idea/
 .vscode/
+
+# --- local docs ---
+documentation/
