@@ -155,6 +155,7 @@ v1.5.5
 
 **SeekAndWatch Local**
 - no more option to accept/deny/delete requests form the plex app
+- auto approved is removed since you approve in the web app now
 
 <details>
   <summary><b>Past Changelog</b></summary>
