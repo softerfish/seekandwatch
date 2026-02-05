@@ -86,7 +86,7 @@ def upload_backup():
     max_upload_bytes = 50 * 1024 * 1024
     max_unzipped_bytes = 200 * 1024 * 1024
     max_entries = 10
-    allowed_files = {'seekandwatch.db', 'plex_cache.json'}
+    allowed_files = {'seekandwatch.db', 'plex_cache.json'}  # plex_cache.json optional (legacy)
 
     content_len = request.content_length
     if content_len and content_len > max_upload_bytes:

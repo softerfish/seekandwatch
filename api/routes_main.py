@@ -3,6 +3,7 @@
 # Registered by api package (api/__init__.py). Uses api_bp and api.helpers.
 
 import datetime
+import difflib
 import json
 import os
 import random
@@ -43,8 +44,7 @@ from utils import (
     run_collection_logic,
     sync_remote_aliases,
     get_tmdb_aliases,
-    refresh_plex_cache,
-    get_plex_cache,
+    sync_plex_library,
     refresh_radarr_sonarr_cache,
     get_radarr_sonarr_cache,
     get_lock_status,
@@ -625,10 +625,47 @@ def set_plex_collection_visibility():
         _log_api_exception("set_plex_collection_visibility", e)
         return jsonify({'status': 'error', 'message': 'Request failed. Check application logs. (Plex Pass may be required for collection publishing.)'})
 
+def _normalize_title_for_match(s):
+    """Normalize a title for fuzzy comparison: lowercase, strip, remove parenthetical year."""
+    if not s or not isinstance(s, str):
+        return ""
+    s = s.strip().lower()
+    # Remove trailing parenthetical year or year range, e.g. (2010), (2010-2012)
+    s = re.sub(r'\s*\(\d{4}(?:-\d{2,4})?\)\s*$', '', s)
+    # Optional: drop leading "the " for comparison so "The Matrix" matches "Matrix"
+    if s.startswith("the "):
+        s = s[4:].strip()
+    return s
+
+
+def _best_plex_hit_for_title(query, hits, min_ratio=0.55):
+    """From a list of Plex search hits, return the one that best matches the query (or None)."""
+    if not hits or not query:
+        return None
+    nq = _normalize_title_for_match(query)
+    if not nq:
+        return hits[0]
+    best = None
+    best_ratio = min_ratio
+    for h in hits:
+        title = getattr(h, 'title', None) or ""
+        year = getattr(h, 'year', None)
+        nt = _normalize_title_for_match(title)
+        r = difflib.SequenceMatcher(None, nq, nt).ratio()
+        if year and re.search(r'\d{4}', query):
+            # Slight boost if year in query matches
+            if str(year) in query:
+                r = min(1.0, r + 0.1)
+        if r > best_ratio:
+            best_ratio = r
+            best = h
+    return best
+
+
 @api_bp.route('/match_bulk_titles', methods=['POST'])
 @login_required
 def match_bulk_titles():
-    # Paste a list of titles and match them to Plex.
+    # Paste a list of titles and match them to Plex. Uses fuzzy matching when Plex returns multiple hits.
     s = current_user.settings
     data = request.json
     raw_text = data.get('titles', '')
@@ -650,13 +687,33 @@ def match_bulk_titles():
             final_title = t
             
             try:
-                # todo: add fuzzy matching for better results
                 hits = lib.search(t)
                 if hits:
+                    # Fuzzy pick best match when multiple hits (e.g. "Inception" vs "Inception (2010)")
+                    hit = _best_plex_hit_for_title(t, hits[:20])
+                    if hit is None:
+                        hit = hits[0]
                     found = True
-                    key = hits[0].ratingKey
-                    final_title = hits[0].title
-            except Exception: pass
+                    key = hit.ratingKey
+                    final_title = hit.title
+            except Exception:
+                pass
+            
+            if not found and t:
+                # Fallback: try without parenthetical year so "Movie (2020)" can match Plex "Movie"
+                try:
+                    fallback_query = re.sub(r'\s*\(\d{4}(?:-\d{2,4})?\)\s*$', '', t).strip()
+                    if fallback_query != t:
+                        hits = lib.search(fallback_query)
+                        if hits:
+                            hit = _best_plex_hit_for_title(fallback_query, hits[:20])
+                            if hit is None:
+                                hit = hits[0]
+                            found = True
+                            key = hit.ratingKey
+                            final_title = hit.title
+                except Exception:
+                    pass
             
             results.append({'query': t, 'title': final_title, 'found': found, 'key': key})
             
@@ -743,7 +800,6 @@ def preview_preset_items(key):
     if not preset: return jsonify({'status': 'error', 'message': 'Preset not found'})
     
     try:
-        owned_keys = get_plex_cache(s)
         items = []
         media_type = preset.get('media_type', 'movie')
 
@@ -757,7 +813,7 @@ def preview_preset_items(key):
                 if (i.get('media_type') or media_type) != media_type:
                     continue
                 it = {'id': i.get('id'), 'title': i.get('title'), 'name': i.get('name'), 'release_date': i.get('release_date'), 'first_air_date': i.get('first_air_date'), 'poster_path': i.get('poster_path'), 'media_type': i.get('media_type') or media_type}
-                is_owned = is_owned_item(it, owned_keys, media_type)
+                is_owned = is_owned_item(it, media_type)
                 if not is_owned:
                     items.append({
                         'title': it.get('title') or it.get('name'),
@@ -788,7 +844,7 @@ def preview_preset_items(key):
             for i in results:
                 if exclude_horror_genres and (exclude_horror_genres & set(i.get('genre_ids') or [])):
                     continue
-                is_owned = is_owned_item(i, owned_keys, media_type)
+                is_owned = is_owned_item(i, media_type)
                 if not is_owned:
                     items.append({
                         'title': i.get('title', i.get('name')),
@@ -933,7 +989,6 @@ def preview_custom_collection():
     except Exception as e:
         return jsonify({'status': 'error', 'message': 'TMDB Error'})
 
-    owned_keys = get_plex_cache(s)
     items = []
     media_type = data['media_type']
 
@@ -946,7 +1001,7 @@ def preview_custom_collection():
             'original_title': i.get('original_title'),
             'original_name': i.get('original_name'),
         }
-        is_owned = is_owned_item(tmdb_item, owned_keys, media_type)
+        is_owned = is_owned_item(tmdb_item, media_type)
 
         year = (i.get('release_date') or i.get('first_air_date') or '----')[:4]
 
@@ -1159,13 +1214,304 @@ def save_cache_settings():
 def force_cache_refresh_route():
     from flask import current_app
     # Run in background thread so the UI doesn't hang.
-    threading.Thread(target=refresh_plex_cache, args=(current_app._get_current_object(),)).start()
+    threading.Thread(target=sync_plex_library, args=(current_app._get_current_object(),)).start()
+    return jsonify({'status': 'success'})
+
+@api_bp.route('/api/plex/library/sync', methods=['POST'])
+@login_required
+def plex_library_sync():
+    """Sync Plex library into TMDB index (like SeekAndWatch Cloud 'Sync from Plex now'). Runs in background."""
+    from flask import current_app
+    threading.Thread(target=sync_plex_library, args=(current_app._get_current_object(),)).start()
     return jsonify({'status': 'success'})
 
 @api_bp.route('/get_cache_status')
 @login_required
 def get_cache_status_route():
     return jsonify(get_lock_status())
+
+# Plex PIN flow (link account like SeekAndWatch Cloud – get token via API, then import library)
+PLEX_API_BASE = 'https://plex.tv/api/v2'
+PLEX_CLIENT_ID = 'seekandwatch-local-v1'
+
+def _plex_create_pin():
+    """Create a Plex PIN. Returns dict with id, code, link, expires_in or error."""
+    url = f'{PLEX_API_BASE}/pins?strong=false'
+    headers = {
+        'X-Plex-Client-Identifier': PLEX_CLIENT_ID,
+        'X-Plex-Product': 'SeekAndWatch',
+        'X-Plex-Version': '1.0',
+        'X-Plex-Device': 'Local',
+        'X-Plex-Device-Name': 'SeekAndWatch Local',
+        'X-Plex-Platform': 'Local',
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+    }
+    try:
+        r = requests.post(url, headers=headers, json={}, timeout=15)
+        if r.status_code not in (200, 201):
+            return {'error': 'Plex returned an error. Try again later.'}
+        data = r.json()
+        if not data.get('id') or not data.get('code'):
+            return {'error': 'Invalid response from Plex. Try again.'}
+        return {
+            'id': int(data['id']),
+            'code': data['code'],
+            'link': 'https://plex.tv/link',
+            'expires_in': int(data.get('expiresIn', 900)),
+        }
+    except requests.RequestException as e:
+        _log_api_exception("plex_pin_create", e)
+        return {'error': 'Could not reach Plex. Check your connection.'}
+
+def _plex_poll_pin(pin_id):
+    """Poll Plex PIN. Returns dict with authToken when linked, or status pending, or error."""
+    if not pin_id or pin_id <= 0:
+        return {'error': 'invalid_pin'}
+    url = f'{PLEX_API_BASE}/pins/{pin_id}'
+    headers = {
+        'X-Plex-Client-Identifier': PLEX_CLIENT_ID,
+        'X-Plex-Product': 'SeekAndWatch',
+        'X-Plex-Version': '1.0',
+        'Accept': 'application/json',
+    }
+    try:
+        r = requests.get(url, headers=headers, timeout=10)
+        if r.status_code != 200:
+            return {'error': 'request_failed'}
+        data = r.json()
+        if not isinstance(data, dict):
+            return {'error': 'invalid_response'}
+        if data.get('authToken'):
+            return {'authToken': data['authToken']}
+        from datetime import datetime
+        expires_at = data.get('expiresAt')
+        if expires_at:
+            try:
+                # ISO format
+                exp_ts = datetime.fromisoformat(expires_at.replace('Z', '+00:00')).timestamp()
+                if time.time() >= exp_ts:
+                    return {'error': 'expired'}
+            except Exception:
+                pass
+        return {'status': 'pending', 'code': data.get('code', '')}
+    except requests.RequestException as e:
+        _log_api_exception("plex_poll_pin", e)
+        return {'error': 'request_failed'}
+
+def _plex_is_local_uri(uri):
+    """True if URI looks like a local connection (http or private IP; not .plex.direct relay)."""
+    if not uri:
+        return False
+    u = uri.lower()
+    if u.startswith('http://'):
+        return True
+    try:
+        host = urlparse(uri).hostname or ''
+        if 'plex.direct' in host:
+            return False
+        if host.startswith('192.168.') or host.startswith('10.') or host.startswith('172.'):
+            return True
+    except Exception:
+        pass
+    return False
+
+def _plex_connection_label(uri, server_name, is_local):
+    """Build a short label for a connection, e.g. 'blockbuster (192.168.2.10) [local]'."""
+    try:
+        parsed = urlparse(uri)
+        host = parsed.hostname or ''
+        port = parsed.port
+        if port and port not in (80, 443):
+            host = f'{host}:{port}'
+    except Exception:
+        host = uri
+    name = (server_name or 'Plex').strip()
+    tag = '[local]' if is_local else '[remote]'
+    return f"{name} ({host}) {tag}"
+
+def _plex_is_private_ip(ip_str):
+    """True if ip_str is a private (RFC 1918) address: 10.x, 172.16–31.x, 192.168.x."""
+    if not ip_str:
+        return False
+    try:
+        parts = [int(p) for p in ip_str.split('.')]
+        if len(parts) != 4:
+            return False
+        if parts[0] == 10:
+            return True
+        if parts[0] == 172 and 16 <= parts[1] <= 31:
+            return True
+        if parts[0] == 192 and parts[1] == 168:
+            return True
+    except (ValueError, IndexError):
+        pass
+    return False
+
+def _plex_derived_local_ip_uri(uri):
+    """If uri is a .plex.direct (e.g. 192-168-2-10.xxx.plex.direct or relay.192-168-2-10.plex.direct:32400),
+    return http://192.168.2.10:32400 else None. Checks every hostname segment for IP-with-dashes.
+    Never returns 0.0.0.0 or :: (invalid for connections)."""
+    try:
+        parsed = urlparse(uri)
+        host = (parsed.hostname or '').strip()
+        if 'plex.direct' not in host or parsed.port is None:
+            return None
+        parts = host.split('.')
+        for segment in parts:
+            if '-' in segment and segment.replace('-', '').isdigit():
+                ip = segment.replace('-', '.')
+                # Reject 0.0.0.0 / unspecified so we never offer an invalid connection
+                if ip == '0.0.0.0' or not ip or ip.strip() == '':
+                    continue
+                return f"http://{ip}:{parsed.port}"
+    except Exception:
+        pass
+    return None
+
+def _plex_get_user_and_connections(auth_token):
+    """Get Plex user info and list of server connections (for user to choose). Returns (user_info, connections).
+    connections is a list of {uri, local, label}. We add a [local IP] option for each local .plex.direct so user can pick real IP."""
+    headers = {
+        'X-Plex-Token': auth_token,
+        'X-Plex-Client-Identifier': PLEX_CLIENT_ID,
+        'Accept': 'application/json',
+    }
+    user_info = None
+    try:
+        r = requests.get(f'{PLEX_API_BASE}/user', headers=headers, timeout=10)
+        if r.status_code == 200:
+            d = r.json()
+            if isinstance(d, dict) and d.get('id'):
+                user_info = {'id': str(d['id']), 'username': (d.get('username') or d.get('title') or 'Plex User').strip()}
+    except requests.RequestException as e:
+        _log_api_exception("plex_user", e)
+    connections = []
+    seen_uris = set()
+    try:
+        r = requests.get(f'{PLEX_API_BASE}/resources?includeHttps=1', headers=headers, timeout=10)
+        if r.status_code == 200:
+            data = r.json()
+            if isinstance(data, list):
+                for res in data:
+                    name = res.get('name') or res.get('title') or 'Plex'
+                    for c in (res.get('connections') or []):
+                        uri = (c.get('uri') or '').strip().rstrip('/')
+                        if not uri or not (uri.startswith('http://') or uri.startswith('https://')):
+                            continue
+                        local = c.get('local') is True or c.get('local') == 1 or _plex_is_local_uri(uri)
+                        label = _plex_connection_label(uri, name, local)
+                        connections.append({'uri': uri, 'local': bool(local), 'label': label})
+                        seen_uris.add(uri)
+                        # For any .plex.direct, try to derive direct IP (from any segment like 192-168-2-10 or 142-114-62-125)
+                        host = urlparse(uri).hostname or ''
+                        if 'plex.direct' in host:
+                            ip_uri = _plex_derived_local_ip_uri(uri)
+                            if ip_uri and ip_uri not in seen_uris:
+                                try:
+                                    p = urlparse(ip_uri)
+                                    ip_host = (p.hostname or '') + (f':{p.port}' if p.port and p.port not in (80, 443) else '')
+                                    is_private = _plex_is_private_ip(p.hostname)
+                                    # Only "[local IP] — recommended" for private LAN addresses; public IPs get "[direct IP]"
+                                    label_suffix = "[local IP] — recommended" if is_private else "[direct IP]"
+                                    connections.append({'uri': ip_uri, 'local': is_private, 'label': f"{name} ({ip_host}) {label_suffix}"})
+                                    seen_uris.add(ip_uri)
+                                except Exception:
+                                    pass
+    except requests.RequestException as e:
+        _log_api_exception("plex_resources", e)
+    # Sort: local IP recommended first, then other local, then remote
+    def _sort_key(x):
+        is_ip = '[local IP]' in (x.get('label') or '')
+        return (0 if is_ip else 1, not x['local'], x['label'])
+    connections.sort(key=_sort_key)
+    return user_info, connections
+
+@api_bp.route('/api/plex/pin/create', methods=['POST'])
+@login_required
+def plex_pin_create():
+    """Create Plex PIN for link flow. Stores pin_id in session, returns code and link. CSRF validated by Flask-WTF."""
+    result = _plex_create_pin()
+    if 'error' in result:
+        return jsonify({'error': result['error']}), 400
+    session['plex_pin_id'] = result['id']
+    session['plex_pin_expires'] = int(time.time()) + result.get('expires_in', 900)
+    return jsonify({'pin_id': result['id'], 'code': result['code'], 'link': result['link']})
+
+@api_bp.route('/api/plex/pin/poll')
+@login_required
+def plex_pin_poll():
+    """Poll Plex PIN; when linked, save token (and optional URL) to current user settings."""
+    pin_id = session.get('plex_pin_id') or 0
+    expires = session.get('plex_pin_expires') or 0
+    if pin_id <= 0:
+        return jsonify({'error': 'No PIN in progress. Click Link Plex account again.'})
+    if expires > 0 and time.time() >= expires:
+        session.pop('plex_pin_id', None)
+        session.pop('plex_pin_expires', None)
+        return jsonify({'error': 'expired'})
+    poll = _plex_poll_pin(pin_id)
+    if 'error' in poll:
+        if poll['error'] == 'expired':
+            session.pop('plex_pin_id', None)
+            session.pop('plex_pin_expires', None)
+        return jsonify({'error': poll['error']})
+    if poll.get('authToken'):
+        session.pop('plex_pin_id', None)
+        session.pop('plex_pin_expires', None)
+        # Save token first so it is never lost if connections fetch fails
+        s = current_user.settings
+        if not s:
+            s = Settings(user_id=current_user.id)
+            db.session.add(s)
+            db.session.flush()
+        s.plex_token = poll['authToken']
+        db.session.commit()
+        # Then fetch user + connections for the server dropdown (optional)
+        user_info, connections = _plex_get_user_and_connections(poll['authToken'])
+        username = (user_info.get('username') or 'Plex') if user_info else 'Plex'
+        return jsonify({'done': True, 'username': username, 'connections': connections or []})
+    return jsonify({'status': 'pending', 'code': poll.get('code', '')})
+
+@api_bp.route('/api/plex/connections')
+@login_required
+def plex_connections():
+    """Return list of Plex server connections (for server dropdown). Uses current user's stored token."""
+    s = current_user.settings
+    if not s or not getattr(s, 'plex_token', None) or not str(s.plex_token).strip():
+        return jsonify({'connections': []})
+    _, connections = _plex_get_user_and_connections(s.plex_token)
+    return jsonify({'connections': connections})
+
+@api_bp.route('/api/plex/set-url', methods=['POST'])
+@login_required
+def plex_set_url():
+    """Set Plex server URL for the current user (e.g. after choosing from connection list)."""
+    data = request.get_json() or {}
+    url = (data.get('url') or '').strip().rstrip('/')
+    if not url:
+        return jsonify({'error': 'URL is required'}), 400
+    if not url.startswith('http://') and not url.startswith('https://'):
+        return jsonify({'error': 'URL must start with http:// or https://'}), 400
+    s = current_user.settings
+    if not s:
+        s = Settings(user_id=current_user.id)
+        db.session.add(s)
+        db.session.flush()
+    s.plex_url = url
+    db.session.commit()
+    return jsonify({'status': 'success'})
+
+@api_bp.route('/api/plex/unlink', methods=['POST'])
+@login_required
+def plex_unlink():
+    """Clear Plex token and URL for the current user (unlink account)."""
+    s = current_user.settings
+    if s:
+        s.plex_token = None
+        s.plex_url = None
+        db.session.commit()
+    return jsonify({'status': 'success'})
 
 @api_bp.route('/force_radarr_sonarr_cache_refresh', methods=['POST'])
 @login_required
@@ -2630,14 +2976,13 @@ def add_to_radarr():
     
     # Check if movie is already owned before attempting to add
     try:
-        owned_keys = get_plex_cache(s)
         # Fetch movie details from TMDB to check ownership
         if s.tmdb_key:
             tmdb_check_url = f"https://api.themoviedb.org/3/movie/{tmdb_id}?api_key={s.tmdb_key}"
             tmdb_check_resp = requests.get(tmdb_check_url, timeout=5)
             if tmdb_check_resp.status_code == 200:
                 tmdb_item = tmdb_check_resp.json()
-                if is_owned_item(tmdb_item, owned_keys, 'movie'):
+                if is_owned_item(tmdb_item, 'movie'):
                     movie_title = tmdb_item.get('title', 'This movie')
                     return _error_response(f'{movie_title} is already in your library')
     except Exception as e:
@@ -2785,14 +3130,13 @@ def add_to_sonarr():
     
     # Check if TV show is already owned before attempting to add
     try:
-        owned_keys = get_plex_cache(s)
         # Fetch TV show details from TMDB to check ownership
         if s.tmdb_key:
             tmdb_check_url = f"https://api.themoviedb.org/3/tv/{tmdb_id}?api_key={s.tmdb_key}"
             tmdb_check_resp = requests.get(tmdb_check_url, timeout=5)
             if tmdb_check_resp.status_code == 200:
                 tmdb_item = tmdb_check_resp.json()
-                if is_owned_item(tmdb_item, owned_keys, 'tv'):
+                if is_owned_item(tmdb_item, 'tv'):
                     show_title = tmdb_item.get('name', 'This TV show')
                     return _error_response(f'{show_title} is already in your library')
     except Exception as e:
