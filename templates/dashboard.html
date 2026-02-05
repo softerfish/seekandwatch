@@ -14,9 +14,11 @@
 <div class="text-center" style="padding-top: 16px;">
 
 {% if not (settings.tautulli_url and settings.tautulli_api_key) %}
-        <div class="section-title mt-30">
-            <i class="fas fa-fire"></i> Tautulli - Trending on Server
-        </div>
+        <div id="tautulli-connect-wrap" class="tautulli-connect-wrap">
+            <button type="button" class="tautulli-connect-turnoff" id="tautulli-connect-turnoff" title="Don't show this again" aria-label="Turn off Tautulli notice">Turn off</button>
+            <div class="section-title mt-30">
+                <i class="fas fa-fire"></i> Tautulli - Trending on Server
+            </div>
             <div class="tautulli-banner">
                 <div>
                     <strong class="text-error fs-large d-block mb-5">📊 Connect Tautulli</strong>
@@ -26,6 +28,24 @@
                 </div>
                 <a href="{{ url_for('settings') }}" class="btn-secondary fs-small white-space-nowrap" style="padding: 8px 15px;">Go to Settings ↗</a>
             </div>
+        </div>
+        <script>
+        (function() {
+            var key = 'seekandwatch_tautulli_banner_dismissed';
+            var wrap = document.getElementById('tautulli-connect-wrap');
+            var btn = document.getElementById('tautulli-connect-turnoff');
+            if (!wrap) return;
+            try {
+                if (localStorage.getItem(key) === '1') { wrap.style.display = 'none'; return; }
+            } catch (e) {}
+            if (btn) {
+                btn.addEventListener('click', function() {
+                    try { localStorage.setItem(key, '1'); } catch (e) {}
+                    wrap.style.display = 'none';
+                });
+            }
+        })();
+        </script>
         {% else %}
             <details class="tautulli-top5-dropdown" id="tautulli-top5-dropdown" style="margin-top: 24px;" data-dropdown-storage-key="seekandwatch_tautulli_top5_open">
                 <summary class="tautulli-top5-trigger">

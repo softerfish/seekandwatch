@@ -55,25 +55,56 @@
                     </div>
                 </div>
 
-                <div class="form-group mb-4">
+                <hr style="border-color: #444; margin: 24px 0;">
+
+                <h6 class="text-white mb-3">Sync with SeekAndWatch (poll API)</h6>
+                <p class="text-muted small mb-2">This app uses the <strong>poll API</strong>: it calls SeekAndWatch for approved requests, adds them to Radarr/Sonarr (or Overseerr), then marks them synced. You can also click <strong>Refresh</strong> on the Requests page to sync immediately. No URL or tunnel needed.</p>
+                <div class="form-group mb-3">
                     <label class="font-weight-bold text-white d-flex align-items-center" style="gap: 10px;">
-                        <input type="checkbox" name="cloud_auto_approve" id="autoCheck" {% if settings.cloud_auto_approve %}checked{% endif %} style="width: 20px; height: 20px;">
-                        Auto-Approve Requests
+                        <input type="checkbox" name="cloud_sync_owned_enabled" id="syncOwnedCheck" {% if settings.cloud_sync_owned_enabled %}checked{% endif %} style="width: 20px; height: 20px;">
+                        Enable cloud sync
                     </label>
-                    <small class="form-text text-muted">Skip manual approval; approved items go straight to Radarr/Sonarr or Overseerr.</small>
+                    <small class="form-text text-muted">When on, the app polls for approved requests and adds them to your handlers. When off, the key is saved but no syncing runs.</small>
+                </div>
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="cloudPollIntervalMin" class="font-weight-bold text-white">Poll interval min (seconds)</label>
+                            <input type="number" class="form-control" name="cloud_poll_interval_min" id="cloudPollIntervalMin" min="30" step="1"
+                                   value="{{ settings.cloud_poll_interval_min if settings.cloud_poll_interval_min is not none else '' }}"
+                                   placeholder="75">
+                            <small class="form-text text-muted">Leave blank for default (75). Minimum 30.</small>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="cloudPollIntervalMax" class="font-weight-bold text-white">Poll interval max (seconds)</label>
+                            <input type="number" class="form-control" name="cloud_poll_interval_max" id="cloudPollIntervalMax" min="30" step="1"
+                                   value="{{ settings.cloud_poll_interval_max if settings.cloud_poll_interval_max is not none else '' }}"
+                                   placeholder="120">
+                            <small class="form-text text-muted">Leave blank for default (120). Must be &ge; min.</small>
+                        </div>
+                    </div>
                 </div>
 
                 <hr style="border-color: #444; margin: 24px 0;">
 
-                <h6 class="text-white mb-3">Enable API</h6>
-                <p class="text-muted small mb-2"><strong>What&rsquo;s sent:</strong> Your API key is used only to authenticate. The app receives pending requests from the Cloud and sends back an acknowledgment when it adds an item to Radarr, Sonarr, or Overseerr (so the Cloud can mark that request as completed). It does not send delete notifications: when you delete a request on the Cloud dashboard, the app learns that on the next poll and removes it locally. No library data is sent from this app; the Cloud gets library info from Plex when you sync on the dashboard.</p>
-                <p class="text-muted small mb-2"><strong>How it&rsquo;s sent:</strong> The app makes outbound HTTPS requests to the Cloud, so traffic between your server and the Cloud is encrypted. You can still access the local app over HTTP at home (e.g. http://localhost or your LAN IP). It polls the Cloud for new requests and syncs deletions; it sends acknowledgments when it completes a request.</p>
-                <p class="text-muted small mb-3"><strong>How often:</strong> The app polls the Cloud about every 75–120 seconds (roughly 1.25–2 minutes), with random jitter so not all installs hit at once.</p>
+                <h6 class="text-white mb-2" style="font-size:0.95rem;">Optional: instant sync (webhook)</h6>
+                <p class="text-muted small mb-3">Leave blank to use poll only. To get approved requests synced instantly (same network: local/LAN URL; any network: public tunnel URL), set a URL and secret below.</p>
+                <div class="form-group mb-3">
+                    <label for="cloudWebhookUrl" class="font-weight-bold text-white">Local app URL</label>
+                    <input type="url" class="form-control" name="cloud_webhook_url" id="cloudWebhookUrl"
+                           value="{{ settings.cloud_webhook_url or '' }}"
+                           placeholder="Leave blank for poll only">
+                    <small class="form-text text-muted">Optional. Blank = poll only.</small>
+                </div>
                 <div class="form-group mb-4">
-                    <label class="font-weight-bold text-white d-flex align-items-center" style="gap: 10px;">
-                        <input type="checkbox" name="cloud_sync_owned_enabled" id="syncOwnedCheck" {% if settings.cloud_sync_owned_enabled %}checked{% endif %} style="width: 20px; height: 20px;">
-                        Enable Cloud API
-                    </label>
+                    <label for="cloudWebhookSecret" class="font-weight-bold text-white">Webhook secret</label>
+                    <input type="password" class="form-control" name="cloud_webhook_secret" id="cloudWebhookSecret"
+                           value="{{ settings.cloud_webhook_secret or '' }}"
+                           placeholder="Optional"
+                           autocomplete="off">
+                    <small class="form-text text-muted">Only if you set a URL above.</small>
                 </div>
 
                 <button type="submit" class="btn btn-primary">
