@@ -156,6 +156,7 @@ v1.5.5
 **SeekAndWatch Local**
 - no more option to accept/deny/delete requests form the plex app
 - auto approved is removed since you approve in the web app now
+- option to turn off Tatulli notice if you don't want to use it
 
 <details>
   <summary><b>Past Changelog</b></summary>
