@@ -625,13 +625,30 @@ def set_plex_collection_visibility():
         _log_api_exception("set_plex_collection_visibility", e)
         return jsonify({'status': 'error', 'message': 'Request failed. Check application logs. (Plex Pass may be required for collection publishing.)'})
 
+def _strip_trailing_parenthetical_year(s):
+    """Remove trailing parenthetical year or year range, e.g. (2010), (2010-2012). Safe for untrusted input (no ReDoS)."""
+    if not s or not isinstance(s, str) or len(s) > 2000:
+        return s
+    s = s.strip()
+    if not s.endswith(')'):
+        return s
+    idx = s.rfind('(')
+    if idx == -1:
+        return s
+    inner = s[idx + 1 : -1].strip()
+    if len(inner) == 4 and inner.isdigit():
+        return s[:idx].strip()
+    if len(inner) in (7, 8, 9) and inner[:4].isdigit() and inner[4:5] == '-' and inner[5:].isdigit():
+        return s[:idx].strip()
+    return s
+
+
 def _normalize_title_for_match(s):
     """Normalize a title for fuzzy comparison: lowercase, strip, remove parenthetical year."""
     if not s or not isinstance(s, str):
         return ""
     s = s.strip().lower()
-    # Remove trailing parenthetical year or year range, e.g. (2010), (2010-2012)
-    s = re.sub(r'\s*\(\d{4}(?:-\d{2,4})?\)\s*$', '', s)
+    s = _strip_trailing_parenthetical_year(s)
     # Optional: drop leading "the " for comparison so "The Matrix" matches "Matrix"
     if s.startswith("the "):
         s = s[4:].strip()
@@ -702,8 +719,8 @@ def match_bulk_titles():
             if not found and t:
                 # Fallback: try without parenthetical year so "Movie (2020)" can match Plex "Movie"
                 try:
-                    fallback_query = re.sub(r'\s*\(\d{4}(?:-\d{2,4})?\)\s*$', '', t).strip()
-                    if fallback_query != t:
+                    fallback_query = _strip_trailing_parenthetical_year(t)
+                    if fallback_query and fallback_query != t:
                         hits = lib.search(fallback_query)
                         if hits:
                             hit = _best_plex_hit_for_title(fallback_query, hits[:20])
