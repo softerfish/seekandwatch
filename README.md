@@ -2,7 +2,7 @@
 
 ![Version](https://img.shields.io/badge/version-1.5.4-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
-**Saved you a scroll or two?** If this app saves you from endless scrolling, or even just a little, a star for the project helps a lot.
+**Saved you a scroll or two?** If this app saves you from endless scrolling, a star for the project helps a lot.
 
 Self-hosted Plex companion: Smart Discovery from your watch history, add movies/shows via Radarr/Sonarr, Kometa builder, Plex collections, Overseerr, Tautulli. One dashboard -less scrolling, more watching.
 
