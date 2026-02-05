@@ -147,7 +147,7 @@ docker compose up -d
 
 App now available in the Unraid App Store
 
-We're working towards smoothly get instant to near instant requests filled on your servers.
+We're working towards smoothly getting instant to near instant requests filled on your servers.
 
 **SeekAndWatch Cloud (beta)**
 v1.5.5
