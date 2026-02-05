@@ -160,23 +160,22 @@
                 });
             })();
             </script>
+        </form>
             <div class="scan-btn-group">
                 <a href="javascript:void(0)" class="btn btn-scan movie text-center" onclick="nuclearSubmit('movie')" style="text-decoration: none;">
-                    Scan Movies
+                    Movies
                 </a>
                 <a href="javascript:void(0)" class="btn btn-scan tv text-center" onclick="nuclearSubmit('tv')" style="text-decoration: none;">
-                    Scan TV Shows
+                    TV Shows
                 </a>
+                <form id="luckyForm" action="{{ url_for('generate') }}" method="POST" class="scan-btn-group-lucky">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <input type="hidden" name="lucky_mode" value="true">
+                    <a href="javascript:void(0)" class="btn btn-lucky text-center" onclick="nuclearLucky()" style="text-decoration: none;">
+                        I'm Feeling Lucky
+                    </a>
+                </form>
             </div>
-        </form>
-
-        <form id="luckyForm" action="{{ url_for('generate') }}" method="POST">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-            <input type="hidden" name="lucky_mode" value="true">
-            <a href="javascript:void(0)" class="btn btn-lucky text-center" onclick="nuclearLucky()" style="text-decoration: none;">
-                🍀 I'm Feeling Lucky
-            </a>
-        </form>
     </div>
 
     <div class="mt-20 mb-10 text-muted">or search by title</div>

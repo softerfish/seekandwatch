@@ -64,7 +64,10 @@
 
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h2>Cloud Requests Management</h2>
-        <a href="{{ url_for('requests_settings_page') }}" class="btn btn-secondary"><i class="fas fa-cog"></i> Requests Settings</a>
+        <div class="d-flex gap-2">
+            <a href="{{ url_for('requests_page') }}" class="btn btn-outline-primary" title="Fetch latest from cloud"><i class="fas fa-sync-alt"></i> Refresh</a>
+            <a href="{{ url_for('requests_settings_page') }}" class="btn btn-secondary"><i class="fas fa-cog"></i> Requests Settings</a>
+        </div>
     </div>
 
     <div class="card shadow-sm">
