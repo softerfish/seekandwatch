@@ -66,9 +66,9 @@
                 <hr style="border-color: #444; margin: 24px 0;">
 
                 <h6 class="text-white mb-3">Enable API</h6>
-                <p class="text-muted small mb-2"><strong>What&rsquo;s sent:</strong> Your API key is used only to authenticate. The app receives pending requests from the Cloud and sends back acknowledgments when it adds items to Radarr/Sonarr or Overseerr (or when it deletes them). No library data is sent from this app; the Cloud gets library info from Plex when you sync on the dashboard.</p>
-                <p class="text-muted small mb-2"><strong>How it&rsquo;s sent:</strong> The app talks to the Cloud over HTTPS (your connection to the Cloud is encrypted; your local app can still run on HTTP at home). It polls the Cloud for new requests and may send acknowledge or delete notifications.</p>
-                <p class="text-muted small mb-3"><strong>How often:</strong> The app polls the Cloud about every 1–2 minutes.</p>
+                <p class="text-muted small mb-2"><strong>What&rsquo;s sent:</strong> Your API key is used only to authenticate. The app receives pending requests from the Cloud and sends back an acknowledgment when it adds an item to Radarr, Sonarr, or Overseerr (so the Cloud can mark that request as completed). It does not send delete notifications: when you delete a request on the Cloud dashboard, the app learns that on the next poll and removes it locally. No library data is sent from this app; the Cloud gets library info from Plex when you sync on the dashboard.</p>
+                <p class="text-muted small mb-2"><strong>How it&rsquo;s sent:</strong> The app makes outbound HTTPS requests to the Cloud, so traffic between your server and the Cloud is encrypted. You can still access the local app over HTTP at home (e.g. http://localhost or your LAN IP). It polls the Cloud for new requests and syncs deletions; it sends acknowledgments when it completes a request.</p>
+                <p class="text-muted small mb-3"><strong>How often:</strong> The app polls the Cloud about every 75–120 seconds (roughly 1.25–2 minutes), with random jitter so not all installs hit at once.</p>
                 <div class="form-group mb-4">
                     <label class="font-weight-bold text-white d-flex align-items-center" style="gap: 10px;">
                         <input type="checkbox" name="cloud_sync_owned_enabled" id="syncOwnedCheck" {% if settings.cloud_sync_owned_enabled %}checked{% endif %} style="width: 20px; height: 20px;">

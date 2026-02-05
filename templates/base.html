@@ -19,6 +19,9 @@
 
 </head>
 <body>
+    {% if session.pop('notify_tabs_login', None) %}
+    <script>localStorage.setItem('seekandwatch_local_session_change', Date.now());</script>
+    {% endif %}
 
     {% if current_user.is_authenticated %}
     <!-- Sidebar Navigation -->
@@ -56,7 +59,7 @@
                 <div class="nav-section-header">Core</div>
                 <a href="{{ url_for('dashboard') }}" class="nav-item {% if request.endpoint == 'dashboard' %}active{% endif %}">
                     <i class="fas fa-home"></i>
-                    <span>Home</span>
+                    <span>Smart Discovery</span>
                 </a>
                 <a href="{{ url_for('playlists') }}" class="nav-item {% if request.endpoint == 'playlists' %}active{% endif %}">
                     <i class="fas fa-layer-group"></i>
@@ -65,6 +68,14 @@
                 <a href="{{ url_for('kometa') }}" class="nav-item {% if request.endpoint == 'kometa' %}active{% endif %}">
                     <i class="fas fa-puzzle-piece"></i>
                     <span>Kometa</span>
+                </a>
+                <a href="{{ url_for('media') }}#requested" class="nav-item {% if request.endpoint == 'media' %}media-nav-item{% endif %}" data-tab="requested">
+                    <i class="fas fa-clipboard-list"></i>
+                    <span>Requested</span>
+                </a>
+                <a href="{{ url_for('calendar_page') }}" class="nav-item {% if request.endpoint == 'calendar_page' %}active{% endif %}">
+                    <i class="fas fa-calendar-alt"></i>
+                    <span>Calendar</span>
                 </a>
                 <a href="{{ url_for('manage_blocklist') }}" class="nav-item {% if request.endpoint == 'manage_blocklist' %}active{% endif %}">
                     <i class="fas fa-ban"></i>
@@ -88,16 +99,13 @@
                     <i class="fas fa-heart"></i>
                     <span>Support Us</span>
                 </a>
-                <a href="https://github.com/softerfish/seekandwatch/wiki" target="_blank" class="nav-item">
-                    <i class="fab fa-github"></i>
-                    <span>GitHub Wiki</span>
-                </a>
                 <a href="https://www.reddit.com/r/SeekAndWatch/" target="_blank" class="nav-item">
                     <i class="fab fa-reddit icon-orange"></i>
                     <span>Reddit</span>
                 </a>
             </div>
 
+            <!--
             <div class="nav-section">
                 <div class="nav-section-header">Apps</div>
                 <a href="{{ url_for('media') }}#requested" class="nav-item {% if request.endpoint == 'media' %}media-nav-item{% endif %}" data-tab="requested">
@@ -117,6 +125,7 @@
                     <span>Calendar</span>
                 </a>
             </div>
+            -->
         </nav>
 
         <div class="sidebar-footer">
@@ -141,7 +150,8 @@
             </div>
             <div class="header-right">
                 <div class="header-info-group">
-                    <a href="https://huntarr.io/" target="_blank" rel="noopener noreferrer" class="header-link header-link-friends" title="Huntarr – find missing &amp; upgrade media"><i class="fas fa-external-link-alt"></i><span>Friends: Huntarr</span></a>
+                    <span class="header-link-friends-wrap"><span class="header-partner-label">Partner Projects:</span> <a href="https://huntarr.io/" target="_blank" rel="noopener noreferrer" class="header-link header-link-friends" title="Huntarr – find missing &amp; upgrade media"><i class="fas fa-external-link-alt"></i><span>Huntarr</span></a></span>
+                    <a href="https://github.com/softerfish/seekandwatch/wiki" target="_blank" rel="noopener noreferrer" class="header-link-friends-wrap header-link-wiki-wrap" title="Help: GitHub Wiki"><span class="header-partner-label">Help:</span> <span>GitHub Wiki</span><i class="fas fa-external-link-alt"></i></a>
                     <span class="version-info">
                         <span>Ver:</span>
                         <span id="current-version-display">{{ current_version|default('0.0.0') }}</span>
@@ -377,12 +387,42 @@
 
     const csrfToken = "{{ csrf_token() }}";
     const API_TRIGGER_UPDATE = "{{ url_for('trigger_update_route') }}";
+    const API_CSRF_TOKEN = "{{ url_for('csrf_token_route') }}";
+
+    window.getCsrfToken = function(fallback) {
+        return fetch(API_CSRF_TOKEN, { credentials: 'same-origin' })
+            .then(function(r) {
+                if (r.status === 401) { window.location.href = "{{ url_for('login') }}"; return Promise.reject(); }
+                return r.json();
+            })
+            .then(function(data) {
+                if (data && data.error === 'Unauthorized') { window.location.href = "{{ url_for('login') }}"; return Promise.reject(); }
+                return (data && data.csrf_token) ? data.csrf_token : (fallback !== undefined ? fallback : '');
+            });
+    };
+
+    window.addEventListener('storage', function(e) {
+        if (e.key === 'seekandwatch_local_session_change') { window.location.reload(); }
+    });
+
+    var lastSessionCheck = 0;
+    document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState !== 'visible') return;
+        if (Date.now() - lastSessionCheck < 15000) return;
+        lastSessionCheck = Date.now();
+        fetch(API_CSRF_TOKEN, { credentials: 'same-origin' }).then(function(r) {
+            if (r.status === 401) { window.location.href = "{{ url_for('login') }}"; }
+        });
+    });
 
     const originalFetch = window.fetch;
     window.fetch = function(url, options) {
         if (options && options.method && ['POST', 'PUT', 'DELETE', 'PATCH'].includes(options.method.toUpperCase())) {
-            options.headers = options.headers || {};
-            options.headers['X-CSRFToken'] = csrfToken;
+            return getCsrfToken(csrfToken).then(function(token) {
+                options.headers = options.headers || {};
+                options.headers['X-CSRFToken'] = token;
+                return originalFetch(url, options);
+            });
         }
         return originalFetch(url, options);
     };
@@ -486,7 +526,7 @@
         const pageTitle = document.getElementById('pageTitle');
         if (pageTitle) {
             const routeMap = {
-                'dashboard': 'Home',
+                'dashboard': 'Smart Discovery',
                 'playlists': 'Plex Collections',
                 'media': 'Media',
                 'kometa': 'Kometa',

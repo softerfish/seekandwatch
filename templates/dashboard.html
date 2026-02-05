@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block page_title %}Home{% endblock %}
+{% block page_title %}Smart Discovery{% endblock %}
 
 {% block content %}
 
@@ -11,25 +11,12 @@
     <p class="loader-sub">Analyzing your library history.</p>
 </div>
 
-<div class="text-center pt-20">
+<div class="text-center" style="padding-top: 16px;">
 
-    <div class="setup-notice" data-notice-key="sync-engine">
-        <div class="setup-notice__header">
-            <strong>⚠️ Important Setup Requirement</strong>
-            <button type="button" class="setup-notice__toggle" aria-expanded="true">Minimize</button>
+{% if not (settings.tautulli_url and settings.tautulli_api_key) %}
+        <div class="section-title mt-30">
+            <i class="fas fa-fire"></i> Tautulli - Trending on Server
         </div>
-        <div class="setup-notice__body">
-            To prevent duplicates and ensure accurate recommendations, you <b>must</b> enable
-            <b>Sync Engine</b> & <b>Background Alias Discovery</b> in
-            <a href="{{ url_for('settings') }}">Settings</a>
-            and allow them to complete a full cycle.
-        </div>
-    </div>
-
-<div class="section-title mt-30">
-        <i class="fas fa-fire"></i> Tautulli - Trending on Server
-    </div>
-        {% if not (settings.tautulli_url and settings.tautulli_api_key) %}
             <div class="tautulli-banner">
                 <div>
                     <strong class="text-error fs-large d-block mb-5">📊 Connect Tautulli</strong>
@@ -40,31 +27,49 @@
                 <a href="{{ url_for('settings') }}" class="btn-secondary fs-small white-space-nowrap" style="padding: 8px 15px;">Go to Settings ↗</a>
             </div>
         {% else %}
-            <div class="card mb-40 max-w-700 mx-auto">
-                <div class="trending-header">
-                    <div class="d-flex gap-15" style="align-items:center;">
-                        <h3 class="m-0 fs-xlarge">Top 5</h3>
-                        <div class="trending-tabs">
-                            <button class="t-tab active" onclick="loadTrending('movie')" id="tab-movie">Movies</button>
-                            <button class="t-tab" onclick="loadTrending('tv')" id="tab-tv">TV Shows</button>
+            <details class="tautulli-top5-dropdown" id="tautulli-top5-dropdown" style="margin-top: 24px;" data-dropdown-storage-key="seekandwatch_tautulli_top5_open">
+                <summary class="tautulli-top5-trigger">
+                    <i class="fas fa-fire"></i> Tautulli - Trending on Server
+                </summary>
+                <div class="card mb-20 max-w-700 mx-auto">
+                    <div class="trending-header">
+                        <div class="d-flex gap-15" style="align-items:center;">
+                            <h3 class="m-0 fs-xlarge">Top 5</h3>
+                            <div class="trending-tabs">
+                                <button class="t-tab active" onclick="loadTrending('movie')" id="tab-movie">Movies</button>
+                                <button class="t-tab" onclick="loadTrending('tv')" id="tab-tv">TV Shows</button>
+                            </div>
+                            <div class="d-flex gap-10 ml-auto" style="align-items:center;">
+                                <label class="text-muted fs-small white-space-nowrap">Last</label>
+                                <input type="number" id="trending-days" value="30" min="1" max="365" class="trending-days-input" onchange="loadTrending(document.querySelector('.t-tab.active')?.id === 'tab-tv' ? 'tv' : 'movie')">
+                                <label class="text-muted fs-small white-space-nowrap">days</label>
+                            </div>
                         </div>
-                        <div class="d-flex gap-10 ml-auto" style="align-items:center;">
-                            <label class="text-muted fs-small white-space-nowrap">Last</label>
-                            <input type="number" id="trending-days" value="30" min="1" max="365" class="trending-days-input" onchange="loadTrending(document.querySelector('.t-tab.active')?.id === 'tab-tv' ? 'tv' : 'movie')">
-                            <label class="text-muted fs-small white-space-nowrap">days</label>
+                        <button class="btn-find-similar" onclick="findSimilarToTrending()" title="Get recommendations based on these items">
+                            <span>🔍 Find Similar</span>
+                        </button>
+                    </div>
+                    
+                    <div id="trending-grid" class="trending-grid">
+                        <div class="grid-col-full text-center text-muted" style="padding:50px;">
+                            Loading stats from Tautulli...
                         </div>
                     </div>
-                    <button class="btn-find-similar" onclick="findSimilarToTrending()" title="Get recommendations based on these items">
-                        <span>🔍 Find Similar</span>
-                    </button>
                 </div>
-                
-                <div id="trending-grid" class="trending-grid">
-                    <div class="grid-col-full text-center text-muted" style="padding:50px;">
-                        Loading stats from Tautulli...
-                    </div>
-                </div>
-            </div>
+            </details>
+            <script>
+            (function() {
+                var key = 'seekandwatch_tautulli_top5_open';
+                try {
+                    var el = document.getElementById('tautulli-top5-dropdown');
+                    if (el) {
+                        var saved = localStorage.getItem(key);
+                        if (saved === 'true') el.setAttribute('open', '');
+                        el.addEventListener('toggle', function() { localStorage.setItem(key, el.open ? 'true' : 'false'); });
+                    }
+                } catch (e) {}
+            })();
+            </script>
         {% endif %}
 
     <div class="card discovery-card">
@@ -88,57 +93,73 @@
 
             <div class="mb-20 text-center">
                 <label class="text-muted fs-normal">Number of titles to pull from history:</label>
-                <div class="d-flex flex-center mt-5">
+                <div class="d-flex flex-center mb-2" style="margin-top: 4px;">
                     <input type="number" name="history_limit" value="20" min="1" max="100" class="history-limit-input">
                 </div>
-                <p class="fs-small text-error mt-10 mb-0">
-                    ⚠️ <b>Tip:</b> Keep this under 30 for fast results. High numbers (50+) will significantly slow down the scan.
-                </p>
+                <div class="history-tip-wrap">
+                    <p class="fs-small text-error mt-0 mb-0">
+                        ⚠️ <b>Tip:</b> Keep this under 30 for fast results. High numbers (50+) will significantly slow down the scan.
+                    </p>
+                </div>
             </div>
 
-            {% if has_omdb %}
-            <div class="mb-15 d-flex flex-center">
-                <label class="critic-label" id="critic-label" style="background: rgba(255, 99, 71, 0.1); border-color: #ff6347; color: #ff6347; padding: 6px 10px; font-size: 0.9em; display: flex; align-items: center; gap: 6px;">
-                    <input type="checkbox" name="critic_filter" id="critic-filter" onchange="toggleCritic()" style="width: 14px; height: 14px; accent-color: #ff6347;">
-                    <span class="white-space-nowrap">🍅 Certified Fresh</span>
-                    <input type="number" name="critic_threshold" id="critic-input" value="70" min="0" max="100" 
-                           onclick="event.stopPropagation();" class="critic-input" style="width: 55px; font-size: 0.9em; display: none; padding: 2px 4px;">
-                    <span id="critic-percent" class="d-none" style="font-size: 0.9em; margin-left: 2px;">%</span>
-                </label>
-                <script>
-                function toggleCritic() {
-                    const isChecked = document.getElementById('critic-filter').checked;
-                    document.getElementById('critic-input').style.display = isChecked ? 'inline-block' : 'none';
-                    document.getElementById('critic-percent').style.display = isChecked ? 'inline' : 'none';
-                }
-                </script>
+            <div class="discovery-exclude-row mb-20">
+                <div class="discovery-options-section">
+                    <details class="discovery-options-dropdown">
+                        <summary class="discovery-options-trigger">🔧 Discovery options</summary>
+                        <div class="discovery-options-panel">
+                            {% if has_omdb %}
+                            <label class="discovery-option discovery-option-critic" id="critic-label">
+                                <input type="checkbox" name="critic_filter" id="critic-filter" onchange="toggleCritic()">
+                                <span class="white-space-nowrap">🍅 Certified Fresh</span>
+                                <input type="number" name="critic_threshold" id="critic-input" value="70" min="0" max="100" onclick="event.stopPropagation();" class="critic-input" style="width: 55px; font-size: 0.9em; display: none; padding: 2px 4px;">
+                                <span id="critic-percent" class="d-none" style="font-size: 0.9em; margin-left: 2px;">%</span>
+                            </label>
+                            {% endif %}
+                            <label class="discovery-option discovery-option-future">
+                                <input type="checkbox" name="future_mode" value="true">
+                                <span class="white-space-nowrap">🚀 Future Releases Only</span>
+                            </label>
+                            <label class="discovery-option discovery-option-obscure">
+                                <input type="checkbox" name="include_obscure" value="true">
+                                <span class="white-space-nowrap">🌍 International & Obscure</span>
+                            </label>
+                        </div>
+                    </details>
+                    <script>
+                    function toggleCritic() {
+                        const isChecked = document.getElementById('critic-filter').checked;
+                        document.getElementById('critic-input').style.display = isChecked ? 'inline-block' : 'none';
+                        document.getElementById('critic-percent').style.display = isChecked ? 'inline' : 'none';
+                    }
+                    </script>
+                </div>
+                {% if plex_libraries %}
+                <div class="exclude-libraries-section">
+                    <details class="exclude-libs-dropdown">
+                        <summary class="exclude-libs-trigger">🚫 Exclude Libraries (Optional)</summary>
+                        <div class="exclude-libs-panel">
+                            {% for lib in plex_libraries %}
+                            <label class="exclude-libs-option">
+                                <input type="checkbox" id="dash-lib-{{ loop.index }}" name="ignored_libraries" value="{{ lib }}">
+                                <span>{{ lib }}</span>
+                            </label>
+                            {% endfor %}
+                        </div>
+                    </details>
+                </div>
+                {% endif %}
             </div>
-            {% endif %}
-            <div class="mb-20 d-flex flex-center gap-8 flex-wrap">
-                <label class="critic-label" style="background: rgba(52, 152, 219, 0.1); border-color: #3498db; color: #3498db; flex: 0 1 auto; min-width: 0; padding: 6px 10px; font-size: 0.9em;">
-                    <input type="checkbox" name="future_mode" value="true" style="width: 14px; height: 14px; accent-color: #3498db;">
-                    <span class="white-space-nowrap">🚀 Future Releases Only</span>
-                </label>
-                <label class="critic-label" style="background: rgba(155, 89, 182, 0.1); border-color: #9b59b6; color: #9b59b6; flex: 0 1 auto; min-width: 0; padding: 6px 10px; font-size: 0.9em;">
-                    <input type="checkbox" name="include_obscure" value="true" style="width: 14px; height: 14px; accent-color: #9b59b6;">
-                    <span class="white-space-nowrap">🌍 International & Obscure</span>
-                </label>
-            </div>
-            {% if plex_libraries %}
-            <div class="mb-20 exclude-libraries-section">
-                <details class="exclude-libs-dropdown">
-                    <summary class="exclude-libs-trigger">🚫 Exclude Libraries (Optional)</summary>
-                    <div class="exclude-libs-panel">
-                        {% for lib in plex_libraries %}
-                        <label class="exclude-libs-option">
-                            <input type="checkbox" id="dash-lib-{{ loop.index }}" name="ignored_libraries" value="{{ lib }}">
-                            <span>{{ lib }}</span>
-                        </label>
-                        {% endfor %}
-                    </div>
-                </details>
-            </div>
-            {% endif %}
+            <script>
+            (function() {
+                document.addEventListener('click', function(e) {
+                    ['discovery-options-dropdown', 'exclude-libs-dropdown'].forEach(function(className) {
+                        var el = document.querySelector('.' + className);
+                        if (el && el.open && !el.contains(e.target)) el.removeAttribute('open');
+                    });
+                });
+            })();
+            </script>
             <div class="scan-btn-group">
                 <a href="javascript:void(0)" class="btn btn-scan movie text-center" onclick="nuclearSubmit('movie')" style="text-decoration: none;">
                     Scan Movies
@@ -158,8 +179,7 @@
         </form>
     </div>
 
-    <div class="my-20 text-muted">or search by title</div>
-    
+    <div class="mt-20 mb-10 text-muted">or search by title</div>
     <div class="max-w-600 mx-auto position-relative">
         <input type="text" id="main-search" placeholder="Type a title (e.g. Inception)..." class="main-search">
         <div id="search-results"></div>

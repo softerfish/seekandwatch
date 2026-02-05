@@ -12,19 +12,6 @@
     <div id="tab-manager" class="tab-content active playlists-center">
         <p class="media-sub">Curated lists, imported text, and custom builders.</p>
 
-        <div class="setup-notice setup-notice--center" data-notice-key="sync-engine">
-            <div class="setup-notice__header">
-                <strong>⚠️ Important Setup Requirement</strong>
-                <button type="button" class="setup-notice__toggle" aria-expanded="true">Minimize</button>
-            </div>
-            <div class="setup-notice__body">
-                To ensure accurate collections and remove duplicates, you <b>must</b> enable
-                <b>Sync Engine</b> & <b>Background Alias Discovery</b> in
-                <a href="{{ url_for('settings') }}">Settings</a>
-                and allow them to complete a full cycle.
-            </div>
-        </div>
-
     <div class="stats-bar">
         <span title="Your custom created lists">🛠️ <b>{{ custom_presets|length }}</b> Custom</span>
         <span class="stats-label">|</span>

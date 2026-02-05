@@ -131,6 +131,8 @@
     </div>
 </div>
 
+<button type="button" id="back-to-top-btn" class="back-to-top-btn" onclick="scrollToTop()" aria-label="Back to top" title="Back to top">↑</button>
+
 <div id="detail-modal" class="k-modal">
     <div class="k-modal-content">
         <span class="k-close-modal" onclick="closeModal()">&times;</span>
@@ -696,8 +698,19 @@
         step();
     }
 
+    function scrollToTop() {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    function toggleBackToTop() {
+        const btn = document.getElementById('back-to-top-btn');
+        if (!btn) return;
+        if (window.scrollY > 400) btn.classList.add('back-to-top-visible');
+        else btn.classList.remove('back-to-top-visible');
+    }
+    window.addEventListener('scroll', toggleBackToTop, { passive: true });
     document.addEventListener('DOMContentLoaded', function() {
         init();
+        toggleBackToTop();
     });
 
 </script>
