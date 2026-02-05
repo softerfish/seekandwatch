@@ -15,6 +15,14 @@ CLOUD_URL = os.environ.get("SEEKANDWATCH_CLOUD_URL", "https://seekandwatch.com")
 _def = os.environ.get("SEEKANDWATCH_CLOUD_TIMEOUT")
 CLOUD_REQUEST_TIMEOUT = int(_def) if (_def and _def.isdigit()) else 25
 
+# Poll interval range (seconds). App picks a random value between min and max each cycle. Set SEEKANDWATCH_POLL_INTERVAL_MIN / MAX to override.
+_def_min = os.environ.get("SEEKANDWATCH_POLL_INTERVAL_MIN")
+_def_max = os.environ.get("SEEKANDWATCH_POLL_INTERVAL_MAX")
+POLL_INTERVAL_MIN = max(30, int(_def_min)) if (_def_min and _def_min.isdigit()) else 75
+POLL_INTERVAL_MAX = max(POLL_INTERVAL_MIN, int(_def_max)) if (_def_max and _def_max.isdigit()) else 120
+if POLL_INTERVAL_MAX < POLL_INTERVAL_MIN:
+    POLL_INTERVAL_MAX = POLL_INTERVAL_MIN
+
 # Database URI. Set SEEKANDWATCH_DATABASE_URI for full override (e.g. postgres, or test DB).
 # Otherwise uses SQLite in CONFIG_DIR.
 _default_db_path = os.path.join(CONFIG_DIR, "seekandwatch.db")

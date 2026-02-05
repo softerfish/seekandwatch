@@ -91,9 +91,13 @@ class Settings(db.Model):
     # overseerr sends to Overseerr
     cloud_movie_handler = db.Column(db.String(20), default='direct') 
     cloud_tv_handler = db.Column(db.String(20), default='direct')
-    cloud_sync_owned_enabled = db.Column(db.Boolean, default=True)  # "Enable Cloud API" in UI: when True, worker polls Cloud for requests (default on)
+    cloud_sync_owned_enabled = db.Column(db.Boolean, default=True)  # when True, worker polls Cloud for requests (default on)
     cloud_sync_owned_interval_hours = db.Column(db.Integer, default=24)  # 12, 24, or 168 (weekly)
     last_owned_sync_at = db.Column(db.DateTime, nullable=True)  # last successful sync to Cloud
+    cloud_webhook_url = db.Column(db.String(512), nullable=True)   # when set, cloud POSTs approved requests here for instant sync
+    cloud_webhook_secret = db.Column(db.String(255), nullable=True)  # secret sent in X-Webhook-Secret when cloud calls webhook
+    cloud_poll_interval_min = db.Column(db.Integer, nullable=True)  # seconds between polls (min); null = use config/env default
+    cloud_poll_interval_max = db.Column(db.Integer, nullable=True)  # seconds between polls (max); null = use config/env default
 
 class Blocklist(db.Model):
     __table_args__ = {'extend_existing': True}
@@ -196,5 +200,6 @@ class CloudRequest(db.Model):
     tmdb_id = db.Column(db.Integer)
     requested_by = db.Column(db.String(100))
     year = db.Column(db.String(4), nullable=True)  # release year from cloud (optional)
+    notes = db.Column(db.Text, nullable=True)  # optional notes from requester (e.g. "Season 2 only")
     status = db.Column(db.String(20), default='pending') # pending, approved, denied, completed
     created_at = db.Column(db.DateTime, default=datetime.utcnow)

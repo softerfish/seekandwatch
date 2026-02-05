@@ -1,6 +1,6 @@
 # SeekAndWatch
 
-![Version](https://img.shields.io/badge/version-1.5.4-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) ![License](https://img.shields.io/badge/License-MIT-green.svg)
+![Version](https://img.shields.io/badge/version-1.5.5-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
 **Saved you a scroll or two?** If this app saves you from endless scrolling, a star for the project helps a lot.
 
@@ -147,6 +147,18 @@ docker compose up -d
 
 App now available in the Unraid App Store
 
+We're working towards smoothly get instant to near instant requests filled on your servers.
+
+**SeekAndWatch Cloud (beta)**
+v1.5.5
+- You now approve/deny/delete requests from the web app instead of doing so on the local app. Finished list will be sent to your local app and auto accepted based on your settings
+
+**SeekAndWatch Local**
+- no more option to accept/deny/delete requests form the plex app
+
+<details>
+  <summary><b>Past Changelog</b></summary>
+  
 **SeekAndWatch Cloud (beta)**
 v1.5.4
 - notes when making a request
@@ -157,8 +169,6 @@ v1.5.4
 **SeekAndWatch Local**
 - fixed small error not updating requested items through cloud app
 
-<details>
-  <summary><b>Past Changelog</b></summary>
 v1.5.3
 - csrf tokens have been changed. Currently in the previous app, you'd be given a fresh CSRF before each action, which was nice unless you timeout in one window or logout and go back to the first window. Now: 
 	- actions now fetch a fresh CSRF token before sending, so long-open or other tabs no longer hit "Invalid CSRF token"

@@ -233,6 +233,18 @@ def run_migrations():
                 if 'last_owned_sync_at' not in settings_columns:
                     print("--- [Migration] Adding 'last_owned_sync_at' column ---")
                     conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN last_owned_sync_at DATETIME"))
+                if 'cloud_webhook_url' not in settings_columns:
+                    print("--- [Migration] Adding 'cloud_webhook_url' column ---")
+                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN cloud_webhook_url VARCHAR(512)"))
+                if 'cloud_webhook_secret' not in settings_columns:
+                    print("--- [Migration] Adding 'cloud_webhook_secret' column ---")
+                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN cloud_webhook_secret VARCHAR(255)"))
+                if 'cloud_poll_interval_min' not in settings_columns:
+                    print("--- [Migration] Adding 'cloud_poll_interval_min' column ---")
+                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN cloud_poll_interval_min INTEGER"))
+                if 'cloud_poll_interval_max' not in settings_columns:
+                    print("--- [Migration] Adding 'cloud_poll_interval_max' column ---")
+                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN cloud_poll_interval_max INTEGER"))
                 
                 # Check if kometa_template table exists
                 try:
@@ -304,7 +316,7 @@ def run_migrations():
         except Exception as ex:
             print(f"Migration Warning (app_request user_id): {ex}")
 
-        # cloud_request: optional year column for release year from cloud
+        # cloud_request: optional year column for release year from cloud; notes from requester
         try:
             inspector = sqlalchemy.inspect(db.engine)
             if 'cloud_request' in inspector.get_table_names():
@@ -314,8 +326,13 @@ def run_migrations():
                         conn.execute(sqlalchemy.text("ALTER TABLE cloud_request ADD COLUMN year VARCHAR(4)"))
                         conn.commit()
                         print("--- [Migration] Added 'year' column to cloud_request ---")
+                if 'notes' not in cloud_req_columns:
+                    with db.engine.connect() as conn:
+                        conn.execute(sqlalchemy.text("ALTER TABLE cloud_request ADD COLUMN notes TEXT"))
+                        conn.commit()
+                        print("--- [Migration] Added 'notes' column to cloud_request ---")
         except Exception as ex:
-            print(f"Migration Warning (cloud_request year): {ex}")
+            print(f"Migration Warning (cloud_request year/notes): {ex}")
 
         # radarr_sonarr_cache: has_file so we only treat "has file" as owned (Radarr: "Not Available" = no file)
         try:
@@ -1901,29 +1918,65 @@ def server_error(e):
 @app.route('/health')
 def health():
     return jsonify({'status': 'ok', 'version': VERSION}), 200
-    
+
+
+def _add_cors(resp):
+    """Allow browser (web page) to POST from another origin (e.g. seekandwatch.com)."""
+    resp.headers['Access-Control-Allow-Origin'] = '*'
+    resp.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+    resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-Webhook-Secret'
+    return resp
+
+
+@app.route('/api/seekandwatch/approved', methods=['POST', 'OPTIONS'])
+def webhook_approved():
+    """Receive approved requests from SeekAndWatch (instant). Called by cloud server or by your browser when you approve on the web."""
+    if request.method == 'OPTIONS':
+        return _add_cors(jsonify({'status': 'ok'})), 200
+    secret = (request.headers.get('X-Webhook-Secret') or '').strip()
+    settings = None
+    for s in Settings.query.filter(Settings.cloud_webhook_url.isnot(None)).all():
+        if (s.cloud_webhook_secret or '') == secret:
+            settings = s
+            break
+    if not settings:
+        return _add_cors(jsonify({'error': 'Unauthorized'})), 401
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+    except Exception:
+        return _add_cors(jsonify({'error': 'Invalid JSON'})), 400
+    requests_list = data.get('requests')
+    if not isinstance(requests_list, list):
+        return _add_cors(jsonify({'error': 'Missing or invalid requests array'})), 400
+    from cloud_worker import process_approved_from_web
+    synced = 0
+    for item in requests_list:
+        if isinstance(item, dict) and item.get('id'):
+            ok, _ = process_approved_from_web(settings, item)
+            if ok:
+                synced += 1
+    return _add_cors(jsonify({'status': 'ok', 'synced': synced})), 200
+
+
 # SeekAndWatch cloud routes
 
 @app.route('/requests')
 @login_required
 def requests_page():
-    # Show the Requests Management Page. Fetch from cloud on-demand (sync + poll) when cloud is enabled.
+    # Requests are approved/denied on the web app. This page only syncs approved items from cloud (no local pending queue).
     settings = current_user.settings
     if settings and settings.cloud_enabled and settings.cloud_api_key and getattr(settings, 'cloud_sync_owned_enabled', True):
         try:
             from cloud_worker import fetch_cloud_requests
             ok, msg = fetch_cloud_requests(settings)
-            if not ok and msg:
+            if ok and msg:
+                flash(msg, "success")
+            elif not ok and msg:
                 flash(msg, "warning")
         except Exception as e:
             flash(f"Could not fetch from cloud: {getattr(e, 'message', str(e))}", "warning")
 
-    # Pending Queue: only show requests that are still pending (not approved/denied)
-    pending_reqs = CloudRequest.query.filter(CloudRequest.status == 'pending').order_by(
-        CloudRequest.created_at.desc()
-    ).limit(100).all()
-
-    return render_template('requests.html', requests=pending_reqs, settings=settings)
+    return render_template('requests.html', settings=settings)
 
 
 @app.route('/requests/settings')
@@ -1941,14 +1994,52 @@ def save_cloud_settings():
     if new_key:
         settings.cloud_api_key = new_key.strip()
         settings.cloud_enabled = True  # Auto-enable if they save a key
-    
+
     settings.cloud_movie_handler = request.form.get('cloud_movie_handler')
     settings.cloud_tv_handler = request.form.get('cloud_tv_handler')
-    settings.cloud_auto_approve = 'cloud_auto_approve' in request.form
     settings.cloud_sync_owned_enabled = 'cloud_sync_owned_enabled' in request.form
 
+    webhook_url = (request.form.get('cloud_webhook_url') or '').strip()
+    webhook_secret = (request.form.get('cloud_webhook_secret') or '').strip()
+    settings.cloud_webhook_url = webhook_url or None
+    settings.cloud_webhook_secret = webhook_secret or None
+
+    raw_min = (request.form.get('cloud_poll_interval_min') or '').strip()
+    raw_max = (request.form.get('cloud_poll_interval_max') or '').strip()
+    poll_min = int(raw_min) if raw_min.isdigit() else None
+    poll_max = int(raw_max) if raw_max.isdigit() else None
+    if poll_min is not None:
+        poll_min = max(30, poll_min)
+    if poll_max is not None and poll_min is not None and poll_max < poll_min:
+        poll_max = poll_min
+    settings.cloud_poll_interval_min = poll_min
+    settings.cloud_poll_interval_max = poll_max
+
     db.session.commit()
-    flash("Cloud settings updated successfully", "success")
+
+    if settings.cloud_api_key and settings.cloud_enabled:
+        try:
+            r = requests.post(
+                f"{CLOUD_URL}/api/register_webhook.php",
+                headers={
+                    'X-Server-Key': settings.cloud_api_key,
+                    'Content-Type': 'application/json',
+                },
+                json={
+                    'webhook_url': webhook_url or '',
+                    'webhook_secret': webhook_secret or '',
+                },
+                timeout=CLOUD_REQUEST_TIMEOUT,
+            )
+            if r.status_code != 200:
+                flash("Cloud settings saved, but webhook registration failed (check API key).", "warning")
+            else:
+                flash("Cloud settings updated successfully", "success")
+        except Exception as e:
+            flash(f"Cloud settings saved, but could not register webhook: {getattr(e, 'message', str(e))}", "warning")
+    else:
+        flash("Cloud settings updated successfully", "success")
+
     return redirect(url_for('requests_settings_page'))
 
 @app.route('/approve_request/<int:req_id>', methods=['POST'])

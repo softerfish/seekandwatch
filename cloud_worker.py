@@ -6,13 +6,10 @@ from app import app, db
 from models import Settings, CloudRequest, AppRequest, DeletedCloudId
 
 # cloud processing uses these (defined in utils.py only; api.py has HTTP endpoints, not these helpers)
-from config import CLOUD_URL, CLOUD_REQUEST_TIMEOUT, SCHEDULER_USER_ID
+from config import CLOUD_URL, CLOUD_REQUEST_TIMEOUT, SCHEDULER_USER_ID, POLL_INTERVAL_MIN, POLL_INTERVAL_MAX
 from utils import send_to_radarr_sonarr, send_to_overseerr
 
-# CONFIGURATION
-# Base interval ranges (jitter between these so installs don't all hit at once)
-POLL_INTERVAL_MIN = 75
-POLL_INTERVAL_MAX = 120
+# CONFIGURATION (POLL_INTERVAL_MIN/MAX from config; override via SEEKANDWATCH_POLL_INTERVAL_MIN / SEEKANDWATCH_POLL_INTERVAL_MAX env)
 # After 429 we back off: next N cycles use interval * BACKOFF_MULT; then decay back to 1
 BACKOFF_MULT_AFTER_429 = 2.0
 BACKOFF_CYCLES = 3
@@ -26,7 +23,20 @@ recommended_poll_interval_sec = 0  # set from X-Poll-Interval when cloud suggest
 
 def get_poll_sleep_seconds():
     """Return how many seconds to sleep before next poll (jitter + backoff + cloud recommendation). Use from app or __main__."""
-    base = random.randint(POLL_INTERVAL_MIN, POLL_INTERVAL_MAX)
+    min_sec, max_sec = POLL_INTERVAL_MIN, POLL_INTERVAL_MAX
+    try:
+        with app.app_context():
+            s = Settings.query.filter_by(user_id=SCHEDULER_USER_ID).first() if SCHEDULER_USER_ID is not None else None
+            if s is None:
+                s = Settings.query.first()
+            if s and getattr(s, 'cloud_poll_interval_min', None) is not None and getattr(s, 'cloud_poll_interval_max', None) is not None:
+                mn, mx = s.cloud_poll_interval_min, s.cloud_poll_interval_max
+                if mn is not None and mx is not None and mn >= 30:
+                    min_sec = max(30, mn)
+                    max_sec = max(min_sec, mx)
+    except Exception:
+        pass
+    base = random.randint(min_sec, max_sec)
     if backoff_remaining > 0:
         base = min(BACKOFF_CAP_SEC, int(base * BACKOFF_MULT_AFTER_429))
     return max(base, recommended_poll_interval_sec)
@@ -111,6 +121,70 @@ def process_item(settings, req_db):
         db.session.commit()
         return (False, False)
 
+
+def process_approved_from_web(settings, item):
+    """
+    Process an item that was approved on the web app: add to Radarr/Sonarr/Overseerr,
+    then call mark_synced so the cloud stops returning it. item is a dict with id, title, media_type, tmdb_id, year, requested_by, notes.
+    Returns (success: bool, mark_synced_ok: bool).
+    """
+    cloud_id = str((item.get('id') or '')).strip()
+    title = item.get('title') or 'Request'
+    media_type = item.get('media_type') or 'movie'
+    tmdb_id = item.get('tmdb_id') or 0
+    handler_to_use = 'direct'
+    if media_type == 'movie':
+        handler_to_use = getattr(settings, 'cloud_movie_handler', None) or 'direct'
+    elif media_type == 'tv':
+        handler_to_use = getattr(settings, 'cloud_tv_handler', None) or 'direct'
+
+    success = False
+    try:
+        if handler_to_use == 'overseerr':
+            success, _ = send_to_overseerr(settings, media_type, tmdb_id)
+        else:
+            success, _ = send_to_radarr_sonarr(settings, media_type, tmdb_id)
+    except Exception as e:
+        print(f"Error processing approved item {title}: {e}")
+        return (False, False)
+
+    mark_synced_ok = False
+    if success:
+        print(f"SUCCESS: Added {title} (approved on web)")
+        if settings and getattr(settings, 'user_id', None):
+            requested_via = 'Overseerr' if handler_to_use == 'overseerr' else ('Radarr' if media_type == 'movie' else 'Sonarr')
+            try:
+                app_req = AppRequest(
+                    user_id=settings.user_id,
+                    tmdb_id=tmdb_id,
+                    media_type=media_type,
+                    title=title,
+                    requested_via=requested_via
+                )
+                db.session.add(app_req)
+                db.session.commit()
+            except Exception as e:
+                print(f"Warning: Could not add to Requested list: {e}")
+
+        if cloud_id:
+            try:
+                r = requests.post(
+                    f"{CLOUD_URL}/api/mark_synced.php",
+                    headers={
+                        'X-Server-Key': settings.cloud_api_key,
+                        'Content-Type': 'application/json',
+                    },
+                    json={'request_id': cloud_id},
+                    timeout=CLOUD_REQUEST_TIMEOUT
+                )
+                mark_synced_ok = (r.status_code == 200)
+                if not mark_synced_ok:
+                    print(f"Warning: mark_synced returned {r.status_code}: {r.text[:200]}")
+            except Exception as e:
+                print(f"Warning: Could not mark_synced: {e}")
+    return (success, mark_synced_ok)
+
+
 def sync_deletions(settings):
     """
     Checks the cloud for the 'Master List' of active requests.
@@ -188,45 +262,16 @@ def fetch_cloud_requests(settings):
         except ValueError:
             return (False, "Cloud returned invalid data. Try again.")
 
-        requests_list = []
-        if isinstance(data, list):
-            requests_list = data
-        elif isinstance(data, dict):
-            if data.get('error'):
-                return (False, data.get('error', "Cloud error."))
-            requests_list = data.get('pending_requests', [])
+        approved_list = data.get('approved_to_sync', []) if isinstance(data, dict) else []
+        synced_count = 0
+        for item in (approved_list or []):
+            ok, _ = process_approved_from_web(settings, item)
+            if ok:
+                synced_count += 1
 
-        new_count = 0
-        for r in (requests_list or []):
-            rid = r.get('id')
-            rid_str = str(rid) if rid is not None else None
-            if not rid_str:
-                continue
-            if CloudRequest.query.filter_by(cloud_id=rid_str).first():
-                continue
-            if DeletedCloudId.query.filter_by(cloud_id=rid_str).first():
-                continue
-
-            new_req = CloudRequest(
-                cloud_id=rid_str,
-                title=r.get('title', ''),
-                media_type=r.get('media_type', 'movie'),
-                tmdb_id=r.get('tmdb_id') or 0,
-                requested_by=r.get('requested_by', 'Unknown'),
-                year=r.get('year'),
-                status='pending'
-            )
-            db.session.add(new_req)
-            new_count += 1
-            db.session.commit()
-
-            if getattr(settings, 'cloud_auto_approve', False):
-                process_item(settings, new_req)
-
-        if new_count > 0:
-            db.session.commit()
-            return (True, f"{new_count} new request(s) added.")
-        return (True, "No new requests.")
+        if synced_count > 0:
+            return (True, f"Synced {synced_count} approved request(s).")
+        return (True, "No approved items to sync.")
     except requests.exceptions.Timeout:
         return (False, "Cloud request timed out. Try again.")
     except requests.exceptions.ConnectionError:
@@ -312,54 +357,10 @@ def process_cloud_queue():
                 print("Cloud Error: Non-JSON response received (response body not logged).")
                 return
 
-            # --- Handle poll response: object { pending_requests } or legacy array (library sync is done via Plex API on cloud)
-            requests_list = []
-            if isinstance(data, list):
-                requests_list = data
-            elif isinstance(data, dict):
-                if 'error' in data:
-                    print(f"Cloud Error: {data['error']}")
-                    return
-                requests_list = data.get('pending_requests', [])
-
-            # 3. Process the list of requests
-            new_count = 0
-            for r in (requests_list or []):
-                # Normalize cloud id to string so we match our DB (cloud may send int or string in JSON)
-                rid = r.get('id')
-                rid_str = str(rid) if rid is not None else None
-                if not rid_str:
-                    continue
-                exists = CloudRequest.query.filter_by(cloud_id=rid_str).first()
-                if exists:
-                    continue
-                # Never re-import a request we deleted locally (in case cloud still returns it)
-                if DeletedCloudId.query.filter_by(cloud_id=rid_str).first():
-                    continue
-
-                # Create the local record
-                new_req = CloudRequest(
-                    cloud_id=rid_str,
-                    title=r['title'],
-                    media_type=r['media_type'],
-                    tmdb_id=r['tmdb_id'],
-                    requested_by=r.get('requested_by', 'Unknown'),
-                    year=r.get('year'),
-                    status='pending'
-                )
-                db.session.add(new_req)
-                new_count += 1
-                print(f"Imported New Request: {new_req.title} ({new_req.media_type})")
-
-                # 4. Check Auto-Approve Setting
-                db.session.commit()
-                
-                if settings.cloud_auto_approve:
-                    print(f"Auto-Approving {new_req.title}...")
-                    process_item(settings, new_req)
-
-            if new_count > 0:
-                db.session.commit()
+            # --- Handle poll: approved_to_sync = items owner approved on web; add to Radarr/Sonarr and mark_synced
+            approved_list = data.get('approved_to_sync', []) if isinstance(data, dict) else []
+            for item in (approved_list or []):
+                process_approved_from_web(settings, item)
 
         except requests.exceptions.Timeout:
             print(f"Cloud poll timed out after {CLOUD_REQUEST_TIMEOUT}s. Next cycle in {get_poll_sleep_seconds()}s.")
