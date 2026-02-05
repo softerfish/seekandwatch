@@ -1,6 +1,6 @@
 # SeekAndWatch
 
-![Version](https://img.shields.io/badge/version-1.5.4-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) (submitted) ![License](https://img.shields.io/badge/License-MIT-green.svg)
+![Version](https://img.shields.io/badge/version-1.5.4-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
 **Star begging:** If this app saves you from endless scrolling, a star for the project helps a lot.
 
@@ -106,7 +106,7 @@ Cloud is currently **in beta**. To request access: [r/SeekAndWatch](https://www.
 
 Full install and troubleshooting: [Wiki  - Install & Troubleshooting](https://github.com/softerfish/seekandwatch/wiki).
 
-### Unraid (waiting on approval)
+### Unraid (now available as of 1.5.4)
 
 1. Open **Apps** in Unraid, search for **SeekAndWatch**, click **Install**.
 2. If you install via Unraid App Store, you must update only through the App Store (in-app one-click updater is disabled for that install).
@@ -145,14 +145,17 @@ docker compose up -d
 
 ## Changelog
 
+App now available in the Unraid App Store
+
 **SeekAndWatch Cloud (beta)**
 v1.5.4
 - notes when making a request
 - better logging
 - rewrite of syncing based on user feedback
+- added a dashboard on the server owners page to see the current local app version as well as the current release to make sure their up to date
 
 **SeekAndWatch Local**
-- rewrite of syncing based on user feedback
+- fixed small error not updating requested items through cloud app
 
 <details>
   <summary><b>Past Changelog</b></summary>

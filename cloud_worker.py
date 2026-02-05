@@ -79,24 +79,37 @@ def process_item(settings, req_db):
             except Exception as e:
                 print(f"Warning: Could not add to Requested list: {e}")
 
-        # Tell Cloud it's done so it doesn't show as pending there anymore
-        try:
-            requests.post(
-                f"{CLOUD_URL}/api/acknowledge.php",
-                headers={'X-Server-Key': settings.cloud_api_key},
-                json={'request_id': req_db.cloud_id, 'status': 'completed'},
-                timeout=CLOUD_REQUEST_TIMEOUT
-            )
-        except requests.exceptions.Timeout:
-            print(f"Warning: Cloud acknowledge timed out after {CLOUD_REQUEST_TIMEOUT}s.")
-        except Exception as e:
-            print(f"Warning: Could not acknowledge to cloud (Network issue?): {e}")
+        # Tell Cloud it's done so it doesn't show as pending there anymore (only if we have a cloud_id)
+        cloud_ack_ok = True
+        if req_db.cloud_id:
+            try:
+                r = requests.post(
+                    f"{CLOUD_URL}/api/acknowledge.php",
+                    headers={
+                        'X-Server-Key': settings.cloud_api_key,
+                        'Content-Type': 'application/json',
+                    },
+                    json={'request_id': str(req_db.cloud_id).strip(), 'status': 'completed'},
+                    timeout=CLOUD_REQUEST_TIMEOUT
+                )
+                if r.status_code != 200:
+                    cloud_ack_ok = False
+                    print(f"Warning: Cloud acknowledge (approve) returned {r.status_code}: {r.text[:200]}")
+            except requests.exceptions.Timeout:
+                cloud_ack_ok = False
+                print(f"Warning: Cloud acknowledge timed out after {CLOUD_REQUEST_TIMEOUT}s.")
+            except Exception as e:
+                cloud_ack_ok = False
+                print(f"Warning: Could not acknowledge to cloud (Network issue?): {e}")
+        else:
+            cloud_ack_ok = False
+        # Save changes to local DB
+        db.session.commit()
+        return (True, cloud_ack_ok)
     else:
         print(f"FAILED: Could not process {req_db.title} - {msg}")
-    
-    # Save changes to local DB
-    db.session.commit()
-    return success
+        db.session.commit()
+        return (False, False)
 
 def sync_deletions(settings):
     """
@@ -137,6 +150,90 @@ def sync_deletions(settings):
     except Exception as e:
         print(f"Sync Warning: {e}")
         return None
+
+def fetch_cloud_requests(settings):
+    """
+    On-demand sync + poll: fetch active list from cloud, remove local requests no longer on cloud,
+    then poll for new pending requests and merge into local DB. Call from requests_page when user
+    opens the Requests page. Returns (success: bool, message: str).
+    """
+    if not settings or not settings.cloud_enabled or not settings.cloud_api_key:
+        return (False, "Cloud not configured. Add your API key in Requests Settings.")
+    if not getattr(settings, 'cloud_sync_owned_enabled', True):
+        return (False, "Cloud sync is disabled in Requests Settings.")
+
+    try:
+        # 1. Sync deletions: remove local requests that are no longer on the cloud
+        sync_deletions(settings)
+
+        # 2. Poll for new pending requests (no If-Modified-Since so we get fresh data)
+        headers = {'X-Server-Key': settings.cloud_api_key}
+        response = requests.get(
+            f"{CLOUD_URL}/api/poll.php",
+            headers=headers,
+            timeout=CLOUD_REQUEST_TIMEOUT
+        )
+
+        if response.status_code == 304:
+            return (True, "No new requests.")
+        if response.status_code == 429:
+            return (False, "Rate limited. Try again in a minute.")
+        if response.status_code == 401:
+            return (False, "Invalid API key. Check Requests Settings.")
+        if response.status_code != 200:
+            return (False, f"Cloud returned {response.status_code}. Try again.")
+
+        try:
+            data = response.json()
+        except ValueError:
+            return (False, "Cloud returned invalid data. Try again.")
+
+        requests_list = []
+        if isinstance(data, list):
+            requests_list = data
+        elif isinstance(data, dict):
+            if data.get('error'):
+                return (False, data.get('error', "Cloud error."))
+            requests_list = data.get('pending_requests', [])
+
+        new_count = 0
+        for r in (requests_list or []):
+            rid = r.get('id')
+            rid_str = str(rid) if rid is not None else None
+            if not rid_str:
+                continue
+            if CloudRequest.query.filter_by(cloud_id=rid_str).first():
+                continue
+            if DeletedCloudId.query.filter_by(cloud_id=rid_str).first():
+                continue
+
+            new_req = CloudRequest(
+                cloud_id=rid_str,
+                title=r.get('title', ''),
+                media_type=r.get('media_type', 'movie'),
+                tmdb_id=r.get('tmdb_id') or 0,
+                requested_by=r.get('requested_by', 'Unknown'),
+                year=r.get('year'),
+                status='pending'
+            )
+            db.session.add(new_req)
+            new_count += 1
+            db.session.commit()
+
+            if getattr(settings, 'cloud_auto_approve', False):
+                process_item(settings, new_req)
+
+        if new_count > 0:
+            db.session.commit()
+            return (True, f"{new_count} new request(s) added.")
+        return (True, "No new requests.")
+    except requests.exceptions.Timeout:
+        return (False, "Cloud request timed out. Try again.")
+    except requests.exceptions.ConnectionError:
+        return (False, "Could not reach the cloud. Check your connection.")
+    except Exception as e:
+        return (False, f"Error: {getattr(e, 'message', str(e))}")
+
 
 def process_cloud_queue():
     global last_modified_header, backoff_remaining, recommended_poll_interval_sec

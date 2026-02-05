@@ -7,7 +7,7 @@ import re
 import sys
 
 import config
-from config import CONFIG_DIR, DATABASE_URI, SECRET_KEY_FILE
+from config import CONFIG_DIR, DATABASE_URI, SECRET_KEY_FILE, CLOUD_URL, CLOUD_REQUEST_TIMEOUT
 import requests
 import random
 import json
@@ -47,27 +47,13 @@ from sqlalchemy.exc import OperationalError
 
 # basic app setup stuff
 
-VERSION = "1.5.3"
+VERSION = "1.5.4"
 
 UPDATE_CACHE = {
     'version': None,
     'last_check': 0
 }
 
-def background_worker_launcher():
-    """Starts the cloud worker loop in a background thread safely. Uses jitter and backoff to avoid hammering the cloud."""
-    # Local import to prevent Circular Import Crash
-    from cloud_worker import process_cloud_queue, get_poll_sleep_seconds
-
-    print("--- Cloud Worker Thread Started ---", flush=True)
-    while True:
-        try:
-            process_cloud_queue()
-        except Exception as e:
-            print(f"Cloud Worker Error: {e}", flush=True)
-        sleep_sec = get_poll_sleep_seconds()
-        time.sleep(sleep_sec)
-        
 def get_persistent_key():
     """Gets the secret key from env or file, or makes a new one if needed."""
     env_key = os.environ.get('SECRET_KEY')
@@ -393,7 +379,7 @@ def update_github_stats():
 # Start background thread.
 if not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
     threading.Thread(target=update_github_stats, daemon=True).start()
-    threading.Thread(target=background_worker_launcher, daemon=True).start()
+    # Cloud requests are fetched on-demand when user opens Requests page (no background poll thread)
 
 # Inject into all templates.
 @app.context_processor
@@ -1921,14 +1907,22 @@ def health():
 @app.route('/requests')
 @login_required
 def requests_page():
-    # Show the Requests Management Page
+    # Show the Requests Management Page. Fetch from cloud on-demand (sync + poll) when cloud is enabled.
     settings = current_user.settings
-    
+    if settings and settings.cloud_enabled and settings.cloud_api_key and getattr(settings, 'cloud_sync_owned_enabled', True):
+        try:
+            from cloud_worker import fetch_cloud_requests
+            ok, msg = fetch_cloud_requests(settings)
+            if not ok and msg:
+                flash(msg, "warning")
+        except Exception as e:
+            flash(f"Could not fetch from cloud: {getattr(e, 'message', str(e))}", "warning")
+
     # Pending Queue: only show requests that are still pending (not approved/denied)
     pending_reqs = CloudRequest.query.filter(CloudRequest.status == 'pending').order_by(
         CloudRequest.created_at.desc()
     ).limit(100).all()
-    
+
     return render_template('requests.html', requests=pending_reqs, settings=settings)
 
 
@@ -1961,19 +1955,21 @@ def save_cloud_settings():
 @login_required
 def approve_request(req_id):
     # --- IMPORTANT: Local Import to prevent crash ---
-    from cloud_worker import process_item 
-    
+    from cloud_worker import process_item
+
     req = CloudRequest.query.get_or_404(req_id)
     settings = current_user.settings
-    
-    # Execute the download logic (sends to Radarr/Sonarr/Overseerr)
-    success = process_item(settings, req)
-    
+
+    # Execute the download logic (sends to Radarr/Sonarr/Overseerr); returns (success, cloud_ack_ok)
+    success, cloud_ack_ok = process_item(settings, req)
+
     if success:
         flash(f"Approved and sent: {req.title}", "success")
+        if not cloud_ack_ok:
+            flash("Could not update SeekAndWatch Cloud (check API key in Requests Settings). It may still show as Pending on the web.", "warning")
     else:
         flash(f"Failed to send {req.title}. Check system logs.", "error")
-            
+
     return redirect(url_for('requests_page'))
 
 @app.route('/deny_request/<int:req_id>', methods=['POST'])
@@ -1984,20 +1980,31 @@ def deny_request(req_id):
     db.session.commit()
 
     # Tell the cloud so friends see "Denied" and it no longer shows as pending
+    deny_cloud_ok = True
     if req.cloud_id:
         try:
             settings = current_user.settings
             if settings and settings.cloud_api_key:
-                requests.post(
-                    "https://seekandwatch.com/api/acknowledge.php",
-                    headers={'X-Server-Key': settings.cloud_api_key},
-                    json={'request_id': req.cloud_id, 'status': 'failed'},
-                    timeout=5
+                r = requests.post(
+                    f"{CLOUD_URL}/api/acknowledge.php",
+                    headers={
+                        'X-Server-Key': settings.cloud_api_key,
+                        'Content-Type': 'application/json',
+                    },
+                    json={'request_id': str(req.cloud_id).strip(), 'status': 'failed'},
+                    timeout=CLOUD_REQUEST_TIMEOUT
                 )
+                if r.status_code != 200:
+                    deny_cloud_ok = False
+                    print(f"Warning: Cloud acknowledge (deny) returned {r.status_code}: {r.text[:200]}")
         except Exception as e:
+            deny_cloud_ok = False
             print(f"Warning: Could not acknowledge deny to cloud: {e}")
 
-    flash(f"Denied request: {req.title}", "warning")
+    if not deny_cloud_ok:
+        flash(f"Denied locally but could not update SeekAndWatch Cloud (check API key in Requests Settings). It may still show as Pending on the web.", "warning")
+    else:
+        flash(f"Denied request: {req.title}", "warning")
     return redirect(url_for('requests_page'))
     
 @app.route('/delete_request/<int:req_id>', methods=['POST'])
@@ -2011,27 +2018,45 @@ def delete_request(req_id):
     
     # --- 1. TELL CLOUD TO DELETE ---
     # If this request came from the cloud, we must kill it at the source
-    if req.cloud_id:
+    cloud_id_val = (str(req.cloud_id).strip() if req.cloud_id else None) or None
+    cloud_delete_ok = True
+    cloud_delete_404_id = None
+    cloud_delete_error_detail = None  # e.g. "415: Content-Type must be application/json"
+    if cloud_id_val:
         try:
             settings = current_user.settings
             if settings and settings.cloud_api_key:
-                # We send a "Delete Order" to the cloud
-                requests.post(
-                    "https://seekandwatch.com/api/delete.php",
-                    headers={'X-Server-Key': settings.cloud_api_key},
-                    json={'cloud_id': req.cloud_id},
-                    timeout=5
+                r = requests.post(
+                    f"{CLOUD_URL}/api/delete.php",
+                    headers={
+                        'X-Server-Key': settings.cloud_api_key,
+                        'Content-Type': 'application/json',
+                    },
+                    json={'cloud_id': cloud_id_val},
+                    timeout=CLOUD_REQUEST_TIMEOUT
                 )
+                if r.status_code != 200:
+                    cloud_delete_ok = False
+                    print(f"Warning: Cloud delete returned {r.status_code}: {r.text[:200]}")
+                    try:
+                        err_body = r.json()
+                        err_msg = err_body.get('error', r.text[:80]) if isinstance(err_body, dict) else (r.text[:80] if r.text else '')
+                        if r.status_code == 404 and err_body.get('cloud_id'):
+                            cloud_delete_404_id = err_body.get('cloud_id')
+                    except Exception:
+                        err_msg = r.text[:80] if r.text else ''
+                    cloud_delete_error_detail = f"{r.status_code}: {err_msg}" if err_msg else str(r.status_code)
         except Exception as e:
-            # If cloud fails (internet down?), we just log it and proceed to delete locally
+            cloud_delete_ok = False
+            cloud_delete_error_detail = str(e)
             print(f"Warning: Could not delete from cloud: {e}")
     # -------------------------------
 
     # --- 2. RECORD DELETION SO WE DON'T RE-IMPORT FROM CLOUD ---
-    if req.cloud_id:
+    if cloud_id_val:
         try:
-            if not DeletedCloudId.query.filter_by(cloud_id=req.cloud_id).first():
-                db.session.add(DeletedCloudId(cloud_id=req.cloud_id))
+            if not DeletedCloudId.query.filter_by(cloud_id=cloud_id_val).first():
+                db.session.add(DeletedCloudId(cloud_id=cloud_id_val))
                 db.session.flush()
         except Exception:
             pass  # table may not exist yet on old installs
@@ -2039,7 +2064,15 @@ def delete_request(req_id):
     try:
         db.session.delete(req)
         db.session.commit()
-        flash(f"Permanently deleted: {title}", "success")
+        if not cloud_delete_ok:
+            if cloud_delete_404_id:
+                flash(f"Cloud could not find that request (id sent: {cloud_delete_404_id}). Compare with requests.id in the database.", "warning")
+            elif cloud_delete_error_detail:
+                flash(f"Deleted locally but cloud said: {cloud_delete_error_detail}. Fix that (e.g. API key, Content-Type) then try again.", "warning")
+            else:
+                flash(f"Deleted locally but could not remove from SeekAndWatch Cloud (check API key in Requests Settings or try again). It may still show as Pending on the web.", "warning")
+        else:
+            flash(f"Permanently deleted: {title}", "success")
     except Exception as e:
         db.session.rollback()
         flash(f"Error deleting request: {e}", "error")
