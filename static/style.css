@@ -612,9 +612,9 @@ ul { list-style: none; padding: 0; margin: 0; }
 
 /* buttons */
 .btn {
-    padding: 12px 20px; border-radius: 8px; border: none;
-    font-weight: bold; cursor: pointer; transition: opacity 0.2s;
-    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 6px 14px; border-radius: 8px; border: none;
+    font-weight: bold; font-size: 0.875rem; cursor: pointer; transition: opacity 0.2s;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
 }
 .btn:hover { opacity: 0.9; }
 .btn:disabled {
@@ -1055,8 +1055,23 @@ input[type="checkbox"]:checked:hover {
 /* scan controls */
 .scan-btn-group {
     display: flex;
-    gap: 15px;
+    gap: 10px;
     margin-bottom: 15px;
+    flex-wrap: wrap;
+}
+.scan-btn-group .btn-scan {
+    flex: 1;
+    min-width: 0;
+}
+.scan-btn-group-lucky {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+}
+.scan-btn-group-lucky .btn-lucky {
+    width: 100%;
+    max-width: none;
+    margin: 0;
 }
 .btn-scan {
     flex: 1;
@@ -1964,13 +1979,13 @@ input[type="checkbox"]:checked:hover {
 }
 /* header button styles */
 .btn-header {
-    padding: 8px 15px;
-    font-size: 0.9em;
+    padding: 6px 12px;
+    font-size: 0.85em;
     text-decoration: none;
     display: inline-block;
 }
 .btn-header-save {
-    padding: 10px 20px;
+    padding: 6px 14px;
     font-weight: bold;
 }
 
@@ -2249,11 +2264,11 @@ input[type="checkbox"]:checked:hover {
 }
 .btn-builder,
 .btn-import {
-    padding: 12px 25px;
+    padding: 6px 16px;
     font-weight: bold;
     border: none;
     border-radius: 30px;
-    font-size: 1em;
+    font-size: 0.875rem;
     cursor: pointer;
     text-decoration: none;
     display: inline-block;
