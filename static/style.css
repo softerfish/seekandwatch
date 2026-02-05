@@ -15,6 +15,9 @@
     --warning-bg: rgba(0, 204, 102, 0.1);
     --warning-border: #00CC66;
     --text-muted: #AAAAAA;
+    /* consistent control/button row height (tabs, inputs, small buttons) */
+    --control-height: 32px;
+    --control-radius: 6px;
 }
 
 [data-theme="light"] {
@@ -348,7 +351,7 @@ ul { list-style: none; padding: 0; margin: 0; }
 .header-info-group {
     display: flex;
     align-items: center;
-    gap: 20px;
+    gap: 16px;
     flex-wrap: wrap;
     justify-content: flex-end;
 }
@@ -384,29 +387,59 @@ ul { list-style: none; padding: 0; margin: 0; }
     white-space: nowrap;
 }
 
-/* Friends: Huntarr – pill style, extra spacing left of version info */
-.header-link-friends {
-    margin-right: 1.25rem;
-    padding: 6px 14px;
+/* Partner Projects: Huntarr – one pill container; label muted and not clickable; link in accent */
+.header-link-friends-wrap {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
     border-radius: 999px;
-    background: linear-gradient(135deg, rgba(0, 204, 102, 0.18) 0%, rgba(0, 180, 90, 0.12) 100%);
-    border: 1px solid rgba(0, 204, 102, 0.35);
+    background: rgba(26, 26, 26, 0.95);
+    border: 1px solid rgba(0, 204, 102, 0.4);
     font-weight: 600;
+    font-size: 0.76em;
     letter-spacing: 0.02em;
-    transition: background 0.25s ease, border-color 0.25s ease, transform 0.2s ease, box-shadow 0.25s ease;
+    transition: border-color 0.25s ease, box-shadow 0.25s ease;
 }
-.header-link-friends i {
-    font-size: 0.75rem;
+.header-link-friends-wrap.header-link-wiki-wrap {
+    text-decoration: none;
+    color: var(--accent-color);
+}
+.header-link-friends-wrap.header-link-wiki-wrap:hover {
+    color: #00e673;
+    border-color: rgba(0, 204, 102, 0.7);
+}
+.header-link-friends-wrap.header-link-wiki-wrap .header-partner-label {
+    margin-right: 0.35em;
+}
+.header-link-friends-wrap.header-link-wiki-wrap i {
+    font-size: 0.72rem;
     opacity: 0.9;
 }
-.header-link-friends:hover {
-    background: linear-gradient(135deg, rgba(0, 204, 102, 0.28) 0%, rgba(0, 180, 90, 0.2) 100%);
-    border-color: rgba(0, 204, 102, 0.55);
-    box-shadow: 0 0 14px rgba(0, 204, 102, 0.2);
-    transform: translateY(-1px);
+.header-link-friends-wrap .header-partner-label {
+    color: var(--text-muted);
+    cursor: default;
+    pointer-events: none;
+    margin-right: 0.35em;
 }
-.header-link-friends:active {
-    transform: translateY(0);
+.header-link-friends-wrap .header-link-friends {
+    color: var(--accent-color);
+    padding: 0;
+    margin: 0;
+    background: none;
+    border: none;
+    transition: color 0.2s ease, filter 0.2s ease;
+}
+.header-link-friends-wrap .header-link-friends:hover {
+    color: #00e673;
+    filter: brightness(1.15);
+}
+.header-link-friends-wrap .header-link-friends i {
+    font-size: 0.72rem;
+    opacity: 0.9;
+    margin-right: 0.25em;
+}
+.header-link-friends-wrap .header-link-friends:active {
+    color: var(--accent-color);
 }
 
 .version-update-link {
@@ -702,16 +735,16 @@ input[type="checkbox"]:checked:hover {
 
 /* compact schedule time row */
 .schedule-time-compact {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     gap: 10px;
-    margin: 15px auto 25px auto;
-    padding: 8px 12px;
+    margin: 15px 0 25px 0;
+    padding: 8px 14px;
     background: rgba(0, 0, 0, 0.3);
     border: 1px solid var(--border-color);
     border-radius: 6px;
-    max-width: 500px;
-    flex-wrap: wrap;
+    width: fit-content;
+    flex-wrap: nowrap;
 }
 
 .schedule-label {
@@ -722,10 +755,15 @@ input[type="checkbox"]:checked:hover {
 }
 
 .schedule-time-input {
-    max-width: 110px !important;
-    padding: 6px 8px !important;
-    font-size: 0.9em !important;
+    max-width: 120px !important;
+    min-width: 100px !important;
+    padding: 6px 10px !important;
+    font-size: 1rem !important;
+    font-weight: 500 !important;
+    color: #fff !important;
+    background-color: #1a1a1a !important;
     flex-shrink: 0;
+    -webkit-text-fill-color: #fff !important;
 }
 
 .schedule-save-btn {
@@ -925,6 +963,50 @@ input[type="checkbox"]:checked:hover {
     gap: 7px;
 }
 
+/* Tautulli Top 5: collapsible dropdown, remembers open/closed */
+.tautulli-top5-dropdown {
+    text-align: center;
+}
+.tautulli-top5-trigger {
+    font-size: 1.05em !important;
+    font-weight: 700;
+    color: var(--text-color);
+    margin-bottom: 14px !important;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 8px 14px;
+    background: rgba(0,0,0,0.2);
+    border: 1px solid #333;
+    border-radius: 8px;
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+}
+.tautulli-top5-trigger::-webkit-details-marker { display: none; }
+.tautulli-top5-trigger::before {
+    content: "▾";
+    font-size: 0.9em;
+    opacity: 0.8;
+    margin-right: 6px;
+}
+.tautulli-top5-trigger::after {
+    content: "▾";
+    font-size: 0.9em;
+    opacity: 0.8;
+    margin-left: 6px;
+}
+.tautulli-top5-dropdown[open] .tautulli-top5-trigger::before,
+.tautulli-top5-dropdown[open] .tautulli-top5-trigger::after {
+    transform: rotate(180deg);
+}
+.tautulli-top5-trigger:hover {
+    background: rgba(0,0,0,0.35);
+    border-color: #444;
+    color: #ddd;
+}
+
 /* warning banners */
 .warning-banner {
     max-width: 800px;
@@ -955,7 +1037,7 @@ input[type="checkbox"]:checked:hover {
 /* discovery card */
 .discovery-card {
     max-width: 700px;
-    margin: 0 auto 30px auto;
+    margin: 0 auto 15px auto;
     border-top: 4px solid var(--accent-color);
     text-align: left;
 }
@@ -1011,13 +1093,24 @@ input[type="checkbox"]:checked:hover {
 
 /* inputs within discovery card */
 .history-limit-input {
-    width: 70px;
-    padding: 10px;
-    border-radius: 8px;
+    width: 21px;
+    padding: 2px 3px;
+    font-size: 0.75rem;
+    border-radius: 4px;
     background: #111;
     border: 1px solid #444;
     color: white;
     text-align: center;
+}
+.history-tip-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    text-align: center;
+}
+.history-tip-wrap p {
+    margin: 0;
 }
 .critic-label {
     cursor: pointer;
@@ -1133,6 +1226,91 @@ input[type="checkbox"]:checked:hover {
     width: 16px;
     height: 16px;
     accent-color: #e74c3c;
+}
+
+/* Discovery options: dropdown like Exclude Libraries (dashboard) */
+.discovery-exclude-row {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 12px;
+}
+.discovery-options-section {
+    text-align: center;
+}
+.discovery-options-dropdown {
+    display: inline-block;
+    position: relative;
+    min-width: 280px;
+}
+.discovery-options-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: rgba(0,0,0,0.2);
+    border: 1px solid #333;
+    border-radius: 8px;
+    color: #aaa;
+    font-size: 0.95em;
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+}
+.discovery-options-trigger::-webkit-details-marker { display: none; }
+.discovery-options-trigger::after {
+    content: "▾";
+    font-size: 0.85em;
+    opacity: 0.8;
+}
+.discovery-options-dropdown[open] .discovery-options-trigger::after {
+    transform: rotate(180deg);
+}
+.discovery-options-trigger:hover {
+    background: rgba(0,0,0,0.35);
+    border-color: #444;
+    color: #ddd;
+}
+.discovery-options-panel {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    top: calc(100% + 6px);
+    min-width: 240px;
+    padding: 8px;
+    background: #222;
+    border: 1px solid #333;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    z-index: 100;
+    display: grid;
+    gap: 4px;
+}
+.discovery-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9em;
+    margin: 0;
+}
+.discovery-option:hover {
+    background: #333;
+}
+.discovery-option input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+}
+.discovery-option-critic { color: #ff6347; }
+.discovery-option-critic input[type="checkbox"] { accent-color: #ff6347; }
+.discovery-option-future { color: #3498db; }
+.discovery-option-future input[type="checkbox"] { accent-color: #3498db; }
+.discovery-option-obscure { color: #9b59b6; }
+.discovery-option-obscure input[type="checkbox"] { accent-color: #9b59b6; }
     flex-shrink: 0;
 }
 .exclude-libs-option span {
@@ -1177,24 +1355,32 @@ input[type="checkbox"]:checked:hover {
     margin-bottom: 14px;
 }
 .trending-tabs {
-    display: flex;
+    display: inline-flex;
     gap: 5px;
     background: var(--input-bg);
-    padding: 4px;
-    border-radius: 8px;
+    padding: 0;
+    min-height: var(--control-height);
+    align-items: stretch;
+    border-radius: var(--control-radius);
     border: 1px solid var(--border-color);
+    box-sizing: border-box;
 }
 .t-tab {
     background: transparent;
     border: none;
     color: #AAAAAA;
-    padding: 6px 15px;
+    padding: 0 15px;
+    min-height: var(--control-height);
+    box-sizing: border-box;
     cursor: pointer;
     font-weight: bold;
-    border-radius: 6px;
+    border-radius: var(--control-radius);
     transition: 0.2s;
     font-size: 0.85em;
     text-transform: uppercase;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 .t-tab:hover {
     color: var(--text-color);
@@ -1258,13 +1444,16 @@ input[type="checkbox"]:checked:hover {
     background: transparent;
     border: 1px solid var(--accent-color);
     color: var(--accent-color);
-    padding: 6px 15px;
-    border-radius: 20px;
+    padding: 0 15px;
+    min-height: var(--control-height);
+    box-sizing: border-box;
+    border-radius: var(--control-radius);
     font-weight: bold;
     cursor: pointer;
     font-size: 0.85em;
-    display: flex;
+    display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 6px;
     transition: 0.2s;
 }
@@ -2220,16 +2409,25 @@ input[type="checkbox"]:checked:hover {
 }
 .sync-row {
     display: flex;
-    gap: 10px;
+    align-items: center;
+    gap: 8px;
     margin-top: 10px;
+    flex-wrap: nowrap;
 }
 .btn-preview {
-    padding: 12px;
+    padding: 6px 10px;
+    min-width: 36px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     background: #444;
     color: white;
     border: 1px solid #555;
     border-radius: 5px;
     cursor: pointer;
+    font-size: 0.9em;
+    flex-shrink: 0;
 }
 /* delete buttons on collection cards */
 .btn-delete,
@@ -2241,25 +2439,34 @@ input[type="checkbox"]:checked:hover {
     border-radius: 5px;
     cursor: pointer;
     font-size: 0.9em;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 .btn-delete:hover,
 .btn-delete-inline:hover {
     background: #c0392b;
     color: white;
 }
-.btn-delete-inline {
-    padding: 10px 12px;
-}
 
 .btn-sync {
     flex: 1;
-    padding: 12px;
+    min-width: 0;
+    padding: 6px 12px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     background: #333;
     color: white;
     border: 1px solid #555;
     transition: 0.2s;
     cursor: pointer;
     border-radius: 5px;
+    font-size: 0.9em;
+    white-space: nowrap;
 }
 .btn-synced-disabled {
     width: 100%;
@@ -3272,6 +3479,39 @@ details.help-box ol {
     color: #000000;
 }
 
+/* Back to top (results page) */
+.back-to-top-btn {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.85);
+    border: 1px solid var(--accent-color);
+    color: var(--accent-color);
+    font-size: 1.25rem;
+    cursor: pointer;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s ease, visibility 0.2s ease, transform 0.2s ease;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    padding: 0;
+}
+.back-to-top-btn.back-to-top-visible {
+    opacity: 1;
+    visibility: visible;
+}
+.back-to-top-btn:hover {
+    background: var(--accent-color);
+    color: #000;
+    transform: translateY(-2px);
+}
+
 /* view toggle (grid/list) */
 /* =========================================
    13. review & selection page
@@ -3599,6 +3839,17 @@ details.help-box ol {
 .setting-card.border-blue {
     border-left: 4px solid #2980b9;
 }
+
+/* Unified count/stat badges on settings (same color as accent) */
+.settings-count-badge {
+    font-size: 0.9em;
+    padding: 5px 10px;
+    border-radius: 4px;
+    background: rgba(0, 204, 102, 0.2);
+    color: var(--accent-color);
+    border: 1px solid rgba(0, 204, 102, 0.4);
+}
+.settings-count-badge strong { color: inherit; }
 
 /* password toggle wrapper */
 .password-wrapper {
@@ -4454,15 +4705,19 @@ details.help-box ol {
     padding: 6px 10px;
 }
 
-/* trending days input */
+/* trending days input (matches t-tab / btn-find-similar height and radius) */
 .trending-days-input {
-    width: 60px;
-    padding: 4px 8px;
+    width: 60px !important;
+    height: var(--control-height) !important;
+    min-height: var(--control-height) !important;
+    padding: 0 8px !important;
+    box-sizing: border-box;
     border: 1px solid var(--border-color);
-    border-radius: 4px;
+    border-radius: var(--control-radius);
     background: var(--card-bg);
     color: var(--text-color);
-    font-size: 0.9em;
+    font-size: 0.85em;
+    line-height: 1;
 }
 
 /* request modal stuff */
