@@ -30,7 +30,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFProtect, generate_csrf
 from plexapi.server import PlexServer
-from models import db, Blocklist, CollectionSchedule, TmdbAlias, SystemLog, Settings, User, TmdbKeywordCache, TmdbRuntimeCache, RadarrSonarrCache, RecoveryCode, CloudRequest
+from models import db, Blocklist, CollectionSchedule, TmdbAlias, SystemLog, Settings, User, TmdbKeywordCache, TmdbRuntimeCache, RadarrSonarrCache, RecoveryCode, CloudRequest, DeletedCloudId
 from utils import (normalize_title, is_duplicate, is_owned_item, fetch_omdb_ratings, send_overseerr_request, 
                    run_collection_logic, create_backup, list_backups, restore_backup, 
                    prune_backups, BACKUP_DIR, sync_remote_aliases, get_tmdb_aliases, 
@@ -1091,6 +1091,11 @@ def generate():
     today = datetime.datetime.now().strftime('%Y-%m-%d')
 
     def fetch_seed_results(tmdb_id):
+        # Thread workers need Flask app context for write_log and any DB-backed cache
+        with app.app_context():
+            return _fetch_seed_results_impl(tmdb_id)
+
+    def _fetch_seed_results_impl(tmdb_id):
         # keep cache key simple - we'll shuffle results after combining all seeds
         cache_key = f"{media_type}:{tmdb_id}:{'future' if future_mode else 'recs'}:{today}"
         cached = get_tmdb_rec_cache(cache_key)
@@ -2022,7 +2027,15 @@ def delete_request(req_id):
             print(f"Warning: Could not delete from cloud: {e}")
     # -------------------------------
 
-    # --- 2. DELETE LOCALLY ---
+    # --- 2. RECORD DELETION SO WE DON'T RE-IMPORT FROM CLOUD ---
+    if req.cloud_id:
+        try:
+            if not DeletedCloudId.query.filter_by(cloud_id=req.cloud_id).first():
+                db.session.add(DeletedCloudId(cloud_id=req.cloud_id))
+                db.session.flush()
+        except Exception:
+            pass  # table may not exist yet on old installs
+    # --- 3. DELETE LOCALLY ---
     try:
         db.session.delete(req)
         db.session.commit()

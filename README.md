@@ -1,6 +1,6 @@
 # SeekAndWatch
 
-![Version](https://img.shields.io/badge/version-1.5.3-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) (submitted) ![License](https://img.shields.io/badge/License-MIT-green.svg)
+![Version](https://img.shields.io/badge/version-1.5.4-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) (submitted) ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
 **Star begging:** If this app saves you from endless scrolling, a star for the project helps a lot.
 
@@ -146,6 +146,16 @@ docker compose up -d
 ## Changelog
 
 **SeekAndWatch Cloud (beta)**
+v1.5.4
+- notes when making a request
+- better logging
+- rewrite of syncing based on user feedback
+
+**SeekAndWatch Local**
+- rewrite of syncing based on user feedback
+
+<details>
+  <summary><b>Past Changelog</b></summary>
 v1.5.3
 - csrf tokens have been changed. Currently in the previous app, you'd be given a fresh CSRF before each action, which was nice unless you timeout in one window or logout and go back to the first window. Now: 
 	- actions now fetch a fresh CSRF token before sending, so long-open or other tabs no longer hit "Invalid CSRF token"
@@ -162,8 +172,6 @@ v1.5.3
 - added a back to the top on the results page
 - a lot of UI fixes
 
-<details>
-  <summary><b>Past Changelog</b></summary>
 
 v1.5.2
 

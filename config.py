@@ -11,6 +11,10 @@ CONFIG_DIR = os.environ.get("SEEKANDWATCH_CONFIG", "/config")
 # SeekAndWatch Cloud base URL. Set SEEKANDWATCH_CLOUD_URL for custom or staging.
 CLOUD_URL = os.environ.get("SEEKANDWATCH_CLOUD_URL", "https://seekandwatch.com").rstrip("/")
 
+# Timeout in seconds for HTTP requests to the cloud (poll, sync, acknowledge). Set SEEKANDWATCH_CLOUD_TIMEOUT to override.
+_def = os.environ.get("SEEKANDWATCH_CLOUD_TIMEOUT")
+CLOUD_REQUEST_TIMEOUT = int(_def) if (_def and _def.isdigit()) else 25
+
 # Database URI. Set SEEKANDWATCH_DATABASE_URI for full override (e.g. postgres, or test DB).
 # Otherwise uses SQLite in CONFIG_DIR.
 _default_db_path = os.path.join(CONFIG_DIR, "seekandwatch.db")

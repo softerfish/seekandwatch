@@ -3,10 +3,10 @@ import time
 import random
 from datetime import datetime
 from app import app, db
-from models import Settings, CloudRequest, AppRequest
+from models import Settings, CloudRequest, AppRequest, DeletedCloudId
 
 # cloud processing uses these (defined in utils.py only; api.py has HTTP endpoints, not these helpers)
-from config import CLOUD_URL, SCHEDULER_USER_ID
+from config import CLOUD_URL, CLOUD_REQUEST_TIMEOUT, SCHEDULER_USER_ID
 from utils import send_to_radarr_sonarr, send_to_overseerr
 
 # CONFIGURATION
@@ -21,14 +21,15 @@ BACKOFF_CAP_SEC = 300
 # Global state
 last_modified_header = None
 backoff_remaining = 0  # cycles left to use longer sleep after 429
+recommended_poll_interval_sec = 0  # set from X-Poll-Interval when cloud suggests longer interval (e.g. high traffic)
 
 
 def get_poll_sleep_seconds():
-    """Return how many seconds to sleep before next poll (jitter + backoff). Use from app or __main__."""
+    """Return how many seconds to sleep before next poll (jitter + backoff + cloud recommendation). Use from app or __main__."""
     base = random.randint(POLL_INTERVAL_MIN, POLL_INTERVAL_MAX)
     if backoff_remaining > 0:
-        return min(BACKOFF_CAP_SEC, int(base * BACKOFF_MULT_AFTER_429))
-    return base
+        base = min(BACKOFF_CAP_SEC, int(base * BACKOFF_MULT_AFTER_429))
+    return max(base, recommended_poll_interval_sec)
 
 def process_item(settings, req_db):
     """
@@ -84,8 +85,10 @@ def process_item(settings, req_db):
                 f"{CLOUD_URL}/api/acknowledge.php",
                 headers={'X-Server-Key': settings.cloud_api_key},
                 json={'request_id': req_db.cloud_id, 'status': 'completed'},
-                timeout=10
+                timeout=CLOUD_REQUEST_TIMEOUT
             )
+        except requests.exceptions.Timeout:
+            print(f"Warning: Cloud acknowledge timed out after {CLOUD_REQUEST_TIMEOUT}s.")
         except Exception as e:
             print(f"Warning: Could not acknowledge to cloud (Network issue?): {e}")
     else:
@@ -99,13 +102,14 @@ def sync_deletions(settings):
     """
     Checks the cloud for the 'Master List' of active requests.
     If we have a request locally that is NOT in the master list, delete it.
+    Returns the response on success so caller can read X-Poll-Interval; None otherwise.
     """
     try:
         headers = {'X-Server-Key': settings.cloud_api_key}
-        response = requests.get(f"{CLOUD_URL}/api/sync.php", headers=headers, timeout=10)
+        response = requests.get(f"{CLOUD_URL}/api/sync.php", headers=headers, timeout=CLOUD_REQUEST_TIMEOUT)
         
         if response.status_code != 200:
-            return
+            return None
 
         data = response.json()
         raw_ids = data.get('active_ids', [])
@@ -126,11 +130,16 @@ def sync_deletions(settings):
         if deleted_count > 0:
             db.session.commit()
 
+        return response
+    except requests.exceptions.Timeout:
+        print(f"Sync Warning: Cloud sync timed out after {CLOUD_REQUEST_TIMEOUT}s.")
+        return None
     except Exception as e:
         print(f"Sync Warning: {e}")
+        return None
 
 def process_cloud_queue():
-    global last_modified_header, backoff_remaining
+    global last_modified_header, backoff_remaining, recommended_poll_interval_sec
 
     with app.app_context():
         # 1. Get Local Settings (use config user when set for multi-user isolation)
@@ -151,15 +160,26 @@ def process_cloud_queue():
             
         # Do not log API key or any part of it (security: clear-text logging)
         
-        # --- NEW STEP: Sync Deletions ---
-        sync_deletions(settings)
+        # --- NEW STEP: Sync Deletions (and pick up X-Poll-Interval from sync response if present) ---
+        sync_response = sync_deletions(settings)
+        if sync_response is not None:
+            try:
+                xi = int(sync_response.headers.get('X-Poll-Interval', 0) or 0)
+                recommended_poll_interval_sec = max(0, min(300, xi))
+            except (ValueError, TypeError):
+                pass
 
         try:
             # 2. Poll the Cloud for new Mail
-            response = requests.get(f"{CLOUD_URL}/api/poll.php", headers=headers, timeout=10)
+            response = requests.get(f"{CLOUD_URL}/api/poll.php", headers=headers, timeout=CLOUD_REQUEST_TIMEOUT)
             
             # --- HANDLE 304 (Not Modified) ---
             if response.status_code == 304:
+                try:
+                    xi = int(response.headers.get('X-Poll-Interval', 0) or 0)
+                    recommended_poll_interval_sec = max(0, min(300, xi))
+                except (ValueError, TypeError):
+                    pass
                 return
 
             # --- HANDLE 429 (Throttled): respect Retry-After and back off next cycles ---
@@ -178,11 +198,16 @@ def process_cloud_queue():
                 print(f"Cloud Error: Server returned status {response.status_code}")
                 return
             
-            # If we got 200 OK, save the new Last-Modified header and decay backoff
+            # If we got 200 OK, save the new Last-Modified header, decay backoff, and respect X-Poll-Interval
             if 'Last-Modified' in response.headers:
                 last_modified_header = response.headers['Last-Modified']
             if backoff_remaining > 0:
                 backoff_remaining -= 1
+            try:
+                xi = int(response.headers.get('X-Poll-Interval', 0) or 0)
+                recommended_poll_interval_sec = max(0, min(300, xi))
+            except (ValueError, TypeError):
+                recommended_poll_interval_sec = 0
 
             try:
                 data = response.json()
@@ -211,6 +236,9 @@ def process_cloud_queue():
                 exists = CloudRequest.query.filter_by(cloud_id=rid_str).first()
                 if exists:
                     continue
+                # Never re-import a request we deleted locally (in case cloud still returns it)
+                if DeletedCloudId.query.filter_by(cloud_id=rid_str).first():
+                    continue
 
                 # Create the local record
                 new_req = CloudRequest(
@@ -236,6 +264,8 @@ def process_cloud_queue():
             if new_count > 0:
                 db.session.commit()
 
+        except requests.exceptions.Timeout:
+            print(f"Cloud poll timed out after {CLOUD_REQUEST_TIMEOUT}s. Next cycle in {get_poll_sleep_seconds()}s.")
         except requests.exceptions.ConnectionError:
             print("Network Error: Could not reach SeekAndWatch Cloud.")
         except Exception as e:

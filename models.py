@@ -182,6 +182,12 @@ class KometaTemplate(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.now)
     user = db.relationship('User', backref='kometa_templates')
     
+class DeletedCloudId(db.Model):
+    """Cloud request IDs we deleted locally so we never re-import them if poll still returns them."""
+    __table_args__ = {'extend_existing': True}
+    id = db.Column(db.Integer, primary_key=True)
+    cloud_id = db.Column(db.String(36), unique=True, nullable=False)
+
 class CloudRequest(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     cloud_id = db.Column(db.String(36), unique=True) # The ID from the PHP site
