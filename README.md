@@ -1,8 +1,8 @@
 # SeekAndWatch
 
-![Version](https://img.shields.io/badge/version-1.5.2-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) (submitted) ![License](https://img.shields.io/badge/License-MIT-green.svg)
+![Version](https://img.shields.io/badge/version-1.5.3-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) (submitted) ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
-If this app saves you from endless scrolling, a star for the project helps a lot.
+**Star begging:** If this app saves you from endless scrolling, a star for the project helps a lot.
 
 Self-hosted Plex companion: Smart Discovery from your watch history, add movies/shows via Radarr/Sonarr, Kometa builder, Plex collections, Overseerr, Tautulli. One dashboard -less scrolling, more watching.
 
@@ -145,7 +145,28 @@ docker compose up -d
 
 ## Changelog
 
+**SeekAndWatch Cloud (beta)**
+v1.5.3
+- csrf tokens have been changed. Currently in the previous app, you'd be given a fresh CSRF before each action, which was nice unless you timeout in one window or logout and go back to the first window. Now: 
+	- actions now fetch a fresh CSRF token before sending, so long-open or other tabs no longer hit "Invalid CSRF token"
+	- logout and login/register notify other tabs via localStorage so they reload and stay in sync
+	- when a tab becomes visible again, the app checks the session and redirects to login if the user was logged out elsewhere
+- login with Plex
+- many UI fixes
+- more details in My requests
+- small bugfixes
+
+**SeekAndWatch Local**
+- a complete overhaul of the library system. Too many movies and tv series were slipping through the cracks even with the aliases database. We now use the Plex API to import your library, list all movie/tv sections. For each item we get a TMDB ID by using Plex guids (when present), then resolving IMDb or TVDB guids through the TMDB API, and if needed searching TMDB by title and year. Those TMDB IDs (with Plex title and type) are saved in the TmdbAlias table so the app can treat them as owned and use them for collections and already in library checks
+- removed Plex CacheRemoved Background Aliases scanner
+- added a back to the top on the results page
+- a lot of UI fixes
+
+<details>
+  <summary><b>Past Changelog</b></summary>
+
 v1.5.2
+
 **SeekAndWatch Cloud (beta)** – [https://www.SeekAndWatch.com](https://www.SeekAndWatch.com)
 - server owners can get notifications of new requests and users will get a notification when it's approved or denied
 - added trailers, tmdb ratings, and several genres as well as an upcoming category
@@ -156,7 +177,7 @@ v1.5.2
 - emails when a user requests/filled/security warnings
 - server owners can revoke invites, control who can request what, or an across the board setting
 
-Local app
+**SeekAndWatch Local**
 - a complete overhaul of the api file
 - Smart Disvovery has been revamped. Each search should be pretty different now
 - Plex Collections now have a delete button without refreshing the page
@@ -169,10 +190,8 @@ Local app
 - SeekAndWatch now checks with Sonarr and Radarr if you actually have the file before allowing you to request. We used to show a recommendation and allow you to request and then give you an error you already have that in Radarr or Sonarr even if you do not have the file. Now we do not show you these as options to request and is tagges as owned
 - fixed preview overlay for TV shrinking to a small box
 
-
-<details>
-  <summary><b>Past Changelog</b></summary>
 v1.5.1
+
 **SeekAndWatch Cloud (beta)** – [https://www.SeekAndWatch.com](https://www.SeekAndWatch.com)
 - Hosted option so friends and family can request from your Plex server without needing access to Plex or Radarr/Sonarr. You approve or deny; requests sync to Radarr, Sonarr, or Overseerr.
 - To request access: [r/SeekAndWatch](https://www.reddit.com/r/SeekAndWatch) – post or send a mod a PM.
@@ -185,6 +204,7 @@ Improvements and Bugfixes
 - 1 click updater back to working again
 
 v1.4.1
+
 Bugfixes and security:
 - GitHub CodeQL fixes
 - custom builder fixed
@@ -203,6 +223,7 @@ Additional:
 - updated docker-compose
 
 v1.4.0
+
 This is a pretty huge update
 
 New features:
@@ -222,10 +243,12 @@ Docs:
 - new and updated for the wiki. Smart Discovery, Radarr, Sonarr, Installation & Updates (including Docker/Unraid one-click updater), and wiki homepage
 
 v1.3.2
+
 - finished last of the security updates
 - finished Kometa import config files -> copy and paste or by URL
 
 v1.3.1
+
 - fixes for GitHub CodeQL findings
 - changed header icons around a bit
 - removed stats.html page for Tautulli stats. This page does not seem to be needed
@@ -242,17 +265,20 @@ performance indicators -> estimate run time based on selected options
 - started the Wiki https://github.com/softerfish/seekandwatch/wiki
 
 v1.3.0
+
 - finished one click updates for non-unraid app installs. unraid users will have to use appstore updates when the app is approved
 - users can import backup files now
 - many small Smart Discovery improvements not limited to, but including: parallelize TMDB recommendation fetches, cache plex history for 1 hour, and instead of pure shuffle for review, we now score items by vote average × vote count and keep shuffle as a tie‑breaker
 - fixed checkmark that will remove titles from influence recommendations
 
 v1.2.4
+
 - I accidently broke TV requests in v1.2.3. Quick repair to get that going again
 - added search by future releases
 - improved search results and added a checkbox to search for obscure instead of mixing them in standard results
 
 v1.2.3
+
 - moving all styling into a static/style.css file. There might be some broken styling here and there
 - added an ignore library to the Smart Discovery search
 - removed all search filters from the I'm Feeling Lucky results page 
@@ -261,6 +287,7 @@ v1.2.3
 - included a docker-compose.yml
 
 v1.2.2
+
 - added trending on tatulli server to Smart Discovery
 - added no more items when Smart Discovery results end
 - added block icon to results page
@@ -271,9 +298,11 @@ v1.2.2
 - removed YouTube and Overseerr link in the header
 
 v1.2.1
+
 Increased overlays on Kometa Builder
 
 v1.2.0
+
 - added protections to block password guessing attacks and prevent malicious file access without slowing down your dashboard
 - optimized traffic limits to ensure the app runs smoothly even if you leave SeekAndWatch open 24/7
 - added permission handling (entrypoint.sh) that automatically adapts to Unraid (PUID 99) or standard Docker setups, eliminating "Permission Denied" errors
@@ -284,6 +313,7 @@ v1.2.0
 - external requests timeout changed to 10 seconds
 
 v1.1.1
+
 - added tooltips to Kometa fields
 - added template variables for collections: limit, sort_by, collection_mode, sync_mode, include, exclude
 - added several collection defaults for Movies and TV. Overlays to follow
@@ -306,6 +336,7 @@ Security fixes:
 - tightened Kometa Config security. The system blindly trusted the configuration data saved in the database. We added a verification step to ensure that loaded settings are treated strictly as text, preventing any commands from running automatically if a hacker messed with your database
 
 v1.1.0
+
 This release has a lot of bugfixes, changes and many tweaks to improve speed and accuracy. This is the first app I've made, so I'm learning how to improve as I go with a lot of time and research. If you have any suggestions or comments, here's the new subreddit: https://www.reddit.com/r/SeekAndWatch/
 
 - added a basic kometa yml file generator. It's at the point of working, but you will need to make edits with variables if you check a lot of boxes for collections. I will be improving this in the coming weeks.
@@ -326,6 +357,7 @@ This release has a lot of bugfixes, changes and many tweaks to improve speed and
 - added a notice to update if available
 
 v1.0.2
+
 - added Login | Register for login screen to make it more clear
 - many small bugfixes
 - fixed ignore users history for recommendations

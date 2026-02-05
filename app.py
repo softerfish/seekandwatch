@@ -28,16 +28,16 @@ from flask_apscheduler import APScheduler
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-from flask_wtf.csrf import CSRFProtect
+from flask_wtf.csrf import CSRFProtect, generate_csrf
 from plexapi.server import PlexServer
 from models import db, Blocklist, CollectionSchedule, TmdbAlias, SystemLog, Settings, User, TmdbKeywordCache, TmdbRuntimeCache, RadarrSonarrCache, RecoveryCode, CloudRequest
 from utils import (normalize_title, is_duplicate, is_owned_item, fetch_omdb_ratings, send_overseerr_request, 
                    run_collection_logic, create_backup, list_backups, restore_backup, 
-                   prune_backups, BACKUP_DIR, CACHE_FILE, sync_remote_aliases, get_tmdb_aliases, 
-                   refresh_plex_cache, get_plex_cache, refresh_radarr_sonarr_cache, get_lock_status, is_system_locked,
+                   prune_backups, BACKUP_DIR, sync_remote_aliases, get_tmdb_aliases, 
+                   sync_plex_library, refresh_radarr_sonarr_cache, get_lock_status, is_system_locked,
                    write_scanner_log, read_scanner_log, prefetch_keywords_parallel,
                    item_matches_keywords, RESULTS_CACHE, get_session_filters, write_log,
-                   check_for_updates, handle_lucky_mode, run_alias_scan, reset_stuck_locks, 
+                   check_for_updates, handle_lucky_mode, reset_stuck_locks, 
                    prefetch_tv_states_parallel, prefetch_ratings_parallel, prefetch_omdb_parallel,
                    prefetch_runtime_parallel, is_docker, is_unraid, is_git_repo, is_app_dir_writable, perform_git_update,
                    perform_release_update, save_results_cache, get_history_cache, set_history_cache,
@@ -47,7 +47,7 @@ from sqlalchemy.exc import OperationalError
 
 # basic app setup stuff
 
-VERSION = "1.5.2"
+VERSION = "1.5.3"
 
 UPDATE_CACHE = {
     'version': None,
@@ -532,6 +532,7 @@ def login():
         
         if user and check_password_hash(user.password_hash, password):
             login_user(user)
+            session['notify_tabs_login'] = True
             return redirect(url_for('dashboard'))
         else:
             flash('Invalid credentials')
@@ -574,15 +575,25 @@ def register():
             session['show_recovery_codes'] = plain_codes
             
             login_user(new_user)
+            session['notify_tabs_login'] = True
             return redirect(url_for('welcome_codes'))
             
     return render_template('login.html', register=True)
     
+@app.route('/api/csrf-token')
+def csrf_token_route():
+    """Return current session CSRF token for fetch/XHR. 401 when not logged in (so other tabs can redirect)."""
+    if not current_user.is_authenticated:
+        return jsonify({'error': 'Unauthorized'}), 401
+    return jsonify({'csrf_token': generate_csrf()})
+
+
 @app.route('/logout')
 @login_required
 def logout():
     logout_user()
-    return redirect(url_for('login'))
+    # Notify other tabs so they reload (logout in one tab = others see login)
+    return render_template('logout_redirect.html', login_url=url_for('login'))
 
 @app.route('/reset_password', methods=['GET'])
 def reset_password_page():
@@ -605,6 +616,7 @@ def welcome_codes():
 def welcome_codes_done():
     """Clear one-time recovery codes from session and go to dashboard."""
     session.pop('show_recovery_codes', None)
+    session['notify_tabs_login'] = True
     return redirect(url_for('dashboard'))
 
 
@@ -663,7 +675,7 @@ def get_local_trending():
 @app.route('/recommend_from_trending')
 @login_required
 def recommend_from_trending():
-    from utils import get_tautulli_trending, get_plex_cache, normalize_title, RESULTS_CACHE, is_owned_item
+    from utils import get_tautulli_trending, normalize_title, RESULTS_CACHE, is_owned_item
     
     m_type = request.args.get('type', 'movie')
     
@@ -697,7 +709,6 @@ def recommend_from_trending():
     # remove duplicates and filter out stuff we already own
     seen = set()
     unique_recs = []
-    owned_keys = get_plex_cache(s)
     
     for r in final_recs:
         if r['id'] not in seen:
@@ -710,7 +721,7 @@ def recommend_from_trending():
                 r['runtime'] = 0
 
             # check if already owned (improved duplicate detection)
-            if is_owned_item(r, owned_keys, m_type):
+            if is_owned_item(r, m_type):
                 continue
             
             seen.add(r['id'])
@@ -956,7 +967,6 @@ def generate():
     if not (s.tmdb_key or '').strip():
         flash("TMDB API key is required for recommendations. Add it in Settings > APIs & Connections.", "error")
         return redirect(url_for('dashboard'))
-    owned_keys = get_plex_cache(s)
     
     # "I'm feeling lucky" mode - just grab random popular stuff
     if request.form.get('lucky_mode') == 'true':
@@ -991,7 +1001,7 @@ def generate():
                     item['runtime'] = 0
                 
                 # check if already owned (improved duplicate detection)
-                if is_owned_item(item, owned_keys, 'movie'):
+                if is_owned_item(item, 'movie'):
                     continue
                 
                 lucky_result.append(item)
@@ -1246,7 +1256,7 @@ def generate():
         if item.get('title', item.get('name')) in blocked: continue
         
         # check if already owned (improved duplicate detection)
-        is_owned = is_owned_item(item, owned_keys, media_type)
+        is_owned = is_owned_item(item, media_type)
         if is_owned:
             continue
         
@@ -1514,22 +1524,39 @@ def settings():
         if update_apis:
             url_fields = ['plex_url', 'overseerr_url', 'tautulli_url', 'radarr_url', 'sonarr_url']
             for field in url_fields:
-                val = request.form.get(field)
-                if val and not _valid_url(val):
-                    return jsonify({'status': 'error', 'message': f'Invalid URL in {field.replace("_", " ")}. Use http:// or https:// only.'}), 400
-            s.plex_url = request.form.get('plex_url')
-            s.plex_token = request.form.get('plex_token')
-            s.tmdb_key = request.form.get('tmdb_key')
-            s.tmdb_region = request.form.get('tmdb_region')
-            s.omdb_key = request.form.get('omdb_key')
-            s.overseerr_url = request.form.get('overseerr_url')
-            s.overseerr_api_key = request.form.get('overseerr_api_key')
-            s.tautulli_url = request.form.get('tautulli_url')
-            s.tautulli_api_key = request.form.get('tautulli_api_key')
-            s.radarr_url = request.form.get('radarr_url')
-            s.radarr_api_key = request.form.get('radarr_api_key')
-            s.sonarr_url = request.form.get('sonarr_url')
-            s.sonarr_api_key = request.form.get('sonarr_api_key')
+                if field in request.form:
+                    val = request.form.get(field)
+                    if val and not _valid_url(val):
+                        return jsonify({'status': 'error', 'message': f'Invalid URL in {field.replace("_", " ")}. Use http:// or https:// only.'}), 400
+            # Only update API fields that are present (allows multiple small forms in APIs tab)
+            if 'plex_url' in request.form:
+                s.plex_url = request.form.get('plex_url')
+            if 'plex_token' in request.form:
+                s.plex_token = request.form.get('plex_token')
+            if 'tmdb_key' in request.form:
+                s.tmdb_key = request.form.get('tmdb_key')
+            if 'tmdb_region' in request.form:
+                s.tmdb_region = request.form.get('tmdb_region')
+            if 'omdb_key' in request.form:
+                s.omdb_key = request.form.get('omdb_key')
+            if 'overseerr_url' in request.form:
+                s.overseerr_url = request.form.get('overseerr_url')
+            if 'overseerr_api_key' in request.form:
+                s.overseerr_api_key = request.form.get('overseerr_api_key')
+            if 'tautulli_url' in request.form:
+                s.tautulli_url = request.form.get('tautulli_url')
+            if 'tautulli_api_key' in request.form:
+                s.tautulli_api_key = request.form.get('tautulli_api_key')
+            if 'radarr_url' in request.form:
+                s.radarr_url = request.form.get('radarr_url')
+            if 'radarr_api_key' in request.form:
+                s.radarr_api_key = request.form.get('radarr_api_key')
+            if 'sonarr_url' in request.form:
+                s.sonarr_url = request.form.get('sonarr_url')
+            if 'sonarr_api_key' in request.form:
+                s.sonarr_api_key = request.form.get('sonarr_api_key')
+            if 'plex_url' in request.form or 'plex_token' in request.form:
+                s.ignored_users = ','.join(request.form.getlist('ignored_plex_users'))
             try:
                 commit_with_retry()
             except Exception as e:
@@ -1577,7 +1604,7 @@ def settings():
                 s.backup_retention = 7
             if 'cloud_sync_owned_enabled' in request.form:
                 s.cloud_sync_owned_enabled = True
-            elif form_section == 'system':
+            elif form_section in ('system', ''):
                 s.cloud_sync_owned_enabled = False
             try:
                 commit_with_retry()
@@ -1617,19 +1644,24 @@ def settings():
             p = PlexServer(s.plex_url, s.plex_token, timeout=3)
             plex_libraries = [sec.title for sec in p.library.sections() if sec.type in ['movie', 'show']]
     except Exception as e:
-        write_log("warning", "Settings", f"Failed to fetch Plex libraries: {str(e)}")
+        err_str = str(e)
+        if "Connection refused" in err_str or "Max retries exceeded" in err_str or "plex.direct" in err_str:
+            write_log("warning", "Settings", f"Plex libraries unreachable (connection refused). Use Plex Local URL like http://YOUR_IP:32400 in Settings → APIs if .plex.direct fails. ({err_str[:100]})")
+        else:
+            write_log("warning", "Settings", f"Failed to fetch Plex libraries: {err_str}")
     
     current_ignored_libs = (s.ignored_libraries or '').split(',')
 
     # only admins see system logs (avoid leaking paths/errors to other users)
     logs = SystemLog.query.order_by(SystemLog.timestamp.desc()).limit(50).all() if current_user.is_admin else []
     
-    # cache age
+    # last Plex library sync (TMDB index)
     cache_age = "Never"
-    if os.path.exists(CACHE_FILE):
-        ts = os.path.getmtime(CACHE_FILE)
-        dt = datetime.datetime.fromtimestamp(ts)
-        cache_age = dt.strftime('%Y-%m-%d %H:%M')
+    if s and (s.last_alias_scan or 0) > 0:
+        try:
+            cache_age = datetime.datetime.fromtimestamp(s.last_alias_scan).strftime('%Y-%m-%d %H:%M')
+        except Exception:
+            pass
 
     try: keyword_count = TmdbKeywordCache.query.count()
     except Exception: keyword_count = 0
@@ -1709,7 +1741,7 @@ def delete_profile():
     db.session.delete(user)
     db.session.commit()
     logout_user()
-    return redirect(url_for('login'))
+    return render_template('logout_redirect.html', login_url=url_for('login'))
 
 @app.route('/builder')
 @login_required
@@ -1752,12 +1784,6 @@ def support_us():
 
 # background scheduler - runs collections, cache refreshes, etc on a schedule
 
-def run_scan_wrapper(app_ref):
-    # need app context for the scanner to work
-    with app_ref.app_context():
-        from utils import run_alias_scan
-        run_alias_scan(app_ref)
-
 def scheduled_tasks():
     with app.app_context():
         # prune backups at 4am
@@ -1772,13 +1798,13 @@ def scheduled_tasks():
         if not s:
             return
         
-        if os.path.exists(CACHE_FILE):
-            mod_time = os.path.getmtime(CACHE_FILE)
-            age_hours = (time.time() - mod_time) / 3600
-            if age_hours >= (s.cache_interval or 24):
-                 if not is_system_locked():
-                     print("Scheduler: Starting Cache Refresh...")
-                     refresh_plex_cache(app)
+        # Plex library sync (TMDB index) on interval (0 = disabled). Only run after at least one manual sync.
+        last_sync = s.last_alias_scan or 0
+        interval_hours = (s.cache_interval or 0)
+        if interval_hours > 0 and last_sync > 0 and (time.time() - last_sync) >= interval_hours * 3600:
+            if not is_system_locked():
+                print("Scheduler: Starting Plex library sync...")
+                sync_plex_library(app)
 
         # check if any collections need to run
         try:
@@ -1836,17 +1862,6 @@ def scheduled_tasks():
                         sch.last_run = now
                         db.session.commit()
 
-        # background alias scanner (finds alternative titles to avoid duplicates)
-        if s.scanner_enabled:
-            last = s.last_alias_scan or 0
-            now_ts = int(time.time())
-            interval_sec = (s.scanner_interval or 15) * 60
-            
-            if now_ts - last >= interval_sec:
-                if not is_system_locked():
-                    print("Scheduler: Starting Background Alias Scan...")
-                    threading.Thread(target=run_scan_wrapper, args=(app,)).start()
-        
         # background Radarr/Sonarr scanner
         if s.radarr_sonarr_scanner_enabled:
             last = s.last_radarr_sonarr_scan or 0

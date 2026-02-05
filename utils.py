@@ -635,261 +635,8 @@ def sync_remote_aliases():
     return True, "Started in background"
 
 def run_alias_scan(app_obj):
-    write_scanner_log("--- Starting Alias Scan ---")
-    
-    with app_obj.app_context():
-        s = Settings.query.first()
-        if not s or not s.scanner_enabled:
-            write_scanner_log("Scanner disabled or no settings. Aborting.")
-            return
-
-        cache_path = CACHE_FILE
-        if not os.path.exists(cache_path):
-            write_scanner_log("No Plex Cache found. Please run Sync Engine first.")
-            return
-
-        try:
-            with open(cache_path, 'r') as f:
-                # cache is just a list of normalized titles now
-                owned_titles = json.load(f)
-        except Exception as e:
-            log.warning("Alias scan load cache: %s", e)
-            return
-
-        # figure out which titles we haven't scanned yet
-        existing_plex_titles = set([row.plex_title for row in TmdbAlias.query.with_entities(TmdbAlias.plex_title).all()])
-        to_scan = [t for t in owned_titles if t not in existing_plex_titles]
-        
-        # Also check for duplicates - same TMDB ID with different Plex titles (shouldn't happen but handle it)
-        # This helps catch cases where same movie was matched multiple times
-        existing_tmdb_ids = {}
-        for row in TmdbAlias.query.filter(TmdbAlias.tmdb_id > 0).with_entities(TmdbAlias.tmdb_id, TmdbAlias.plex_title).all():
-            if row.tmdb_id not in existing_tmdb_ids:
-                existing_tmdb_ids[row.tmdb_id] = []
-            existing_tmdb_ids[row.tmdb_id].append(row.plex_title)
-        
-        total = len(to_scan)
-        if total == 0:
-            write_scanner_log("All items already indexed. Sleeping.")
-            # update timestamp so we don't keep checking on every run
-            s.last_alias_scan = int(time.time())
-            db.session.commit()
-            return
-
-        batch_size = s.scanner_batch or 50
-        current_batch = to_scan[:batch_size]
-        
-        write_scanner_log(f"Found {total} unindexed items. Processing batch of {batch_size}...")
-
-        processed = 0
-        
-        for title in current_batch:
-            try:
-                # try searching as a movie first
-                search_url = f"https://api.themoviedb.org/3/search/movie?api_key={s.tmdb_key}&query={title}"
-                r = requests.get(search_url, timeout=10).json()
-                
-                tmdb_id = None
-                media_type = 'movie'
-                hit = None
-                
-                if r.get('results'):
-                    results = r['results']
-                    # Try to find the best match instead of just taking the first one
-                    # Check if normalized titles match closely
-                    norm_plex_title = normalize_title(title)
-                    best_match = None
-                    best_score = 0
-                    
-                    for result in results[:5]:  # Check top 5 results
-                        result_title = normalize_title(result.get('title', ''))
-                        # Calculate similarity score
-                        score = 0
-                        # Exact match gets highest score
-                        if result_title == norm_plex_title:
-                            score = 100
-                        else:
-                            # Check how many words match (weighted by word importance)
-                            plex_words = norm_plex_title.split()
-                            result_words = result_title.split()
-                            plex_words_set = set(plex_words)
-                            result_words_set = set(result_words)
-                            common_words = plex_words_set.intersection(result_words_set)
-                            
-                            if len(plex_words) > 0:
-                                # Base score on word overlap
-                                base_score = (len(common_words) / len(plex_words)) * 70
-                                
-                                # Bonus if first word matches (main title word)
-                                if len(plex_words) > 0 and len(result_words) > 0:
-                                    if plex_words[0] == result_words[0]:
-                                        base_score += 20
-                                
-                                # Bonus if they share significant words (length > 4)
-                                significant_common = [w for w in common_words if len(w) > 4]
-                                if len(significant_common) >= 2:
-                                    base_score += 10
-                                
-                                score = min(base_score, 95)  # Cap at 95 unless exact match
-                        
-                        if score > best_score:
-                            best_score = score
-                            best_match = result
-                    
-                    # Use best match if score is reasonable (at least 60% word match, or 50% with first word match)
-                    if best_match and best_score >= 60:
-                        hit = best_match
-                        tmdb_id = hit['id']
-                        write_scanner_log(f"Good match ({best_score:.0f}%): '{title}' -> '{hit.get('title', '')}' (ID: {tmdb_id})")
-                    elif best_match and best_score >= 50:
-                        # Check if first word matches for 50% threshold
-                        norm_plex_words = norm_plex_title.split()
-                        norm_result_words = normalize_title(best_match.get('title', '')).split()
-                        if len(norm_plex_words) > 0 and len(norm_result_words) > 0:
-                            if norm_plex_words[0] == norm_result_words[0]:
-                                hit = best_match
-                                tmdb_id = hit['id']
-                                write_scanner_log(f"Acceptable match ({best_score:.0f}%): '{title}' -> '{hit.get('title', '')}' (ID: {tmdb_id})")
-                    elif results:
-                        # Fallback to first result if no good match found - but log it as low confidence
-                        hit = results[0]
-                        tmdb_id = hit['id']
-                        write_scanner_log(f"Low confidence match ({best_score:.0f}%): '{title}' -> '{hit.get('title', '')}' (ID: {tmdb_id}) - using first result")
-                
-                if not tmdb_id:
-                    # no movie match, try TV instead
-                    search_url = f"https://api.themoviedb.org/3/search/tv?api_key={s.tmdb_key}&query={title}"
-                    r = requests.get(search_url, timeout=10).json()
-                    if r.get('results'):
-                        results = r['results']
-                        # Same smart matching for TV
-                        norm_plex_title = normalize_title(title)
-                        best_match = None
-                        best_score = 0
-                        
-                        for result in results[:5]:
-                            result_title = normalize_title(result.get('name', ''))
-                            score = 0
-                            if result_title == norm_plex_title:
-                                score = 100
-                            else:
-                                # Use same improved scoring as movies
-                                plex_words = norm_plex_title.split()
-                                result_words = result_title.split()
-                                plex_words_set = set(plex_words)
-                                result_words_set = set(result_words)
-                                common_words = plex_words_set.intersection(result_words_set)
-                                
-                                if len(plex_words) > 0:
-                                    base_score = (len(common_words) / len(plex_words)) * 70
-                                    
-                                    # Bonus if first word matches
-                                    if len(plex_words) > 0 and len(result_words) > 0:
-                                        if plex_words[0] == result_words[0]:
-                                            base_score += 20
-                                    
-                                    # Bonus if they share significant words
-                                    significant_common = [w for w in common_words if len(w) > 4]
-                                    if len(significant_common) >= 2:
-                                        base_score += 10
-                                    
-                                    score = min(base_score, 95)
-                            
-                            if score > best_score:
-                                best_score = score
-                                best_match = result
-                        
-                        if best_match and best_score >= 60:
-                            hit = best_match
-                            tmdb_id = hit['id']
-                            media_type = 'tv'
-                            write_scanner_log(f"TV good match ({best_score:.0f}%): '{title}' -> '{hit.get('name', '')}' (ID: {tmdb_id})")
-                        elif best_match and best_score >= 50:
-                            # Check if first word matches for 50% threshold
-                            norm_plex_words = norm_plex_title.split()
-                            norm_result_words = normalize_title(best_match.get('name', '')).split()
-                            if len(norm_plex_words) > 0 and len(norm_result_words) > 0:
-                                if norm_plex_words[0] == norm_result_words[0]:
-                                    hit = best_match
-                                    tmdb_id = hit['id']
-                                    media_type = 'tv'
-                                    write_scanner_log(f"TV acceptable match ({best_score:.0f}%): '{title}' -> '{hit.get('name', '')}' (ID: {tmdb_id})")
-                        elif results:
-                            hit = results[0]
-                            tmdb_id = hit['id']
-                            media_type = 'tv'
-                            write_scanner_log(f"TV low confidence ({best_score:.0f}%): '{title}' -> '{hit.get('name', '')}' (ID: {tmdb_id})")
-                        
-                if tmdb_id and hit:
-                    # Extract year from release date if available
-                    release_date = hit.get('release_date') or hit.get('first_air_date', '')
-                    match_year = int(release_date[:4]) if release_date and len(release_date) >= 4 else 0
-                    
-                    # Optional: Check TMDB alternative titles to see if Plex title matches any alternative
-                    # This helps catch regional title variations (e.g., "Sorcerer's Stone" vs "Philosopher's Stone")
-                    norm_plex_title = normalize_title(title)
-                    norm_hit_title = normalize_title(hit.get('title', hit.get('name')))
-                    matches_alternative = False
-                    
-                    # Only check alternatives if titles don't match exactly (saves API calls)
-                    if norm_plex_title != norm_hit_title:
-                        try:
-                            alt_url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}/alternative_titles?api_key={s.tmdb_key}"
-                            alt_resp = requests.get(alt_url, timeout=5)
-                            if alt_resp.status_code == 200:
-                                alt_data = alt_resp.json()
-                                alt_key = 'titles' if 'titles' in alt_data else 'results'
-                                alt_titles = [normalize_title(x.get('title', '')) for x in alt_data.get(alt_key, [])]
-                                if norm_plex_title in alt_titles:
-                                    matches_alternative = True
-                                    write_scanner_log(f"Found match via alternative title: '{title}' matches alternative for TMDB {tmdb_id}")
-                        except Exception as e:
-                            write_scanner_log(f"Alternative title check failed: {type(e).__name__}")
-                    
-                    # Check if this TMDB ID already exists with a different Plex title
-                    existing_entry = TmdbAlias.query.filter_by(tmdb_id=tmdb_id, media_type=media_type).first()
-                    if existing_entry:
-                        # If it exists, check if this is a better match
-                        if title == norm_hit_title or title in existing_entry.plex_title or existing_entry.plex_title in title or matches_alternative:
-                            # This is likely the same movie with a title variation - update existing entry
-                            if len(title) > len(existing_entry.plex_title):
-                                existing_entry.plex_title = title
-                            # Update year if we have it and existing doesn't
-                            if match_year > 0 and existing_entry.match_year == 0:
-                                existing_entry.match_year = match_year
-                            write_scanner_log(f"Updated existing entry for TMDB ID {tmdb_id}: {title}")
-                        else:
-                            # Different movie with same TMDB ID? Log it for review
-                            write_scanner_log(f"warning: TMDB ID {tmdb_id} already mapped to '{existing_entry.plex_title}', skipping '{title}'")
-                    else:
-                        # New entry - save it
-                        main_entry = TmdbAlias(
-                            tmdb_id=tmdb_id, media_type=media_type, 
-                            plex_title=title, original_title=norm_hit_title,
-                            match_year=match_year
-                        )
-                        db.session.add(main_entry)
-                        match_type = "alternative title" if matches_alternative else "primary title"
-                        write_scanner_log(f"Matched via {match_type}: '{title}' -> TMDB {tmdb_id} ({hit.get('title', hit.get('name'))})")
-                else:
-                    # couldn't find it on TMDB, save a placeholder so we don't keep searching
-                    # But first check if it might be a duplicate of an existing placeholder
-                    existing_placeholder = TmdbAlias.query.filter_by(tmdb_id=-1, plex_title=title).first()
-                    if not existing_placeholder:
-                        dummy = TmdbAlias(tmdb_id=-1, media_type='unknown', plex_title=title)
-                        db.session.add(dummy)
-                        write_scanner_log(f"Not found on TMDB: '{title}'")
-                
-                processed += 1
-                if processed % 10 == 0: db.session.commit()  # commit every 10 to avoid losing progress
-                time.sleep(0.2)  # be nice to TMDB API
-                
-            except Exception as e:
-                print(f"Scan Error on {title}: {e}")
-        
-        s.last_alias_scan = int(time.time())
-        db.session.commit()
-        write_scanner_log(f"Batch complete. Processed {processed} items.")
+    """No-op. Plex library is indexed by sync_plex_library (Sync library now / Plex library sync), not by the old plex_cache.json + alias scan."""
+    return
 
 # lock file stuff (prevents multiple operations from running at once)
 def is_system_locked():
@@ -922,77 +669,260 @@ def get_lock_status():
         write_log("warning", "Utils", f"Lock progress read failed ({type(e).__name__})")
         return {'running': True, 'progress': 'Unknown'}
 
-def refresh_plex_cache(app_obj):
+# Plex guid -> TMDB resolution (like web: TMDB guid, then IMDB, then TVDB, then title+year)
+def _plex_guid_str_to_tmdb_id(guid_str):
+    """Extract TMDB id from a Plex guid string. Returns int or None."""
+    if not guid_str:
+        return None
+    s = (getattr(guid_str, 'id', None) or str(guid_str)).strip()
+    if not s or 'tmdb' not in s.lower():
+        return None
+    m = re.search(r'themoviedb\.org/(?:movie|tv)/(\d+)', s) or re.search(r'themoviedb\.org/\?/(?:movie|tv(?:\/show)?)/(\d+)', s) or re.search(r'tmdb://(\d+)', s) or re.search(r'com\.plexapp\.agents\.themoviedb://(\d+)', s)
+    if m:
+        return int(m.group(1))
+    return None
+
+def _plex_guid_str_parse_imdb(guid_str):
+    """Extract IMDb id (tt1234567) from a Plex guid string. Returns str or None."""
+    if not guid_str:
+        return None
+    s = (getattr(guid_str, 'id', None) or str(guid_str)).strip()
+    m = re.search(r'imdb://(tt\d+)', s, re.I) or re.search(r'com\.plexapp\.agents\.imdb://(tt\d+)', s, re.I)
+    return m.group(1) if m else None
+
+def _plex_guid_str_parse_tvdb(guid_str):
+    """Extract TVDB id from a Plex guid string. Returns int or None."""
+    if not guid_str:
+        return None
+    s = (getattr(guid_str, 'id', None) or str(guid_str)).strip()
+    m = re.search(r'tvdb://(\d+)', s) or re.search(r'com\.plexapp\.agents\.thetvdb://(\d+)', s)
+    return int(m.group(1)) if m else None
+
+def _plex_imdb_to_tmdb(imdb_id, media_type, tmdb_key):
+    """Resolve IMDb id to TMDB id via TMDB find API. media_type 'movie' or 'tv'."""
+    if not imdb_id or not re.match(r'^tt\d+$', str(imdb_id).strip(), re.I):
+        return None
+    if not (tmdb_key and str(tmdb_key).strip()):
+        return None
+    try:
+        url = f"https://api.themoviedb.org/3/find/{imdb_id.strip()}?external_source=imdb_id&api_key={tmdb_key.strip()}"
+        r = requests.get(url, timeout=10)
+        if not r.ok:
+            return None
+        data = r.json()
+        mt = 'movie' if media_type == 'movie' else 'tv'
+        if mt == 'movie' and data.get('movie_results'):
+            return int(data['movie_results'][0]['id'])
+        if mt == 'tv' and data.get('tv_results'):
+            return int(data['tv_results'][0]['id'])
+        mr = (data.get('movie_results') or [{}])[0].get('id')
+        tr = (data.get('tv_results') or [{}])[0].get('id')
+        if media_type == 'movie' and mr:
+            return int(mr)
+        if media_type in ('tv', 'show') and tr:
+            return int(tr)
+        return int(mr) if mr else (int(tr) if tr else None)
+    except Exception as e:
+        log.debug("IMDB->TMDB: %s", e)
+        return None
+
+# In-memory cache for TVDB->TMDB to avoid repeated API calls in one sync run
+_TVDB_TMDB_CACHE = {}
+def _plex_tvdb_to_tmdb(tvdb_id, media_type, tmdb_key):
+    """Resolve TVDB id to TMDB id via TMDB find API. Uses in-memory cache."""
+    tvdb_id = int(tvdb_id) if tvdb_id is not None else 0
+    if tvdb_id <= 0 or not (tmdb_key and str(tmdb_key).strip()):
+        return None
+    key = (tvdb_id, media_type)
+    if key in _TVDB_TMDB_CACHE:
+        return _TVDB_TMDB_CACHE[key]
+    try:
+        url = f"https://api.themoviedb.org/3/find/{tvdb_id}?external_source=tvdb_id&api_key={tmdb_key.strip()}"
+        r = requests.get(url, timeout=10)
+        if not r.ok:
+            _TVDB_TMDB_CACHE[key] = None
+            return None
+        data = r.json()
+        mt = 'movie' if media_type == 'movie' else 'tv'
+        if mt == 'movie' and data.get('movie_results'):
+            _TVDB_TMDB_CACHE[key] = int(data['movie_results'][0]['id'])
+            return _TVDB_TMDB_CACHE[key]
+        if mt == 'tv' and data.get('tv_results'):
+            _TVDB_TMDB_CACHE[key] = int(data['tv_results'][0]['id'])
+            return _TVDB_TMDB_CACHE[key]
+        mr = (data.get('movie_results') or [{}])[0].get('id')
+        tr = (data.get('tv_results') or [{}])[0].get('id')
+        out = int(mr) if (media_type == 'movie' and mr) else (int(tr) if (media_type in ('tv', 'show') and tr) else (int(mr) if mr else (int(tr) if tr else None)))
+        _TVDB_TMDB_CACHE[key] = out
+        return out
+    except Exception as e:
+        log.debug("TVDB->TMDB: %s", e)
+        _TVDB_TMDB_CACHE[key] = None
+        return None
+
+def _plex_title_year_to_tmdb(title, year, media_type, tmdb_key):
+    """Resolve title + year to TMDB id via TMDB search API. Returns int or None."""
+    title = (title or '').strip()
+    if not title or not (tmdb_key and str(tmdb_key).strip()):
+        return None
+    mt = 'tv' if media_type in ('tv', 'show') else 'movie'
+    year_param = ''
+    if year and re.match(r'^\d{4}$', str(year).strip()):
+        y = int(str(year).strip())
+        year_param = f"&year={y}" if mt == 'movie' else f"&first_air_date_year={y}"
+    try:
+        endpoint = 'search/movie' if mt == 'movie' else 'search/tv'
+        url = f"https://api.themoviedb.org/3/{endpoint}?api_key={tmdb_key.strip()}&query={requests.utils.quote(title)}{year_param}&page=1"
+        r = requests.get(url, timeout=10)
+        if not r.ok:
+            return None
+        data = r.json()
+        results = data.get('results') or []
+        if not results:
+            return None
+        return int(results[0]['id'])
+    except Exception as e:
+        log.debug("Title/year->TMDB: %s", e)
+        return None
+
+def sync_plex_library(app_obj):
+    """Sync Plex library to TMDB index (TmdbAlias). First run clears old DB and plex_cache.json. Uses guids then IMDB/TVDB/title+year resolution like web.
+    Works with both direct URLs (e.g. http://192.168.1.50:32400) and Plex relay (.plex.direct) URLs; local IP is usually faster and more reliable."""
     if is_system_locked():
         return False, "System is busy. Please wait."
 
-    print("--- STARTING PLEX CACHE REFRESH ---")
-    
-    with app_obj.app_context():
-        # single global cache file; no request context in background
-        settings = Settings.query.first()
-        if not settings or not settings.plex_url:
-            return False, "Plex not configured."
+    print("--- STARTING PLEX LIBRARY SYNC (TMDB INDEX) ---")
 
-        write_log("info", "Cache", "Started background cache refresh.", app_obj=app_obj)
-        set_system_lock("Refreshing Plex Cache...") 
+    with app_obj.app_context():
+        settings = Settings.query.first()
+        if not settings or not settings.plex_url or not settings.plex_token:
+            return False, "Plex not configured."
+        if not (getattr(settings, 'tmdb_key', None) and str(settings.tmdb_key).strip()):
+            return False, "TMDB API key required to sync library (Settings → APIs)."
+
+        write_log("info", "Plex", "Started Plex library sync (TMDB index).", app_obj=app_obj)
+        set_system_lock("Syncing Plex library...")
         start_time = time.time()
-        
+
+        # Only clear on first run (migration from old way): never completed this sync before
+        last_sync = getattr(settings, 'last_alias_scan', None) or 0
+        if last_sync == 0:
+            try:
+                TmdbAlias.query.delete()
+                db.session.commit()
+                if os.path.exists(CACHE_FILE):
+                    try:
+                        os.remove(CACHE_FILE)
+                    except OSError:
+                        pass
+                write_log("info", "Plex", "Cleared TmdbAlias for fresh sync (first run / migration).", app_obj=app_obj)
+            except Exception as e:
+                write_log("warning", "Plex", f"Clear before sync: {e}", app_obj=app_obj)
+                db.session.rollback()
+
+        max_resolve_per_run = 200  # cap IMDB/TVDB/title+year API calls per sync
+        resolve_count = 0
+        _TVDB_TMDB_CACHE.clear()
+
         try:
             plex = PlexServer(settings.plex_url, settings.plex_token)
-            cache_data = set()
-
+            tmdb_key = settings.tmdb_key.strip()
+            added = 0
             sections = plex.library.sections()
-            
+
             for section in sections:
-                if section.type not in ['movie', 'show']:
+                if section.type not in ('movie', 'show'):
                     continue
-                
+                want_type = 'movie' if section.type == 'movie' else 'tv'
                 set_system_lock(f"Scanning {section.title}...")
-                
+
                 for item in section.all():
                     try:
-                        norm_title = normalize_title(item.title)
-                        cache_data.add(norm_title)
+                        title = getattr(item, 'title', None) or ''
+                        year = getattr(item, 'year', None) or 0
+                        orig = getattr(item, 'originalTitle', None) or ''
+                        guids = getattr(item, 'guids', None) or []
 
-                        if hasattr(item, 'originalTitle') and item.originalTitle:
-                            norm_orig = normalize_title(item.originalTitle)
-                            cache_data.add(norm_orig)
-                            
+                        tmdb_id = None
+                        # 1) TMDB from guid
+                        for g in guids:
+                            tmdb_id = _plex_guid_str_to_tmdb_id(g)
+                            if tmdb_id:
+                                break
+                        # 2) IMDB -> TMDB
+                        if not tmdb_id and resolve_count < max_resolve_per_run:
+                            for g in guids:
+                                imdb_id = _plex_guid_str_parse_imdb(g)
+                                if imdb_id:
+                                    resolve_count += 1
+                                    tmdb_id = _plex_imdb_to_tmdb(imdb_id, want_type, tmdb_key)
+                                    if tmdb_id:
+                                        break
+                                    time.sleep(0.3)
+                        # 3) TVDB -> TMDB
+                        if not tmdb_id and resolve_count < max_resolve_per_run:
+                            for g in guids:
+                                tvdb_id = _plex_guid_str_parse_tvdb(g)
+                                if tvdb_id:
+                                    resolve_count += 1
+                                    tmdb_id = _plex_tvdb_to_tmdb(tvdb_id, want_type, tmdb_key)
+                                    if tmdb_id:
+                                        break
+                                    time.sleep(0.3)
+                        # 4) Title + year search
+                        if not tmdb_id and title and resolve_count < max_resolve_per_run:
+                            resolve_count += 1
+                            tmdb_id = _plex_title_year_to_tmdb(title, year, want_type, tmdb_key)
+                            time.sleep(0.3)
+
+                        if tmdb_id and tmdb_id > 0:
+                            norm_title = normalize_title(title) if title else ''
+                            norm_orig = normalize_title(orig) if orig else norm_title
+                            existing = TmdbAlias.query.filter_by(tmdb_id=tmdb_id, media_type=want_type).first()
+                            if not existing:
+                                db.session.add(TmdbAlias(
+                                    tmdb_id=tmdb_id,
+                                    media_type=want_type,
+                                    plex_title=title or None,
+                                    original_title=norm_orig or None,
+                                    match_year=int(year) if year else None
+                                ))
+                                added += 1
+                        else:
+                            # Placeholder so we don't keep retrying
+                            if title:
+                                norm_title = normalize_title(title)
+                                if not TmdbAlias.query.filter_by(tmdb_id=-1, plex_title=norm_title).first():
+                                    db.session.add(TmdbAlias(tmdb_id=-1, media_type='unknown', plex_title=norm_title))
+
+                        if added % 50 == 0 and added:
+                            db.session.commit()
                     except Exception as e:
+                        log.debug("Sync item: %s", e)
                         continue
 
+            db.session.commit()
+            settings.last_alias_scan = int(time.time())
+            db.session.commit()
             duration = round(time.time() - start_time, 2)
-            
-            with open(CACHE_FILE, 'w') as f:
-                json.dump(list(cache_data), f)
-                
-            msg = f"Cache rebuilt in {duration}s. Indexed {len(cache_data)} titles."
+            total = TmdbAlias.query.filter(TmdbAlias.tmdb_id > 0).count()
+            msg = f"Sync completed in {duration}s. Indexed {total} items (TMDB)."
             print(f"--- {msg} ---")
-            write_log("success", "Cache", msg, app_obj=app_obj)
+            write_log("success", "Plex", msg, app_obj=app_obj)
             return True, msg
-            
+
         except Exception as e:
-            print(f"Cache Refresh Failed: {e}")
-            write_log("error", "Cache", f"Refresh Failed: {str(e)}", app_obj=app_obj)
-            return False, "Refresh failed. Check application logs."
+            print(f"Plex library sync failed: {e}")
+            err_str = str(e)
+            if "Connection refused" in err_str or "Max retries exceeded" in err_str or "NewConnectionError" in err_str:
+                hint = "Plex server unreachable. Check that the server is running and the URL in Settings → APIs (e.g. use http://YOUR_LOCAL_IP:32400 if .plex.direct fails from this host)."
+                write_log("error", "Plex", f"Sync failed: {hint} ({err_str[:120]})", app_obj=app_obj)
+            else:
+                write_log("error", "Plex", f"Sync failed: {err_str}", app_obj=app_obj)
+            db.session.rollback()
+            return False, "Sync failed. Check application logs."
         finally:
             remove_system_lock()
-
-def get_plex_cache(settings):
-    if not os.path.exists(CACHE_FILE):
-        return []
-    
-    try:
-        with open(CACHE_FILE, 'r') as f:
-            content = json.load(f)
-            # handle old format
-            if isinstance(content, dict) and 'data' in content:
-                return list(content['data'].keys())
-            return content
-    except Exception as e:
-        write_log("warning", "Utils", f"Plex cache load failed ({type(e).__name__})")
-        return []
 
 def refresh_radarr_sonarr_cache(app_obj):
     """Scan Radarr and Sonarr libraries and store items in database."""
@@ -1497,30 +1427,20 @@ def run_collection_logic(settings, preset, key, app_obj=None):
         if not tmdb_items:
             return False, "Aborted: No items returned from TMDB. Possible API outage?"
 
-        # get list of what we own in plex
-        owned_titles = set(get_plex_cache(settings)) 
-        
-        # load the alias mappings (TMDB ID -> Plex title)
+        # Load owned TMDB index and alias map (TMDB ID -> Plex title) from TmdbAlias
         id_map = {}
         try:
-            rows = TmdbAlias.query.with_entities(TmdbAlias.tmdb_id, TmdbAlias.plex_title).all()
+            rows = TmdbAlias.query.filter(TmdbAlias.tmdb_id > 0).with_entities(TmdbAlias.tmdb_id, TmdbAlias.plex_title).all()
             for r in rows:
                 id_map[r.tmdb_id] = r.plex_title
         except Exception as e:
             log.warning("Load alias map for preset: %s", e)
 
-        # match TMDB items to what we own
+        # Match TMDB items to what we own (TMDB index only)
         potential_matches = []
         for item in tmdb_items:
-            # ID match is most reliable (from alias DB)
             if item['id'] in id_map:
                 item['mapped_plex_title'] = id_map[item['id']]
-                potential_matches.append(item)
-                continue
-            
-            # fall back to title matching
-            norm_title = normalize_title(item.get('title', item.get('name')))
-            if norm_title in owned_titles:
                 potential_matches.append(item)
 
         # actually search plex to verify these items exist
@@ -1659,15 +1579,15 @@ def is_duplicate(tmdb_item, plex_raw_titles, settings=None):
     norm = normalize_title(tmdb_title)
     return norm in plex_raw_titles
 
-def is_owned_item(tmdb_item, owned_keys, media_type):
+def is_owned_item(tmdb_item, media_type):
     """
-    Check if a TMDB item is already owned in Plex, Radarr, or Sonarr.
-    Uses both title matching and alias database, plus Radarr/Sonarr cache.
+    Check if a TMDB item is already owned in Plex (TmdbAlias from sync) or Radarr/Sonarr.
+    Uses TMDB index (TmdbAlias) and Radarr/Sonarr cache only.
     """
     tmdb_id = tmdb_item.get('id')
     if not tmdb_id:
         return False
-    
+
     # Check Radarr/Sonarr cache first (fastest check)
     try:
         radarr_sonarr_cache = get_radarr_sonarr_cache(media_type)
@@ -1677,119 +1597,32 @@ def is_owned_item(tmdb_item, owned_keys, media_type):
         write_log("warning", "Utils", f"Radarr/Sonarr cache tmdb check failed ({type(e).__name__})")
         pass
 
-    # Check alias database (most reliable for Plex)
-    # If alias exists with valid tmdb_id, we own this item
-    # The alias scan only creates entries for items found in Plex
+    # Check TmdbAlias (Plex library sync index)
     alias = TmdbAlias.query.filter_by(tmdb_id=tmdb_id, media_type=media_type).first()
-    if alias:
-        # Exclude placeholder entries (tmdb_id = -1 means not found on TMDB)
-        if alias.tmdb_id > 0:
-            # If alias exists, we definitely own it (alias scan found it in Plex)
-            return True
-    
-    # Also check if any alias has a matching original_title (handles cases where
-    # TMDB title doesn't match but alias scan found it by Plex title)
+    if alias and alias.tmdb_id > 0:
+        return True
+
+    # Also check if any alias has a matching original_title (handles title variants)
     tmdb_title = tmdb_item.get('title') if media_type == 'movie' else tmdb_item.get('name')
     if tmdb_title:
         norm_tmdb_title = normalize_title(tmdb_title)
-        # Check if any alias has this original_title (means we own a variant)
         matching_alias = TmdbAlias.query.filter_by(
             original_title=norm_tmdb_title,
             media_type=media_type
         ).filter(TmdbAlias.tmdb_id > 0).first()
         if matching_alias:
             return True
-    
-    # Check main title
-    tmdb_title = tmdb_item.get('title') if media_type == 'movie' else tmdb_item.get('name')
+
+    # Radarr/Sonarr cache by title
     if tmdb_title:
-        norm_title = normalize_title(tmdb_title)
-        if norm_title in owned_keys:
-            return True
-        
-        # Also check Radarr/Sonarr cache titles
         try:
             radarr_sonarr_cache = get_radarr_sonarr_cache(media_type)
-            if norm_title in radarr_sonarr_cache['titles']:
+            if normalize_title(tmdb_title) in radarr_sonarr_cache['titles']:
                 return True
         except Exception as e:
             write_log("warning", "Utils", f"Radarr/Sonarr cache title check failed ({type(e).__name__})")
             pass
-        
-        # Check for common title variations (handles regional differences, etc.)
-        base_words = norm_title.split()
-        
-        # Smart partial matching for titles with subtitles or variations
-        if len(base_words) > 2:
-            # Extract significant words (filter out common words like "the", "and", "of")
-            common_words_set = {'the', 'and', 'of', 'a', 'an', 'in', 'on', 'at', 'to', 'for'}
-            significant_words = [w for w in base_words if w not in common_words_set and len(w) > 2]
-            
-            if len(significant_words) >= 2:
-                # Check if any owned title shares significant words (handles subtitle variations)
-                for owned_title in owned_keys:
-                    owned_words = owned_title.split()
-                    owned_significant = [w for w in owned_words if w not in common_words_set and len(w) > 2]
-                    
-                    # If they share at least 2 significant words, likely the same
-                    if len(owned_significant) >= 2:
-                        shared_words = set(significant_words).intersection(set(owned_significant))
-                        # Check if first significant word matches (main title word)
-                        if len(shared_words) >= 2 and significant_words[0] == owned_significant[0]:
-                            return True
-                        # Also check if they share most significant words (handles "philosopher's stone" vs "sorcerer's stone")
-                        if len(shared_words) >= len(significant_words) * 0.7:  # 70% match
-                            return True
-            
-            # Fallback: Try matching without the last word (handles simple variations)
-            if len(base_words[-1]) < 10:
-                partial_title = ' '.join(base_words[:-1])
-                for owned_title in owned_keys:
-                    owned_words = owned_title.split()
-                    if len(owned_words) > 2:
-                        owned_partial = ' '.join(owned_words[:-1])
-                        # If the base titles match (minus last word), likely the same movie
-                        if partial_title == owned_partial and len(partial_title) > 10:
-                            # Additional check: make sure the first word matches
-                            if base_words[0] == owned_words[0]:
-                                return True
-    
-    # Check original title (sometimes different from main title)
-    original_title = tmdb_item.get('original_title') or tmdb_item.get('original_name')
-    if original_title and original_title != tmdb_title:
-        norm_orig = normalize_title(original_title)
-        if norm_orig in owned_keys:
-            return True
-    
-    # Check alternative titles from TMDB (helps with "4" vs "Four" variations)
-    # This is a lightweight check - we don't fetch full alternative titles API
-    # but we can do fuzzy matching on the normalized title
-    if tmdb_title:
-        # Try variations: replace numbers with words and vice versa
-        title_variations = [norm_title]
-        
-        # Replace "4" with "four", "2" with "two", etc.
-        number_replacements = {
-            '4': 'four', '2': 'two', '3': 'three', '5': 'five',
-            '6': 'six', '7': 'seven', '8': 'eight', '9': 'nine', '10': 'ten'
-        }
-        for num, word in number_replacements.items():
-            if num in norm_title:
-                title_variations.append(norm_title.replace(num, word))
-            if word in norm_title:
-                title_variations.append(norm_title.replace(word, num))
-        
-        # Common title variations (Philosopher's Stone vs Sorcerer's Stone)
-        if 'philosopher' in norm_title:
-            title_variations.append(norm_title.replace('philosopher', 'sorcerer'))
-        if 'sorcerer' in norm_title:
-            title_variations.append(norm_title.replace('sorcerer', 'philosopher'))
-        
-        # Check all variations
-        for variation in title_variations:
-            if variation in owned_keys:
-                return True
-    
+
     return False
 
 # Helpers
@@ -1945,8 +1778,7 @@ def create_backup():
         db_path = get_database_path()
         if os.path.exists(db_path):
             zipf.write(db_path, arcname='seekandwatch.db')
-        if os.path.exists(CACHE_FILE):
-            zipf.write(CACHE_FILE, arcname='plex_cache.json')
+        # Plex "owned" index is now in TmdbAlias (DB); no longer backing up plex_cache.json
             
     prune_backups()
     return True, filename
@@ -2011,12 +1843,12 @@ def restore_backup(filename):
                         continue
                     normalized_members[base_name] = member
                 else:
-                    # File at root.
+                    # File at root. plex_cache.json allowed for old backups but not required
                     if clean_member in ['seekandwatch.db', 'plex_cache.json']:
                         normalized_members[clean_member] = member
-            
-            if not normalized_members:
-                return False, "Backup file does not contain seekandwatch.db or plex_cache.json"
+
+            if 'seekandwatch.db' not in normalized_members:
+                return False, "Backup file does not contain seekandwatch.db"
             
             # Extract files to target directory.
             for target_name, zip_member in normalized_members.items():
@@ -2110,6 +1942,9 @@ def validate_url(url):
                 return False, "Access to Multicast is denied."
                 
             if str(ip) == "0.0.0.0" or str(ip) == "::":
+                # Plex relay (*.plex.direct) can resolve to 0.0.0.0/:: on some systems; allow it
+                if hostname and hostname.lower().endswith('.plex.direct'):
+                    continue
                 return False, "Access to 0.0.0.0/:: is denied."
 
         # allow private IPs (for self-hosted setups)
