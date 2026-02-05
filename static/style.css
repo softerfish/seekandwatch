@@ -1478,6 +1478,28 @@ input[type="checkbox"]:checked:hover {
 }
 
 /* tautulli connection banner (when not configured) */
+.tautulli-connect-wrap {
+    position: relative;
+    margin-bottom: 0;
+}
+.tautulli-connect-turnoff {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-muted);
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.tautulli-connect-turnoff:hover {
+    color: var(--text-color);
+    border-color: #666;
+    background: rgba(255,255,255,0.05);
+}
 .tautulli-banner {
     background: rgba(231, 76, 60, 0.1);
     border-left: 4px solid #e74c3c;
