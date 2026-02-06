@@ -147,7 +147,8 @@ docker compose up -d
 
 v1.5.8
 
-Small bugfix release.
+- Unraid app store install fixes
+- Small bugfix release.
 
 <details>
   <summary><b>Past Changelog</b></summary>

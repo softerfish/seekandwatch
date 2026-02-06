@@ -54,11 +54,96 @@ if [ -f "/config/app.py" ] && [ -d "/config/api" ] && [ -f "/config/api/__init__
     IS_APP_DIR=true
 fi
 
+# Helper function to compare semantic versions (returns 0 if $1 > $2)
+version_gt() {
+    # Returns 0 (true) if version $1 is greater than $2
+    # Handles versions like "1.5.8" vs "1.5.6"
+    local v1="$1"
+    local v2="$2"
+    
+    # Extract major.minor.patch
+    local v1_major=$(echo "$v1" | cut -d. -f1)
+    local v1_minor=$(echo "$v1" | cut -d. -f2)
+    local v1_patch=$(echo "$v1" | cut -d. -f3)
+    local v2_major=$(echo "$v2" | cut -d. -f1)
+    local v2_minor=$(echo "$v2" | cut -d. -f2)
+    local v2_patch=$(echo "$v2" | cut -d. -f3)
+    
+    # Default to 0 if empty
+    v1_major=${v1_major:-0}; v1_minor=${v1_minor:-0}; v1_patch=${v1_patch:-0}
+    v2_major=${v2_major:-0}; v2_minor=${v2_minor:-0}; v2_patch=${v2_patch:-0}
+    
+    if [ "$v1_major" -gt "$v2_major" ] 2>/dev/null; then return 0; fi
+    if [ "$v1_major" -lt "$v2_major" ] 2>/dev/null; then return 1; fi
+    if [ "$v1_minor" -gt "$v2_minor" ] 2>/dev/null; then return 0; fi
+    if [ "$v1_minor" -lt "$v2_minor" ] 2>/dev/null; then return 1; fi
+    if [ "$v1_patch" -gt "$v2_patch" ] 2>/dev/null; then return 0; fi
+    return 1
+}
+
 # 4. Prepare writable app dir for self-updates
 if [ "$IS_APP_DIR" = "true" ]; then
     # User mounted app directory as /config, use it directly
     APP_DIR="/config"
     echo "Using /config directly as app directory (detected app directory mount)"
+    
+    # AUTO-UPDATE: Check if Docker image has a newer version than mounted config
+    IMAGE_VERSION=$(grep -oP 'VERSION\s*=\s*"[0-9]+\.[0-9]+\.[0-9]+"' /app/app.py 2>/dev/null | head -1 | grep -oP '"[0-9]+\.[0-9]+\.[0-9]+"' | tr -d '"' || echo "0.0.0")
+    CONFIG_VERSION=$(grep -oP 'VERSION\s*=\s*"[0-9]+\.[0-9]+\.[0-9]+"' /config/app.py 2>/dev/null | head -1 | grep -oP '"[0-9]+\.[0-9]+\.[0-9]+"' | tr -d '"' || echo "0.0.0")
+    
+    echo "Docker image version: $IMAGE_VERSION"
+    echo "Installed version: $CONFIG_VERSION"
+    
+    if version_gt "$IMAGE_VERSION" "$CONFIG_VERSION"; then
+        echo ""
+        echo "🔄 UPDATING: Docker image ($IMAGE_VERSION) is newer than installed ($CONFIG_VERSION)"
+        echo "   Updating app files from Docker image..."
+        
+        # List of files/directories to update (excludes user data like db, backups, etc.)
+        UPDATE_FILES="app.py utils.py models.py presets.py auth_decorators.py cloud_worker.py requirements.txt"
+        UPDATE_DIRS="api templates static images"
+        
+        # Backup current version (just in case)
+        if [ ! -d "/config/.version_backups" ]; then
+            mkdir -p "/config/.version_backups"
+        fi
+        BACKUP_DIR="/config/.version_backups/$CONFIG_VERSION"
+        if [ ! -d "$BACKUP_DIR" ]; then
+            mkdir -p "$BACKUP_DIR"
+            echo "   Creating backup of v$CONFIG_VERSION..."
+            for f in $UPDATE_FILES; do
+                [ -f "/config/$f" ] && cp "/config/$f" "$BACKUP_DIR/" 2>/dev/null
+            done
+            for d in $UPDATE_DIRS; do
+                [ -d "/config/$d" ] && cp -r "/config/$d" "$BACKUP_DIR/" 2>/dev/null
+            done
+        fi
+        
+        # Copy updated files from image (force overwrite)
+        for f in $UPDATE_FILES; do
+            if [ -f "/app/$f" ]; then
+                echo "   Updating $f"
+                cp -f "/app/$f" "/config/$f"
+            fi
+        done
+        
+        # Copy updated directories from image (force overwrite)
+        for d in $UPDATE_DIRS; do
+            if [ -d "/app/$d" ]; then
+                echo "   Updating $d/"
+                rm -rf "/config/$d"
+                cp -r "/app/$d" "/config/$d"
+            fi
+        done
+        
+        echo "✅ Update complete! Now running version $IMAGE_VERSION"
+        echo ""
+    elif [ "$IMAGE_VERSION" = "$CONFIG_VERSION" ]; then
+        echo "✓ App is up to date (v$CONFIG_VERSION)"
+    else
+        echo "⚠️ Installed version ($CONFIG_VERSION) is newer than Docker image ($IMAGE_VERSION)"
+        echo "   Keeping installed version. (You may have used in-app updates)"
+    fi
     
     # Check if there's a nested app structure and flatten it recursively
     # IMPORTANT: Detect version mismatches to avoid mixing incompatible files
