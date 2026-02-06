@@ -1477,6 +1477,59 @@ input[type="checkbox"]:checked:hover {
     color: #000000;
 }
 
+/* Plex link upgrade notice (dismissible, above Tautulli) */
+.plex-link-notice-wrap {
+    margin-bottom: 20px;
+    max-width: 700px;
+    margin-left: auto;
+    margin-right: auto;
+}
+.plex-link-notice-dropdown {
+    background: rgba(52, 152, 219, 0.08);
+    border: 1px solid rgba(52, 152, 219, 0.25);
+    border-radius: 8px;
+    padding: 0;
+}
+.plex-link-notice-trigger {
+    padding: 12px 16px;
+    cursor: pointer;
+    list-style: none;
+    font-weight: 600;
+    color: var(--accent-color, #3498db);
+    display: flex;
+    align-items: center;
+}
+.plex-link-notice-trigger::-webkit-details-marker { display: none; }
+.plex-link-notice-trigger::before { content: '▶'; margin-right: 8px; font-size: 0.7em; transition: transform 0.2s; }
+.plex-link-notice-dropdown[open] .plex-link-notice-trigger::before { transform: rotate(90deg); }
+.plex-link-notice-content {
+    padding: 0 16px 16px 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+}
+.plex-link-notice-text {
+    margin: 0;
+    line-height: 1.5;
+    color: var(--text-color);
+    font-size: 0.95rem;
+}
+.plex-link-notice-dismiss {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-muted);
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+.plex-link-notice-dismiss:hover {
+    color: var(--text-color);
+    border-color: #666;
+    background: rgba(255,255,255,0.05);
+}
+
 /* tautulli connection banner (when not configured) */
 .tautulli-connect-wrap {
     position: relative;
