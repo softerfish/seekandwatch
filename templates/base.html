@@ -42,16 +42,9 @@
         <nav class="sidebar-nav">
             <div class="nav-section">
                 <div class="nav-section-header">SeekAndWatch Cloud</div>
-                <a href="{{ url_for('requests_page') }}" class="nav-item {% if request.endpoint == 'requests_page' %}active{% endif %}">
-                    <i class="fas fa-cloud-download-alt"></i>
-                    <span>Requests</span>
-                    {% if pending_requests_count is defined and pending_requests_count > 0 %}
-                    <span class="sidebar-requests-badge">{{ pending_requests_count }}</span>
-                    {% endif %}
-                </a>
                 <a href="{{ url_for('requests_settings_page') }}" class="nav-item {% if request.endpoint == 'requests_settings_page' %}active{% endif %}">
                     <i class="fas fa-cog"></i>
-                    <span>Settings</span>
+                    <span>Requests Settings</span>
                 </a>
             </div>
 
