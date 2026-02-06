@@ -3863,6 +3863,52 @@ details.help-box ol {
     text-align: center;
     margin-bottom: 30px;
 }
+
+/* Cloud requests sync notice (top of Settings) */
+.requests-sync-notice {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 18px;
+    margin-bottom: 20px;
+    background: rgba(23, 162, 184, 0.2);
+    border: 1px solid rgba(23, 162, 184, 0.4);
+    border-radius: 8px;
+    color: #0e7c8a;
+    font-size: 1rem;
+}
+.requests-sync-notice .fa-check-circle {
+    font-size: 1.2rem;
+    flex-shrink: 0;
+}
+.requests-sync-notice span {
+    flex: 1;
+}
+.requests-sync-settings-link {
+    color: #0e7c8a;
+    font-weight: 600;
+    text-decoration: underline;
+}
+.requests-sync-settings-link:hover {
+    color: #0aa1b3;
+}
+.requests-sync-dismiss {
+    background: transparent;
+    border: none;
+    color: #666;
+    padding: 4px 8px;
+    cursor: pointer;
+    border-radius: 4px;
+}
+.requests-sync-dismiss:hover {
+    color: #999;
+    background: rgba(0,0,0,0.1);
+}
+.seekandwatch-promo-settings .card-header { cursor: pointer; }
+.seekandwatch-promo-settings .btn-close-promo { cursor: pointer; opacity: 0.8; }
+.seekandwatch-promo-settings .btn-close-promo:hover { opacity: 1; }
+.badge-warning { color: #212529 !important; }
+
 .settings-tabs {
     display: flex;
     gap: 10px;
