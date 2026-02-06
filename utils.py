@@ -2426,11 +2426,11 @@ def send_to_radarr_sonarr(settings, media_type, tmdb_id):
             url = f"{base_url}/api/v3/movie"
             
             # Check if already exists
-            check = requests.get(f"{url}?tmdbId={tmdb_id}", headers=headers)
+            check = requests.get(f"{url}?tmdbId={tmdb_id}", headers=headers, timeout=60)
             if check.status_code == 200 and len(check.json()) > 0:
                 return True, "Already in Radarr"
 
-            resp = requests.post(url, json=payload, headers=headers)
+            resp = requests.post(url, json=payload, headers=headers, timeout=60)
             if resp.status_code in [200, 201]:
                 return True, "Added to Radarr"
             else:
@@ -2465,7 +2465,7 @@ def send_to_radarr_sonarr(settings, media_type, tmdb_id):
             # Sonarr Lookup first
             lookup_url = f"{base_url}/api/v3/series/lookup?term=tmdb:{tmdb_id}"
             
-            lookup = requests.get(lookup_url, headers=headers)
+            lookup = requests.get(lookup_url, headers=headers, timeout=60)
             if lookup.status_code == 200 and len(lookup.json()) > 0:
                 series_data = lookup.json()[0]
                 payload['tvdbId'] = series_data.get('tvdbId')
@@ -2478,7 +2478,7 @@ def send_to_radarr_sonarr(settings, media_type, tmdb_id):
                 return False, "Could not find show in Sonarr lookup."
 
             url = f"{base_url}/api/v3/series"
-            resp = requests.post(url, json=payload, headers=headers)
+            resp = requests.post(url, json=payload, headers=headers, timeout=60)
             
             if resp.status_code in [200, 201]:
                 return True, "Added to Sonarr"
@@ -2510,7 +2510,7 @@ def send_to_overseerr(settings, media_type, tmdb_id):
         url = f"{settings.overseerr_url.rstrip('/')}/api/v1/request"
         headers = {"X-Api-Key": settings.overseerr_api_key, "Content-Type": "application/json"}
         
-        resp = requests.post(url, json=payload, headers=headers)
+        resp = requests.post(url, json=payload, headers=headers, timeout=60)
         
         if resp.status_code in [200, 201]:
             return True, "Sent to Overseerr"

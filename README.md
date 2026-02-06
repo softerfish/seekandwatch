@@ -145,14 +145,26 @@ docker compose up -d
 
 ## Changelog
 
+v1.5.7
+
+The last bugfixes of the day. Sorry for so many updates in a single day. Record setting maybe?
+
+**SeekAndWatch Cloud (beta)**
+- fixed Plex library sync errors
+- finished bugs in the sync and poll rewrites
+
+**SeekAndWatch Local**
+- cosmetic fixes
+- small bugfixes and security fixes
+
+<details>
+  <summary><b>Past Changelog</b></summary>
+
 v1.5.6
 
 **SeekAndWatch Local**
 - some users are receiving errors connecting to a database table that does not exist any longer when we removed the cache and old indexing system. Clear your library and link with Plex. Run a new scan and you should be golden
 - added a notice on the main page
-
-<details>
-  <summary><b>Past Changelog</b></summary>
 
 v1.5.5
 

@@ -396,7 +396,7 @@ def update_github_stats():
 # Start background thread.
 if not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
     threading.Thread(target=update_github_stats, daemon=True).start()
-    # Cloud requests are fetched on-demand when user opens Requests page (no background poll thread)
+    # Cloud requests are polled every minute via scheduled_tasks() when cloud sync is enabled
 
 # Inject into all templates.
 @app.context_processor
@@ -766,7 +766,7 @@ def review_history():
     
     media_type = request.form.get('media_type', 'movie')
     manual_query = request.form.get('manual_query')
-    limit = int(request.form.get('history_limit', 20))
+    limit = max(1, min(500, int(request.form.get('history_limit', 20))))
     
     # save filter preferences to session
     session['critic_filter'] = 'true' if request.form.get('critic_filter') else 'false'
@@ -1052,7 +1052,7 @@ def generate():
     session['genre_filter'] = request.form.getlist('genre_filter')
     session['keywords'] = request.form.get('keywords', '')
     
-    try: session['min_year'] = int(request.form.get('min_year', 0))
+    try: session['min_year'] = max(0, min(2100, int(request.form.get('min_year', 0))))
     except Exception: session['min_year'] = 0
     try: session['min_rating'] = float(request.form.get('min_rating', 0))
     except Exception: session['min_rating'] = 0
@@ -1575,21 +1575,21 @@ def settings():
 
         if update_scanners:
             try:
-                s.keyword_cache_size = int(request.form.get('keyword_cache_size', 3000))
+                s.keyword_cache_size = max(100, min(50000, int(request.form.get('keyword_cache_size', 3000))))
             except (TypeError, ValueError):
                 s.keyword_cache_size = 3000
             try:
-                s.runtime_cache_size = int(request.form.get('runtime_cache_size', 3000))
+                s.runtime_cache_size = max(100, min(50000, int(request.form.get('runtime_cache_size', 3000))))
             except (TypeError, ValueError):
                 s.runtime_cache_size = 3000
             if 'max_log_size' in request.form:
                 try:
-                    s.max_log_size = int(request.form.get('max_log_size', 5))
+                    s.max_log_size = max(1, min(100, int(request.form.get('max_log_size', 5))))
                 except (TypeError, ValueError):
                     s.max_log_size = 5
             if 'scanner_log_size' in request.form:
                 try:
-                    s.scanner_log_size = int(request.form.get('scanner_log_size', 10))
+                    s.scanner_log_size = max(1, min(100, int(request.form.get('scanner_log_size', 10))))
                 except (TypeError, ValueError):
                     s.scanner_log_size = 10
             if 'ignored_libraries' in request.form or request.form.getlist('ignored_libraries'):
@@ -1604,11 +1604,11 @@ def settings():
 
         if update_system:
             try:
-                s.backup_interval = int(request.form.get('backup_interval', 2))
+                s.backup_interval = max(1, min(168, int(request.form.get('backup_interval', 2))))
             except (TypeError, ValueError):
                 s.backup_interval = 2
             try:
-                s.backup_retention = int(request.form.get('backup_retention', 7))
+                s.backup_retention = max(1, min(365, int(request.form.get('backup_retention', 7))))
             except (TypeError, ValueError):
                 s.backup_retention = 7
             if 'cloud_sync_owned_enabled' in request.form:
@@ -1882,6 +1882,14 @@ def scheduled_tasks():
                     print("Scheduler: Starting Radarr/Sonarr Cache Refresh...")
                     threading.Thread(target=refresh_radarr_sonarr_cache, args=(app,)).start()
 
+        # Cloud polling: fetch approved requests from SeekAndWatch Cloud
+        if getattr(s, 'cloud_enabled', False) and getattr(s, 'cloud_api_key', None) and getattr(s, 'cloud_sync_owned_enabled', True):
+            try:
+                from cloud_worker import process_cloud_queue
+                process_cloud_queue()
+            except Exception as e:
+                print(f"Cloud poll error: {e}")
+
 scheduler.add_job(id='master_task', func=scheduled_tasks, trigger='interval', minutes=1)
 
 # Import API blueprint - must be after app creation
@@ -1937,7 +1945,7 @@ def webhook_approved():
     secret = (request.headers.get('X-Webhook-Secret') or '').strip()
     settings = None
     for s in Settings.query.filter(Settings.cloud_webhook_url.isnot(None)).all():
-        if (s.cloud_webhook_secret or '') == secret:
+        if secrets.compare_digest(s.cloud_webhook_secret or '', secret):
             settings = s
             break
     if not settings:
@@ -1964,20 +1972,8 @@ def webhook_approved():
 @app.route('/requests')
 @login_required
 def requests_page():
-    # Requests are approved/denied on the web app. This page only syncs approved items from cloud (no local pending queue).
-    settings = current_user.settings
-    if settings and settings.cloud_enabled and settings.cloud_api_key and getattr(settings, 'cloud_sync_owned_enabled', True):
-        try:
-            from cloud_worker import fetch_cloud_requests
-            ok, msg = fetch_cloud_requests(settings)
-            if ok and msg:
-                flash(msg, "success")
-            elif not ok and msg:
-                flash(msg, "warning")
-        except Exception as e:
-            flash(f"Could not fetch from cloud: {getattr(e, 'message', str(e))}", "warning")
-
-    return render_template('requests.html', settings=settings)
+    # Requests page removed: notices and config live on Settings. Redirect to Settings.
+    return redirect(url_for('settings'))
 
 
 @app.route('/requests/settings')
