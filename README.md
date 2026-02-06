@@ -1,6 +1,6 @@
 # SeekAndWatch
 
-![Version](https://img.shields.io/badge/version-1.5.5-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) ![License](https://img.shields.io/badge/License-MIT-green.svg)
+![Version](https://img.shields.io/badge/version-1.5.6-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
 **Saved you a scroll or two?** If this app saves you from endless scrolling, a star for the project helps a lot.
 
@@ -145,24 +145,32 @@ docker compose up -d
 
 ## Changelog
 
+v1.5.6
+
+**SeekAndWatch Local**
+- some users are receiving errors connecting to a database table that does not exist any longer when we removed the cache and old indexing system. Clear your library and link with Plex. Run a new scan and you should be golden
+- added a notice on the main page
+
+<details>
+  <summary><b>Past Changelog</b></summary>
+
+v1.5.5
+
 App now available in the Unraid App Store
 
 We're working towards smoothly getting instant to near instant requests filled on your servers.
 
 **SeekAndWatch Cloud (beta)**
-v1.5.5
 - You now approve/deny/delete requests from the web app instead of doing so on the local app. Finished list will be sent to your local app and auto accepted based on your settings
 
 **SeekAndWatch Local**
 - no more option to accept/deny/delete requests form the plex app
 - auto approved is removed since you approve in the web app now
 - option to turn off Tatulli notice if you don't want to use it
-
-<details>
-  <summary><b>Past Changelog</b></summary>
   
-**SeekAndWatch Cloud (beta)**
 v1.5.4
+
+**SeekAndWatch Cloud (beta)**
 - notes when making a request
 - better logging
 - rewrite of syncing based on user feedback

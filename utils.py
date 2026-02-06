@@ -944,7 +944,7 @@ def refresh_radarr_sonarr_cache(app_obj):
         if not has_radarr and not has_sonarr:
             return False, "Radarr or Sonarr not configured (need URL and API key)."
 
-        write_log("info", "RadarrSonarrCache", "Started background cache refresh.", app_obj=app_obj)
+        write_log("info", "Radarr/Sonarr", "Started background scan.", app_obj=app_obj)
         set_system_lock("Refreshing Radarr/Sonarr Cache...") 
         start_time = time.time()
         
@@ -1017,9 +1017,9 @@ def refresh_radarr_sonarr_cache(app_obj):
                             
                             db.session.commit()
                             total_items += radarr_count
-                            write_log("info", "RadarrSonarrCache", f"Scanned {radarr_count} movies from Radarr.", app_obj=app_obj)
+                            write_log("info", "Radarr/Sonarr", f"Scanned {radarr_count} movies from Radarr.", app_obj=app_obj)
                 except Exception as e:
-                    write_log("warning", "RadarrSonarrCache", f"Failed to scan Radarr: {str(e)}", app_obj=app_obj)
+                    write_log("warning", "Radarr/Sonarr", f"Failed to scan Radarr: {str(e)}", app_obj=app_obj)
             
             # Scan Sonarr (TV shows)
             if has_sonarr:
@@ -1108,23 +1108,23 @@ def refresh_radarr_sonarr_cache(app_obj):
                             
                             db.session.commit()
                             total_items += sonarr_count
-                            write_log("info", "RadarrSonarrCache", f"Scanned {sonarr_count} TV shows from Sonarr.", app_obj=app_obj)
+                            write_log("info", "Radarr/Sonarr", f"Scanned {sonarr_count} TV shows from Sonarr.", app_obj=app_obj)
                 except Exception as e:
-                    write_log("warning", "RadarrSonarrCache", f"Failed to scan Sonarr: {str(e)}", app_obj=app_obj)
+                    write_log("warning", "Radarr/Sonarr", f"Failed to scan Sonarr: {str(e)}", app_obj=app_obj)
             
             # update last scan timestamp
             settings.last_radarr_sonarr_scan = int(time.time())
             db.session.commit()
             
             duration = round(time.time() - start_time, 2)
-            msg = f"Radarr/Sonarr cache refreshed in {duration}s. Indexed {total_items} items."
+            msg = f"Radarr/Sonarr scan completed in {duration}s. Indexed {total_items} items."
             print(f"--- {msg} ---")
-            write_log("success", "RadarrSonarrCache", msg, app_obj=app_obj)
+            write_log("success", "Radarr/Sonarr", msg, app_obj=app_obj)
             return True, msg
             
         except Exception as e:
             print(f"Radarr/Sonarr Cache Refresh Failed: {e}")
-            write_log("error", "RadarrSonarrCache", f"Refresh Failed: {str(e)}", app_obj=app_obj)
+            write_log("error", "Radarr/Sonarr", f"Scan failed: {str(e)}", app_obj=app_obj)
             return False, "Refresh failed. Check application logs."
         finally:
             remove_system_lock()
@@ -1530,7 +1530,7 @@ def run_collection_logic(settings, preset, key, app_obj=None):
                     f"Created '{preset['title']}' with {len(found_items)} items. "
                     "If it doesn't show under Manage Recommendations, open the collection in Plex → ⋮ → Visible On → check the columns you want."
                 )
-            if not owned_titles and not id_map:
+            if not id_map:
                 return True, "No items found. Run Sync Engine and Background Alias Discovery in Settings first so the app knows what you have in Plex."
             return True, "No items found."
         # existing collection is regular, so we can add/remove items
@@ -2098,7 +2098,10 @@ def is_docker():
     return False
 
 def is_unraid():
-    """Tries to detect if we're running on Unraid (checks env vars and paths)."""
+    """Tries to detect if we're running on Unraid (checks env vars and paths).
+    Unraid App Store Docker: set SEEKANDWATCH_UNRAID=1 (or SEEKANDWATCH_SOURCE=unraid) in the template so 1-click update is disabled."""
+    if os.environ.get('SEEKANDWATCH_UNRAID') or os.environ.get('SEEKANDWATCH_SOURCE') == 'unraid':
+        return True
     if os.environ.get('UNRAID_VERSION') or os.environ.get('UNRAID_API_KEY'):
         return True
     if os.path.exists('/etc/unraid-version'):

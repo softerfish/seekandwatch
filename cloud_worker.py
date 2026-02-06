@@ -18,24 +18,30 @@ BACKOFF_CAP_SEC = 300
 # Global state
 last_modified_header = None
 backoff_remaining = 0  # cycles left to use longer sleep after 429
-recommended_poll_interval_sec = 0  # set from X-Poll-Interval when cloud suggests longer interval (e.g. high traffic)
+recommended_poll_interval_sec = 0  # set from X-Poll-Interval (legacy single value)
+recommended_poll_interval_min_sec = 0  # set from X-Poll-Interval-Min when cloud sends min/max
+recommended_poll_interval_max_sec = 0  # set from X-Poll-Interval-Max
 
 
 def get_poll_sleep_seconds():
     """Return how many seconds to sleep before next poll (jitter + backoff + cloud recommendation). Use from app or __main__."""
     min_sec, max_sec = POLL_INTERVAL_MIN, POLL_INTERVAL_MAX
-    try:
-        with app.app_context():
-            s = Settings.query.filter_by(user_id=SCHEDULER_USER_ID).first() if SCHEDULER_USER_ID is not None else None
-            if s is None:
-                s = Settings.query.first()
-            if s and getattr(s, 'cloud_poll_interval_min', None) is not None and getattr(s, 'cloud_poll_interval_max', None) is not None:
-                mn, mx = s.cloud_poll_interval_min, s.cloud_poll_interval_max
-                if mn is not None and mx is not None and mn >= 30:
-                    min_sec = max(30, mn)
-                    max_sec = max(min_sec, mx)
-    except Exception:
-        pass
+    if recommended_poll_interval_min_sec > 0 and recommended_poll_interval_max_sec >= recommended_poll_interval_min_sec:
+        min_sec = recommended_poll_interval_min_sec
+        max_sec = max(min_sec, recommended_poll_interval_max_sec)
+    else:
+        try:
+            with app.app_context():
+                s = Settings.query.filter_by(user_id=SCHEDULER_USER_ID).first() if SCHEDULER_USER_ID is not None else None
+                if s is None:
+                    s = Settings.query.first()
+                if s and getattr(s, 'cloud_poll_interval_min', None) is not None and getattr(s, 'cloud_poll_interval_max', None) is not None:
+                    mn, mx = s.cloud_poll_interval_min, s.cloud_poll_interval_max
+                    if mn is not None and mx is not None and mn >= 30:
+                        min_sec = max(30, mn)
+                        max_sec = max(min_sec, mx)
+        except Exception:
+            pass
     base = random.randint(min_sec, max_sec)
     if backoff_remaining > 0:
         base = min(BACKOFF_CAP_SEC, int(base * BACKOFF_MULT_AFTER_429))
@@ -281,7 +287,7 @@ def fetch_cloud_requests(settings):
 
 
 def process_cloud_queue():
-    global last_modified_header, backoff_remaining, recommended_poll_interval_sec
+    global last_modified_header, backoff_remaining, recommended_poll_interval_sec, recommended_poll_interval_min_sec, recommended_poll_interval_max_sec
 
     with app.app_context():
         # 1. Get Local Settings (use config user when set for multi-user isolation)
@@ -308,6 +314,14 @@ def process_cloud_queue():
             try:
                 xi = int(sync_response.headers.get('X-Poll-Interval', 0) or 0)
                 recommended_poll_interval_sec = max(0, min(300, xi))
+                xmin = int(sync_response.headers.get('X-Poll-Interval-Min', 0) or 0)
+                xmax = int(sync_response.headers.get('X-Poll-Interval-Max', 0) or 0)
+                if xmin > 0 and xmax >= xmin:
+                    recommended_poll_interval_min_sec = max(30, min(300, xmin))
+                    recommended_poll_interval_max_sec = max(recommended_poll_interval_min_sec, min(300, xmax))
+                else:
+                    recommended_poll_interval_min_sec = 0
+                    recommended_poll_interval_max_sec = 0
             except (ValueError, TypeError):
                 pass
 
@@ -320,6 +334,14 @@ def process_cloud_queue():
                 try:
                     xi = int(response.headers.get('X-Poll-Interval', 0) or 0)
                     recommended_poll_interval_sec = max(0, min(300, xi))
+                    xmin = int(response.headers.get('X-Poll-Interval-Min', 0) or 0)
+                    xmax = int(response.headers.get('X-Poll-Interval-Max', 0) or 0)
+                    if xmin > 0 and xmax >= xmin:
+                        recommended_poll_interval_min_sec = max(30, min(300, xmin))
+                        recommended_poll_interval_max_sec = max(recommended_poll_interval_min_sec, min(300, xmax))
+                    else:
+                        recommended_poll_interval_min_sec = 0
+                        recommended_poll_interval_max_sec = 0
                 except (ValueError, TypeError):
                     pass
                 return
@@ -340,7 +362,7 @@ def process_cloud_queue():
                 print(f"Cloud Error: Server returned status {response.status_code}")
                 return
             
-            # If we got 200 OK, save the new Last-Modified header, decay backoff, and respect X-Poll-Interval
+            # If we got 200 OK, save the new Last-Modified header, decay backoff, and respect X-Poll-Interval (and Min/Max)
             if 'Last-Modified' in response.headers:
                 last_modified_header = response.headers['Last-Modified']
             if backoff_remaining > 0:
@@ -348,8 +370,18 @@ def process_cloud_queue():
             try:
                 xi = int(response.headers.get('X-Poll-Interval', 0) or 0)
                 recommended_poll_interval_sec = max(0, min(300, xi))
+                xmin = int(response.headers.get('X-Poll-Interval-Min', 0) or 0)
+                xmax = int(response.headers.get('X-Poll-Interval-Max', 0) or 0)
+                if xmin > 0 and xmax >= xmin:
+                    recommended_poll_interval_min_sec = max(30, min(300, xmin))
+                    recommended_poll_interval_max_sec = max(recommended_poll_interval_min_sec, min(300, xmax))
+                else:
+                    recommended_poll_interval_min_sec = 0
+                    recommended_poll_interval_max_sec = 0
             except (ValueError, TypeError):
                 recommended_poll_interval_sec = 0
+                recommended_poll_interval_min_sec = 0
+                recommended_poll_interval_max_sec = 0
 
             try:
                 data = response.json()

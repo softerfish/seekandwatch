@@ -47,7 +47,7 @@ from sqlalchemy.exc import OperationalError
 
 # basic app setup stuff
 
-VERSION = "1.5.5"
+VERSION = "1.5.6"
 
 UPDATE_CACHE = {
     'version': None,
@@ -404,7 +404,8 @@ def inject_github_data():
     return dict(
         github_stars=github_cache['stars'],
         latest_version=github_cache['latest_version'],
-        current_version=VERSION
+        current_version=VERSION,
+        is_unraid=is_unraid()
     )
 
 # main page routes
