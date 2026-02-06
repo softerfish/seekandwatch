@@ -1549,7 +1549,7 @@ def get_radarr_sonarr_cache_status_route():
         from models import RadarrSonarrCache
         cache_count = RadarrSonarrCache.query.count()
     except Exception as e:
-        _log_api_exception("Cache count", e)
+        _log_api_exception("Radarr/Sonarr count", e)
         pass
     
     if s.last_radarr_sonarr_scan:
