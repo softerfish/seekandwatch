@@ -164,10 +164,17 @@
                         <i class="fab fa-github"></i>
                         <span id="gh-star-count-header">-</span>
                     </a>
+                    {% if is_unraid|default(false) %}
+                    <a href="javascript:void(0)" onclick="showUnraidUpdateNotice()" class="header-link version-update-link" title="Update via Unraid App Store">
+                        <i class="fas fa-code-branch"></i>
+                        <span>Unraid: update in App Store</span>
+                    </a>
+                    {% else %}
                     <a href="javascript:void(0)" onclick="smartUpdate()" class="header-link version-update-link" title="Check for updates">
                         <i class="fas fa-code-branch"></i>
                         <div id="update-dot-header" class="update-dot" title="Update Available"></div>
                     </a>
+                    {% endif %}
                 </div>
             </div>
         </header>
@@ -284,6 +291,18 @@
         };
 
         modal.style.display = 'flex';
+    }
+
+    function showUnraidUpdateNotice() {
+        showModal("🧰 Update via Unraid App Store",
+            `<div class="text-left">
+                <p>This install was detected as <b>Unraid</b>.</p>
+                <p>Please update via the <b>Unraid App Store</b> (Apps → SeekAndWatch → Update).</p>
+                <hr>
+                <p class="text-muted fs-small mt-10">
+                    One-click updates are disabled on Unraid to avoid breaking installs.
+                </p>
+            </div>`, false);
     }
 
     function smartUpdate(forceGit = false) {

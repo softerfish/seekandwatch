@@ -14,7 +14,7 @@
 
     <div class="settings-tabs">
         <button type="button" class="tab-link active" onclick="openTab(event, 'tab-apis')">APIs & Connections</button>
-        <button type="button" class="tab-link" onclick="openTab(event, 'tab-scanners')">Scanners & Cache</button>
+        <button type="button" class="tab-link" onclick="openTab(event, 'tab-scanners')">Scanners & memory</button>
         <button type="button" class="tab-link" onclick="openTab(event, 'tab-plex-library')">Plex Library</button>
         <button type="button" class="tab-link" onclick="openTab(event, 'tab-system')">System & Maintenance</button>
         
@@ -275,7 +275,7 @@ function copyRecoveryCodes() {
             <form class="card setting-card border-orange" onsubmit="return false;" autocomplete="off">
                 <input type="text" name="username" autocomplete="username" tabindex="-1" aria-hidden="true" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0;">
                 <h3>Plex Integration</h3>
-                <p class="text-muted small" style="margin-top: 0; margin-bottom: 12px;">Link your Plex account (like SeekAndWatch Cloud) to get a token via API. Use <b>Sync library now</b> below to import your Plex movie/TV library into the app (or <b>Force Refresh</b> under Scanners &amp; Cache).</p>
+                <p class="text-muted small" style="margin-top: 0; margin-bottom: 12px;">Link your Plex account (like SeekAndWatch Cloud) to get a token via API. Use <b>Sync library now</b> below to import your Plex movie/TV library into the app.</p>
                 {% if settings.plex_url and settings.plex_token %}
                 <p id="plex-link-status" style="margin: 0 0 16px 0; padding: 10px 14px; background: rgba(0, 204, 102, 0.15); border: 1px solid rgba(0, 204, 102, 0.5); border-radius: 8px; color: var(--accent-color); font-weight: bold;">
                     ✓ Plex account connected
@@ -535,7 +535,7 @@ function copyRecoveryCodes() {
             </div>
         </div>
     </section>
-    <section aria-label="Scanners and cache" style="margin-bottom: 0;">
+    <section aria-label="Scanners and memory" style="margin-bottom: 0;">
         <div id="tab-scanners" class="tab-content" data-settings-section="scanners">
             <fieldset class="settings-fieldset" style="border:none;margin:0;padding:0;min-width:0;">
                 <legend class="visually-hidden">Keyword Memory</legend>

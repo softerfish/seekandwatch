@@ -13,6 +13,34 @@
 
 <div class="text-center" style="padding-top: 16px;">
 
+        <div id="plex-link-notice-wrap" class="plex-link-notice-wrap">
+            <details class="plex-link-notice-dropdown" id="plex-link-notice-dropdown" open>
+                <summary class="plex-link-notice-trigger">ℹ️ Upgrade notice</summary>
+                <div class="plex-link-notice-content">
+                    <p class="plex-link-notice-text">If you used an older version before: <strong>link with Plex</strong> (Settings → Plex Integration) and run <strong>Sync library now</strong> before completing collections or running Smart Discovery. That builds the app’s index of your library so recommendations and collections work correctly.</p>
+                    <a href="{{ url_for('settings') }}" class="btn-secondary fs-small" style="padding: 8px 15px;">Go to Settings ↗</a>
+                    <button type="button" class="plex-link-notice-dismiss" id="plex-link-notice-dismiss" title="Don't show this again">Dismiss</button>
+                </div>
+            </details>
+        </div>
+        <script>
+        (function() {
+            var key = 'seekandwatch_plex_link_notice_dismissed';
+            var wrap = document.getElementById('plex-link-notice-wrap');
+            var btn = document.getElementById('plex-link-notice-dismiss');
+            if (!wrap) return;
+            try {
+                if (localStorage.getItem(key) === '1') { wrap.style.display = 'none'; return; }
+            } catch (e) {}
+            if (btn) {
+                btn.addEventListener('click', function() {
+                    try { localStorage.setItem(key, '1'); } catch (e) {}
+                    wrap.style.display = 'none';
+                });
+            }
+        })();
+        </script>
+
 {% if not (settings.tautulli_url and settings.tautulli_api_key) %}
         <div id="tautulli-connect-wrap" class="tautulli-connect-wrap">
             <button type="button" class="tautulli-connect-turnoff" id="tautulli-connect-turnoff" title="Don't show this again" aria-label="Turn off Tautulli notice">Turn off</button>
