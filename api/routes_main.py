@@ -1138,53 +1138,95 @@ def delete_custom_collection(key):
 @api_bp.route('/test_connection', methods=['POST'])
 @login_required
 def test_connection():
-    data = request.json
+    data = request.json or {}
     service = data.get('service')
-    
-    # validate URL to prevent SSRF attacks
-    if 'url' in data and data['url']:
-        is_safe, msg = validate_url(data['url'])
-        if not is_safe:
-            return jsonify({'status': 'error', 'message': f"Security Block: {msg}", 'msg': f"Security Block: {msg}"})
+    use_stored = data.get('use_stored') is True
+    s = current_user.settings if use_stored else None
 
     try:
-        # test each service type
         if service == 'plex':
-            p = PlexServer(data['url'], data['token'], timeout=5)
+            u = (s.plex_url or '').strip() if use_stored and s else (data.get('url') or '').strip()
+            t = (s.plex_token or '').strip() if use_stored and s else (data.get('token') or '').strip()
+            if not u or not t:
+                return jsonify({'status': 'error', 'message': 'URL and token required', 'msg': 'URL and token required'})
+            is_safe, msg = validate_url(u)
+            if not is_safe:
+                return jsonify({'status': 'error', 'message': f"Security Block: {msg}", 'msg': f"Security Block: {msg}"})
+            p = PlexServer(u, t, timeout=5)
             return jsonify({'status': 'success', 'message': f"Connected: {p.friendlyName}", 'msg': f"Connected: {p.friendlyName}"})
-            
+
         elif service == 'tmdb':
-            clean_key = data['api_key'].strip()
+            clean_key = (s.tmdb_key or '').strip() if use_stored and s else (data.get('api_key') or '').strip()
+            if not clean_key:
+                return jsonify({'status': 'error', 'message': 'API key required', 'msg': 'API key required'})
             r = requests.get(f"https://api.themoviedb.org/3/configuration?api_key={clean_key}", timeout=10)
-            if r.status_code == 200: return jsonify({'status': 'success', 'message': 'TMDB Connected!', 'msg': 'TMDB Connected!'})
+            if r.status_code == 200:
+                return jsonify({'status': 'success', 'message': 'TMDB Connected!', 'msg': 'TMDB Connected!'})
             return jsonify({'status': 'error', 'message': 'Invalid Key', 'msg': 'Invalid Key'})
-            
+
         elif service == 'omdb':
-            clean_key = data['api_key'].strip()
+            clean_key = (s.omdb_key or '').strip() if use_stored and s else (data.get('api_key') or '').strip()
+            if not clean_key:
+                return jsonify({'status': 'error', 'message': 'API key required', 'msg': 'API key required'})
             r = requests.get(f"https://www.omdbapi.com/?apikey={clean_key}&t=Inception", timeout=10)
-            if r.json().get('Response') == 'True': return jsonify({'status': 'success', 'message': 'OMDB Connected!', 'msg': 'OMDB Connected!'})
+            if r.json().get('Response') == 'True':
+                return jsonify({'status': 'success', 'message': 'OMDB Connected!', 'msg': 'OMDB Connected!'})
             return jsonify({'status': 'error', 'message': 'Invalid Key', 'msg': 'Invalid Key'})
-            
+
         elif service == 'overseerr':
-            r = requests.get(f"{data['url']}/api/v1/status", headers={'X-Api-Key': data['api_key']}, timeout=5)
-            if r.status_code == 200: return jsonify({'status': 'success', 'message': 'Overseerr Connected!', 'msg': 'Overseerr Connected!'})
+            u = (s.overseerr_url or '').strip() if use_stored and s else (data.get('url') or '').strip()
+            k = (s.overseerr_api_key or '').strip() if use_stored and s else (data.get('api_key') or '').strip()
+            if not u or not k:
+                return jsonify({'status': 'error', 'message': 'URL and API key required', 'msg': 'URL and API key required'})
+            is_safe, msg = validate_url(u)
+            if not is_safe:
+                return jsonify({'status': 'error', 'message': f"Security Block: {msg}", 'msg': f"Security Block: {msg}"})
+            r = requests.get(f"{u.rstrip('/')}/api/v1/status", headers={'X-Api-Key': k}, timeout=5)
+            if r.status_code == 200:
+                return jsonify({'status': 'success', 'message': 'Overseerr Connected!', 'msg': 'Overseerr Connected!'})
             return jsonify({'status': 'error', 'message': 'Connection Failed', 'msg': 'Connection Failed'})
-            
+
         elif service == 'tautulli':
-            r = requests.get(f"{data['url']}/api/v2?apikey={data['api_key']}&cmd=get_server_info", timeout=5)
-            if r.status_code == 200: return jsonify({'status': 'success', 'message': 'Tautulli Connected!', 'msg': 'Tautulli Connected!'})
+            u = (s.tautulli_url or '').strip() if use_stored and s else (data.get('url') or '').strip()
+            k = (s.tautulli_api_key or '').strip() if use_stored and s else (data.get('api_key') or '').strip()
+            if not u or not k:
+                return jsonify({'status': 'error', 'message': 'URL and API key required', 'msg': 'URL and API key required'})
+            is_safe, msg = validate_url(u)
+            if not is_safe:
+                return jsonify({'status': 'error', 'message': f"Security Block: {msg}", 'msg': f"Security Block: {msg}"})
+            r = requests.get(f"{u.rstrip('/')}/api/v2?apikey={k}&cmd=get_server_info", timeout=5)
+            if r.status_code == 200:
+                return jsonify({'status': 'success', 'message': 'Tautulli Connected!', 'msg': 'Tautulli Connected!'})
             return jsonify({'status': 'error', 'message': 'Connection Failed', 'msg': 'Connection Failed'})
-            
+
         elif service == 'radarr':
-            r = requests.get(f"{data['url']}/api/v3/system/status", headers={'X-Api-Key': data['api_key']}, timeout=5)
-            if r.status_code == 200: return jsonify({'status': 'success', 'message': 'Radarr Connected!', 'msg': 'Radarr Connected!'})
+            u = (s.radarr_url or '').strip() if use_stored and s else (data.get('url') or '').strip()
+            k = (s.radarr_api_key or '').strip() if use_stored and s else (data.get('api_key') or '').strip()
+            if not u or not k:
+                return jsonify({'status': 'error', 'message': 'URL and API key required', 'msg': 'URL and API key required'})
+            is_safe, msg = validate_url(u)
+            if not is_safe:
+                return jsonify({'status': 'error', 'message': f"Security Block: {msg}", 'msg': f"Security Block: {msg}"})
+            r = requests.get(f"{u.rstrip('/')}/api/v3/system/status", headers={'X-Api-Key': k}, timeout=5)
+            if r.status_code == 200:
+                return jsonify({'status': 'success', 'message': 'Radarr Connected!', 'msg': 'Radarr Connected!'})
             return jsonify({'status': 'error', 'message': 'Connection Failed', 'msg': 'Connection Failed'})
-            
+
         elif service == 'sonarr':
-            r = requests.get(f"{data['url']}/api/v3/system/status", headers={'X-Api-Key': data['api_key']}, timeout=5)
-            if r.status_code == 200: return jsonify({'status': 'success', 'message': 'Sonarr Connected!', 'msg': 'Sonarr Connected!'})
+            u = (s.sonarr_url or '').strip() if use_stored and s else (data.get('url') or '').strip()
+            k = (s.sonarr_api_key or '').strip() if use_stored and s else (data.get('api_key') or '').strip()
+            if not u or not k:
+                return jsonify({'status': 'error', 'message': 'URL and API key required', 'msg': 'URL and API key required'})
+            is_safe, msg = validate_url(u)
+            if not is_safe:
+                return jsonify({'status': 'error', 'message': f"Security Block: {msg}", 'msg': f"Security Block: {msg}"})
+            r = requests.get(f"{u.rstrip('/')}/api/v3/system/status", headers={'X-Api-Key': k}, timeout=5)
+            if r.status_code == 200:
+                return jsonify({'status': 'success', 'message': 'Sonarr Connected!', 'msg': 'Sonarr Connected!'})
             return jsonify({'status': 'error', 'message': 'Connection Failed', 'msg': 'Connection Failed'})
-            
+
+        return jsonify({'status': 'error', 'message': 'Unknown service', 'msg': 'Unknown service'})
+
     except Exception as e:
         _log_api_exception("test_connection", e)
         return jsonify({'status': 'error', 'message': 'Connection failed', 'msg': 'Connection failed'})

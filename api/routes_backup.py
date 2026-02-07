@@ -67,6 +67,11 @@ def run_restore(filename):
     if not safe_path:
         return jsonify({'status': 'error', 'message': 'Invalid filename'})
     success, msg = restore_backup(os.path.basename(safe_path))
+    if success:
+        # Force the app to reopen the DB so it sees the restored file (API keys, etc.).
+        db.session.remove()
+        db.engine.dispose()
+        msg = "Restored. If API keys or settings are missing, restart the app (e.g. Docker container) so all data loads from the backup."
     return jsonify({'status': 'success' if success else 'error', 'message': msg})
 
 
