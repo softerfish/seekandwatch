@@ -309,7 +309,7 @@
             grid.classList.remove('d-none');
             grid.style.display = 'block';
             if (document.getElementById('filter-year')) {
-                grid.innerHTML = `<div class="empty-state"><h3>Recommendations didn't load</h3><p class="empty-state-text">The request may have timed out. Try again with <strong>fewer seed titles</strong> (e.g. 3–5) or use <strong>I'm Feeling Lucky</strong>.</p><a href="{{ url_for('dashboard') }}" class="btn btn-primary">Back to Dashboard</a></div>`;
+                grid.innerHTML = `<div class="empty-state"><h3>Recommendations didn't load</h3><p class="empty-state-text">The request may have timed out. Try again with <strong>fewer seed titles</strong> (e.g. 3-5) or use <strong>I'm Feeling Lucky</strong>.</p><a href="{{ url_for('dashboard') }}" class="btn btn-primary">Back to Dashboard</a></div>`;
             } else {
                 grid.innerHTML = '<div class="empty-state">No results found.</div>';
             }

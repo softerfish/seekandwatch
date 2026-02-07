@@ -4,7 +4,7 @@
 
 <div class="settings-container">
     <div class="settings-header">
-        <h2>⚙️ Configuration</h2>
+        <h2>Configuration</h2>
         <p class="text-muted">Manage your connections, automation engines, and system preferences.</p>
     </div>
     
@@ -15,18 +15,17 @@
     <div class="settings-tabs">
         <button type="button" class="tab-link active" onclick="openTab(event, 'tab-apis')">APIs & Connections</button>
         <button type="button" class="tab-link" onclick="openTab(event, 'tab-scanners')">Scanners & memory</button>
-        <button type="button" class="tab-link" onclick="openTab(event, 'tab-plex-library')">Plex Library</button>
         <button type="button" class="tab-link" onclick="openTab(event, 'tab-system')">System & Maintenance</button>
         
         {% if current_user.is_admin %}
-        <button type="button" class="tab-link" onclick="openTab(event, 'tab-users'); loadUsers();">👥 User Management</button>
+        <button type="button" class="tab-link" onclick="openTab(event, 'tab-users'); loadUsers();">User Management</button>
         {% endif %}
     </div>
 
 {% if current_user.is_admin %}
 <div id="tab-users" class="tab-content">
     <div class="card setting-card border-purple">
-        <h3>👥 Manage Users</h3>
+        <h3>Manage Users</h3>
         <p class="text-muted">Grant admin privileges or remove users from the system.</p>
         
         <div id="user-list-container" class="logs-table-container" style="border:none; max-height:none;">
@@ -282,7 +281,7 @@ function copyRecoveryCodes() {
                 </p>
                 {% else %}
                 <p id="plex-link-status" style="margin: 0 0 16px 0; padding: 10px 14px; background: rgba(128,128,128,0.15); border: 1px solid rgba(128,128,128,0.4); border-radius: 8px; color: #999; font-size: 0.95em;">
-                    Plex not connected — link below or enter URL &amp; token
+                    Plex not connected - link below or enter URL &amp; token
                 </p>
                 {% endif %}
                 <div id="plex-pin-box" style="display: none; margin-bottom: 16px; padding: 14px; background: rgba(0,0,0,0.3); border-radius: 8px; border: 1px solid rgba(255,165,0,0.4);">
@@ -297,28 +296,28 @@ function copyRecoveryCodes() {
                         <select id="plex-server-select" style="width: 100%; max-width: 480px; padding: 10px; background: #111; color: #fff; border: 1px solid #444; border-radius: 6px; margin-bottom: 10px;"></select>
                         <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                             <button type="button" id="btn-plex-use-server" class="btn-primary" style="padding: 8px 16px;">Use this server</button>
-                            <button type="button" id="btn-plex-skip-server" class="btn-secondary" style="padding: 8px 16px;">Skip — enter URL below</button>
+                            <button type="button" id="btn-plex-skip-server" class="btn-secondary" style="padding: 8px 16px;">Skip - enter URL below</button>
                         </div>
                     </div>
                 </div>
-                <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 16px;">
+                <div style="margin-bottom: 16px;">
                     <button type="button" id="btn-link-plex" class="btn-primary" style="padding: 8px 16px;" data-plex-linked="{{ 'true' if (settings.plex_url and settings.plex_token) else 'false' }}">{% if settings.plex_url and settings.plex_token %}Unlink Plex account{% else %}Link Plex account{% endif %}</button>
-                    <span class="text-muted small">Set or change the URL and token below — both are used to connect to your Plex server.</span>
+                    <p class="text-muted small" style="margin: 10px 0 0 0;">Set or change the URL and token below. Both are used to connect to your Plex server.</p>
                 </div>
                 <details class="help-box">
-                    <summary>❓ How to find your URL &amp; Token (manual)</summary>
-                    <ol>
-                        <li><b>URL:</b> Your server's local IP (e.g. <code>http://192.168.1.50:32400</code>).</li>
-                        <li><b>Token:</b> <a href="https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/" target="_blank" style="color: var(--accent-color); text-decoration: underline;">View Official Guide</a>.</li>
-                    </ol>
+                    <summary>Where are these found?</summary>
+                    <p style="margin: 0 0 10px 0;">You can use <strong>Link Plex account</strong> (auto) or enter the URL and token manually below.</p>
+                    <p style="margin: 0 0 8px 0;"><b>URL:</b> Your server's local IP (e.g. <code>http://192.168.1.50:32400</code>).</p>
+                    <p style="margin: 0 0 10px 0;"><b>Token:</b> <a href="https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/" target="_blank" style="color: var(--accent-color); text-decoration: underline;">View Official Guide</a>.</p>
+                    <p style="margin: 0 0 6px 0;"><b>Auto adder:</b> After you authorize at plex.tv/link, we get a list of connection URLs from Plex. You may see many options because the same server can appear as a local IP, a relay address (.plex.direct), or different network interfaces. <strong>Pick the one that matches your situation:</strong> if this app runs on the same network as Plex, choose the <strong>local IP</strong> (e.g. 192.168.x.x). It is usually the fastest and most reliable. Use relay or a remote URL only if you are not on the same LAN.</p>
                 </details>
 
-                <div class="input-group" id="plex-server-dropdown-row" style="{% if not settings.plex_token %}display: none;{% endif %}">
+                <div class="input-group" id="plex-server-dropdown-row" style="{% if not settings.plex_token %}display: none;{% endif %} margin-top: 16px;">
                     <label class="input-label">Server</label>
-                    <p class="text-muted small" style="margin: 0 0 8px 0;">Choose a connection. Use <strong>[local IP] — recommended</strong> when on the same network as Plex.</p>
+                    <p class="text-muted small" style="margin: 4px 0 8px 0;">Choose a connection. Use <strong>[local IP] - recommended</strong> when on the same network as Plex.</p>
                     <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                         <select id="plex-server-select-persistent" style="flex: 1; min-width: 280px; padding: 10px; background: #111; color: #fff; border: 1px solid #444; border-radius: 6px;">
-                            <option value="">{% if settings.plex_token %}Loading…{% else %}—{% endif %}</option>
+                            <option value="">{% if settings.plex_token %}Loading…{% else %}-{% endif %}</option>
                         </select>
                         <button type="button" id="btn-plex-refresh-servers" class="btn-secondary" style="padding: 8px 14px;">Refresh</button>
                         <button type="button" id="btn-plex-apply-server" class="btn-primary" style="padding: 8px 14px;">Use selected</button>
@@ -337,25 +336,29 @@ function copyRecoveryCodes() {
                             <input type="password" id="plex_token" name="plex_token" value="" placeholder="{% if settings.plex_token %}••••••••{% else %}Paste token{% endif %}" {% if settings.plex_token %}data-key-set="1"{% endif %} autocomplete="off" style="width: 100%; padding-right: 40px;">
                             {% if settings.plex_token %}<input type="hidden" name="plex_token_unchanged" value="1" id="plex_token_unchanged_h">{% endif %}
                             <button type="button" class="toggle-pass" onclick="toggleVisibility('plex_token', this)">👁️</button>
+                            <button type="button" class="clear-field-btn" onclick="clearPasswordField('plex_token', 'plex_token_unchanged_h')" title="Clear field (use if backspace doesn't work)">Clear</button>
                         </div>
-                        <button type="button" onclick="testService('plex')" class="btn-secondary">Test ⚡</button>
+                        <button type="button" onclick="testService('plex')" class="btn-secondary">Test</button>
                     </div>
                 </div>
 
                 <div class="input-group" style="margin-top: 12px;">
                     <label class="input-label">Import library</label>
                     <p class="text-muted small" style="margin: 0 0 8px 0;">Sync your Plex movie/TV library into the app index (like SeekAndWatch Cloud “Sync from Plex now”). Large libraries (5000+) can take several minutes; TMDB API key required.</p>
-                    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 8px;">
-                        <span style="font-size: 0.85em; color: #888;">Last synced: <span id="last-updated" style="color: var(--text-color); font-weight: bold;">{{ cache_age }}</span></span>
+                    <div class="plex-sync-stats">
+                        <div style="font-size: 0.9em; color: #888;">Last synced: <span id="last-updated" style="color: var(--text-color); font-weight: bold;">{{ cache_age }}</span></div>
+                        <div style="font-size: 0.9em; color: #888;">Items found: <span style="color: var(--text-color); font-weight: bold;">{{ alias_count|default(0) }}</span></div>
+                    </div>
+                    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 12px;">
                         <button type="button" id="btn-force" onclick="syncPlexLibrary()" class="btn-secondary">Sync library now</button>
                         <span id="plex-sync-library-msg" style="font-size: 0.9em; color: #888;"></span>
                     </div>
-                    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px;">
+                    <div class="plex-sync-interval-row">
                         <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.95em; color: var(--text-color, #e0e0e0);">
                             <input type="checkbox" id="plex-auto-sync" {% if settings.cache_interval and settings.cache_interval > 0 %}checked{% endif %}>
                             Sync library automatically
                         </label>
-                        <select id="cache-interval" style="padding: 8px 10px; border-radius: 5px; background: #111; color: white; border: 1px solid #444;">
+                        <select id="cache-interval" class="cache-interval-select">
                             <option value="12" {% if settings.cache_interval == 12 %}selected{% endif %}>Every 12 hours</option>
                             <option value="24" {% if not settings.cache_interval or settings.cache_interval == 24 %}selected{% endif %}>Every 24 hours</option>
                             <option value="48" {% if settings.cache_interval == 48 %}selected{% endif %}>Every 48 hours</option>
@@ -386,7 +389,7 @@ function copyRecoveryCodes() {
                 <div class="input-group">
                     <label class="input-label">TMDB API Key (v3) {% if settings.tmdb_key %}<span class="key-saved-badge">Saved</span>{% endif %} <span style="color: var(--error);">*Required</span></label>
                     <details class="help-box">
-                        <summary>❓ How to get your TMDB API key</summary>
+                        <summary>Where is this key found?</summary>
                         <ol style="line-height: 1.6; margin-bottom: 8px;">
                             <li>Create a free account at <a href="https://www.themoviedb.org/signup" target="_blank" style="color: var(--accent-color); text-decoration: underline;">themoviedb.org</a></li>
                             <li>Go to <b>Settings → API</b> and request an API key (choose "Developer" and accept the terms)</li>
@@ -399,16 +402,17 @@ function copyRecoveryCodes() {
                             <input type="password" id="tmdb_key" name="tmdb_key" value="" placeholder="{% if settings.tmdb_key %}••••••••{% else %}Paste API key{% endif %}" {% if settings.tmdb_key %}data-key-set="1"{% endif %} autocomplete="new-password">
                             {% if settings.tmdb_key %}<input type="hidden" name="tmdb_key_unchanged" value="1" id="tmdb_key_unchanged_h">{% endif %}
                             <button type="button" class="toggle-pass" onclick="toggleVisibility('tmdb_key', this)">👁️</button>
+                            <button type="button" class="clear-field-btn" onclick="clearPasswordField('tmdb_key', 'tmdb_key_unchanged_h')" title="Clear field (use if backspace doesn't work)">Clear</button>
                         </div>
-                        <button type="button" onclick="testService('tmdb')" class="btn-secondary">Test ⚡</button>
+                        <button type="button" onclick="testService('tmdb')" class="btn-secondary">Test</button>
                     </div>
                 </div>
 
                 <div class="input-group" style="border: 1px dashed #2ecc71; padding: 15px; border-radius: 8px; background: rgba(46, 204, 113, 0.05);">
-                    <label class="input-label">🍅 OMDB API Key (Critics Scores) {% if settings.omdb_key %}<span class="key-saved-badge">Saved</span>{% endif %}</label>
+                    <label class="input-label">OMDB API Key (Critics Scores) {% if settings.omdb_key %}<span class="key-saved-badge">Saved</span>{% endif %}</label>
                     <p class="helper-text">Required to filter by Rotten Tomatoes scores.</p>
                     <details class="help-box">
-                        <summary>❓ How to get your OMDB API key</summary>
+                        <summary>Where is this key found?</summary>
                         <ol>
                             <li>Visit <a href="https://www.omdbapi.com/apikey.aspx" target="_blank" style="color: var(--accent-color); text-decoration: underline;">omdbapi.com/apikey</a>.</li>
                             <li>Choose the free tier and submit your email.</li>
@@ -420,8 +424,9 @@ function copyRecoveryCodes() {
                             <input type="password" id="omdb_key" name="omdb_key" value="" placeholder="{% if settings.omdb_key %}••••••••{% else %}xxxxxx{% endif %}" {% if settings.omdb_key %}data-key-set="1"{% endif %} autocomplete="off">
                             {% if settings.omdb_key %}<input type="hidden" name="omdb_key_unchanged" value="1" id="omdb_key_unchanged_h">{% endif %}
                             <button type="button" class="toggle-pass" onclick="toggleVisibility('omdb_key', this)">👁️</button>
+                            <button type="button" class="clear-field-btn" onclick="clearPasswordField('omdb_key', 'omdb_key_unchanged_h')" title="Clear field (use if backspace doesn't work)">Clear</button>
                         </div>
-                        <button type="button" onclick="testService('omdb')" class="btn-secondary">Test ⚡</button>
+                        <button type="button" onclick="testService('omdb')" class="btn-secondary">Test</button>
                     </div>
                 </div>
 
@@ -442,7 +447,7 @@ function copyRecoveryCodes() {
                     <div class="input-group">
                         <label class="input-label">Overseerr API Key {% if settings.overseerr_api_key %}<span class="key-saved-badge">Saved</span>{% endif %}</label>
                         <details class="help-box">
-                            <summary>❓ How to find your Overseerr API key</summary>
+                            <summary>Where is this key found?</summary>
                             <ol>
                                 <li>Open Overseerr and go to <b>Settings</b>.</li>
                                 <li>Under <b>General</b>, copy the <b>API Key</b>.</li>
@@ -454,8 +459,9 @@ function copyRecoveryCodes() {
                                 <input type="password" id="overseerr_api_key" name="overseerr_api_key" value="" placeholder="{% if settings.overseerr_api_key %}••••••••{% else %}Paste API key{% endif %}" {% if settings.overseerr_api_key %}data-key-set="1"{% endif %} autocomplete="new-password" style="width: 100%; padding-right: 40px;">
                                 {% if settings.overseerr_api_key %}<input type="hidden" name="overseerr_api_key_unchanged" value="1" id="overseerr_api_key_unchanged_h">{% endif %}
                                 <button type="button" class="toggle-pass" onclick="toggleVisibility('overseerr_api_key', this)">👁️</button>
+                                <button type="button" class="clear-field-btn" onclick="clearPasswordField('overseerr_api_key', 'overseerr_api_key_unchanged_h')" title="Clear field (use if backspace doesn't work)">Clear</button>
                             </div>
-                            <button type="button" onclick="testService('overseerr')" class="btn-secondary">Test ⚡</button>
+                            <button type="button" onclick="testService('overseerr')" class="btn-secondary">Test</button>
                         </div>
                     </div>
                 </form>
@@ -468,7 +474,7 @@ function copyRecoveryCodes() {
                     <div class="input-group">
                         <label class="input-label">Tautulli API Key {% if settings.tautulli_api_key %}<span class="key-saved-badge">Saved</span>{% endif %}</label>
                         <details class="help-box">
-                            <summary>❓ How to find your Tautulli API key</summary>
+                            <summary>Where is this key found?</summary>
                             <ol>
                                 <li>Open Tautulli and go to <b>Settings → Web Interface</b>.</li>
                                 <li>Scroll to <b>API</b> and copy the API Key.</li>
@@ -480,8 +486,9 @@ function copyRecoveryCodes() {
                                 <input type="password" id="tautulli_api_key" name="tautulli_api_key" value="" placeholder="{% if settings.tautulli_api_key %}••••••••{% else %}Paste API key{% endif %}" {% if settings.tautulli_api_key %}data-key-set="1"{% endif %} autocomplete="off" style="width: 100%; padding-right: 40px;">
                                 {% if settings.tautulli_api_key %}<input type="hidden" name="tautulli_api_key_unchanged" value="1" id="tautulli_api_key_unchanged_h">{% endif %}
                                 <button type="button" class="toggle-pass" onclick="toggleVisibility('tautulli_api_key', this)">👁️</button>
+                                <button type="button" class="clear-field-btn" onclick="clearPasswordField('tautulli_api_key', 'tautulli_api_key_unchanged_h')" title="Clear field (use if backspace doesn't work)">Clear</button>
                             </div>
-                            <button type="button" onclick="testService('tautulli')" class="btn-secondary">Test ⚡</button>
+                            <button type="button" onclick="testService('tautulli')" class="btn-secondary">Test</button>
                         </div>
                     </div>
                 </form>
@@ -497,7 +504,7 @@ function copyRecoveryCodes() {
                     <div class="input-group">
                         <label class="input-label">Radarr API Key {% if settings.radarr_api_key %}<span class="key-saved-badge">Saved</span>{% endif %}</label>
                         <details class="help-box">
-                            <summary>❓ How to find your Radarr API key</summary>
+                            <summary>Where is this key found?</summary>
                             <ol>
                                 <li>Open Radarr and go to <b>Settings → General</b>.</li>
                                 <li>Scroll to <b>Security</b> and copy the <b>API Key</b>.</li>
@@ -509,8 +516,9 @@ function copyRecoveryCodes() {
                                 <input type="password" id="radarr_api_key" name="radarr_api_key" value="" placeholder="{% if settings.radarr_api_key %}••••••••{% else %}Paste API key{% endif %}" {% if settings.radarr_api_key %}data-key-set="1"{% endif %} autocomplete="new-password" style="width: 100%; padding-right: 40px;">
                                 {% if settings.radarr_api_key %}<input type="hidden" name="radarr_api_key_unchanged" value="1" id="radarr_api_key_unchanged_h">{% endif %}
                                 <button type="button" class="toggle-pass" onclick="toggleVisibility('radarr_api_key', this)">👁️</button>
+                                <button type="button" class="clear-field-btn" onclick="clearPasswordField('radarr_api_key', 'radarr_api_key_unchanged_h')" title="Clear field (use if backspace doesn't work)">Clear</button>
                             </div>
-                            <button type="button" onclick="testService('radarr')" class="btn-secondary">Test ⚡</button>
+                            <button type="button" onclick="testService('radarr')" class="btn-secondary">Test</button>
                         </div>
                     </div>
                 </form>
@@ -523,7 +531,7 @@ function copyRecoveryCodes() {
                     <div class="input-group">
                         <label class="input-label">Sonarr API Key {% if settings.sonarr_api_key %}<span class="key-saved-badge">Saved</span>{% endif %}</label>
                         <details class="help-box">
-                            <summary>❓ How to find your Sonarr API key</summary>
+                            <summary>Where is this key found?</summary>
                             <ol>
                                 <li>Open Sonarr and go to <b>Settings → General</b>.</li>
                                 <li>Scroll to <b>Security</b> and copy the <b>API Key</b>.</li>
@@ -535,8 +543,9 @@ function copyRecoveryCodes() {
                                 <input type="password" id="sonarr_api_key" name="sonarr_api_key" value="" placeholder="{% if settings.sonarr_api_key %}••••••••{% else %}Paste API key{% endif %}" {% if settings.sonarr_api_key %}data-key-set="1"{% endif %} autocomplete="off" style="width: 100%; padding-right: 40px;">
                                 {% if settings.sonarr_api_key %}<input type="hidden" name="sonarr_api_key_unchanged" value="1" id="sonarr_api_key_unchanged_h">{% endif %}
                                 <button type="button" class="toggle-pass" onclick="toggleVisibility('sonarr_api_key', this)">👁️</button>
+                                <button type="button" class="clear-field-btn" onclick="clearPasswordField('sonarr_api_key', 'sonarr_api_key_unchanged_h')" title="Clear field (use if backspace doesn't work)">Clear</button>
                             </div>
-                            <button type="button" onclick="testService('sonarr')" class="btn-secondary">Test ⚡</button>
+                            <button type="button" onclick="testService('sonarr')" class="btn-secondary">Test</button>
                         </div>
                     </div>
                 </form>
@@ -549,7 +558,7 @@ function copyRecoveryCodes() {
                 <legend class="visually-hidden">Keyword Memory</legend>
             <div class="card setting-card border-blue">
                 <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; padding-bottom:10px; margin-bottom:15px;">
-                    <h3 style="margin:0;">🧠 Keyword Memory (Cache)</h3>
+                    <h3 style="margin:0;">Keyword Memory (Cache)</h3>
                     <span class="settings-count-badge">
                         Stored: <strong>{{ keyword_count }}</strong> / {{ settings.keyword_cache_size or 3000 }}
                     </span>
@@ -576,7 +585,7 @@ function copyRecoveryCodes() {
                 <legend class="visually-hidden">Runtime Memory</legend>
             <div class="card setting-card border-green">
                 <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; padding-bottom:10px; margin-bottom:15px;">
-                    <h3 style="margin:0;">⏱️ Runtime Memory (Cache)</h3>
+                    <h3 style="margin:0;">Runtime Memory (Cache)</h3>
                     <span class="settings-count-badge">
                         Stored: <strong>{{ runtime_count }}</strong> / {{ settings.runtime_cache_size or 3000 }}
                     </span>
@@ -603,7 +612,7 @@ function copyRecoveryCodes() {
                 <legend class="visually-hidden">Library Index</legend>
             <div class="card setting-card border-purple">
                 <div class="card-header bg-transparent d-flex justify-content-between align-items-center" style="padding:0; margin-bottom:15px;">
-                    <h3 style="margin:0; display:flex; align-items:center; gap:10px;">📋 Library Index</h3>
+                    <h3 style="margin:0; display:flex; align-items:center; gap:10px;">Library Index</h3>
                     <span class="settings-count-badge" id="db-count-badge">Loading...</span>
                 </div>
                 <p class="text-muted small">
@@ -618,7 +627,7 @@ function copyRecoveryCodes() {
                 <legend class="visually-hidden">Radarr and Sonarr Scanner</legend>
             <div class="card setting-card border-blue" style="margin-top: 30px;">
                 <div class="card-header bg-transparent d-flex justify-content-between align-items-center" style="padding:0; margin-bottom:15px;">
-                    <h3 style="margin:0; display:flex; align-items:center; gap:10px;">🎬 Radarr & Sonarr Scanner</h3>
+                    <h3 style="margin:0; display:flex; align-items:center; gap:10px;">Radarr & Sonarr Scanner</h3>
                     <div>
                         <span class="settings-count-badge" id="radarr-sonarr-count-badge" style="margin-right:10px;">Loading...</span>
                     </div>
@@ -665,22 +674,12 @@ function copyRecoveryCodes() {
             </fieldset>
         </div>
     </section>
-    <section aria-label="Plex Library (informational)" style="margin-bottom: 0;">
-        <div id="tab-plex-library" class="tab-content">
-            <div class="card setting-card border-purple">
-                <h3>📤 Plex Library &amp; Cloud</h3>
-                <p class="text-muted small mb-0">
-                    <strong>Sync Library to Cloud</strong> and Cloud API settings are on the Requests Settings page. Use the link in the left sidebar to open <a href="{{ url_for('requests_settings_page') }}" style="color: var(--accent-color);">Requests Settings</a>.
-                </p>
-            </div>
-        </div>
-    </section>
     <section aria-label="System and maintenance" style="margin-bottom: 0;">
         <fieldset class="settings-fieldset" style="border:none;margin:0;padding:0;min-width:0;">
             <legend class="visually-hidden">System and maintenance</legend>
         <div id="tab-system" class="tab-content" data-settings-section="system">
             <div class="card setting-card border-blue">
-                <h3>🖥️ System Maintenance</h3>
+                <h3>System Maintenance</h3>
                 <div class="flex-row-wrap" style="display:flex; gap:20px; margin-bottom:20px;">
                     <div class="input-group flex-item" style="flex:1;">
                         <label class="input-label">Backup Interval (Days)</label>
@@ -718,7 +717,7 @@ function copyRecoveryCodes() {
             </div>
 
             <div class="card setting-card border-blue">
-                <h3>🔑 Change password</h3>
+                <h3>Change password</h3>
                 <p class="text-muted">Set a new password for your account. You must enter your current password.</p>
                 <form id="change-password-form" method="post" action="javascript:void(0);" onsubmit="submitChangePassword(); return false;" aria-label="Change password" autocomplete="on">
                     <label for="change-pw-username" class="visually-hidden">Username</label>
@@ -741,20 +740,20 @@ function copyRecoveryCodes() {
             </div>
 
             <div class="card setting-card border-purple">
-                <h3>🔐 Account recovery</h3>
+                <h3>Account recovery</h3>
                 <p class="text-muted">Generate one-time recovery codes. Save them somewhere safe; if you lose your password, use one code on the login page to set a new password. Old codes are invalid when you generate new ones. If you're the only admin and get locked out with no codes, the server owner can reset your password in the database.</p>
                 <button type="button" onclick="generateRecoveryCodes()" class="btn-secondary" id="btn-generate-codes" style="padding:8px 15px;">Generate recovery codes</button>
             </div>
 
             <div class="card danger-zone">
                 <h3 style="color: var(--error); display: flex; align-items: center; gap: 10px; margin-top: 0;">
-                    ⚠️ Danger Zone
+                    Danger Zone
                 </h3>
                 <p style="color: #ccc; margin-bottom: 20px;">
                     Permanently delete your profile, settings, and watch history.
                 </p>
                 <button type="button" onclick="document.getElementById('delete-account-form').submit();" class="btn-danger" style="width:100%;">
-                    🗑️ Delete My Account
+                    Delete My Account
                 </button>
             </div>
         </div>
@@ -762,12 +761,11 @@ function copyRecoveryCodes() {
     </section>
 </div>
 
-{% if current_user.is_admin %}
-<!-- modal: recovery codes (shown once after generate) -->
+<!-- modal: recovery codes (shown after generate; available to all users in Settings → System & Maintenance) -->
 <div id="modal-recovery-codes" class="modal-overlay">
     <div class="modal-box" style="max-width:500px;">
-        <h3>🔐 Save these recovery codes</h3>
-        <p class="text-muted">They are shown only once. Store them somewhere safe. Each code works once to reset your password if you forget it.</p>
+        <h3>Save these recovery codes</h3>
+        <p class="text-muted">They are shown only once. Store them somewhere safe. Each code works once to reset your password if you forget it. Generating new codes disables any previous codes.</p>
         <pre id="recovery-codes-list" style="background:#111; padding:12px; border-radius:8px; overflow-x:auto; font-size:0.9em; max-height:200px; overflow-y:auto;"></pre>
         <div style="display:flex; gap:10px; margin-top:1rem;">
             <button type="button" class="btn-secondary" onclick="copyRecoveryCodes()">Copy</button>
@@ -775,6 +773,8 @@ function copyRecoveryCodes() {
         </div>
     </div>
 </div>
+
+{% if current_user.is_admin %}
 <!-- modal: admin set password for another user (separate form, single action) -->
 <div id="modal-reset-password" class="modal-overlay">
     <div class="modal-box" style="max-width:400px;">
@@ -876,7 +876,7 @@ function openTab(evt, tabName) {
     }, 10);
     evt.currentTarget.className += " active";
     var saveBtn = document.getElementById("main-save-btn");
-    if (saveBtn) saveBtn.style.display = (tabName === "tab-plex-library") ? "none" : "";
+    if (saveBtn) saveBtn.style.display = "block";
 }
 
 // Small UI helpers
@@ -884,6 +884,12 @@ function toggleVisibility(id, btn) {
     const el = document.getElementById(id);
     if (el.type === "password") { el.type = "text"; btn.innerText = "🔒"; } 
     else { el.type = "password"; btn.innerText = "👁️"; }
+}
+function clearPasswordField(inputId, unchangedId) {
+    const el = document.getElementById(inputId);
+    const unchanged = unchangedId ? document.getElementById(unchangedId) : null;
+    if (el) { el.value = ""; el.focus(); el.removeAttribute("data-key-set"); }
+    if (unchanged) unchanged.remove();
 }
 
 function showModal(icon, title, message, isSuccess) {
@@ -1508,7 +1514,7 @@ function isValidUrlField(val) {
 
 function submitActiveSettingsForm() {
     var activeTab = document.querySelector('.tab-content.active');
-    if (!activeTab || activeTab.id === 'tab-plex-library') return;
+    if (!activeTab) return;
     var section = activeTab.getAttribute('data-settings-section');
     if (!section) return;
 

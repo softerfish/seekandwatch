@@ -3,32 +3,32 @@
 {% block content %}
 
     <div class="playlist-header">
-        <h2>✨ Plex Collections</h2>
+        <h2>Plex Collections</h2>
         <div class="tab-header">
-            <button class="tab-btn active" onclick="openTab(event, 'tab-manager')">⚡ Auto-Manager</button>
-            <button class="tab-btn" onclick="openTab(event, 'tab-viewer'); loadLiveCollections();">📂 Library Browser</button>
+            <button class="tab-btn active" onclick="openTab(event, 'tab-manager')">Auto-Manager</button>
+            <button class="tab-btn" onclick="openTab(event, 'tab-viewer'); loadLiveCollections();">Library Browser</button>
         </div>
     </div>
     <div id="tab-manager" class="tab-content active playlists-center">
         <p class="media-sub">Curated lists, imported text, and custom builders.</p>
 
     <div class="stats-bar">
-        <span title="Your custom created lists">🛠️ <b>{{ custom_presets|length }}</b> Custom</span>
+        <span title="Your custom created lists"><b>{{ custom_presets|length }}</b> Custom</span>
         <span class="stats-label">|</span>
-        <span title="Available built-in presets">📚 <b>{{ presets|length }}</b> Presets</span>
+        <span title="Available built-in presets"><b>{{ presets|length }}</b> Presets</span>
         <span id="schedule-save-feedback" style="display:none; margin-left:12px; color: var(--success, #2ecc71); font-size: 0.9em;"></span>
     </div>
 
     <div class="action-bar">
         <a href="{{ url_for('builder') }}">
-            <button class="btn-builder" id="btn-builder-nav">🛠️ Custom Builder</button>
+            <button class="btn-builder" id="btn-builder-nav">Custom Builder</button>
         </a>
-        <button onclick="openImportModal()" class="btn-import" id="btn-import-open">📋 Import List</button>
+        <button onclick="openImportModal()" class="btn-import" id="btn-import-open">Import List</button>
     </div>
 
         <div class="type-toggle-group">
-        <button onclick="filterType('movie')" id="btn-movie" class="type-toggle-btn active">Movies 🎬</button>
-        <button onclick="filterType('tv')" id="btn-tv" class="type-toggle-btn">TV Shows 📺</button>
+        <button onclick="filterType('movie')" id="btn-movie" class="type-toggle-btn active">Movies</button>
+        <button onclick="filterType('tv')" id="btn-tv" class="type-toggle-btn">TV Shows</button>
         </div>
 
         <div class="schedule-time-compact">
@@ -129,7 +129,7 @@ function saveGlobalTime() {
 <div class="category-block category-block--collapsed" data-type="any">
     <button type="button" class="category-header category-header--toggle" aria-expanded="false" aria-controls="custom-collections-grid">
         <span class="category-chevron" aria-hidden="true">▶</span>
-        <span>🛠️</span> Your Custom Collections
+        Your Custom Collections
     </button>
     <div id="custom-collections-grid" class="playlist-grid category-grid" hidden>
     {% for key, playlist in custom_presets.items() %}
@@ -145,47 +145,43 @@ function saveGlobalTime() {
         
         <div class="playlist-controls">
             {% if 'Imported' not in playlist.description %}
-            
-            <div class="control-row">
-                <label>Auto-Update:</label>
-                <select id="freq-{{ key }}" onchange="saveSettings('{{ key }}')" class="control-select">
-                    <option value="manual" {% if schedules.get(key) == 'manual' %}selected{% endif %}>Off</option>
-                    <option value="daily" {% if schedules.get(key) == 'daily' %}selected{% endif %}>Daily</option>
-                    <option value="weekly" {% if schedules.get(key) == 'weekly' %}selected{% endif %}>Weekly</option>
-                </select>
+            <div class="playlist-control-section">
+                <div class="control-row">
+                    <label>Auto-Update</label>
+                    <select id="freq-{{ key }}" onchange="saveSettings('{{ key }}')" class="control-select">
+                        <option value="manual" {% if schedules.get(key) == 'manual' %}selected{% endif %}>Off</option>
+                        <option value="daily" {% if schedules.get(key) == 'daily' %}selected{% endif %}>Daily</option>
+                        <option value="weekly" {% if schedules.get(key) == 'weekly' %}selected{% endif %}>Weekly</option>
+                    </select>
+                </div>
+                <div class="control-row">
+                    <label class="control-label-with-tip">
+                        Sync Mode
+                        <span class="tooltip-container">
+                            <span class="info-icon" aria-label="Help">ℹ️</span>
+                            <span class="tooltip-text"><strong>Sync (Strict):</strong> Adds and removes to match the list.<br><strong>Append:</strong> Only adds, never removes.</span>
+                        </span>
+                    </label>
+                    {% set sm = (sync_modes or {}).get(key, 'append') %}
+                    <select id="sync-{{ key }}" onchange="saveSettings('{{ key }}')" class="control-select">
+                        <option value="append" {% if sm == 'append' %}selected{% endif %}>Append (Grow)</option>
+                        <option value="sync" {% if sm == 'sync' %}selected{% endif %}>Sync (Strict)</option>
+                    </select>
+                </div>
             </div>
-
-            <div class="control-row">
-                <label style="display:flex; align-items:center;">
-                    Sync Mode:
-                    <div class="tooltip-container">
-                        <span class="info-icon">ℹ️</span>
-                        <div class="tooltip-text">
-                            <strong>Sync (Strict):</strong> Adds new items AND removes old ones.<br><br>
-                            <strong>Append:</strong> Only adds new items. Never removes. Best for growing lists.
-                        </div>
-                    </div>
-                </label>
-                {% set sm = (sync_modes or {}).get(key, 'append') %}
-                <select id="sync-{{ key }}" onchange="saveSettings('{{ key }}')" class="control-select">
-                    <option value="append" {% if sm == 'append' %}selected{% endif %}>Append (Grow)</option>
-                    <option value="sync" {% if sm == 'sync' %}selected{% endif %}>Sync (Strict)</option>
-                </select>
+            <div class="playlist-control-section">
+                <div class="visibility-label-block">Where it appears in Plex</div>
+                <div class="visibility-checks-row">
+                    <label class="visibility-check"><input type="checkbox" id="visibility-home-{{ key }}" onchange="saveSettings('{{ key }}')" {% if playlist.get('visibility_home', True) %}checked{% endif %}> Home</label>
+                    <label class="visibility-check"><input type="checkbox" id="visibility-library-{{ key }}" onchange="saveSettings('{{ key }}')" {% if playlist.get('visibility_library', True) %}checked{% endif %}> Library recommended</label>
+                    <label class="visibility-check"><input type="checkbox" id="visibility-friends-{{ key }}" onchange="saveSettings('{{ key }}')" {% if playlist.get('visibility_friends') %}checked{% endif %}> Friends</label>
+                </div>
+                <p class="visibility-hint">Check at least one. In Plex: <strong>Settings → Manage → Libraries</strong>, then <strong>Manage Recommendations</strong> to reorder or change where collections appear.</p>
             </div>
-
-            <div class="visibility-options visibility-options--card visibility-options--highlight">
-                <span class="visibility-label">Where it appears in Plex:</span>
-                <label class="visibility-check"><input type="checkbox" id="visibility-home-{{ key }}" onchange="saveSettings('{{ key }}')" {% if playlist.get('visibility_home', True) %}checked{% endif %}> Home</label>
-                <label class="visibility-check"><input type="checkbox" id="visibility-library-{{ key }}" onchange="saveSettings('{{ key }}')" {% if playlist.get('visibility_library', True) %}checked{% endif %}> Library recommended</label>
-                <label class="visibility-check"><input type="checkbox" id="visibility-friends-{{ key }}" onchange="saveSettings('{{ key }}')" {% if playlist.get('visibility_friends') %}checked{% endif %}> Friends</label>
-            </div>
-          <p class="visibility-hint">Check at least one so we try to set visibility. In Plex: <strong>Settings → Manage --> Libraries</strong>, then <strong>Manage Recommendations</strong>. There you can reorder collections and change which appear on Home, Library, or Friends.</p>
-
-            <div class="sync-row" style="margin-top: 10px;">
+            <div class="playlist-control-section playlist-control-section--actions">
                 <button onclick="previewCollection('{{ key }}', '{{ playlist.title|replace("'", "\\'") }}')" class="btn-preview" title="Preview Contents">👀</button>
-                <button onclick="createCollection('{{ key }}')" id="btn-{{ key }}" class="btn-sync">Sync Now 🪄</button>
+                <button onclick="createCollection('{{ key }}')" id="btn-{{ key }}" class="btn-sync">Sync Now</button>
             </div>
-            
             {% else %}
             <div class="static-badge">Static Import</div>
             <button disabled class="btn-synced-disabled">Synced ✅</button>
@@ -204,7 +200,7 @@ function saveGlobalTime() {
 <div class="category-block category-block--collapsed playlist-section" data-cat="{{ cat }}">
     <button type="button" class="category-header category-header--toggle" aria-expanded="false" aria-controls="cat-{{ cat_id }}">
         <span class="category-chevron" aria-hidden="true">▶</span>
-        <span>📂</span> {{ cat }}
+        {{ cat }}
     </button>
     <div id="cat-{{ cat_id }}" class="playlist-grid category-grid" hidden>
     {% for key, playlist in presets.items() %}
@@ -217,57 +213,54 @@ function saveGlobalTime() {
         </div>
         
         <div class="playlist-controls">
-            <div class="control-row">
-                <label>Auto-Update:</label>
-                <select id="freq-{{ key }}" onchange="saveSettings('{{ key }}')" class="control-select">
-                    <option value="manual" {% if schedules.get(key) == 'manual' %}selected{% endif %}>Off</option>
-                    <option value="daily" {% if schedules.get(key) == 'daily' %}selected{% endif %}>Daily</option>
-                    <option value="weekly" {% if schedules.get(key) == 'weekly' %}selected{% endif %}>Weekly</option>
-                </select>
-            </div>
-
-            <div class="control-row">
-                <label style="display:flex; align-items:center;">
-                    Sync Mode:
-                    {% if 'Trending' not in playlist.title %}
-                    <div class="tooltip-container">
-                        <span class="info-icon">ℹ️</span>
-                        <div class="tooltip-text">
-                            <strong>Sync (Strict):</strong> Adds new items AND removes items not on the list.<br><br>
-                            <strong>Append:</strong> Only adds. Never removes.
-                        </div>
-                    </div>
-                    {% endif %}
-                </label>
-
-                {% if 'Trending' in playlist.title or 'Trending' in playlist.category %}
-                    <div class="locked-badge">
-                        🔒 Strict Sync
-                        <input type="hidden" id="sync-{{ key }}" value="sync">
-                    </div>
-                {% else %}
-                    {% set sm = (sync_modes or {}).get(key, 'append') %}
-                    <select id="sync-{{ key }}" onchange="saveSettings('{{ key }}')" class="control-select">
-                        <option value="append" {% if sm == 'append' %}selected{% endif %}>Append (Grow)</option>
-                        <option value="sync" {% if sm == 'sync' %}selected{% endif %}>Sync (Strict)</option>
+            <div class="playlist-control-section">
+                <div class="control-row">
+                    <label>Auto-Update</label>
+                    <select id="freq-{{ key }}" onchange="saveSettings('{{ key }}')" class="control-select">
+                        <option value="manual" {% if schedules.get(key) == 'manual' %}selected{% endif %}>Off</option>
+                        <option value="daily" {% if schedules.get(key) == 'daily' %}selected{% endif %}>Daily</option>
+                        <option value="weekly" {% if schedules.get(key) == 'weekly' %}selected{% endif %}>Weekly</option>
                     </select>
-                {% endif %}
+                </div>
+                <div class="control-row">
+                    <label class="control-label-with-tip">
+                        Sync Mode
+                        {% if 'Trending' not in playlist.title %}
+                        <span class="tooltip-container">
+                            <span class="info-icon" aria-label="Help">ℹ️</span>
+                            <span class="tooltip-text"><strong>Sync (Strict):</strong> Adds and removes to match the list.<br><strong>Append:</strong> Only adds, never removes.</span>
+                        </span>
+                        {% endif %}
+                    </label>
+                    {% if 'Trending' in playlist.title or 'Trending' in playlist.category %}
+                        <input type="hidden" id="sync-{{ key }}" value="sync">
+                        <div class="locked-badge">🔒 Strict Sync</div>
+                    {% else %}
+                        {% set sm = (sync_modes or {}).get(key, 'append') %}
+                        <select id="sync-{{ key }}" onchange="saveSettings('{{ key }}')" class="control-select">
+                            <option value="append" {% if sm == 'append' %}selected{% endif %}>Append (Grow)</option>
+                            <option value="sync" {% if sm == 'sync' %}selected{% endif %}>Sync (Strict)</option>
+                        </select>
+                    {% endif %}
+                </div>
             </div>
 
             {% set vis = (visibility or {}).get(key, {}) %}
-            <div class="visibility-options visibility-options--card visibility-options--highlight">
-                <span class="visibility-label">Where it appears in Plex:</span>
-                <label class="visibility-check"><input type="checkbox" id="visibility-home-{{ key }}" onchange="saveSettings('{{ key }}')" {% if vis.get('home', True) %}checked{% endif %}> Home</label>
-                <label class="visibility-check"><input type="checkbox" id="visibility-library-{{ key }}" onchange="saveSettings('{{ key }}')" {% if vis.get('library', True) %}checked{% endif %}> Library recommended</label>
-                <label class="visibility-check"><input type="checkbox" id="visibility-friends-{{ key }}" onchange="saveSettings('{{ key }}')" {% if vis.get('friends') %}checked{% endif %}> Friends</label>
+            <div class="playlist-control-section">
+                <div class="visibility-label-block">Where it appears in Plex</div>
+                <div class="visibility-checks-row">
+                    <label class="visibility-check"><input type="checkbox" id="visibility-home-{{ key }}" onchange="saveSettings('{{ key }}')" {% if vis.get('home', True) %}checked{% endif %}> Home</label>
+                    <label class="visibility-check"><input type="checkbox" id="visibility-library-{{ key }}" onchange="saveSettings('{{ key }}')" {% if vis.get('library', True) %}checked{% endif %}> Library recommended</label>
+                    <label class="visibility-check"><input type="checkbox" id="visibility-friends-{{ key }}" onchange="saveSettings('{{ key }}')" {% if vis.get('friends') %}checked{% endif %}> Friends</label>
+                </div>
+                <p class="visibility-hint">Check at least one. In Plex: <strong>Settings → Manage → Libraries</strong>, then <strong>Manage Recommendations</strong> to reorder or change where collections appear.</p>
             </div>
-            <p class="visibility-hint">Check at least one so we try to set visibility. In Plex: <strong>Settings → Manage → Libraries</strong>, then <strong>Manage Recommendations</strong>. There you can reorder collections and change which appear on Home, Library, or Friends.</p>
 
-            <div class="sync-row" style="margin-top: 10px;">
+            <div class="playlist-control-section playlist-control-section--actions">
                 <button onclick="previewCollection('{{ key }}', '{{ playlist.title|replace("'", "\\'") }}')" class="btn-preview" title="Preview Contents">👀</button>
-                <button onclick="createCollection('{{ key }}')" id="btn-{{ key }}" class="btn-sync">Run Now 🪄</button>
+                <button onclick="createCollection('{{ key }}')" id="btn-{{ key }}" class="btn-sync">Run Now</button>
                 {% if schedules.get(key) is not none %}
-                <button onclick="deleteCollection('{{ key }}', event)" class="btn-delete-inline" title="Remove from app and Plex">Delete 🗑️</button>
+                <button onclick="deleteCollection('{{ key }}', event)" class="btn-delete-inline" title="Remove from app and Plex">Delete</button>
                 {% endif %}
             </div>
         </div>
@@ -426,7 +419,7 @@ function checkCacheStatus() {
                     b.disabled = false;
                     b.style.opacity = "1";
                     b.style.cursor = "pointer";
-                    b.innerText = (b.id && b.id.startsWith("btn-custom")) ? "Sync Now 🪄" : "Run Now 🪄";
+                    b.innerText = (b.id && b.id.startsWith("btn-custom")) ? "Sync Now" : "Run Now";
                 }
             });
             if(importBtn) { importBtn.disabled = false; importBtn.style.opacity = "1"; }
@@ -618,17 +611,16 @@ function createCollection(key) {
         clearTimeout(createTimeout);
         if (d.status === 'success') {
             btn.innerText = "Done! ✅"; btn.style.background = "#2ecc71"; alert(d.message);
-            // Show Delete button without refresh (collection now has a schedule; skip if card already has header Delete e.g. custom)
-            const syncRow = btn.closest('.sync-row');
-            const card = btn.closest('.playlist-card');
-            if (syncRow && !syncRow.querySelector('.btn-delete-inline') && card && !card.querySelector('.btn-delete')) {
+            // Show Delete button without refresh (collection now has a schedule)
+            const actionsRow = btn.closest('.playlist-control-section--actions');
+            if (actionsRow && !actionsRow.querySelector('.btn-delete-inline')) {
                 const delBtn = document.createElement('button');
                 delBtn.type = 'button';
                 delBtn.className = 'btn-delete-inline';
                 delBtn.title = 'Remove from app and Plex';
-                delBtn.textContent = 'Delete 🗑️';
+                delBtn.textContent = 'Delete';
                 delBtn.onclick = function(ev) { deleteCollection(key, ev); };
-                syncRow.appendChild(delBtn);
+                actionsRow.appendChild(delBtn);
             }
         } else { btn.innerText = "Error ❌"; btn.style.background = "#e74c3c"; alert(d.message); }
         setTimeout(() => { btn.innerText = originalText; btn.disabled = false; btn.style.background = "#333"; }, 3000);

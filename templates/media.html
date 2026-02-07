@@ -4,7 +4,7 @@
 
 <div class="media-container">
     <div class="media-header">
-        <h2>📺 Media Management</h2>
+        <h2>Media Management</h2>
         <p class="text-muted">View and manage your requested, monitored, and downloaded media across Overseerr, Radarr, and Sonarr.</p>
     </div>
 
@@ -3603,7 +3603,7 @@ function pollSonarrSearchStatus(seriesId, inlineEl) {
                     if (progressEl) progressEl.textContent = 'Done. Refresh the page to see updates.';
                     return;
                 }
-                // all monitored episodes already downloaded – nothing to grab
+                // all monitored episodes already downloaded - nothing to grab
                 if (!data.inQueue && data.allMonitoredDownloaded) {
                     const statusEl = inlineEl.querySelector('.search-monitored-status');
                     const progressEl = inlineEl.querySelector('.search-monitored-progress');

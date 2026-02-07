@@ -4,7 +4,7 @@
 
 <div class="calendar-container">
     <div class="calendar-header">
-        <h2>📅 Release Calendar</h2>
+        <h2>Release Calendar</h2>
         <p class="text-muted">Upcoming movies and TV episodes from Radarr and Sonarr.</p>
     </div>
 
@@ -549,7 +549,7 @@ const CALENDAR_SEARCH_POLL_MAX = 10;
                             return;
                         }
                         if (!d.inQueue && d.allMonitoredDownloaded) {
-                            statusEl.textContent = 'All episodes already downloaded – nothing to grab.';
+                            statusEl.textContent = 'All episodes already downloaded - nothing to grab.';
                             if (progressEl) progressEl.textContent = '';
                             return;
                         }

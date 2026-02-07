@@ -3,7 +3,7 @@
 {% block content %}
 
 <div class="intro-box">
-    <h3>🚀 Kometa Config Builder</h3>
+    <h3>Kometa Config Builder</h3>
     <p>
         This tool generates a <strong>foundational</strong> configuration. For help using this builder, see the 
         <a href="https://github.com/softerfish/seekandwatch/wiki/Kometa-Visual-Builder" target="_blank">SeekAndWatch Help Wiki ↗</a>. 
@@ -13,16 +13,16 @@
     </p>
     
     <div class="intro-tip-box">
-        <h4>🛠️ How to use this tool:</h4>
+        <h4>How to use this tool:</h4>
         <ol>
             <li><strong>Connect:</strong> Enter your Plex & TMDb details in Tab 1 to enable scanning.</li>
             <li><strong>Select:</strong> Toggle the collections you want in Tab 3.</li>
-            <li><strong>Customize (⚙️):</strong> Click the Gear Icon next to any item to refine it.</li>
+            <li><strong>Customize:</strong> Click the gear button next to any item to refine it.</li>
         </ol>
         
         <p>
-            <strong>💡 Power Tip:</strong> Use the gear icon to filter huge lists.<br>
-            <em>Example:</em> Enable <strong>Streaming Services</strong>, click the ⚙️ Gear, and add <code>Netflix, Disney+</code> to the <strong>Include</strong> field. Instead of generating 100+ collections for every service under the sun, Kometa will now only create two! <br><br>
+            <strong>Power Tip:</strong> Use the gear button to filter huge lists.<br>
+            <em>Example:</em> Enable <strong>Streaming Services</strong>, click the gear, and add <code>Netflix, Disney+</code> to the <strong>Include</strong> field. Instead of generating 100+ collections for every service under the sun, Kometa will now only create two! <br><br>
             <strong>Remember</strong> to click Save Progress often
         </p>
     </div>
@@ -31,7 +31,7 @@
 
 <div class="header-row">
     <div>
-        <h2>🧩 Kometa Config Builder</h2>
+        <h2>Kometa Config Builder</h2>
         <p class="text-muted">Generate a clean <code>config.yml</code> file.</p>
     </div>
     <div class="header-actions">
@@ -93,7 +93,7 @@
 
         <div id="tab-global" class="k-section">
             <div class="k-group">
-                <h4 class="border-none">⚙️ System & Caching</h4>
+                <h4 class="border-none">System & Caching</h4>
                 
                 <div class="k-input-row">
                     <label>Cache Enabled <span class="info-icon" title="Speeds up runs by saving TMDB/Plex data locally.">ℹ️</span></label>
@@ -449,7 +449,7 @@
 <div id="var-modal" class="modal-overlay">
     <div class="modal-box">
         <button type="button" class="modal-close-btn" onclick="closeModal()" aria-label="Close">×</button>
-        <h3 class="mt-0">🔧 Customize: <span id="modal-title" class="modal-title-accent"></span></h3>
+        <h3 class="mt-0">Customize: <span id="modal-title" class="modal-title-accent"></span></h3>
         <p class="fs-small text-light mb-15 border-bottom pb-10">
             See available variables at <a href="https://kometa.wiki/en/latest/defaults/collections/" target="_blank" class="link-accent">Kometa Wiki ↗</a>.<br>
             <span class="warning-text-red">⚠️ Note: Not all variables work with every collection type. Check the wiki!</span>
@@ -537,7 +537,7 @@
             </div>
         </div>
 
-        <div class="k-sub-header border-bottom-none">🔧 Advanced Custom Variables</div>
+        <div class="k-sub-header border-bottom-none">Advanced Custom Variables</div>
         <div id="var-container">
             </div>
 
@@ -1507,7 +1507,7 @@ function copyYaml() {
         if (fallbackCopy()) showSuccess();
         else {
             try { outputEl.focus(); if (window.getSelection && document.createRange) { const r = document.createRange(); r.selectNodeContents(outputEl); window.getSelection().removeAllRanges(); window.getSelection().addRange(r); } } catch (e) {}
-            showManualHint("Clipboard not available in this context. The YAML above is selected — press Ctrl+C (or Cmd+C) to copy.");
+            showManualHint("Clipboard not available in this context. The YAML above is selected - press Ctrl+C (or Cmd+C) to copy.");
         }
     }
 }
