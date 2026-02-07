@@ -27,6 +27,7 @@ from plexapi.server import PlexServer
 from werkzeug.utils import secure_filename
 
 from config import (
+    CLOUD_URL,
     CONFIG_DIR,
     get_backup_dir,
     get_cache_file,
@@ -40,6 +41,12 @@ from models import db, CollectionSchedule, SystemLog, Settings, TmdbAlias, TmdbK
 from presets import PLAYLIST_PRESETS
 
 log = logging.getLogger(__name__)
+
+
+def get_cloud_base_url(settings):
+    """Return the Cloud base URL from env (SEEKANDWATCH_CLOUD_URL) or default production. No UI override."""
+    return CLOUD_URL
+
 
 # Configuration (from config module so env override works)
 BACKUP_DIR = get_backup_dir()
@@ -1865,6 +1872,22 @@ def restore_backup(filename):
                     with open(target_path, 'wb') as target:
                         target.write(source.read())
             
+        # Signal all workers to reopen the DB (multi-worker: only the restoring worker disposed).
+        _db_restored_flag = os.path.join(CONFIG_DIR, '.seekandwatch_db_restored')
+        try:
+            open(_db_restored_flag, 'w').close()
+            # Remove flag after a delay so every worker gets a request and disposes; then we stop checking.
+            def _remove_flag_later():
+                time.sleep(30)
+                try:
+                    if os.path.exists(_db_restored_flag):
+                        os.remove(_db_restored_flag)
+                except OSError:
+                    pass
+            t = threading.Thread(target=_remove_flag_later, daemon=True)
+            t.start()
+        except OSError:
+            pass
         return True, "Restored"
     except zipfile.BadZipFile:
         return False, "Invalid or corrupted ZIP file"

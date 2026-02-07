@@ -7,7 +7,8 @@ import re
 import sys
 
 import config
-from config import CONFIG_DIR, DATABASE_URI, SECRET_KEY_FILE, CLOUD_URL, CLOUD_REQUEST_TIMEOUT
+from config import CONFIG_DIR, DATABASE_URI, SECRET_KEY_FILE, CLOUD_REQUEST_TIMEOUT
+from utils import get_cloud_base_url
 import requests
 import random
 import json
@@ -44,10 +45,11 @@ from utils import (normalize_title, is_duplicate, is_owned_item, fetch_omdb_rati
                    score_recommendation, diverse_sample, get_tmdb_rec_cache, set_tmdb_rec_cache)
 from presets import PLAYLIST_PRESETS
 from sqlalchemy.exc import OperationalError
+from sqlalchemy import text
 
 # basic app setup stuff
 
-VERSION = "1.5.8"
+VERSION = "1.5.9"
 
 UPDATE_CACHE = {
     'version': None,
@@ -113,6 +115,41 @@ def add_security_headers(response):
     return response
 
 
+def _ensure_migrations():
+    """If the DB is behind (e.g. after restore or post-update), run migrations so users never hit missing-column errors."""
+    try:
+        row = db.session.execute(text("SELECT version FROM schema_info WHERE id = 1")).fetchone()
+        if row is not None and row[0] >= CURRENT_SCHEMA_VERSION:
+            return
+    except OperationalError as e:
+        msg = str(e).lower()
+        if "no such column" not in msg and "no such table" not in msg:
+            raise
+    run_migrations()
+    db.session.rollback()
+    # Force new connections so this request sees the updated schema (SQLite caches schema per connection).
+    db.engine.dispose()
+
+
+# Flag file written by restore_backup() so every worker disposes and reopens the DB (multi-worker).
+DB_RESTORED_FLAG = os.path.join(CONFIG_DIR, '.seekandwatch_db_restored')
+
+@app.before_request
+def ensure_schema():
+    """Run migrations when DB is behind; after restore, make this worker reopen the DB."""
+    if os.path.exists(DB_RESTORED_FLAG):
+        try:
+            # Stale flag (e.g. process died before timer): remove so we don't dispose every request forever.
+            if time.time() - os.path.getmtime(DB_RESTORED_FLAG) > 60:
+                os.remove(DB_RESTORED_FLAG)
+            else:
+                db.session.remove()
+                db.engine.dispose()
+        except OSError:
+            pass
+    _ensure_migrations()
+
+
 # db commit with retry (helps when sqlite is briefly locked)
 def commit_with_retry(max_retries=3):
     for attempt in range(max_retries):
@@ -140,6 +177,16 @@ def _valid_url(val):
 
 
 # database migration stuff - adds new columns and fixes admin issues
+# Bump this when adding new migrations so request-time check can run migrations after restore/update.
+CURRENT_SCHEMA_VERSION = 2
+
+def _alter_add_column(conn, sql):
+    """Run ALTER TABLE ADD COLUMN; ignore duplicate column (inspector can be stale)."""
+    try:
+        conn.execute(sqlalchemy.text(sql))
+    except OperationalError as e:
+        if "duplicate column" not in str(e).lower():
+            raise
 
 def run_migrations():
     """Adds any missing DB columns and makes sure there's always at least one admin."""
@@ -158,93 +205,101 @@ def run_migrations():
             with db.engine.connect() as conn:
                 if 'is_admin' not in user_columns:
                     print("--- [Migration] Adding 'is_admin' column to User table ---")
-                    conn.execute(sqlalchemy.text("ALTER TABLE user ADD COLUMN is_admin BOOLEAN DEFAULT 0"))
+                    _alter_add_column(conn, "ALTER TABLE user ADD COLUMN is_admin BOOLEAN DEFAULT 0")
             
             # Settings table.
             settings_columns = [c['name'] for c in inspector.get_columns('settings')]
             with db.engine.connect() as conn:
                 if 'tmdb_region' not in settings_columns:
-                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN tmdb_region VARCHAR(10) DEFAULT 'US'"))
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN tmdb_region VARCHAR(10) DEFAULT 'US'")
                 if 'ignored_users' not in settings_columns:
-                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN ignored_users VARCHAR(500)"))
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN ignored_users VARCHAR(500)")
                 if 'omdb_key' not in settings_columns:
-                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN omdb_key VARCHAR(200)"))
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN omdb_key VARCHAR(200)")
                 if 'scanner_enabled' not in settings_columns:
-                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN scanner_enabled BOOLEAN DEFAULT 0"))
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN scanner_enabled BOOLEAN DEFAULT 0")
                 if 'scanner_interval' not in settings_columns:
-                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN scanner_interval INTEGER DEFAULT 15"))
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN scanner_interval INTEGER DEFAULT 15")
                 if 'scanner_batch' not in settings_columns:
-                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN scanner_batch INTEGER DEFAULT 500"))
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN scanner_batch INTEGER DEFAULT 500")
                 if 'last_alias_scan' not in settings_columns:
-                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN last_alias_scan INTEGER DEFAULT 0"))
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN last_alias_scan INTEGER DEFAULT 0")
                 if 'kometa_config' not in settings_columns:
-                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN kometa_config TEXT"))
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN kometa_config TEXT")
                 if 'scanner_log_size' not in settings_columns:
-                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN scanner_log_size INTEGER DEFAULT 10"))
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN scanner_log_size INTEGER DEFAULT 10")
                 if 'keyword_cache_size' not in settings_columns:
-                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN keyword_cache_size INTEGER DEFAULT 3000"))
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN keyword_cache_size INTEGER DEFAULT 3000")
                 if 'runtime_cache_size' not in settings_columns:
-                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN runtime_cache_size INTEGER DEFAULT 3000"))
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN runtime_cache_size INTEGER DEFAULT 3000")
                 if 'radarr_sonarr_scanner_enabled' not in settings_columns:
-                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN radarr_sonarr_scanner_enabled BOOLEAN DEFAULT 0"))
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN radarr_sonarr_scanner_enabled BOOLEAN DEFAULT 0")
                 if 'radarr_sonarr_scanner_interval' not in settings_columns:
-                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN radarr_sonarr_scanner_interval INTEGER DEFAULT 24"))
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN radarr_sonarr_scanner_interval INTEGER DEFAULT 24")
                 if 'last_radarr_sonarr_scan' not in settings_columns:
-                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN last_radarr_sonarr_scan INTEGER DEFAULT 0"))
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN last_radarr_sonarr_scan INTEGER DEFAULT 0")
                 if 'schedule_time' not in settings_columns:
                     print("--- [Migration] Adding 'schedule_time' column ---")
-                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN schedule_time VARCHAR(10) DEFAULT '04:00'"))
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN schedule_time VARCHAR(10) DEFAULT '04:00'")
                 if 'ignored_libraries' not in settings_columns:
                     print("--- [Migration] Adding 'ignored_libraries' column ---")
-                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN ignored_libraries VARCHAR(500)"))
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN ignored_libraries VARCHAR(500)")
                 if 'radarr_url' not in settings_columns:
                     print("--- [Migration] Adding 'radarr_url' column ---")
-                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN radarr_url VARCHAR(200)"))
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN radarr_url VARCHAR(200)")
                 if 'radarr_api_key' not in settings_columns:
                     print("--- [Migration] Adding 'radarr_api_key' column ---")
-                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN radarr_api_key VARCHAR(200)"))
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN radarr_api_key VARCHAR(200)")
                 if 'sonarr_url' not in settings_columns:
                     print("--- [Migration] Adding 'sonarr_url' column ---")
-                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN sonarr_url VARCHAR(200)"))
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN sonarr_url VARCHAR(200)")
                 if 'sonarr_api_key' not in settings_columns:
                     print("--- [Migration] Adding 'sonarr_api_key' column ---")
-                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN sonarr_api_key VARCHAR(200)"))
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN sonarr_api_key VARCHAR(200)")
                 if 'cloud_enabled' not in settings_columns:
                     print("--- [Migration] Adding 'cloud_enabled' column ---")
-                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN cloud_enabled BOOLEAN DEFAULT 0"))
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN cloud_enabled BOOLEAN DEFAULT 0")
                 if 'cloud_api_key' not in settings_columns:
                     print("--- [Migration] Adding 'cloud_api_key' column ---")
-                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN cloud_api_key VARCHAR(100)"))
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN cloud_api_key VARCHAR(100)")
+                if 'cloud_base_url' not in settings_columns:
+                    print("--- [Migration] Adding 'cloud_base_url' column ---")
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN cloud_base_url VARCHAR(256)")
                 if 'cloud_auto_approve' not in settings_columns:
                     print("--- [Migration] Adding 'cloud_auto_approve' column ---")
-                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN cloud_auto_approve BOOLEAN DEFAULT 0"))
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN cloud_auto_approve BOOLEAN DEFAULT 0")
                 if 'cloud_movie_handler' not in settings_columns:
                     print("--- [Migration] Adding 'cloud_movie_handler' column ---")
-                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN cloud_movie_handler VARCHAR(20) DEFAULT 'direct'"))
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN cloud_movie_handler VARCHAR(20) DEFAULT 'direct'")
                 if 'cloud_tv_handler' not in settings_columns:
                     print("--- [Migration] Adding 'cloud_tv_handler' column ---")
-                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN cloud_tv_handler VARCHAR(20) DEFAULT 'direct'"))
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN cloud_tv_handler VARCHAR(20) DEFAULT 'direct'")
                 if 'cloud_sync_owned_enabled' not in settings_columns:
                     print("--- [Migration] Adding 'cloud_sync_owned_enabled' column ---")
-                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN cloud_sync_owned_enabled BOOLEAN DEFAULT 1"))
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN cloud_sync_owned_enabled BOOLEAN DEFAULT 1")
                 if 'cloud_sync_owned_interval_hours' not in settings_columns:
                     print("--- [Migration] Adding 'cloud_sync_owned_interval_hours' column ---")
-                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN cloud_sync_owned_interval_hours INTEGER DEFAULT 24"))
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN cloud_sync_owned_interval_hours INTEGER DEFAULT 24")
                 if 'last_owned_sync_at' not in settings_columns:
                     print("--- [Migration] Adding 'last_owned_sync_at' column ---")
-                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN last_owned_sync_at DATETIME"))
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN last_owned_sync_at DATETIME")
                 if 'cloud_webhook_url' not in settings_columns:
                     print("--- [Migration] Adding 'cloud_webhook_url' column ---")
-                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN cloud_webhook_url VARCHAR(512)"))
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN cloud_webhook_url VARCHAR(512)")
                 if 'cloud_webhook_secret' not in settings_columns:
                     print("--- [Migration] Adding 'cloud_webhook_secret' column ---")
-                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN cloud_webhook_secret VARCHAR(255)"))
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN cloud_webhook_secret VARCHAR(255)")
                 if 'cloud_poll_interval_min' not in settings_columns:
                     print("--- [Migration] Adding 'cloud_poll_interval_min' column ---")
-                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN cloud_poll_interval_min INTEGER"))
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN cloud_poll_interval_min INTEGER")
                 if 'cloud_poll_interval_max' not in settings_columns:
                     print("--- [Migration] Adding 'cloud_poll_interval_max' column ---")
-                    conn.execute(sqlalchemy.text("ALTER TABLE settings ADD COLUMN cloud_poll_interval_max INTEGER"))
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN cloud_poll_interval_max INTEGER")
+                if 'last_cloud_poll_at' not in settings_columns:
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN last_cloud_poll_at DATETIME")
+                if 'last_cloud_poll_ok' not in settings_columns:
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN last_cloud_poll_ok BOOLEAN")
+                conn.commit()
                 
                 # Check if kometa_template table exists
                 try:
@@ -306,7 +361,7 @@ def run_migrations():
                 app_request_columns = [c['name'] for c in inspector.get_columns('app_request')]
                 if 'user_id' not in app_request_columns:
                     with db.engine.connect() as conn:
-                        conn.execute(sqlalchemy.text("ALTER TABLE app_request ADD COLUMN user_id INTEGER REFERENCES user(id)"))
+                        _alter_add_column(conn, "ALTER TABLE app_request ADD COLUMN user_id INTEGER REFERENCES user(id)")
                         conn.commit()
                         # backfill: assign existing rows to first user so they still show for that user
                         first_user = conn.execute(sqlalchemy.text("SELECT id FROM user ORDER BY id ASC LIMIT 1")).scalar()
@@ -323,12 +378,12 @@ def run_migrations():
                 cloud_req_columns = [c['name'] for c in inspector.get_columns('cloud_request')]
                 if 'year' not in cloud_req_columns:
                     with db.engine.connect() as conn:
-                        conn.execute(sqlalchemy.text("ALTER TABLE cloud_request ADD COLUMN year VARCHAR(4)"))
+                        _alter_add_column(conn, "ALTER TABLE cloud_request ADD COLUMN year VARCHAR(4)")
                         conn.commit()
                         print("--- [Migration] Added 'year' column to cloud_request ---")
                 if 'notes' not in cloud_req_columns:
                     with db.engine.connect() as conn:
-                        conn.execute(sqlalchemy.text("ALTER TABLE cloud_request ADD COLUMN notes TEXT"))
+                        _alter_add_column(conn, "ALTER TABLE cloud_request ADD COLUMN notes TEXT")
                         conn.commit()
                         print("--- [Migration] Added 'notes' column to cloud_request ---")
         except Exception as ex:
@@ -341,11 +396,22 @@ def run_migrations():
                 cache_columns = [c['name'] for c in inspector.get_columns('radarr_sonarr_cache')]
                 if 'has_file' not in cache_columns:
                     with db.engine.connect() as conn:
-                        conn.execute(sqlalchemy.text("ALTER TABLE radarr_sonarr_cache ADD COLUMN has_file BOOLEAN DEFAULT 1"))
+                        _alter_add_column(conn, "ALTER TABLE radarr_sonarr_cache ADD COLUMN has_file BOOLEAN DEFAULT 1")
                         conn.commit()
                         print("--- [Migration] Added 'has_file' column to radarr_sonarr_cache ---")
         except Exception as ex:
             print(f"Migration Warning (radarr_sonarr_cache has_file): {ex}")
+
+        # Record schema version so request-time check can detect restore/out-of-date DB
+        try:
+            with db.engine.connect() as conn:
+                conn.execute(sqlalchemy.text(
+                    "CREATE TABLE IF NOT EXISTS schema_info (id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL)"
+                ))
+                conn.execute(sqlalchemy.text("INSERT OR REPLACE INTO schema_info (id, version) VALUES (1, :v)"), {"v": CURRENT_SCHEMA_VERSION})
+                conn.commit()
+        except Exception as e:
+            print(f"--- [Migration] schema_info: {type(e).__name__}: {e} ---", flush=True)
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -1522,7 +1588,9 @@ def playlists():
 @login_required
 def settings():
     s = current_user.settings
-    
+    if request.args.get('restored'):
+        flash('Backup restored. If API keys or other settings are missing, restart the app (e.g. restart the Docker container) so all data loads from the backup.', 'success')
+
     if request.method == 'POST':
         form_section = request.form.get('form_section', '').strip()
         # Partial updates: only update fields for the submitted section (one form per action)
@@ -1538,32 +1606,38 @@ def settings():
                     if val and not _valid_url(val):
                         return jsonify({'status': 'error', 'message': f'Invalid URL in {field.replace("_", " ")}. Use http:// or https:// only.'}), 400
             # Only update API fields that are present (allows multiple small forms in APIs tab)
+            # Keys/tokens: if user sent a non-empty value, always save it. Else if *_unchanged keep existing; else don't overwrite with empty.
+            def _apply_key(field_name, unchanged_name, attr_name):
+                if field_name not in request.form:
+                    return
+                v = (request.form.get(field_name) or '').strip()
+                if v:
+                    setattr(s, attr_name, v)
+                elif unchanged_name in request.form:
+                    pass
+                elif getattr(s, attr_name, None):
+                    pass
+                else:
+                    setattr(s, attr_name, None)
             if 'plex_url' in request.form:
                 s.plex_url = request.form.get('plex_url')
-            if 'plex_token' in request.form:
-                s.plex_token = request.form.get('plex_token')
-            if 'tmdb_key' in request.form:
-                s.tmdb_key = request.form.get('tmdb_key')
+            _apply_key('plex_token', 'plex_token_unchanged', 'plex_token')
+            _apply_key('tmdb_key', 'tmdb_key_unchanged', 'tmdb_key')
             if 'tmdb_region' in request.form:
                 s.tmdb_region = request.form.get('tmdb_region')
-            if 'omdb_key' in request.form:
-                s.omdb_key = request.form.get('omdb_key')
+            _apply_key('omdb_key', 'omdb_key_unchanged', 'omdb_key')
             if 'overseerr_url' in request.form:
                 s.overseerr_url = request.form.get('overseerr_url')
-            if 'overseerr_api_key' in request.form:
-                s.overseerr_api_key = request.form.get('overseerr_api_key')
+            _apply_key('overseerr_api_key', 'overseerr_api_key_unchanged', 'overseerr_api_key')
             if 'tautulli_url' in request.form:
                 s.tautulli_url = request.form.get('tautulli_url')
-            if 'tautulli_api_key' in request.form:
-                s.tautulli_api_key = request.form.get('tautulli_api_key')
+            _apply_key('tautulli_api_key', 'tautulli_api_key_unchanged', 'tautulli_api_key')
             if 'radarr_url' in request.form:
                 s.radarr_url = request.form.get('radarr_url')
-            if 'radarr_api_key' in request.form:
-                s.radarr_api_key = request.form.get('radarr_api_key')
+            _apply_key('radarr_api_key', 'radarr_api_key_unchanged', 'radarr_api_key')
             if 'sonarr_url' in request.form:
                 s.sonarr_url = request.form.get('sonarr_url')
-            if 'sonarr_api_key' in request.form:
-                s.sonarr_api_key = request.form.get('sonarr_api_key')
+            _apply_key('sonarr_api_key', 'sonarr_api_key_unchanged', 'sonarr_api_key')
             if 'plex_url' in request.form or 'plex_token' in request.form:
                 s.ignored_users = ','.join(request.form.getlist('ignored_plex_users'))
             try:
@@ -1938,6 +2012,7 @@ def _add_cors(resp):
 
 
 @app.route('/api/seekandwatch/approved', methods=['POST', 'OPTIONS'])
+@limiter.limit("200 per hour")
 def webhook_approved():
     """Receive approved requests from SeekAndWatch (instant). Called by cloud server or by your browser when you approve on the web."""
     if request.method == 'OPTIONS':
@@ -1983,23 +2058,76 @@ def requests_settings_page():
     return render_template('requests_settings.html', settings=settings)
 
 
+@app.route('/api/cloud/test', methods=['POST'])
+@login_required
+def test_cloud_connection():
+    """Test SeekAndWatch Cloud API key and connection. Accepts optional api_key in JSON to test before save."""
+    settings = current_user.settings
+    key = None
+    if request.is_json and request.json:
+        key = (request.json.get('api_key') or '').strip()
+    if not key and settings:
+        key = (settings.cloud_api_key or '').strip()
+    if not key:
+        return jsonify({'status': 'error', 'message': 'No API key provided. Enter a key and try again.'}), 400
+    try:
+        base = get_cloud_base_url(settings)
+        r = requests.get(
+            f"{base}/api/poll.php",
+            headers={'X-Server-Key': key},
+            timeout=min(15, CLOUD_REQUEST_TIMEOUT),
+        )
+        if r.status_code == 200:
+            return jsonify({'status': 'success', 'message': 'Connection OK. API key is valid.'})
+        if r.status_code == 401:
+            return jsonify({'status': 'error', 'message': 'Invalid API key. Check your key in the Cloud Dashboard.'}), 200
+        if r.status_code == 429:
+            return jsonify({'status': 'warning', 'message': 'Too many requests (429). The cloud is temporarily rate-limiting; wait a minute and try again. Your key is valid.'}), 200
+        return jsonify({'status': 'error', 'message': f'Cloud returned status {r.status_code}.'}), 200
+    except requests.exceptions.Timeout:
+        return jsonify({'status': 'error', 'message': 'Connection timed out. Check your network.'}), 200
+    except requests.exceptions.ConnectionError:
+        return jsonify({'status': 'error', 'message': 'Could not reach SeekAndWatch Cloud. Check your network.'}), 200
+    except Exception as e:
+        write_log("warning", "Cloud Test", str(e))
+        return jsonify({'status': 'error', 'message': str(e) or 'Connection failed.'}), 200
+
+
 @app.route('/save_cloud_settings', methods=['POST'])
 @login_required
 def save_cloud_settings():
     settings = current_user.settings
-    new_key = request.form.get('cloud_api_key')
-    if new_key:
-        settings.cloud_api_key = new_key.strip()
-        settings.cloud_enabled = True  # Auto-enable if they save a key
-
+    if 'cloud_api_key' in request.form:
+        if 'cloud_api_key_unchanged' in request.form:
+            pass  # keep existing
+        else:
+            new_key = (request.form.get('cloud_api_key') or '').strip()
+            if new_key:
+                settings.cloud_api_key = new_key
+                settings.cloud_enabled = True
+            elif settings.cloud_api_key:
+                pass  # safeguard: don't overwrite existing with empty
+            else:
+                settings.cloud_api_key = None
+                settings.cloud_enabled = False
     settings.cloud_movie_handler = request.form.get('cloud_movie_handler')
     settings.cloud_tv_handler = request.form.get('cloud_tv_handler')
     settings.cloud_sync_owned_enabled = 'cloud_sync_owned_enabled' in request.form
 
     webhook_url = (request.form.get('cloud_webhook_url') or '').strip()
-    webhook_secret = (request.form.get('cloud_webhook_secret') or '').strip()
+    if 'cloud_webhook_secret' in request.form:
+        if 'cloud_webhook_secret_unchanged' in request.form:
+            pass  # keep existing
+        else:
+            v = (request.form.get('cloud_webhook_secret') or '').strip()
+            if v:
+                settings.cloud_webhook_secret = v
+            elif settings.cloud_webhook_secret:
+                pass  # safeguard: don't overwrite existing with empty
+            else:
+                settings.cloud_webhook_secret = None
     settings.cloud_webhook_url = webhook_url or None
-    settings.cloud_webhook_secret = webhook_secret or None
+    webhook_secret = (settings.cloud_webhook_secret or '').strip()  # for register_webhook below
 
     raw_min = (request.form.get('cloud_poll_interval_min') or '').strip()
     raw_max = (request.form.get('cloud_poll_interval_max') or '').strip()
@@ -2015,25 +2143,32 @@ def save_cloud_settings():
     db.session.commit()
 
     if settings.cloud_api_key and settings.cloud_enabled:
-        try:
-            r = requests.post(
-                f"{CLOUD_URL}/api/register_webhook.php",
-                headers={
-                    'X-Server-Key': settings.cloud_api_key,
-                    'Content-Type': 'application/json',
-                },
-                json={
-                    'webhook_url': webhook_url or '',
-                    'webhook_secret': webhook_secret or '',
-                },
-                timeout=CLOUD_REQUEST_TIMEOUT,
-            )
-            if r.status_code != 200:
-                flash("Cloud settings saved, but webhook registration failed (check API key).", "warning")
-            else:
-                flash("Cloud settings updated successfully", "success")
-        except Exception as e:
-            flash(f"Cloud settings saved, but could not register webhook: {getattr(e, 'message', str(e))}", "warning")
+        # Only call cloud to register/clear webhook when we have a webhook URL or had one (so cloud stays in sync)
+        # If user left webhook blank, skip the API call so we don't show "webhook failed" when they only added the API key
+        if webhook_url:
+            try:
+                base = get_cloud_base_url(settings)
+                r = requests.post(
+                    f"{base}/api/register_webhook.php",
+                    headers={
+                        'X-Server-Key': settings.cloud_api_key,
+                        'Content-Type': 'application/json',
+                    },
+                    json={
+                        'webhook_url': webhook_url or '',
+                        'webhook_secret': webhook_secret or '',
+                    },
+                    timeout=CLOUD_REQUEST_TIMEOUT,
+                )
+                if r.status_code != 200:
+                    flash("Cloud settings saved, but webhook registration failed (check API key).", "warning")
+                else:
+                    flash("Cloud settings updated successfully", "success")
+            except Exception as e:
+                write_log("warning", "Cloud", f"Webhook registration failed: {getattr(e, 'message', str(e))}")
+                flash("Cloud settings saved, but could not register webhook (check API key and network).", "warning")
+        else:
+            flash("Cloud settings updated successfully", "success")
     else:
         flash("Cloud settings updated successfully", "success")
 
@@ -2073,8 +2208,9 @@ def deny_request(req_id):
         try:
             settings = current_user.settings
             if settings and settings.cloud_api_key:
+                base = get_cloud_base_url(settings)
                 r = requests.post(
-                    f"{CLOUD_URL}/api/acknowledge.php",
+                    f"{base}/api/acknowledge.php",
                     headers={
                         'X-Server-Key': settings.cloud_api_key,
                         'Content-Type': 'application/json',
@@ -2114,8 +2250,9 @@ def delete_request(req_id):
         try:
             settings = current_user.settings
             if settings and settings.cloud_api_key:
+                base = get_cloud_base_url(settings)
                 r = requests.post(
-                    f"{CLOUD_URL}/api/delete.php",
+                    f"{base}/api/delete.php",
                     headers={
                         'X-Server-Key': settings.cloud_api_key,
                         'Content-Type': 'application/json',

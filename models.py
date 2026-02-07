@@ -85,6 +85,7 @@ class Settings(db.Model):
     
     # SeekAndWatch web app
     cloud_enabled = db.Column(db.Boolean, default=False)
+    cloud_base_url = db.Column(db.String(256), nullable=True)  # e.g. https://seekandwatch.com or https://seekandwatch.com/staging; blank = use env/default
     cloud_api_key = db.Column(db.String(100))
     cloud_auto_approve = db.Column(db.Boolean, default=False)
     # direct = Radarr (for movies) or Sonarr (for TV)
@@ -98,6 +99,8 @@ class Settings(db.Model):
     cloud_webhook_secret = db.Column(db.String(255), nullable=True)  # secret sent in X-Webhook-Secret when cloud calls webhook
     cloud_poll_interval_min = db.Column(db.Integer, nullable=True)  # seconds between polls (min); null = use config/env default
     cloud_poll_interval_max = db.Column(db.Integer, nullable=True)  # seconds between polls (max); null = use config/env default
+    last_cloud_poll_at = db.Column(db.DateTime, nullable=True)   # when we last attempted a cloud poll
+    last_cloud_poll_ok = db.Column(db.Boolean, nullable=True)     # True = last poll succeeded, False = failed
 
 class Blocklist(db.Model):
     __table_args__ = {'extend_existing': True}
