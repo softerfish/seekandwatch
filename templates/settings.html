@@ -331,10 +331,11 @@ function copyRecoveryCodes() {
                 </div>
                 
                 <div class="input-group">
-                    <label class="input-label">Plex Token</label>
+                    <label class="input-label">Plex Token {% if settings.plex_token %}<span class="key-saved-badge">Saved</span>{% endif %}</label>
                     <div style="display: flex; gap: 10px;">
                         <div class="password-wrapper">
-                            <input type="password" id="plex_token" name="plex_token" value="{{ settings.plex_token or '' }}" autocomplete="off" style="width: 100%; padding-right: 40px;">
+                            <input type="password" id="plex_token" name="plex_token" value="" placeholder="{% if settings.plex_token %}••••••••{% else %}Paste token{% endif %}" {% if settings.plex_token %}data-key-set="1"{% endif %} autocomplete="off" style="width: 100%; padding-right: 40px;">
+                            {% if settings.plex_token %}<input type="hidden" name="plex_token_unchanged" value="1" id="plex_token_unchanged_h">{% endif %}
                             <button type="button" class="toggle-pass" onclick="toggleVisibility('plex_token', this)">👁️</button>
                         </div>
                         <button type="button" onclick="testService('plex')" class="btn-secondary">Test ⚡</button>
@@ -383,7 +384,7 @@ function copyRecoveryCodes() {
                 <h3>Metadata APIs</h3>
 
                 <div class="input-group">
-                    <label class="input-label">TMDB API Key (v3) <span style="color: var(--error);">*Required</span></label>
+                    <label class="input-label">TMDB API Key (v3) {% if settings.tmdb_key %}<span class="key-saved-badge">Saved</span>{% endif %} <span style="color: var(--error);">*Required</span></label>
                     <details class="help-box">
                         <summary>❓ How to get your TMDB API key</summary>
                         <ol style="line-height: 1.6; margin-bottom: 8px;">
@@ -395,7 +396,8 @@ function copyRecoveryCodes() {
                     </details>
                     <div class="test-row">
                         <div class="password-wrapper">
-                            <input type="password" id="tmdb_key" name="tmdb_key" value="{{ settings.tmdb_key or '' }}" autocomplete="new-password">
+                            <input type="password" id="tmdb_key" name="tmdb_key" value="" placeholder="{% if settings.tmdb_key %}••••••••{% else %}Paste API key{% endif %}" {% if settings.tmdb_key %}data-key-set="1"{% endif %} autocomplete="new-password">
+                            {% if settings.tmdb_key %}<input type="hidden" name="tmdb_key_unchanged" value="1" id="tmdb_key_unchanged_h">{% endif %}
                             <button type="button" class="toggle-pass" onclick="toggleVisibility('tmdb_key', this)">👁️</button>
                         </div>
                         <button type="button" onclick="testService('tmdb')" class="btn-secondary">Test ⚡</button>
@@ -403,7 +405,7 @@ function copyRecoveryCodes() {
                 </div>
 
                 <div class="input-group" style="border: 1px dashed #2ecc71; padding: 15px; border-radius: 8px; background: rgba(46, 204, 113, 0.05);">
-                    <label class="input-label">🍅 OMDB API Key (Critics Scores)</label>
+                    <label class="input-label">🍅 OMDB API Key (Critics Scores) {% if settings.omdb_key %}<span class="key-saved-badge">Saved</span>{% endif %}</label>
                     <p class="helper-text">Required to filter by Rotten Tomatoes scores.</p>
                     <details class="help-box">
                         <summary>❓ How to get your OMDB API key</summary>
@@ -415,7 +417,8 @@ function copyRecoveryCodes() {
                     </details>
                     <div class="test-row">
                         <div class="password-wrapper">
-                            <input type="password" id="omdb_key" name="omdb_key" value="{{ settings.omdb_key or '' }}" placeholder="xxxxxx" autocomplete="off">
+                            <input type="password" id="omdb_key" name="omdb_key" value="" placeholder="{% if settings.omdb_key %}••••••••{% else %}xxxxxx{% endif %}" {% if settings.omdb_key %}data-key-set="1"{% endif %} autocomplete="off">
+                            {% if settings.omdb_key %}<input type="hidden" name="omdb_key_unchanged" value="1" id="omdb_key_unchanged_h">{% endif %}
                             <button type="button" class="toggle-pass" onclick="toggleVisibility('omdb_key', this)">👁️</button>
                         </div>
                         <button type="button" onclick="testService('omdb')" class="btn-secondary">Test ⚡</button>
@@ -437,7 +440,7 @@ function copyRecoveryCodes() {
                         <input type="text" id="overseerr_url" name="overseerr_url" value="{{ settings.overseerr_url or '' }}" placeholder="http://192.168.1.50:5055" autocomplete="off">
                     </div>
                     <div class="input-group">
-                        <label class="input-label">Overseerr API Key</label>
+                        <label class="input-label">Overseerr API Key {% if settings.overseerr_api_key %}<span class="key-saved-badge">Saved</span>{% endif %}</label>
                         <details class="help-box">
                             <summary>❓ How to find your Overseerr API key</summary>
                             <ol>
@@ -448,7 +451,8 @@ function copyRecoveryCodes() {
                         </details>
                         <div style="display: flex; gap: 10px;">
                             <div class="password-wrapper">
-                                <input type="password" id="overseerr_api_key" name="overseerr_api_key" value="{{ settings.overseerr_api_key or '' }}" autocomplete="new-password" style="width: 100%; padding-right: 40px;">
+                                <input type="password" id="overseerr_api_key" name="overseerr_api_key" value="" placeholder="{% if settings.overseerr_api_key %}••••••••{% else %}Paste API key{% endif %}" {% if settings.overseerr_api_key %}data-key-set="1"{% endif %} autocomplete="new-password" style="width: 100%; padding-right: 40px;">
+                                {% if settings.overseerr_api_key %}<input type="hidden" name="overseerr_api_key_unchanged" value="1" id="overseerr_api_key_unchanged_h">{% endif %}
                                 <button type="button" class="toggle-pass" onclick="toggleVisibility('overseerr_api_key', this)">👁️</button>
                             </div>
                             <button type="button" onclick="testService('overseerr')" class="btn-secondary">Test ⚡</button>
@@ -462,7 +466,7 @@ function copyRecoveryCodes() {
                         <input type="text" id="tautulli_url" name="tautulli_url" value="{{ settings.tautulli_url or '' }}" placeholder="http://192.168.1.50:8181" autocomplete="off">
                     </div>
                     <div class="input-group">
-                        <label class="input-label">Tautulli API Key</label>
+                        <label class="input-label">Tautulli API Key {% if settings.tautulli_api_key %}<span class="key-saved-badge">Saved</span>{% endif %}</label>
                         <details class="help-box">
                             <summary>❓ How to find your Tautulli API key</summary>
                             <ol>
@@ -473,7 +477,8 @@ function copyRecoveryCodes() {
                         </details>
                         <div style="display: flex; gap: 10px;">
                             <div class="password-wrapper">
-                                <input type="password" id="tautulli_api_key" name="tautulli_api_key" value="{{ settings.tautulli_api_key or '' }}" autocomplete="off" style="width: 100%; padding-right: 40px;">
+                                <input type="password" id="tautulli_api_key" name="tautulli_api_key" value="" placeholder="{% if settings.tautulli_api_key %}••••••••{% else %}Paste API key{% endif %}" {% if settings.tautulli_api_key %}data-key-set="1"{% endif %} autocomplete="off" style="width: 100%; padding-right: 40px;">
+                                {% if settings.tautulli_api_key %}<input type="hidden" name="tautulli_api_key_unchanged" value="1" id="tautulli_api_key_unchanged_h">{% endif %}
                                 <button type="button" class="toggle-pass" onclick="toggleVisibility('tautulli_api_key', this)">👁️</button>
                             </div>
                             <button type="button" onclick="testService('tautulli')" class="btn-secondary">Test ⚡</button>
@@ -490,7 +495,7 @@ function copyRecoveryCodes() {
                         <input type="text" id="radarr_url" name="radarr_url" value="{{ settings.radarr_url or '' }}" placeholder="http://192.168.1.50:7878" autocomplete="off">
                     </div>
                     <div class="input-group">
-                        <label class="input-label">Radarr API Key</label>
+                        <label class="input-label">Radarr API Key {% if settings.radarr_api_key %}<span class="key-saved-badge">Saved</span>{% endif %}</label>
                         <details class="help-box">
                             <summary>❓ How to find your Radarr API key</summary>
                             <ol>
@@ -501,7 +506,8 @@ function copyRecoveryCodes() {
                         </details>
                         <div style="display: flex; gap: 10px;">
                             <div class="password-wrapper">
-                                <input type="password" id="radarr_api_key" name="radarr_api_key" value="{{ settings.radarr_api_key or '' }}" autocomplete="new-password" style="width: 100%; padding-right: 40px;">
+                                <input type="password" id="radarr_api_key" name="radarr_api_key" value="" placeholder="{% if settings.radarr_api_key %}••••••••{% else %}Paste API key{% endif %}" {% if settings.radarr_api_key %}data-key-set="1"{% endif %} autocomplete="new-password" style="width: 100%; padding-right: 40px;">
+                                {% if settings.radarr_api_key %}<input type="hidden" name="radarr_api_key_unchanged" value="1" id="radarr_api_key_unchanged_h">{% endif %}
                                 <button type="button" class="toggle-pass" onclick="toggleVisibility('radarr_api_key', this)">👁️</button>
                             </div>
                             <button type="button" onclick="testService('radarr')" class="btn-secondary">Test ⚡</button>
@@ -515,7 +521,7 @@ function copyRecoveryCodes() {
                         <input type="text" id="sonarr_url" name="sonarr_url" value="{{ settings.sonarr_url or '' }}" placeholder="http://192.168.1.50:8989" autocomplete="off">
                     </div>
                     <div class="input-group">
-                        <label class="input-label">Sonarr API Key</label>
+                        <label class="input-label">Sonarr API Key {% if settings.sonarr_api_key %}<span class="key-saved-badge">Saved</span>{% endif %}</label>
                         <details class="help-box">
                             <summary>❓ How to find your Sonarr API key</summary>
                             <ol>
@@ -526,7 +532,8 @@ function copyRecoveryCodes() {
                         </details>
                         <div style="display: flex; gap: 10px;">
                             <div class="password-wrapper">
-                                <input type="password" id="sonarr_api_key" name="sonarr_api_key" value="{{ settings.sonarr_api_key or '' }}" autocomplete="off" style="width: 100%; padding-right: 40px;">
+                                <input type="password" id="sonarr_api_key" name="sonarr_api_key" value="" placeholder="{% if settings.sonarr_api_key %}••••••••{% else %}Paste API key{% endif %}" {% if settings.sonarr_api_key %}data-key-set="1"{% endif %} autocomplete="off" style="width: 100%; padding-right: 40px;">
+                                {% if settings.sonarr_api_key %}<input type="hidden" name="sonarr_api_key_unchanged" value="1" id="sonarr_api_key_unchanged_h">{% endif %}
                                 <button type="button" class="toggle-pass" onclick="toggleVisibility('sonarr_api_key', this)">👁️</button>
                             </div>
                             <button type="button" onclick="testService('sonarr')" class="btn-secondary">Test ⚡</button>
@@ -943,6 +950,15 @@ document.addEventListener('DOMContentLoaded', function() {
     for (var i = 0; i < tabPanels.length; i++) {
         if (!tabPanels[i].classList.contains("active")) tabPanels[i].setAttribute("inert", "");
     }
+    // When user types in a key field that was masked, remove _unchanged hidden so save sends the new value
+    var keyFieldIds = ['plex_token', 'tmdb_key', 'omdb_key', 'overseerr_api_key', 'tautulli_api_key', 'radarr_api_key', 'sonarr_api_key'];
+    keyFieldIds.forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.addEventListener('input', function() {
+            var h = document.getElementById(id + '_unchanged_h');
+            if (h) h.remove();
+        });
+    });
     loadBackups();
     fetchStatus();
     checkRadarrSonarrCacheStatus();
@@ -1426,36 +1442,45 @@ function saveRadarrSonarrScannerSettings() {
 
 // Service testing + main save
 function testService(service) {
-    let payload = { service: service };
-    let btn;
-
+    var keyIds = { plex: ['plex_token'], tmdb: ['tmdb_key'], omdb: ['omdb_key'], overseerr: ['overseerr_api_key'], tautulli: ['tautulli_api_key'], radarr: ['radarr_api_key'], sonarr: ['sonarr_api_key'] };
+    var useStored = false;
+    if (keyIds[service]) {
+        for (var i = 0; i < keyIds[service].length; i++) {
+            var el = document.getElementById(keyIds[service][i]);
+            if (el && el.hasAttribute && el.hasAttribute('data-key-set') && !(el.value || '').trim()) { useStored = true; break; }
+        }
+    }
+    var payload = { service: service };
+    if (useStored) payload.use_stored = true;
+    var btn;
     if (service === 'plex') {
         payload.url = document.getElementById('plex_url').value;
-        payload.token = document.getElementById('plex_token').value;
+        if (!useStored) payload.token = document.getElementById('plex_token').value;
         btn = document.querySelector('button[onclick="testService(\'plex\')"]');
     } else if (service === 'tmdb') {
-        payload.api_key = document.getElementById('tmdb_key').value;
+        if (!useStored) payload.api_key = document.getElementById('tmdb_key').value;
         btn = document.querySelector('button[onclick="testService(\'tmdb\')"]');
     } else if (service === 'omdb') {
-        payload.api_key = document.getElementById('omdb_key').value;
+        if (!useStored) payload.api_key = document.getElementById('omdb_key').value;
         btn = document.querySelector('button[onclick="testService(\'omdb\')"]');
     } else if (service === 'overseerr') {
         payload.url = document.getElementById('overseerr_url').value;
-        payload.api_key = document.getElementById('overseerr_api_key').value;
+        if (!useStored) payload.api_key = document.getElementById('overseerr_api_key').value;
         btn = document.querySelector('button[onclick="testService(\'overseerr\')"]');
     } else if (service === 'tautulli') {
         payload.url = document.getElementById('tautulli_url').value;
-        payload.api_key = document.getElementById('tautulli_api_key').value;
+        if (!useStored) payload.api_key = document.getElementById('tautulli_api_key').value;
         btn = document.querySelector('button[onclick="testService(\'tautulli\')"]');
     } else if (service === 'radarr') {
         payload.url = document.getElementById('radarr_url').value;
-        payload.api_key = document.getElementById('radarr_api_key').value;
+        if (!useStored) payload.api_key = document.getElementById('radarr_api_key').value;
         btn = document.querySelector('button[onclick="testService(\'radarr\')"]');
     } else if (service === 'sonarr') {
         payload.url = document.getElementById('sonarr_url').value;
-        payload.api_key = document.getElementById('sonarr_api_key').value;
+        if (!useStored) payload.api_key = document.getElementById('sonarr_api_key').value;
         btn = document.querySelector('button[onclick="testService(\'sonarr\')"]');
     }
+    if (!btn) return;
 
     const originalText = btn.innerText;
     btn.innerText = "Testing...";
@@ -1608,8 +1633,16 @@ function restoreBackup(f) {
     if (!confirm("Overwrite DB?")) return;
     fetch(API_BACKUP_RESTORE_BASE + f, {method: 'POST'})
         .then(r=>r.json())
-        .then(d=>{ showModal('♻️', 'Restored', d.message, true); loadBackups(); })
-        .catch(() => showModal('❌', 'Error', 'Restore failed. Please try again.', false));
+        .then(d=>{
+            if (d.status === 'success') {
+                showModal('♻️', 'Restored', (d.message || 'Restored') + '\n\nReloading settings…', true);
+                window.location.href = '/settings?restored=1';
+            } else {
+                showModal('❌', 'Error', d.message || 'Restore failed.', false);
+                loadBackups();
+            }
+        })
+        .catch(() => { showModal('❌', 'Error', 'Restore failed. Please try again.', false); loadBackups(); });
 }
 
 function triggerBackupUpload() {
@@ -1651,5 +1684,6 @@ function escapeHtml(text) {
 <style>
     @keyframes blink { 50% { opacity: 0.5; } }
     .blink { animation: blink 1s linear infinite; }
+    .key-saved-badge { display: inline-block; margin-left: 8px; padding: 2px 8px; font-size: 0.75em; font-weight: normal; color: #0c0; background: rgba(0, 204, 102, 0.2); border: 1px solid rgba(0, 204, 102, 0.5); border-radius: 4px; }
 </style>
 {% endblock %}

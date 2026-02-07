@@ -67,13 +67,17 @@
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
                 <div class="form-group mb-4">
-                    <label for="cloudApiKey" class="font-weight-bold text-white">SeekAndWatch Cloud API Key</label>
-                    <input type="password" class="form-control" name="cloud_api_key" id="cloudApiKey"
-                           value="{{ settings.cloud_api_key or '' }}"
-                           placeholder="Paste your key here (e.g. 8f9a...)"
-                           autocomplete="off">
+                    <label for="cloudApiKey" class="font-weight-bold text-white">SeekAndWatch Cloud API Key {% if settings.cloud_api_key %}<span class="badge bg-success ms-2" style="font-size: 0.7em; font-weight: normal;">Saved</span>{% endif %}</label>
+                    <div class="d-flex gap-2 align-items-center flex-wrap">
+                        <input type="password" class="form-control" name="cloud_api_key" id="cloudApiKey" style="max-width: 400px;"
+                               value="" placeholder="{% if settings.cloud_api_key %}••••••••{% else %}Paste your key here (e.g. 8f9a...){% endif %}"
+                               {% if settings.cloud_api_key %}data-key-set="1"{% endif %} autocomplete="off">
+                        <button type="button" class="btn btn-info" id="cloudTestBtn" onclick="testCloudConnection()">Test connection</button>
+                        <span id="cloudTestResult" class="small ms-2" style="display: none;"></span>
+                    </div>
+                    {% if settings.cloud_api_key %}<input type="hidden" name="cloud_api_key_unchanged" value="1" id="cloudApiKey_unchanged_h">{% endif %}
                     <small class="form-text text-muted">
-                        Get this key from your <a href="https://seekandwatch.com/dashboard.php" target="_blank" class="text-info">Cloud Dashboard</a> under "Local Server Connection".
+                        {% if settings.cloud_api_key %}Key is set. Leave blank to keep it, or enter a new key to replace. {% endif %}Get this key from your <a href="https://seekandwatch.com/dashboard.php" target="_blank" class="text-info">Cloud Dashboard</a> under "Local Server Connection".
                     </small>
                 </div>
 
@@ -110,6 +114,19 @@
                         Enable cloud sync
                     </label>
                     <small class="form-text text-muted">When on, the app polls for approved requests and adds them to your handlers. When off, the key is saved but no syncing runs.</small>
+                    <div class="mt-2 d-flex align-items-center gap-2" style="font-size: 0.9em;">
+                        <span class="text-muted">Last poll:</span>
+                        <span id="lastPollTime">{% if settings.last_cloud_poll_at %}{{ settings.last_cloud_poll_at.strftime('%Y-%m-%d %H:%M') }}{% else %}Never{% endif %}</span>
+                        {% if settings.last_cloud_poll_at %}
+                        {% if settings.last_cloud_poll_ok %}
+                        <span class="text-success" title="Last poll succeeded">●</span>
+                        {% else %}
+                        <span class="text-danger" title="Last poll failed">●</span>
+                        {% endif %}
+                        {% else %}
+                        <span class="text-secondary" title="No poll yet">●</span>
+                        {% endif %}
+                    </div>
                 </div>
                 <div class="row mb-4">
                     <div class="col-md-6">
@@ -144,11 +161,11 @@
                     <small class="form-text text-muted">Optional. Blank = poll only.</small>
                 </div>
                 <div class="form-group mb-4">
-                    <label for="cloudWebhookSecret" class="font-weight-bold text-white">Webhook secret</label>
+                    <label for="cloudWebhookSecret" class="font-weight-bold text-white">Webhook secret {% if settings.cloud_webhook_secret %}<span class="badge bg-success ms-2" style="font-size: 0.7em; font-weight: normal;">Saved</span>{% endif %}</label>
                     <input type="password" class="form-control" name="cloud_webhook_secret" id="cloudWebhookSecret"
-                           value="{{ settings.cloud_webhook_secret or '' }}"
-                           placeholder="Optional"
-                           autocomplete="off">
+                           value="" placeholder="{% if settings.cloud_webhook_secret %}••••••••{% else %}Optional{% endif %}"
+                           {% if settings.cloud_webhook_secret %}data-key-set="1"{% endif %} autocomplete="off">
+                    {% if settings.cloud_webhook_secret %}<input type="hidden" name="cloud_webhook_secret_unchanged" value="1" id="cloudWebhookSecret_unchanged_h">{% endif %}
                     <small class="form-text text-muted">Only if you set a URL above.</small>
                 </div>
 
@@ -159,5 +176,59 @@
         </div>
     </div>
 </div>
-
+<script>
+function testCloudConnection() {
+    var btn = document.getElementById('cloudTestBtn');
+    var resultEl = document.getElementById('cloudTestResult');
+    var keyEl = document.getElementById('cloudApiKey');
+    var key = (keyEl && keyEl.value) ? keyEl.value.trim() : '';
+    var payload = {};
+    if (key) payload.api_key = key;
+    var csrf = document.querySelector('input[name="csrf_token"]');
+    var headers = { 'Content-Type': 'application/json' };
+    if (csrf && csrf.value) headers['X-CSRFToken'] = csrf.value;
+    if (btn) { btn.disabled = true; btn.textContent = 'Testing...'; }
+    if (resultEl) { resultEl.style.display = 'none'; resultEl.className = 'small ms-2'; }
+    fetch('{{ url_for("test_cloud_connection") }}', { method: 'POST', headers: headers, body: JSON.stringify(payload) })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (resultEl) {
+                resultEl.style.display = 'inline';
+                resultEl.textContent = d.message || (d.status === 'success' ? 'OK' : (d.status === 'warning' ? 'Rate limited' : 'Failed'));
+                var cls = d.status === 'success' ? 'text-success' : (d.status === 'warning' ? 'text-warning' : 'text-danger');
+                resultEl.classList.add(cls);
+            }
+        })
+        .catch(function() {
+            if (resultEl) { resultEl.style.display = 'inline'; resultEl.className = 'small ms-2 text-danger'; resultEl.textContent = 'Request failed.'; }
+        })
+        .finally(function() {
+            if (!btn) return;
+            var waitSec = 120;
+            btn.disabled = true;
+            var tick = function() {
+                if (waitSec <= 0) {
+                    btn.disabled = false;
+                    btn.textContent = 'Test connection';
+                    return;
+                }
+                var m = Math.floor(waitSec / 60);
+                var s = waitSec % 60;
+                btn.textContent = 'Try again in ' + m + ':' + (s < 10 ? '0' : '') + s;
+                waitSec--;
+                setTimeout(tick, 1000);
+            };
+            tick();
+        });
+}
+document.addEventListener('DOMContentLoaded', function() {
+    ['cloudApiKey', 'cloudWebhookSecret'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.addEventListener('input', function() {
+            var h = document.getElementById(id + '_unchanged_h');
+            if (h) h.remove();
+        });
+    });
+});
+</script>
 {% endblock %}
