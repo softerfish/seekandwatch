@@ -20,4 +20,5 @@
   
   <Config Name="PUID" Target="PUID" Default="99" Description="Container User ID" Type="Variable" Display="advanced" Required="false" Mask="false">99</Config>
   <Config Name="PGID" Target="PGID" Default="100" Description="Container Group ID" Type="Variable" Display="advanced" Required="false" Mask="false">100</Config>
+  <Config Name="Unraid App Store" Target="SEEKANDWATCH_UNRAID" Default="1" Description="Set to 1 so the app shows Update via App Store and disables the in-app one-click updater. Leave as 1 when installed from Community Applications." Type="Variable" Display="advanced" Required="false" Mask="false">1</Config>
 </Container>

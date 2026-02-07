@@ -2121,8 +2121,12 @@ def is_docker():
     return False
 
 def is_unraid():
-    """Tries to detect if we're running on Unraid (checks env vars and paths).
-    Unraid App Store Docker: set SEEKANDWATCH_UNRAID=1 (or SEEKANDWATCH_SOURCE=unraid) in the template so 1-click update is disabled."""
+    """Detect if this is an Unraid App Store install (so we disable one-click updater and show "update via App Store").
+    Checks (in order):
+    1. SEEKANDWATCH_UNRAID or SEEKANDWATCH_SOURCE=unraid — set by the Unraid Community Applications template.
+       Template maintainers: add Variable SEEKANDWATCH_UNRAID=1 to the template so App Store installs are detected.
+    2. UNRAID_VERSION / UNRAID_API_KEY — sometimes present when Unraid injects env into containers.
+    3. /etc/unraid-version, /boot/config, /usr/local/emhttp — host paths; only exist if the container has them mounted."""
     if os.environ.get('SEEKANDWATCH_UNRAID') or os.environ.get('SEEKANDWATCH_SOURCE') == 'unraid':
         return True
     if os.environ.get('UNRAID_VERSION') or os.environ.get('UNRAID_API_KEY'):

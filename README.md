@@ -1,12 +1,12 @@
 # SeekAndWatch
 
-![Version](https://img.shields.io/badge/version-1.5.9-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) ![License](https://img.shields.io/badge/License-MIT-green.svg)
+![Version](https://img.shields.io/badge/version-1.5.10-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
 **Saved you a scroll or two?** If this app saves you from endless scrolling, a star for the project helps a lot.
 
 Self-hosted Plex companion: Smart Discovery from your watch history, add movies/shows via Radarr/Sonarr, Kometa builder, Plex collections, Overseerr, Tautulli. One dashboard -less scrolling, more watching.
 
-**[SeekAndWatch Cloud](https://www.SeekAndWatch.com) (beta)** – Hosted option so friends and family can request from your Plex server without needing access to your apps. You approve or deny; requests sync to Radarr, Sonarr, or Overseerr. Zero port forwarding.
+**[SeekAndWatch Cloud](https://www.SeekAndWatch.com) (beta)** - Hosted option so friends and family can request from your Plex server without needing access to your apps. You approve or deny; requests sync to Radarr, Sonarr, or Overseerr. Zero port forwarding.
 
 **Documentation:** [Wiki](https://github.com/softerfish/seekandwatch/wiki) - install, Smart Discovery, Plex Collections, Radarr, Sonarr, Kometa builder, troubleshooting.
 
@@ -81,11 +81,11 @@ Goal: spend less time browsing, more time watching. It uses your watch history a
 
 **SeekAndWatch Cloud** is a hosted service that lets your friends and family request movies and TV shows from your Plex server without needing access to Plex, Radarr, or Sonarr. Requests land in your Cloud dashboard for you to approve or deny; approved requests sync to Radarr, Sonarr, or Overseerr on your self-hosted SeekAndWatch instance.
 
-- **Zero network config** – Your local server polls the Cloud for new requests. No port forwarding, VPNs, or exposing your IP.
-- **You stay in control** – Approve or deny each request; optional master invite codes for registration.
-- **Passkey & recovery** – Sign in with passkeys or password; one-time recovery codes for account recovery.
+- **Zero network config** - Your local server polls the Cloud for new requests. No port forwarding, VPNs, or exposing your IP.
+- **You stay in control** - Approve or deny each request; optional master invite codes for registration.
+- **Passkey & recovery** - Sign in with passkeys or password; one-time recovery codes for account recovery.
 
-Cloud is currently **in beta**. To request access: [r/SeekAndWatch](https://www.reddit.com/r/SeekAndWatch) – post or send a mod a PM.
+Cloud is currently **in beta**. To request access: [r/SeekAndWatch](https://www.reddit.com/r/SeekAndWatch) - post or send a mod a PM.
 
 ---
 
@@ -110,6 +110,7 @@ Full install and troubleshooting: [Wiki  - Install & Troubleshooting](https://gi
 
 1. Open **Apps** in Unraid, search for **SeekAndWatch**, click **Install**.
 2. If you install via Unraid App Store, you must update only through the App Store (in-app one-click updater is disabled for that install).
+3. **Template maintainers:** The Community Applications template should add Variable `SEEKANDWATCH_UNRAID` = `1` so the app detects App Store installs and shows "Unraid: update in App Store" instead of the one-click updater. If the template doesn't set it, users can add that variable in the container's Docker settings (Advanced View) and recreate.
 
 ### Docker (manual)
 
@@ -145,14 +146,25 @@ docker compose up -d
 
 ## Changelog
 
+v1.5.10
+
+**SeekAndWatch Cloud (beta)**
+- a complete new layout
+- webhook for instant Cloud to Local syncs for https://www.seekandwatch.com
+
+**SeekAndWatch Local**
+- many cosmetic changes
+- webhook for instant Cloud to Local syncs for https://www.seekandwatch.com
+- updated the xml file to sense Unraid App Store installs
+
+<details>
+  <summary><b>Past Changelog</b></summary>
+  
 v1.5.9
 
 - Big fixes on the Cloud side
 - security and encryption fixes
 - test API button for cloud connection
-
-<details>
-  <summary><b>Past Changelog</b></summary>
 
 v1.5.8
 
@@ -216,7 +228,7 @@ v1.5.3
 
 v1.5.2
 
-**SeekAndWatch Cloud (beta)** – [https://www.SeekAndWatch.com](https://www.SeekAndWatch.com)
+**SeekAndWatch Cloud (beta)** - [https://www.SeekAndWatch.com](https://www.SeekAndWatch.com)
 - server owners can get notifications of new requests and users will get a notification when it's approved or denied
 - added trailers, tmdb ratings, and several genres as well as an upcoming category
 - added Passkey support
@@ -241,10 +253,10 @@ v1.5.2
 
 v1.5.1
 
-**SeekAndWatch Cloud (beta)** – [https://www.SeekAndWatch.com](https://www.SeekAndWatch.com)
+**SeekAndWatch Cloud (beta)** - [https://www.SeekAndWatch.com](https://www.SeekAndWatch.com)
 - Hosted option so friends and family can request from your Plex server without needing access to Plex or Radarr/Sonarr. You approve or deny; requests sync to Radarr, Sonarr, or Overseerr.
-- To request access: [r/SeekAndWatch](https://www.reddit.com/r/SeekAndWatch) – post or send a mod a PM.
-- Zero network config – your local server polls the Cloud for requests; no port forwarding or exposing your IP.
+- To request access: [r/SeekAndWatch](https://www.reddit.com/r/SeekAndWatch) - post or send a mod a PM.
+- Zero network config - your local server polls the Cloud for requests; no port forwarding or exposing your IP.
 
 Improvements and Bugfixes
 - 140+ ready to go 1 click plex collections to choose from

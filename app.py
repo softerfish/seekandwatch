@@ -49,7 +49,7 @@ from sqlalchemy import text
 
 # basic app setup stuff
 
-VERSION = "1.5.9"
+VERSION = "1.5.10"
 
 UPDATE_CACHE = {
     'version': None,
@@ -1284,7 +1284,7 @@ def generate():
             if not include_obscure:
                 base_params['with_original_language'] = 'en'
             all_results = []
-            # random starting page (1–10), fetch 6 pages (~120 results) so we get plenty after filtering
+            # random starting page (1-10), fetch 6 pages (~120 results) so we get plenty after filtering
             start_page = random.randint(1, 10)
             for page_num in range(start_page, start_page + 6):
                 params = dict(base_params, page=page_num)
@@ -1751,6 +1751,9 @@ def settings():
     
     try: runtime_count = TmdbRuntimeCache.query.count()
     except Exception: runtime_count = 0
+
+    try: alias_count = TmdbAlias.query.filter(TmdbAlias.tmdb_id > 0).count()
+    except Exception: alias_count = 0
     
     # Extract server IP/hostname from request for auto-fill (validate against allowlist; Host header can be spoofed)
     server_host = None
@@ -1794,6 +1797,7 @@ def settings():
                            current_ignored_libs=current_ignored_libs,
                            logs=logs, 
                            cache_age=cache_age,
+                           alias_count=alias_count,
                            keyword_count=keyword_count,
                            runtime_count=runtime_count,
                            server_host=server_host)
@@ -2029,16 +2033,24 @@ def webhook_approved():
         data = request.get_json(force=True, silent=True) or {}
     except Exception:
         return _add_cors(jsonify({'error': 'Invalid JSON'})), 400
+    # Push: new pending request (friend submitted); add to local list so UI updates without poll
+    if data.get('event') == 'new_pending' and isinstance(data.get('request'), dict):
+        from cloud_worker import add_pending_from_web, set_last_webhook_received
+        add_pending_from_web(data['request'])
+        set_last_webhook_received()
+        return _add_cors(jsonify({'status': 'ok', 'pending_added': True})), 200
     requests_list = data.get('requests')
     if not isinstance(requests_list, list):
         return _add_cors(jsonify({'error': 'Missing or invalid requests array'})), 400
     from cloud_worker import process_approved_from_web
+    from cloud_worker import set_last_webhook_received
     synced = 0
     for item in requests_list:
         if isinstance(item, dict) and item.get('id'):
             ok, _ = process_approved_from_web(settings, item)
             if ok:
                 synced += 1
+    set_last_webhook_received()
     return _add_cors(jsonify({'status': 'ok', 'synced': synced})), 200
 
 
@@ -2054,8 +2066,10 @@ def requests_page():
 @app.route('/requests/settings')
 @login_required
 def requests_settings_page():
+    from cloud_worker import get_cloud_import_log
     settings = current_user.settings
-    return render_template('requests_settings.html', settings=settings)
+    cloud_import_log = get_cloud_import_log(20)
+    return render_template('requests_settings.html', settings=settings, cloud_import_log=cloud_import_log)
 
 
 @app.route('/api/cloud/test', methods=['POST'])
@@ -2090,7 +2104,7 @@ def test_cloud_connection():
         return jsonify({'status': 'error', 'message': 'Could not reach SeekAndWatch Cloud. Check your network.'}), 200
     except Exception as e:
         write_log("warning", "Cloud Test", str(e))
-        return jsonify({'status': 'error', 'message': str(e) or 'Connection failed.'}), 200
+        return jsonify({'status': 'error', 'message': 'Connection failed. Check your network and try again.'}), 200
 
 
 @app.route('/save_cloud_settings', methods=['POST'])
@@ -2273,7 +2287,7 @@ def delete_request(req_id):
                     cloud_delete_error_detail = f"{r.status_code}: {err_msg}" if err_msg else str(r.status_code)
         except Exception as e:
             cloud_delete_ok = False
-            cloud_delete_error_detail = str(e)
+            cloud_delete_error_detail = "request failed (check network or API key)"
             print(f"Warning: Could not delete from cloud: {e}")
     # -------------------------------
 
