@@ -387,7 +387,7 @@ ul { list-style: none; padding: 0; margin: 0; }
     white-space: nowrap;
 }
 
-/* Partner Projects: Huntarr – one pill container; label muted and not clickable; link in accent */
+/* Partner Projects: Huntarr - one pill container; label muted and not clickable; link in accent */
 .header-link-friends-wrap {
     display: inline-flex;
     align-items: center;
@@ -738,7 +738,7 @@ input[type="checkbox"]:checked:hover {
     display: inline-flex;
     align-items: center;
     gap: 10px;
-    margin: 15px 0 25px 0;
+    margin: 12px 0;
     padding: 8px 14px;
     background: rgba(0, 0, 0, 0.3);
     border: 1px solid var(--border-color);
@@ -1653,11 +1653,36 @@ input[type="checkbox"]:checked:hover {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 8px;
-    margin-bottom: 25px;
+    gap: 6px;
+    margin-bottom: 14px;
+}
+.settings-container .input-group:last-child {
+    margin-bottom: 0;
+}
+.settings-container .input-label {
+    font-size: 0.9rem;
+    margin-bottom: 2px;
+}
+.settings-container .helper-text {
+    margin-top: 2px;
+    margin-bottom: 4px;
+    font-size: 0.82em;
+}
+.settings-container details.help-box {
+    margin-top: 4px;
+    margin-bottom: 0;
+    font-size: 0.9rem;
+}
+.settings-container details.help-box summary {
+    cursor: pointer;
+    padding: 4px 0;
 }
 .settings-container .password-wrapper {
     width: 100%;
+    max-width: 420px;
+}
+.settings-container .test-row {
+    max-width: 420px;
 }
 .test-row {
     display: flex;
@@ -2316,7 +2341,7 @@ input[type="checkbox"]:checked:hover {
 .media-sub {
     font-size: 1.1em;
     color: #aaa;
-    margin-bottom: 20px;
+    margin-bottom: 12px;
 }
 
 /* stats bar */
@@ -2327,7 +2352,7 @@ input[type="checkbox"]:checked:hover {
     display: inline-flex;
     gap: 20px;
     border: 1px solid var(--border-color);
-    margin-bottom: 30px;
+    margin-bottom: 12px;
 }
 .stats-label {
     color: #555;
@@ -2335,7 +2360,7 @@ input[type="checkbox"]:checked:hover {
 
 /* action buttons (custom builder, import list) */
 .action-bar {
-    margin: 25px 0;
+    margin: 12px 0;
 }
 .btn-builder,
 .btn-import {
@@ -2367,7 +2392,7 @@ input[type="checkbox"]:checked:hover {
 
 /* type toggles */
 .type-toggle-group {
-    margin: 30px 0;
+    margin: 12px 0;
 }
 .type-toggle-btn {
     background: transparent;
@@ -2474,6 +2499,21 @@ input[type="checkbox"]:checked:hover {
 .playlist-controls {
     margin-top: 20px;
 }
+.playlist-control-section {
+    margin-bottom: 18px;
+}
+.playlist-control-section:last-child {
+    margin-bottom: 0;
+}
+.playlist-control-section--actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding-top: 14px;
+    border-top: 1px solid #333;
+    margin-top: 4px;
+}
 .control-row {
     display: flex;
     justify-content: space-between;
@@ -2482,14 +2522,47 @@ input[type="checkbox"]:checked:hover {
     font-size: 0.85em;
     color: #ccc;
 }
+.control-row:last-child {
+    margin-bottom: 0;
+}
+.control-label-with-tip {
+    display: inline-flex;
+    align-items: center;
+}
+.visibility-label-block {
+    font-weight: 600;
+    font-size: 0.9em;
+    color: var(--text-color, #eee);
+    margin-bottom: 8px;
+}
+.visibility-checks-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 20px;
+    align-items: center;
+    margin-bottom: 8px;
+}
+.visibility-checks-row .visibility-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    font-size: 0.9em;
+    color: var(--text-color, #eee);
+}
+.visibility-checks-row .visibility-check input {
+    margin: 0;
+    accent-color: var(--accent-color);
+}
 .control-select {
     background: #333;
     border: 1px solid #555;
     color: white;
-    padding: 4px;
+    padding: 4px 8px;
     border-radius: 4px;
     font-size: 0.9em;
-    width: 110px;
+    min-width: 120px;
+    width: 140px;
 }
 .control-select:disabled {
     background: #222;
@@ -2659,6 +2732,7 @@ details.help-box {
     border-radius: 8px;
     padding: 10px 15px;
     margin-bottom: 15px;
+    color: #ccc;
 }
 details.help-box summary {
     cursor: pointer;
@@ -2666,12 +2740,25 @@ details.help-box summary {
     font-weight: bold;
     outline: none;
 }
+details.help-box p,
 details.help-box ol {
     margin: 10px 0 0 0;
-    padding-left: 20px;
+    padding-left: 0;
     color: #ccc;
     font-size: 0.9em;
     line-height: 1.5;
+}
+details.help-box ol {
+    padding-left: 20px;
+}
+details.help-box p:first-of-type {
+    margin-top: 8px;
+}
+details.help-box code {
+    color: #e0b0ff;
+    background: rgba(255,255,255,0.08);
+    padding: 2px 6px;
+    border-radius: 4px;
 }
 .import-textarea {
     width: 100%;
@@ -2759,10 +2846,12 @@ details.help-box ol {
 }
 .visibility-hint {
     font-size: 0.85em;
-    color: var(--text-color);
-    opacity: 0.95;
-    margin: -6px 0 8px 0;
-    line-height: 1.4;
+    color: var(--text-muted, #999);
+    line-height: 1.45;
+    margin: 0;
+}
+.playlist-control-section .visibility-hint {
+    margin-top: 4px;
 }
 
 .import-select {
@@ -3855,13 +3944,22 @@ details.help-box ol {
 
 /* settings header & tabs */
 .settings-container {
-    max-width: 1000px;
-    margin: 30px auto;
-    padding-bottom: 50px;
+    max-width: 720px;
+    margin: 20px auto;
+    padding: 0 20px 40px;
 }
 .settings-header {
-    text-align: center;
-    margin-bottom: 30px;
+    text-align: left;
+    margin-bottom: 20px;
+}
+.settings-header h2 {
+    font-size: 1.35rem;
+    margin-bottom: 4px;
+}
+.settings-header p {
+    font-size: 0.9rem;
+    margin: 0;
+    color: var(--text-muted, #999);
 }
 
 /* Cloud requests sync notice (top of Settings) */
@@ -3911,20 +4009,22 @@ details.help-box ol {
 
 .settings-tabs {
     display: flex;
-    gap: 10px;
-    margin-bottom: 25px;
-    border-bottom: 2px solid #333;
+    flex-wrap: nowrap;
+    gap: 8px;
+    margin-bottom: 18px;
+    border-bottom: 1px solid #333;
     overflow-x: auto;
     padding-bottom: 10px;
 }
 .tab-link {
+    flex-shrink: 0;
     background: transparent;
     border: none;
     color: #AAAAAA;
-    font-size: 1em;
-    font-weight: bold;
+    font-size: 0.9rem;
+    font-weight: 600;
     cursor: pointer;
-    padding: 10px 20px;
+    padding: 8px 14px;
     border-radius: 6px;
     white-space: nowrap;
     transition: 0.2s;
@@ -3936,6 +4036,13 @@ details.help-box ol {
 .tab-link.active {
     background: var(--accent-color);
     color: #000000;
+}
+.settings-container .tab-content {
+    display: none;
+    animation: fadeIn 0.3s;
+}
+.settings-container .tab-content.active {
+    display: block;
 }
 .tab-content {
     display: none;
@@ -3956,6 +4063,23 @@ details.help-box ol {
 }
 
 /* setting cards with different color themes */
+.settings-container .card.setting-card {
+    padding: 18px 20px;
+    margin-bottom: 16px;
+    border-radius: 10px;
+    color: var(--text-color);
+}
+.settings-container .setting-card h3 {
+    font-size: 1.05rem;
+    margin-bottom: 10px;
+}
+.settings-container .setting-card .text-muted,
+.settings-container .setting-card p.text-muted {
+    font-size: 0.875rem;
+    margin-top: 0;
+    margin-bottom: 12px;
+    line-height: 1.4;
+}
 .setting-card {
     position: relative;
     overflow: hidden;
@@ -3989,22 +4113,39 @@ details.help-box ol {
 
 /* password toggle wrapper */
 .password-wrapper {
-    position: relative;
+    display: flex;
+    align-items: center;
     flex: 1;
+    gap: 6px;
+    min-width: 0;
+}
+.password-wrapper input {
+    flex: 1;
+    min-width: 0;
 }
 .toggle-pass {
-    position: absolute;
-    right: 10px;
-    top: 50%;
-    transform: translateY(-50%);
+    flex-shrink: 0;
     background: none;
     border: none;
     color: #888;
     cursor: pointer;
-    padding: 5px;
+    padding: 4px 6px;
 }
 .toggle-pass:hover {
     color: white;
+}
+.clear-field-btn {
+    flex-shrink: 0;
+    font-size: 0.85em;
+    padding: 4px 8px;
+    background: none;
+    border: none;
+    color: #888;
+    cursor: pointer;
+    text-decoration: underline;
+}
+.clear-field-btn:hover {
+    color: var(--accent-color, #0d6efd);
 }
 
 /* ignore list grid (users and libraries) */
@@ -4013,6 +4154,15 @@ details.help-box ol {
     margin: 15px 0 10px 0;
     font-weight: bold;
     color: #aaa;
+}
+.settings-container .ignore-label {
+    margin: 10px 0 8px 0;
+    font-size: 0.9rem;
+}
+.settings-container .ignore-grid {
+    max-height: 140px;
+    padding: 8px 10px;
+    gap: 8px;
 }
 .ignore-grid {
     display: grid;
@@ -4135,12 +4285,12 @@ details.help-box ol {
 /* save button (settings page) */
 .settings-container .btn-save {
     width: 100%;
-    padding: 15px;
-    margin-top: 30px;
+    padding: 12px 16px;
+    margin-top: 20px;
     background: var(--accent-color);
     color: #000000;
-    font-size: 1.1em;
-    font-weight: 800;
+    font-size: 1rem;
+    font-weight: 700;
     border: none;
     border-radius: 8px;
     cursor: pointer;
@@ -4149,6 +4299,59 @@ details.help-box ol {
 .settings-container .btn-save:hover {
     transform: scale(1.01);
     filter: brightness(1.1);
+}
+.settings-container .danger-zone {
+    margin-top: 20px;
+    padding: 16px;
+}
+.settings-container .scanner-row {
+    padding: 12px 14px;
+}
+.settings-container .sync-warning-box {
+    padding: 12px 14px;
+    margin-bottom: 14px;
+}
+.settings-container form .input-group {
+    margin-bottom: 14px;
+}
+.settings-container form + form {
+    margin-top: 0;
+}
+.plex-sync-stats {
+    margin-bottom: 10px;
+}
+.plex-sync-stats > div {
+    margin-bottom: 4px;
+}
+.plex-sync-interval-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+}
+.plex-sync-interval-row .cache-interval-select {
+    width: auto;
+    min-width: 140px;
+    max-width: 180px;
+    padding: 8px 10px;
+    border-radius: 5px;
+    background: #111;
+    color: white;
+    border: 1px solid #444;
+    font-size: 0.9rem;
+}
+/* Radarr/Sonarr/Overseerr cards: compact forms */
+.settings-container .setting-card form {
+    margin-bottom: 18px;
+}
+.settings-container .setting-card form:last-of-type {
+    margin-bottom: 0;
+}
+.settings-container input[type="text"],
+.settings-container input[type="password"],
+.settings-container input[type="number"] {
+    max-width: 100%;
+    box-sizing: border-box;
 }
 
 /* custom modal */
