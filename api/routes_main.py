@@ -1289,7 +1289,7 @@ def plex_library_sync():
 def get_cache_status_route():
     return jsonify(get_lock_status())
 
-# Plex PIN flow (link account like SeekAndWatch Cloud – get token via API, then import library)
+# Plex PIN flow (link account like SeekAndWatch Cloud - get token via API, then import library)
 PLEX_API_BASE = 'https://plex.tv/api/v2'
 PLEX_CLIENT_ID = 'seekandwatch-local-v1'
 
@@ -1390,7 +1390,7 @@ def _plex_connection_label(uri, server_name, is_local):
     return f"{name} ({host}) {tag}"
 
 def _plex_is_private_ip(ip_str):
-    """True if ip_str is a private (RFC 1918) address: 10.x, 172.16–31.x, 192.168.x."""
+    """True if ip_str is a private (RFC 1918) address: 10.x, 172.16-31.x, 192.168.x."""
     if not ip_str:
         return False
     try:
@@ -1471,8 +1471,8 @@ def _plex_get_user_and_connections(auth_token):
                                     p = urlparse(ip_uri)
                                     ip_host = (p.hostname or '') + (f':{p.port}' if p.port and p.port not in (80, 443) else '')
                                     is_private = _plex_is_private_ip(p.hostname)
-                                    # Only "[local IP] — recommended" for private LAN addresses; public IPs get "[direct IP]"
-                                    label_suffix = "[local IP] — recommended" if is_private else "[direct IP]"
+                                    # Only "[local IP] - recommended" for private LAN addresses; public IPs get "[direct IP]"
+                                    label_suffix = "[local IP] - recommended" if is_private else "[direct IP]"
                                     connections.append({'uri': ip_uri, 'local': is_private, 'label': f"{name} ({ip_host}) {label_suffix}"})
                                     seen_uris.add(ip_uri)
                                 except Exception:
