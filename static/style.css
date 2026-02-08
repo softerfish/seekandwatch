@@ -733,18 +733,26 @@ input[type="checkbox"]:checked:hover {
     color: var(--text-color);
 }
 
-/* compact schedule time row */
-.schedule-time-compact {
+/* compact schedule time row: box = label + time; Save sits outside */
+.schedule-time-row {
     display: inline-flex;
     align-items: center;
     gap: 10px;
     margin: 12px 0;
+    flex-wrap: wrap;
+}
+.schedule-time-compact {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
     padding: 8px 14px;
     background: rgba(0, 0, 0, 0.3);
     border: 1px solid var(--border-color);
     border-radius: 6px;
     width: fit-content;
     flex-wrap: nowrap;
+    box-sizing: border-box;
+    overflow: hidden;
 }
 
 .schedule-label {
@@ -752,17 +760,20 @@ input[type="checkbox"]:checked:hover {
     font-size: 0.9em;
     font-weight: 500;
     white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .schedule-time-input {
-    max-width: 120px !important;
-    min-width: 100px !important;
-    padding: 6px 10px !important;
+    width: 115px !important;
+    min-width: 0 !important;
+    max-width: 115px !important;
+    padding: 6px 8px !important;
     font-size: 1rem !important;
     font-weight: 500 !important;
     color: #fff !important;
     background-color: #1a1a1a !important;
-    flex-shrink: 0;
+    border-radius: 4px;
+    box-sizing: border-box !important;
     -webkit-text-fill-color: #fff !important;
 }
 
@@ -2352,7 +2363,7 @@ input[type="checkbox"]:checked:hover {
     display: inline-flex;
     gap: 20px;
     border: 1px solid var(--border-color);
-    margin-bottom: 12px;
+    margin-bottom: 14px;
 }
 .stats-label {
     color: #555;
@@ -2360,7 +2371,7 @@ input[type="checkbox"]:checked:hover {
 
 /* action buttons (custom builder, import list) */
 .action-bar {
-    margin: 12px 0;
+    margin: 0 0 14px 0;
 }
 .btn-builder,
 .btn-import {
@@ -2392,7 +2403,7 @@ input[type="checkbox"]:checked:hover {
 
 /* type toggles */
 .type-toggle-group {
-    margin: 12px 0;
+    margin: 0 0 14px 0;
 }
 .type-toggle-btn {
     background: transparent;
@@ -3012,15 +3023,18 @@ details.help-box code {
     bottom: 0;
     left: 0;
     width: 100%;
-    background: linear-gradient(to top, rgba(0,0,0,0.9), rgba(0,0,0,0));
-    padding: 20px 10px 10px 10px;
+    z-index: 2;
+    background: linear-gradient(to top, rgba(0,0,0,0.95), rgba(0,0,0,0.4));
+    padding: 16px 10px 10px 10px;
+    box-sizing: border-box;
 }
-/* tickboxes on Library Browser cards - show in Plex (Home / Library) */
+/* tickboxes on Library Browser cards - show in Plex (Home / Library / Friends) */
 .viewer-visibility {
     margin-top: 8px;
     display: flex;
     flex-wrap: wrap;
     gap: 10px 14px;
+    min-height: 24px;
 }
 .viewer-check {
     display: inline-flex;
@@ -3028,11 +3042,16 @@ details.help-box code {
     gap: 4px;
     cursor: pointer;
     font-size: 0.8em;
-    color: var(--text-muted);
+    color: var(--text-color);
+    white-space: nowrap;
 }
 .viewer-check input {
     margin: 0;
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
     accent-color: var(--accent-color);
+    cursor: pointer;
 }
 .viewer-visibility-hint {
     font-size: 0.9em;
