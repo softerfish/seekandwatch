@@ -61,9 +61,6 @@
                 <a href="{{ url_for('media') }}#requested" class="nav-item {% if request.endpoint == 'media' %}media-nav-item{% endif %}" data-tab="requested">
                     <span>Requested</span>
                 </a>
-                <a href="{{ url_for('calendar_page') }}" class="nav-item {% if request.endpoint == 'calendar_page' %}active{% endif %}">
-                    <span>Calendar</span>
-                </a>
                 <a href="{{ url_for('manage_blocklist') }}" class="nav-item {% if request.endpoint == 'manage_blocklist' %}active{% endif %}">
                     <span>Blocklist</span>
                 </a>
@@ -86,28 +83,6 @@
                     <span>Reddit</span>
                 </a>
             </div>
-
-            <!--
-            <div class="nav-section">
-                <div class="nav-section-header">Apps</div>
-                <a href="{{ url_for('media') }}#requested" class="nav-item {% if request.endpoint == 'media' %}media-nav-item{% endif %}" data-tab="requested">
-                    <i class="fas fa-clipboard-list"></i>
-                    <span>Requested</span>
-                </a>
-                <a href="{{ url_for('media') }}#radarr" class="nav-item {% if request.endpoint == 'media' %}media-nav-item{% endif %}" data-tab="movies">
-                    <i class="fas fa-film"></i>
-                    <span>Radarr</span>
-                </a>
-                <a href="{{ url_for('media') }}#sonarr" class="nav-item {% if request.endpoint == 'media' %}media-nav-item{% endif %}" data-tab="tv">
-                    <i class="fas fa-tv"></i>
-                    <span>Sonarr</span>
-                </a>
-                <a href="{{ url_for('calendar_page') }}" class="nav-item {% if request.endpoint == 'calendar_page' %}active{% endif %}">
-                    <i class="fas fa-calendar-alt"></i>
-                    <span>Calendar</span>
-                </a>
-            </div>
-            -->
         </nav>
 
         <div class="sidebar-footer">
@@ -278,7 +253,7 @@
         showModal("🧰 Update via Unraid App Store",
             `<div class="text-left">
                 <p>This install was detected as <b>Unraid</b>.</p>
-                <p>Please update via the <b>Unraid App Store</b> (Apps → SeekAndWatch → Update).</p>
+                <p>Please update via the <b>Unraid App Store</b> (Apps -> SeekAndWatch -> Update).</p>
                 <hr>
                 <p class="text-muted fs-small mt-10">
                     One-click updates are disabled on Unraid to avoid breaking installs.
@@ -572,14 +547,8 @@
         // Update sidebar active state based on URL hash when on media page
         if (window.location.pathname === '/media') {
             const hash = window.location.hash;
-            const hashToTab = {
-                '#requested': 'requested',
-                '#radarr': 'movies',
-                '#sonarr': 'tv'
-            };
-            const tabName = hashToTab[hash];
-            if (tabName) {
-                const sidebarLink = document.querySelector(`.media-nav-item[data-tab="${tabName}"]`);
+            if (hash === '#requested') {
+                const sidebarLink = document.querySelector('.media-nav-item[data-tab="requested"]');
                 if (sidebarLink) {
                     sidebarLink.classList.add('active');
                 }

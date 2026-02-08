@@ -31,9 +31,11 @@
         <button onclick="filterType('tv')" id="btn-tv" class="type-toggle-btn">TV Shows</button>
         </div>
 
-        <div class="schedule-time-compact">
-            <span class="schedule-label">Global Schedule Time:</span>
-            <input type="time" id="globalTime" class="form-control schedule-time-input" value="{{ schedule_time }}">
+        <div class="schedule-time-row">
+            <div class="schedule-time-compact">
+                <span class="schedule-label">Global Schedule Time:</span>
+                <input type="time" id="globalTime" class="form-control schedule-time-input" value="{{ schedule_time }}">
+            </div>
             <button class="btn btn-primary schedule-save-btn" onclick="saveGlobalTime()">Save</button>
             <span id="save-time-feedback" class="save-feedback" style="display:none;">Saved</span>
         </div>
@@ -41,7 +43,7 @@
     <div id="tab-viewer" class="tab-content">
         <div style="text-align:center; color:#aaa; margin-bottom: 30px;">
             <p>A live view of all collections currently existing on your Plex server.</p>
-            <p class="viewer-visibility-hint">Use <strong>Home</strong>, <strong>Library</strong>, and <strong>Friends</strong> to match Plex’s Manage Recommendations (Library Recommended, Home, Friends' Home). In Plex: <strong>Settings → Manage → Libraries</strong>, then <strong>Manage Recommendations</strong>. There you can reorder collections and change which appear on Home, Library, or Friends. Requires Plex Pass and server 1.22.3+.</p>
+            <p class="viewer-visibility-hint">Use <strong>Home</strong>, <strong>Library</strong>, and <strong>Friends</strong> to match Plex’s Manage Recommendations (Library Recommended, Home, Friends' Home). In Plex: <strong>Settings -> Manage -> Libraries</strong>, then <strong>Manage Recommendations</strong>. There you can reorder collections and change which appear on Home, Library, or Friends. Requires Plex Pass and server 1.22.3+.</p>
             <button type="button" id="viewer-refresh-btn" class="btn btn-secondary" onclick="refreshLibraryBrowser()" style="margin-top:8px;">Refresh list</button>
         </div>
 
@@ -64,10 +66,10 @@
 <div id="import-modal" class="import-modal">
     <div class="import-content">
         <span onclick="closeImportModal()" class="close-btn">&times;</span>
-        <h2 style="margin-top:0;">📋 Import from List</h2>
+        <h2 style="margin-top:0;">Import from List</h2>
         
         <details class="help-box">
-            <summary>❓ How does this work?</summary>
+            <summary>How does this work?</summary>
             <ol>
                 <li><b>Copy & Paste:</b> Grab a list from Letterboxd, IMDb, or Reddit. We handle newlines, commas, or pipes `|`.</li>
                 <li><b>Smart Matching:</b> "The Matrix (1999)" and "The Matrix" both work.</li>
@@ -176,7 +178,7 @@ function saveGlobalTime() {
                     <label class="visibility-check"><input type="checkbox" id="visibility-library-{{ key }}" onchange="saveSettings('{{ key }}')" {% if playlist.get('visibility_library', True) %}checked{% endif %}> Library recommended</label>
                     <label class="visibility-check"><input type="checkbox" id="visibility-friends-{{ key }}" onchange="saveSettings('{{ key }}')" {% if playlist.get('visibility_friends') %}checked{% endif %}> Friends</label>
                 </div>
-                <p class="visibility-hint">Check at least one. In Plex: <strong>Settings → Manage → Libraries</strong>, then <strong>Manage Recommendations</strong> to reorder or change where collections appear.</p>
+                <p class="visibility-hint">Check at least one. In Plex: <strong>Settings -> Manage -> Libraries</strong>, then <strong>Manage Recommendations</strong> to reorder or change where collections appear.</p>
             </div>
             <div class="playlist-control-section playlist-control-section--actions">
                 <button onclick="previewCollection('{{ key }}', '{{ playlist.title|replace("'", "\\'") }}')" class="btn-preview" title="Preview Contents">👀</button>
@@ -217,8 +219,8 @@ function saveGlobalTime() {
                 <div class="control-row">
                     <label>Auto-Update</label>
                     <select id="freq-{{ key }}" onchange="saveSettings('{{ key }}')" class="control-select">
-                        <option value="manual" {% if schedules.get(key) == 'manual' %}selected{% endif %}>Off</option>
-                        <option value="daily" {% if schedules.get(key) == 'daily' %}selected{% endif %}>Daily</option>
+                        <option value="manual" {% if schedules.get(key) == 'manual' or (schedules.get(key) is none and playlist.category != 'Regional Trending') %}selected{% endif %}>Off</option>
+                        <option value="daily" {% if schedules.get(key) == 'daily' or (schedules.get(key) is none and playlist.category == 'Regional Trending') %}selected{% endif %}>Daily</option>
                         <option value="weekly" {% if schedules.get(key) == 'weekly' %}selected{% endif %}>Weekly</option>
                     </select>
                 </div>
@@ -253,7 +255,7 @@ function saveGlobalTime() {
                     <label class="visibility-check"><input type="checkbox" id="visibility-library-{{ key }}" onchange="saveSettings('{{ key }}')" {% if vis.get('library', True) %}checked{% endif %}> Library recommended</label>
                     <label class="visibility-check"><input type="checkbox" id="visibility-friends-{{ key }}" onchange="saveSettings('{{ key }}')" {% if vis.get('friends') %}checked{% endif %}> Friends</label>
                 </div>
-                <p class="visibility-hint">Check at least one. In Plex: <strong>Settings → Manage → Libraries</strong>, then <strong>Manage Recommendations</strong> to reorder or change where collections appear.</p>
+                <p class="visibility-hint">Check at least one. In Plex: <strong>Settings -> Manage -> Libraries</strong>, then <strong>Manage Recommendations</strong> to reorder or change where collections appear.</p>
             </div>
 
             <div class="playlist-control-section playlist-control-section--actions">

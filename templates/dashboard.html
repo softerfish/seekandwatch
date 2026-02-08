@@ -17,7 +17,7 @@
             <details class="plex-link-notice-dropdown" id="plex-link-notice-dropdown" open>
                 <summary class="plex-link-notice-trigger">ℹ️ Upgrade notice</summary>
                 <div class="plex-link-notice-content">
-                    <p class="plex-link-notice-text">If you used an older version before: <strong>link with Plex</strong> (Settings → Plex Integration) and run <strong>Sync library now</strong> before completing collections or running Smart Discovery. That builds the app’s index of your library so recommendations and collections work correctly.</p>
+                    <p class="plex-link-notice-text">If you used an older version before: <strong>link with Plex</strong> (Settings -> Plex Integration) and run <strong>Sync library now</strong> before completing collections or running Smart Discovery. That builds the app’s index of your library so recommendations and collections work correctly.</p>
                     <a href="{{ url_for('settings') }}" class="btn-secondary fs-small" style="padding: 8px 15px;">Go to Settings ↗</a>
                     <button type="button" class="plex-link-notice-dismiss" id="plex-link-notice-dismiss" title="Don't show this again">Dismiss</button>
                 </div>
@@ -185,7 +185,7 @@
                 {% if plex_libraries %}
                 <div class="exclude-libraries-section">
                     <details class="exclude-libs-dropdown">
-                        <summary class="exclude-libs-trigger">🚫 Exclude Libraries (Optional)</summary>
+                        <summary class="exclude-libs-trigger">🚫 Exclude Libraries</summary>
                         <div class="exclude-libs-panel">
                             {% for lib in plex_libraries %}
                             <label class="exclude-libs-option">
