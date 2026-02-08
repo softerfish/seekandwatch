@@ -41,6 +41,7 @@ from utils import (
     is_owned_item,
     fetch_omdb_ratings,
     send_overseerr_request,
+    get_collection_visibility,
     run_collection_logic,
     sync_remote_aliases,
     get_tmdb_aliases,
@@ -445,14 +446,14 @@ def get_plex_libraries():
         return jsonify({'status': 'success', 'libraries': libs})
     except Exception as e:
         _log_api_exception("get_plex_libraries", e)
-        return _error_response("Unable to connect to Plex")
+        return _error_response("Could not connect to Plex. Check that the server is running and the URL and token in Settings are correct.")
         
 @api_bp.route('/get_plex_collections')
 @login_required
 def get_plex_collections():
     s = current_user.settings
     if not s.plex_url or not s.plex_token:
-        return jsonify({'status': 'error', 'message': 'Plex not configured'})
+        return jsonify({'status': 'error', 'message': 'Plex is not set up. Add your Plex server URL and token in Settings.'})
     
     try:
         plex = PlexServer(s.plex_url, s.plex_token, timeout=10)
@@ -491,26 +492,55 @@ def get_plex_collections():
                 url = f"{s.plex_url}/web/index.html#!/server/{plex.machineIdentifier}/details?key={col_key}"
                 # read actual Home / Library / Friends visibility from Plex so our tickboxes match Manage Recommendations
                 visible_home = visible_library = visible_friends = False
+                # 1) Try PlexAPI's visibility() hub (same object used when setting visibility)
                 try:
-                    prefs = col.preferences()
-                    for p in (prefs or []):
-                        pid = getattr(p, 'id', None)
-                        val = getattr(p, 'value', None)
-                        if val in (1, '1', True, 'true'):
-                            on = True
-                        elif val in (0, '0', False, 'false'):
-                            on = False
-                        else:
-                            on = bool(val)
-                        if pid == 'promotedToOwnHome':
-                            visible_home = on
-                        elif pid in ('promotedToLibraryRecommended', 'promotedToLibrary'):
-                            visible_library = on
-                        elif pid == 'promotedToSharedHome':
-                            visible_friends = on
+                    hub = col.visibility()
+                    if hub is not None:
+                        def _b(v):
+                            if v is None: return False
+                            if isinstance(v, bool): return v
+                            return str(v).strip().lower() in ('1', 'true', 'yes')
+                        a = None
+                        h = getattr(hub, '_data', None)
+                        if h is not None and hasattr(h, 'attrib'):
+                            a = h.attrib
+                        if not a:
+                            a = {k: getattr(hub, k, None) for k in ('promotedToOwnHome', 'promotedToRecommended', 'promotedToLibrary', 'promotedToSharedHome')}
+                        if a and (a.get('promotedToOwnHome') is not None or a.get('promotedToRecommended') is not None or a.get('promotedToLibrary') is not None or a.get('promotedToSharedHome') is not None):
+                            visible_home = _b(a.get('promotedToOwnHome'))
+                            visible_library = _b(a.get('promotedToRecommended')) or _b(a.get('promotedToLibrary'))
+                            visible_friends = _b(a.get('promotedToSharedHome'))
                 except Exception:
-                    pub = bool(getattr(col, 'collectionPublished', False))
-                    visible_home = visible_library = visible_friends = pub
+                    pass
+                # 2) Fallback: hub manage API or preferences()
+                if not (visible_home or visible_library or visible_friends):
+                    section_id = getattr(section, 'key', None)
+                    hub_home, hub_lib, hub_friends = get_collection_visibility(plex, section_id, rk) if section_id and rk else (None, None, None)
+                    if (hub_home, hub_lib, hub_friends) != (None, None, None):
+                        visible_home, visible_library, visible_friends = hub_home, hub_lib, hub_friends
+                    else:
+                        try:
+                            prefs = col.preferences()
+                            for p in (prefs or []):
+                                pid = getattr(p, 'id', None)
+                                val = getattr(p, 'value', None)
+                                if val in (1, '1', True, 'true'):
+                                    on = True
+                                elif val in (0, '0', False, 'false'):
+                                    on = False
+                                else:
+                                    on = bool(val)
+                                if pid == 'promotedToOwnHome':
+                                    visible_home = on
+                                elif pid in ('promotedToLibraryRecommended', 'promotedToLibrary'):
+                                    visible_library = on
+                                elif pid == 'promotedToSharedHome':
+                                    visible_friends = on
+                        except Exception:
+                            pass
+                        if not (visible_home or visible_library or visible_friends):
+                            pub = bool(getattr(col, 'collectionPublished', False))
+                            visible_home = visible_library = visible_friends = pub
                 # Plex may expose count as childCount or leafCount depending on server/API
                 col_count = getattr(col, 'childCount', None)
                 if col_count is None or (isinstance(col_count, int) and col_count == 0):
@@ -536,7 +566,7 @@ def get_plex_collections():
     except Exception as e:
         print(f"Error fetching collections: {e}")
         _log_api_exception("get_plex_collections", e)
-        return _error_response("Unable to fetch collections")
+        return _error_response("Could not load collections from Plex. Check that the server is running and try again.")
 
 @api_bp.route('/api/plex/collection/visibility', methods=['POST'])
 @login_required
@@ -544,7 +574,7 @@ def set_plex_collection_visibility():
     """Set visibility (Library Recommended, Home, Friends' Home) for a Plex collection. Accepts keyPath (Library Browser) or preset_key (preset tickboxes)."""
     s = current_user.settings
     if not s.plex_url or not s.plex_token:
-        return jsonify({'status': 'error', 'message': 'Plex not configured'})
+        return jsonify({'status': 'error', 'message': 'Plex is not set up. Add your Plex server URL and token in Settings.'})
     data = request.json or {}
     key_path = data.get('keyPath') or data.get('key_path')
     preset_key = data.get('preset_key')
@@ -603,15 +633,15 @@ def set_plex_collection_visibility():
             return jsonify({'status': 'success', 'message': 'Visibility updated. Refresh Manage Recommendations in Plex to see the change.'})
         except Exception as e:
             _log_api_exception("set_plex_collection_visibility", e)
-            return jsonify({'status': 'error', 'message': 'Request failed. Check application logs.'})
+            return jsonify({'status': 'error', 'message': 'Could not update collection visibility. Check that Plex is running and try again.'})
     else:
-        return jsonify({'status': 'error', 'message': 'keyPath or preset_key required'})
+        return jsonify({'status': 'error', 'message': 'Please specify which collection (keyPath or preset_key).'})
 
     try:
         plex = PlexServer(s.plex_url, s.plex_token, timeout=10)
         col = plex.fetchItem(key_path)
         if getattr(col, 'type', None) != 'collection':
-            return jsonify({'status': 'error', 'message': 'Not a collection'})
+            return jsonify({'status': 'error', 'message': 'That Plex item is not a collection.'})
         from utils import apply_collection_visibility
         apply_collection_visibility(col, visible_home=visible_home, visible_library=visible_library, visible_friends=visible_friends)
         col = plex.fetchItem(key_path)
@@ -623,7 +653,7 @@ def set_plex_collection_visibility():
         })
     except Exception as e:
         _log_api_exception("set_plex_collection_visibility", e)
-        return jsonify({'status': 'error', 'message': 'Request failed. Check application logs. (Plex Pass may be required for collection publishing.)'})
+        return jsonify({'status': 'error', 'message': 'Could not update collection visibility. Check that Plex is running. Plex Pass may be required for collection publishing.'})
 
 def _strip_trailing_parenthetical_year(s):
     """Remove trailing parenthetical year or year range, e.g. (2010), (2010-2012). Safe for untrusted input (no ReDoS)."""
@@ -920,6 +950,11 @@ def create_collection(key):
         job = CollectionSchedule.query.filter_by(preset_key=key).first()
         if not job:
             job = CollectionSchedule(preset_key=key)
+            # Regional Trending presets default to daily auto-update
+            if not key.startswith('custom_'):
+                p = PLAYLIST_PRESETS.get(key, {})
+                if p.get('category') == 'Regional Trending':
+                    job.frequency = 'daily'
             db.session.add(job)
         job.last_run = datetime.datetime.now()
         current_config = {}
@@ -1148,7 +1183,7 @@ def test_connection():
             u = (s.plex_url or '').strip() if use_stored and s else (data.get('url') or '').strip()
             t = (s.plex_token or '').strip() if use_stored and s else (data.get('token') or '').strip()
             if not u or not t:
-                return jsonify({'status': 'error', 'message': 'URL and token required', 'msg': 'URL and token required'})
+                return jsonify({'status': 'error', 'message': 'Enter your Plex server URL and token to test the connection.', 'msg': 'URL and token required'})
             is_safe, msg = validate_url(u)
             if not is_safe:
                 return jsonify({'status': 'error', 'message': f"Security Block: {msg}", 'msg': f"Security Block: {msg}"})
@@ -2384,420 +2419,6 @@ def get_requested_media():
         _log_api_exception("get_requested_media", e)
         return jsonify({'status': 'error', 'message': 'Request failed', 'items': []})
 
-@api_bp.route('/api/media/movies')
-@login_required
-def get_movies():
-    """Get movies from Radarr."""
-    s = current_user.settings
-    if not s.radarr_url or not s.radarr_api_key:
-        return jsonify({'status': 'error', 'message': 'Radarr not configured', 'items': []})
-    
-    try:
-        headers = {'X-Api-Key': s.radarr_api_key}
-        # Ensure base_url doesn't have /api in it (some users might have configured it that way)
-        base_url = s.radarr_url.rstrip('/')
-        if base_url.endswith('/api'):
-            base_url = base_url[:-4]  # Remove /api if present
-        if base_url.endswith('/api/v3'):
-            base_url = base_url[:-7]  # Remove /api/v3 if present
-        
-        r = requests.get(f"{base_url}/api/v3/movie", headers=headers, timeout=10)
-        if r.status_code != 200:
-            return jsonify({'status': 'error', 'message': 'Failed to fetch movies', 'items': []})
-        
-        movies = r.json()
-        
-        # Ensure movies is a list
-        if not isinstance(movies, list):
-            return jsonify({'status': 'error', 'message': 'Invalid response from Radarr', 'items': []})
-        
-        # Debug: Log first movie structure to see what we're getting
-        if movies and len(movies) > 0:
-            try:
-                first_movie = movies[0]
-                # Log basic info to help diagnose ID issues
-                write_log("info", "Radarr", f"First movie 'id': {first_movie.get('id')}, 'tmdbId': {first_movie.get('tmdbId')}, 'title': {first_movie.get('title')}")
-            except Exception as e:
-                write_log("warning", "Radarr", f"Error logging first movie: {e}")
-        
-        items = []
-        
-        # Track IDs to detect duplicates (for debugging)
-        seen_ids = set()
-        
-        for idx, movie in enumerate(movies):
-            # Get the Radarr internal ID - this should be the 'id' field
-            # Radarr API returns the internal database ID in the 'id' field
-            # However, if Radarr is returning incorrect IDs, we may need to use a different field
-            movie_id = movie.get('id')
-            
-            # Check for alternative ID fields (in case Radarr uses a different field)
-            # Some Radarr instances might use 'movieId' or other fields
-            alt_id_fields = {
-                'movieId': movie.get('movieId'),
-                'radarrId': movie.get('radarrId'),
-                'databaseId': movie.get('databaseId'),
-            }
-            
-            if movie_id is None:
-                # Try to find an alternative ID field
-                for field_name, alt_id in alt_id_fields.items():
-                    if alt_id is not None:
-                        write_log("warning", "Radarr", f"Movie '{movie.get('title')}' has no 'id' field, using '{field_name}': {alt_id}")
-                        movie_id = alt_id
-                        break
-                
-                if movie_id is None:
-                    continue  # Skip movies without any ID
-            
-            # Convert to int to ensure it's the correct type
-            try:
-                movie_id = int(movie_id)
-            except (ValueError, TypeError):
-                continue  # Skip if ID can't be converted to int
-            
-            # Check for duplicate IDs
-            if movie_id in seen_ids:
-                # Duplicate ID detected - this shouldn't happen
-                # Skip this movie to avoid confusion
-                continue
-            seen_ids.add(movie_id)
-            
-            # Use the movie_id directly - it should be correct from the API
-            # According to Radarr API docs, the 'id' field is the internal Radarr database ID
-            # which should be used for web UI URLs like /movie/{id}
-            final_movie_id = movie_id
-            
-            # Get TMDB ID for potential fallback/debugging
-            tmdb_id = movie.get('tmdbId')
-            # Convert to int if it exists
-            if tmdb_id is not None:
-                try:
-                    tmdb_id = int(tmdb_id)
-                except (ValueError, TypeError):
-                    tmdb_id = None
-            
-            has_file = movie.get('hasFile', False)
-            file_info = movie.get('movieFile', {})
-            
-            # Extract size
-            size = None
-            if file_info:
-                size_val = file_info.get('size', 0)
-                if size_val and size_val > 0:
-                    size = size_val
-            
-            # Extract quality - Radarr API structure: movieFile.quality.quality.name
-            quality = None
-            if file_info and file_info.get('quality'):
-                quality_obj = file_info.get('quality', {})
-                if isinstance(quality_obj, dict):
-                    # Try different possible paths for quality name
-                    quality_name = (quality_obj.get('quality', {}).get('name') or 
-                                   quality_obj.get('name'))
-                    if quality_name:
-                        quality = quality_name
-                    # If no name, try to construct from resolution
-                    elif quality_obj.get('resolution'):
-                        quality = quality_obj.get('resolution')
-            
-            # Construct Radarr URL - Radarr web UI uses /movie/{id} format
-            # According to Radarr docs, it should use the internal database ID
-            # However, some Radarr instances or versions might use TMDB IDs in the web UI
-            # If the ID is suspiciously low (like in 6000 range) and we have a TMDB ID,
-            # try using TMDB ID instead as a workaround
-            try:
-                if tmdb_id is not None and final_movie_id < 10000 and tmdb_id != final_movie_id:
-                    # The ID seems wrong (low number), try using TMDB ID for the web UI URL
-                    # This is a workaround for Radarr instances that use TMDB IDs in web UI
-                    radarr_url = f"{base_url}/movie/{tmdb_id}"
-                else:
-                    # Use the API ID as normal
-                    radarr_url = f"{base_url}/movie/{final_movie_id}"
-            except Exception as e:
-                # Fallback to using the API ID if there's any error
-                write_log("warning", "Radarr", f"Error constructing URL for movie '{movie.get('title')}': {e}")
-                radarr_url = f"{base_url}/movie/{final_movie_id}"
-            
-            # Verify the movie ID matches what we expect
-            # Sometimes Radarr API might return stale data, so we'll trust the API response
-            # but include both the ID and URL for debugging
-            
-            # Extract poster URL from images array
-            poster_url = None
-            if movie.get('images'):
-                for img in movie.get('images', []):
-                    if img.get('coverType') == 'poster':
-                        poster_url = img.get('url')
-                        break
-                # Fallback to first image if no poster found
-                if not poster_url and len(movie.get('images', [])) > 0:
-                    poster_url = movie.get('images', [{}])[0].get('url')
-            
-            # Convert relative URLs to absolute URLs
-            if poster_url and not poster_url.startswith('http'):
-                if poster_url.startswith('/'):
-                    poster_url = f"{base_url}{poster_url}"
-                else:
-                    poster_url = f"{base_url}/{poster_url}"
-            
-            movie_data = {
-                'id': final_movie_id,  # Use verified ID
-                'title': movie.get('title', 'Unknown'),
-                'year': movie.get('year'),
-                'monitored': movie.get('monitored', False),
-                'has_file': has_file,
-                'quality': quality,
-                'size': size,
-                'radarrUrl': radarr_url,
-                'added': movie.get('added', ''),
-                'poster_url': poster_url
-            }
-            
-            # Debug: Include raw data for first few movies to help diagnose ID issues
-            if len(items) < 5:
-                movie_data['_debug'] = {
-                    'raw_id': movie.get('id'),
-                    'final_id': final_movie_id,
-                    'tmdb_id': movie.get('tmdbId'),
-                    'imdb_id': movie.get('imdbId'),
-                    'title': movie.get('title'),
-                    'year': movie.get('year'),
-                    'radarrUrl': radarr_url,
-                    'base_url': base_url,
-                    'note': 'If radarrUrl leads to 404, the ID might be incorrect. Check Radarr API response.'
-                }
-            
-            items.append(movie_data)
-        
-        # Apply filters
-        monitored_filter = request.args.get('monitored', '').lower()
-        has_file_filter = request.args.get('has_file', '').lower()
-        sort_by = request.args.get('sort', 'added_desc')
-        
-        if monitored_filter == 'monitored':
-            items = [i for i in items if i['monitored']]
-        elif monitored_filter == 'unmonitored':
-            items = [i for i in items if not i['monitored']]
-        
-        if has_file_filter == 'has_file':
-            items = [i for i in items if i['has_file']]
-        elif has_file_filter == 'missing_file':
-            items = [i for i in items if not i['has_file']]
-        
-        # Sort
-        if sort_by == 'title_asc':
-            items.sort(key=lambda x: (x.get('title') or '').lower())
-        elif sort_by == 'year_desc':
-            items.sort(key=lambda x: int(x.get('year')) if x.get('year') else 0, reverse=True)
-        elif sort_by == 'size_desc':
-            items.sort(key=lambda x: x.get('size') or 0, reverse=True)
-        elif sort_by == 'added_desc':
-            items.sort(key=lambda x: x.get('added') or '', reverse=True)
-        
-        # Pagination - configurable page size (default 200, max 200)
-        page = int(request.args.get('page', 1))
-        requested_page_size = int(request.args.get('page_size', 200))
-        # Limit to valid options: 50, 100, 150, or 200
-        valid_page_sizes = [50, 100, 150, 200]
-        page_size = requested_page_size if requested_page_size in valid_page_sizes else 200
-        total_items = len(items)
-        total_pages = (total_items + page_size - 1) // page_size  # Ceiling division
-        
-        # Calculate slice indices
-        start_idx = (page - 1) * page_size
-        end_idx = start_idx + page_size
-        paginated_items = items[start_idx:end_idx]
-        
-        return jsonify({
-            'status': 'success',
-            'items': paginated_items,
-            'pagination': {
-                'page': page,
-                'page_size': page_size,
-                'total_items': total_items,
-                'total_pages': total_pages
-            }
-        })
-        
-    except Exception as e:
-        _log_api_exception("get_movies", e)
-        return jsonify({'status': 'error', 'message': 'Request failed', 'items': []})
-
-@api_bp.route('/api/media/tv')
-@login_required
-def get_tv_shows():
-    """Get TV shows from Sonarr."""
-    s = current_user.settings
-    if not s.sonarr_url or not s.sonarr_api_key:
-        return jsonify({'status': 'error', 'message': 'Sonarr not configured', 'items': []})
-    
-    try:
-        headers = {'X-Api-Key': s.sonarr_api_key}
-        base_url = s.sonarr_url.rstrip('/')
-        
-        r = requests.get(f"{base_url}/api/v3/series", headers=headers, timeout=10)
-        if r.status_code != 200:
-            return jsonify({'status': 'error', 'message': 'Failed to fetch TV shows', 'items': []})
-        
-        series_list = r.json()
-        items = []
-        
-        for series in series_list:
-            try:
-                # Get the Sonarr internal ID (should be the 'id' field)
-                # Ensure it's an integer, not a string or other type
-                series_id = series.get('id')
-                if series_id is None:
-                    continue  # Skip series without an ID
-                
-                # Convert to int to ensure it's the correct type
-                try:
-                    series_id = int(series_id)
-                except (ValueError, TypeError):
-                    continue  # Skip if ID can't be converted to int
-                
-                # Use sizeOnDisk from series object (faster, no need to fetch all episodes for list view)
-                size_on_disk = series.get('sizeOnDisk', 0)
-                has_file = size_on_disk > 0 if size_on_disk else False
-                total_size = size_on_disk if size_on_disk and size_on_disk > 0 else None
-                quality = None
-                
-                # Try to get quality from series statistics if available (some Sonarr versions provide this)
-                # Otherwise, quality will be None for list view (can be fetched in detail view if needed)
-                if series.get('statistics'):
-                    stats = series.get('statistics', {})
-                    if stats.get('qualityProfile'):
-                        quality_profile = stats.get('qualityProfile', {})
-                        if isinstance(quality_profile, dict):
-                            quality = quality_profile.get('name')
-                
-                # Extract poster URL from images array
-                poster_url = None
-                if series.get('images'):
-                    for img in series.get('images', []):
-                        if img.get('coverType') == 'poster':
-                            poster_url = img.get('url')
-                            break
-                    # Fallback to first image if no poster found
-                    if not poster_url and len(series.get('images', [])) > 0:
-                        poster_url = series.get('images', [{}])[0].get('url')
-                
-                # Convert relative URLs to absolute URLs
-                if poster_url and not poster_url.startswith('http'):
-                    if poster_url.startswith('/'):
-                        poster_url = f"{base_url}{poster_url}"
-                    else:
-                        poster_url = f"{base_url}/{poster_url}"
-                
-                # Construct Sonarr URL - Sonarr uses titleSlug for web UI URLs (e.g., /series/free-bert)
-                title_slug = series.get('titleSlug')
-                sonarr_url = None
-                try:
-                    if title_slug:
-                        # Use titleSlug if available (this is what Sonarr web UI uses)
-                        sonarr_url = f"{base_url}/series/{title_slug}"
-                    elif series_id:
-                        # Fallback to series ID if no slug available
-                        sonarr_url = f"{base_url}/series/{series_id}"
-                except Exception as e:
-                    # Fallback to using the API ID if there's any error
-                    try:
-                        write_log("warning", "Sonarr", f"Error constructing URL for series: {e}")
-                    except Exception:
-                        pass  # don't fail if logging fails
-                    sonarr_url = f"{base_url}/series/{series_id}" if series_id else None
-                
-                # Ensure sonarr_url is set (should never be None at this point, but be safe)
-                if not sonarr_url and series_id:
-                    sonarr_url = f"{base_url}/series/{series_id}"
-                
-                items.append({
-                    'id': series_id,
-                    'title': series.get('title', 'Unknown'),
-                    'year': series.get('year'),
-                    'monitored': series.get('monitored', False),
-                    'has_file': has_file,
-                    'quality': quality,
-                    'size': total_size if total_size and total_size > 0 else None,
-                    'sonarrUrl': sonarr_url,
-                    'added': series.get('added', ''),
-                    'poster_url': poster_url
-                })
-            except Exception as e:
-                # Skip this series if there's an error processing it, but continue with others
-                try:
-                    write_log("warning", "Sonarr", f"Error processing series '{series.get('title', 'Unknown')}': {e}")
-                except Exception:
-                    pass
-                continue  # Skip to next series
-        
-        # Apply filters
-        monitored_filter = request.args.get('monitored', '').lower()
-        has_file_filter = request.args.get('has_file', '').lower()
-        sort_by = request.args.get('sort', 'added_desc')
-        
-        if monitored_filter == 'monitored':
-            items = [i for i in items if i['monitored']]
-        elif monitored_filter == 'unmonitored':
-            items = [i for i in items if not i['monitored']]
-        
-        if has_file_filter == 'has_file':
-            items = [i for i in items if i['has_file']]
-        elif has_file_filter == 'missing_file':
-            items = [i for i in items if not i['has_file']]
-        
-        # Sort
-        if sort_by == 'title_asc':
-            items.sort(key=lambda x: (x.get('title') or '').lower())
-        elif sort_by == 'year_desc':
-            items.sort(key=lambda x: int(x.get('year')) if x.get('year') else 0, reverse=True)
-        elif sort_by == 'size_desc':
-            items.sort(key=lambda x: x.get('size') or 0, reverse=True)
-        elif sort_by == 'added_desc':
-            items.sort(key=lambda x: x.get('added') or '', reverse=True)
-        
-        # Pagination - configurable page size (default 200, max 200)
-        try:
-            page = int(request.args.get('page', 1))
-            if page < 1 or page > 10000:  # Reasonable max
-                page = 1
-        except (ValueError, TypeError):
-            page = 1
-        
-        try:
-            requested_page_size = int(request.args.get('page_size', 200))
-            # Limit to valid options: 50, 100, 150, or 200
-            valid_page_sizes = [50, 100, 150, 200]
-            page_size = requested_page_size if requested_page_size in valid_page_sizes else 200
-        except (ValueError, TypeError):
-            page_size = 200
-        
-        total_items = len(items)
-        total_pages = (total_items + page_size - 1) // page_size  # Ceiling division
-        
-        # Get items for current page
-        start_idx = (page - 1) * page_size
-        end_idx = start_idx + page_size
-        paginated_items = items[start_idx:end_idx]
-        
-        return jsonify({
-            'status': 'success', 
-            'items': paginated_items,
-            'pagination': {
-                'page': page,
-                'page_size': page_size,
-                'total_items': total_items,
-                'total_pages': total_pages
-            }
-        })
-        
-    except Exception as e:
-        _log_api_exception("get_tv_shows", e)
-        return jsonify({'status': 'error', 'message': 'Request failed', 'items': []})
-
-# Old toggle endpoints removed - using the ones with URL parameters below (lines ~2038+)
-
 # Media Management (Radarr/Sonarr/Overseerr)
 @api_bp.route('/api/media/overview')
 @login_required
@@ -3295,65 +2916,7 @@ def add_to_sonarr():
         _log_api_exception("add_to_sonarr", e)
         return _error_response('Request failed')
 
-@api_bp.route('/api/radarr/toggle_monitored/<int:movie_id>', methods=['POST'])
-@login_required
-def toggle_radarr_monitored(movie_id):
-    """Toggle monitored status for a Radarr movie."""
-    s = current_user.settings
-    if not s.radarr_url or not s.radarr_api_key:
-        return jsonify({'status': 'error', 'message': 'Radarr not configured'})
-    
-    try:
-        headers = {'X-Api-Key': s.radarr_api_key}
-        base_url = s.radarr_url.rstrip('/')
-        
-        # Get current movie
-        movie_url = f"{base_url}/api/v3/movie/{movie_id}"
-        movie_resp = requests.get(movie_url, headers=headers, timeout=5)
-        if movie_resp.status_code != 200:
-            return jsonify({'status': 'error', 'message': 'Movie not found'})
-        
-        movie_data = movie_resp.json()
-        movie_data['monitored'] = not movie_data.get('monitored', False)
-        
-        # Update movie
-        update_resp = requests.put(movie_url, json=movie_data, headers=headers, timeout=5)
-        if update_resp.status_code in [200, 202]:
-            return jsonify({'status': 'success', 'monitored': movie_data['monitored']})
-        return jsonify({'status': 'error', 'message': 'Failed to update'})
-    except Exception as e:
-        _log_api_exception("toggle_radarr_monitored", e)
-        return jsonify({'status': 'error', 'message': 'Request failed'})
 
-@api_bp.route('/api/sonarr/toggle_monitored/<int:series_id>', methods=['POST'])
-@login_required
-def toggle_sonarr_monitored(series_id):
-    """Toggle monitored status for a Sonarr series."""
-    s = current_user.settings
-    if not s.sonarr_url or not s.sonarr_api_key:
-        return jsonify({'status': 'error', 'message': 'Sonarr not configured'})
-    
-    try:
-        headers = {'X-Api-Key': s.sonarr_api_key}
-        base_url = s.sonarr_url.rstrip('/')
-        
-        # Get current series
-        series_url = f"{base_url}/api/v3/series/{series_id}"
-        series_resp = requests.get(series_url, headers=headers, timeout=5)
-        if series_resp.status_code != 200:
-            return jsonify({'status': 'error', 'message': 'Series not found'})
-        
-        series_data = series_resp.json()
-        series_data['monitored'] = not series_data.get('monitored', False)
-        
-        # Update series
-        update_resp = requests.put(series_url, json=series_data, headers=headers, timeout=5)
-        if update_resp.status_code in [200, 202]:
-            return jsonify({'status': 'success', 'monitored': series_data['monitored']})
-        return jsonify({'status': 'error', 'message': 'Failed to update'})
-    except Exception as e:
-        _log_api_exception("toggle_sonarr_monitored", e)
-        return jsonify({'status': 'error', 'message': 'Request failed'})
 
 def _safe_get_nested_rating_value(movie, rating_type):
     """Safely extract nested rating value, handling cases where structure might be different."""
@@ -3812,331 +3375,6 @@ def get_radarr_movie_detail(movie_id):
         _log_api_exception("get_radarr_movie_detail", e)
         return jsonify({'status': 'error', 'message': 'Request failed'})
 
-@api_bp.route('/api/sonarr/series/<int:series_id>', methods=['GET'])
-@login_required
-def get_sonarr_series_detail(series_id):
-    """Get detailed TV series information from Sonarr."""
-    s = current_user.settings
-    if not s.sonarr_url or not s.sonarr_api_key:
-        return jsonify({'status': 'error', 'message': 'Sonarr not configured'})
-    
-    try:
-        headers = {'X-Api-Key': s.sonarr_api_key}
-        base_url = s.sonarr_url.rstrip('/')
-        if base_url.endswith('/api'):
-            base_url = base_url[:-4]
-        if base_url.endswith('/api/v3'):
-            base_url = base_url[:-7]
-        
-        # Get series details
-        series_url = f"{base_url}/api/v3/series/{series_id}"
-        series_resp = requests.get(series_url, headers=headers, timeout=10)
-        if series_resp.status_code == 404:
-            return jsonify({'status': 'error', 'message': 'Series not found - it may have been deleted from Sonarr', 'deleted': True})
-        if series_resp.status_code != 200:
-            return jsonify({'status': 'error', 'message': f'Failed to fetch series (Status: {series_resp.status_code})'})
-        
-        series = series_resp.json()
-        
-        # Get queue to check for paused/active downloads
-        queue_items_by_episode = {}  # episodeId -> queue item
-        try:
-            queue_url = f"{base_url}/api/v3/queue"
-            queue_resp = requests.get(queue_url, headers=headers, timeout=5)
-            if queue_resp.status_code == 200:
-                queue_data = queue_resp.json()
-                # Handle both paginated and non-paginated responses
-                queue_records = queue_data.get('records', []) if isinstance(queue_data, dict) else queue_data
-                if isinstance(queue_records, list):
-                    for item in queue_records:
-                        # Sonarr queue can have episodeId directly or nested in episode object
-                        episode_id = item.get('episodeId')
-                        if not episode_id and item.get('episode'):
-                            episode_obj = item.get('episode')
-                            if isinstance(episode_obj, dict):
-                                episode_id = episode_obj.get('id')
-                        
-                        if episode_id:
-                            # Check if paused or downloading
-                            status = item.get('status', '').lower()
-                            tracked_state = item.get('trackedDownloadState', '').lower()
-                            tracked_status = item.get('trackedDownloadStatus', '').lower()
-                            
-                            # Determine if paused
-                            is_paused = (
-                                'paused' in status or 
-                                'paused' in tracked_state or 
-                                'paused' in tracked_status or
-                                tracked_state == 'paused'
-                            )
-                            
-                            # Determine if downloading
-                            is_downloading = (
-                                'downloading' in status or 
-                                'downloading' in tracked_state or
-                                tracked_state == 'downloading'
-                            )
-                            
-                            queue_items_by_episode[episode_id] = {
-                                'paused': is_paused,
-                                'downloading': is_downloading,
-                                'status': item.get('status', ''),
-                                'trackedDownloadState': item.get('trackedDownloadState', ''),
-                                'title': item.get('title', ''),
-                                'size': item.get('size', 0),
-                                'sizeleft': item.get('sizeleft', 0)
-                            }
-        except Exception as e:
-            # Don't fail if queue check fails, just log it
-            try:
-                write_log("warning", "Sonarr", f"Failed to check queue: {e}")
-            except Exception:
-                pass
-        
-        # Get episodes - safely handle response and extract file details
-        episodes_url = f"{base_url}/api/v3/episode?seriesId={series_id}"
-        episodes_resp = requests.get(episodes_url, headers=headers, timeout=10)
-        episodes = []
-        if episodes_resp.status_code == 200:
-            episodes_data = episodes_resp.json()
-            if isinstance(episodes_data, list):
-                for ep in episodes_data:
-                    if not isinstance(ep, dict):
-                        continue
-                    
-                    episode_id = ep.get('id')
-                    queue_info = queue_items_by_episode.get(episode_id)
-                    
-                    # treat as has file if Sonarr says so, episodeFile is present, or episodeFileId > 0 (some Sonarr versions omit episodeFile or set hasFile false)
-                    ep_file_id = ep.get('episodeFileId')
-                    ep_has_file = ep.get('hasFile', False) or bool(ep.get('episodeFile')) or (ep_file_id is not None and int(ep_file_id) > 0)
-                    episode_data = {
-                        'id': episode_id,
-                        'seasonNumber': ep.get('seasonNumber'),
-                        'episodeNumber': ep.get('episodeNumber'),
-                        'title': ep.get('title', ''),
-                        'overview': ep.get('overview', ''),
-                        'airDate': ep.get('airDate', ''),
-                        'hasFile': ep_has_file,
-                        'monitored': ep.get('monitored', False),
-                        'file': None,
-                        'queueStatus': None  # Will be set if in queue
-                    }
-                    
-                    # Add queue status if episode is in queue
-                    if queue_info:
-                        if queue_info.get('paused'):
-                            episode_data['queueStatus'] = 'paused'
-                        elif queue_info.get('downloading'):
-                            episode_data['queueStatus'] = 'downloading'
-                        else:
-                            episode_data['queueStatus'] = 'queued'
-                        episode_data['queueTitle'] = queue_info.get('title', '')
-                        episode_data['queueSize'] = queue_info.get('size', 0)
-                        episode_data['queueSizeLeft'] = queue_info.get('sizeleft', 0)
-                    
-                    # Extract detailed file information if episode has a file
-                    if ep_has_file and ep.get('episodeFile'):
-                        episode_file = ep.get('episodeFile', {})
-                        if isinstance(episode_file, dict):
-                            # Extract quality
-                            quality_name = 'Unknown'
-                            if episode_file.get('quality'):
-                                quality_obj = episode_file.get('quality')
-                                if isinstance(quality_obj, dict):
-                                    quality_inner = quality_obj.get('quality', {})
-                                    if isinstance(quality_inner, dict):
-                                        quality_name = quality_inner.get('name', 'Unknown')
-                                    elif isinstance(quality_inner, str):
-                                        quality_name = quality_inner
-                                elif isinstance(quality_obj, str):
-                                    quality_name = quality_obj
-                            
-                            # Extract mediaInfo
-                            media_info = {}
-                            if episode_file.get('mediaInfo'):
-                                media_info_obj = episode_file.get('mediaInfo')
-                                if isinstance(media_info_obj, dict):
-                                    media_info = {
-                                        'videoCodec': media_info_obj.get('videoCodec', ''),
-                                        'audioCodec': media_info_obj.get('audioCodec', ''),
-                                        'audioChannels': media_info_obj.get('audioChannels', ''),
-                                        'resolution': media_info_obj.get('resolution', ''),
-                                    }
-                            
-                            # Extract languages
-                            languages = []
-                            if episode_file.get('languages'):
-                                langs = episode_file.get('languages')
-                                if isinstance(langs, list):
-                                    languages = [lang.get('name', '') if isinstance(lang, dict) else str(lang) for lang in langs]
-                                elif isinstance(langs, str):
-                                    languages = [langs]
-                            
-                            # Extract custom formats
-                            custom_formats = []
-                            custom_format_score = 0
-                            if episode_file.get('customFormats'):
-                                cf_list = episode_file.get('customFormats', [])
-                                if isinstance(cf_list, list):
-                                    for cf in cf_list:
-                                        if cf:
-                                            if isinstance(cf, dict):
-                                                # try different possible field names
-                                                cf_name = (cf.get('name') or cf.get('label') or cf.get('title') or '')
-                                                if cf_name:
-                                                    custom_formats.append(str(cf_name))
-                                            elif isinstance(cf, str):
-                                                if cf:
-                                                    custom_formats.append(cf)
-                            if episode_file.get('customFormatScore') is not None:
-                                try:
-                                    custom_format_score = int(episode_file.get('customFormatScore', 0))
-                                except (ValueError, TypeError):
-                                    custom_format_score = 0
-                            
-                            episode_data['file'] = {
-                                'path': episode_file.get('relativePath', '') if isinstance(episode_file.get('relativePath'), str) else '',
-                                'size': episode_file.get('size', 0) if isinstance(episode_file.get('size'), (int, float)) else 0,
-                                'dateAdded': episode_file.get('dateAdded', '') if isinstance(episode_file.get('dateAdded'), str) else '',
-                                'quality': quality_name,
-                                'mediaInfo': media_info,
-                                'languages': languages,
-                                'releaseGroup': episode_file.get('releaseGroup', '') if isinstance(episode_file.get('releaseGroup'), str) else '',
-                                'customFormats': custom_formats,
-                                'customFormatScore': custom_format_score,
-                            }
-                    
-                    episodes.append(episode_data)
-        
-        # Extract images - safely handle images array
-        poster_url = None
-        fanart_url = None
-        if series.get('images'):
-            images = series.get('images', [])
-            if isinstance(images, list):
-                for img in images:
-                    if isinstance(img, dict):
-                        cover_type = img.get('coverType')
-                        url = img.get('url')
-                        if cover_type == 'poster' and url and not poster_url:
-                            poster_url = url
-                        elif cover_type == 'fanart' and url and not fanart_url:
-                            fanart_url = url
-        
-        # Convert relative URLs to absolute URLs
-        if poster_url and not poster_url.startswith('http'):
-            if poster_url.startswith('/'):
-                poster_url = f"{base_url}{poster_url}"
-            else:
-                poster_url = f"{base_url}/{poster_url}"
-        if fanart_url and not fanart_url.startswith('http'):
-            if fanart_url.startswith('/'):
-                fanart_url = f"{base_url}{fanart_url}"
-            else:
-                fanart_url = f"{base_url}/{fanart_url}"
-        
-        # Get cast and crew from TMDB if available
-        cast = []
-        crew = []
-        if s.tmdb_key and series.get('tvdbId'):
-            try:
-                # Sonarr uses TVDB ID, but TMDB API can use it too
-                tmdb_url = f"https://api.themoviedb.org/3/find/{series['tvdbId']}?api_key={s.tmdb_key}&external_source=tvdb_id"
-                find_resp = requests.get(tmdb_url, timeout=5)
-                if find_resp.status_code == 200:
-                    find_data = find_resp.json()
-                    tv_results = find_data.get('tv_results', [])
-                    if tv_results:
-                        tmdb_id = tv_results[0].get('id')
-                        tmdb_series_url = f"https://api.themoviedb.org/3/tv/{tmdb_id}?api_key={s.tmdb_key}&append_to_response=credits"
-                        tmdb_resp = requests.get(tmdb_series_url, timeout=5)
-                        if tmdb_resp.status_code == 200:
-                            tmdb_data = tmdb_resp.json()
-                            credits = tmdb_data.get('credits', {})
-                            cast_list = credits.get('cast', [])
-                            if isinstance(cast_list, list):
-                                cast = [{
-                                    'name': c.get('name', '') if isinstance(c, dict) else '',
-                                    'character': c.get('character', '') if isinstance(c, dict) else '',
-                                    'profile_path': c.get('profile_path', '') if isinstance(c, dict) else ''
-                                } for c in cast_list[:20] if isinstance(c, dict)]
-                            crew_list = credits.get('crew', [])
-                            if isinstance(crew_list, list):
-                                crew = [{
-                                    'name': c.get('name', '') if isinstance(c, dict) else '',
-                                    'job': c.get('job', '') if isinstance(c, dict) else '',
-                                    'department': c.get('department', '') if isinstance(c, dict) else '',
-                                    'profile_path': c.get('profile_path', '') if isinstance(c, dict) else ''
-                                } for c in crew_list[:30] if isinstance(c, dict)]
-            except Exception as e:
-                write_log("warning", "Sonarr", f"Failed to fetch TMDB credits: {e}")
-        
-        # Alternative titles
-        alternative_titles = []
-        if series.get('alternateTitles'):
-            alternative_titles = [{
-                'title': alt.get('title', ''),
-                'sourceType': alt.get('sourceType', '')
-            } for alt in series.get('alternateTitles', [])]
-        
-        # Construct Sonarr URL - Sonarr uses titleSlug for web UI URLs (e.g., /series/free-bert)
-        title_slug = series.get('titleSlug')
-        actual_series_id = series.get('id')
-        sonarr_url = None
-        try:
-            if title_slug:
-                # Use titleSlug if available (this is what Sonarr web UI uses)
-                sonarr_url = f"{base_url}/series/{title_slug}"
-            elif actual_series_id:
-                # Fallback to series ID if no slug available
-                sonarr_url = f"{base_url}/series/{actual_series_id}"
-        except Exception as e:
-            # Fallback to using the API ID if there's any error
-            try:
-                write_log("warning", "Sonarr", f"Error constructing URL for series: {e}")
-            except Exception:
-                pass  # don't fail if logging fails
-            sonarr_url = f"{base_url}/series/{actual_series_id}" if actual_series_id else None
-        
-        import time
-        return jsonify({
-            'status': 'success',
-            'series': {
-                'id': series.get('id'),
-                'title': series.get('title'),
-                'year': series.get('year'),
-                'yearEnd': series.get('yearEnd'),  # End year for series
-                'status': series.get('status', ''),  # Series status (e.g., 'ended', 'continuing')
-                'overview': series.get('overview'),
-                'runtime': series.get('runtime'),
-                'network': series.get('network', ''),
-                'genres': [g.get('name', '') if isinstance(g, dict) else str(g) for g in series.get('genres', []) if g],
-                'path': series.get('path', ''),
-                'monitored': series.get('monitored', False),
-                'hasFile': series.get('hasFile', False),
-                'tvdbId': series.get('tvdbId'),
-                'imdbId': series.get('imdbId'),
-                'added': series.get('added'),
-                'tags': series.get('tags', []),  # Series tags
-                'posterUrl': poster_url,
-                'fanartUrl': fanart_url,
-                'episodes': episodes,
-                'cast': cast,
-                'crew': crew,
-                'alternativeTitles': alternative_titles,
-                'ratings': {
-                    'tmdb': _safe_get_nested_rating_value(series, 'tmdb'),
-                    'imdb': _safe_get_nested_rating_value(series, 'imdb'),
-                },
-                'sonarrUrl': sonarr_url,
-                '_fetchedAt': int(time.time())  # Timestamp for cache validation
-            }
-        })
-    except Exception as e:
-        _log_api_exception("get_sonarr_series_detail", e)
-        return jsonify({'status': 'error', 'message': 'Request failed'})
-
 @api_bp.route('/api/radarr/search', methods=['POST'])
 @login_required
 def radarr_search():
@@ -4482,93 +3720,6 @@ def sonarr_queue_check(series_id):
         _log_api_exception("sonarr_queue_check", e)
         return jsonify({'status': 'error', 'message': 'Queue check failed'})
 
-@api_bp.route('/api/sonarr/search-season/<int:series_id>/<int:season_number>', methods=['POST'])
-@login_required
-def sonarr_search_season(series_id, season_number):
-    """Search for all monitored episodes in a season."""
-    s = current_user.settings
-    if not s.sonarr_url or not s.sonarr_api_key:
-        return jsonify({'status': 'error', 'message': 'Sonarr not configured'})
-    
-    try:
-        headers = {'X-Api-Key': s.sonarr_api_key}
-        base_url = s.sonarr_url.rstrip('/')
-        if base_url.endswith('/api'):
-            base_url = base_url[:-4]
-        if base_url.endswith('/api/v3'):
-            base_url = base_url[:-7]
-        
-        # Get episodes for the season
-        episodes_url = f"{base_url}/api/v3/episode?seriesId={series_id}"
-        episodes_resp = requests.get(episodes_url, headers=headers, timeout=10)
-        if episodes_resp.status_code != 200:
-            return jsonify({'status': 'error', 'message': 'Failed to fetch episodes'})
-        
-        episodes = episodes_resp.json()
-        season_episodes = [ep.get('id') for ep in episodes if ep.get('seasonNumber') == season_number and ep.get('monitored', False)]
-        
-        if not season_episodes:
-            return jsonify({'status': 'success', 'message': 'No monitored episodes in this season'})
-        
-        # Search for episodes
-        command_url = f"{base_url}/api/v3/command"
-        payload = {
-            'name': 'EpisodeSearch',
-            'episodeIds': season_episodes
-        }
-        resp = requests.post(command_url, json=payload, headers=headers, timeout=10)
-        if resp.status_code in [200, 201]:
-            return jsonify({'status': 'success', 'message': f'Search started for {len(season_episodes)} episode(s)'})
-        return jsonify({'status': 'error', 'message': 'Failed to start search'})
-    except Exception as e:
-        _log_api_exception("sonarr_search_season", e)
-        return jsonify({'status': 'error', 'message': 'Request failed'})
-
-@api_bp.route('/api/sonarr/refresh-season/<int:series_id>/<int:season_number>', methods=['POST'])
-@login_required
-def sonarr_refresh_season(series_id, season_number):
-    """Refresh all episodes in a season."""
-    s = current_user.settings
-    if not s.sonarr_url or not s.sonarr_api_key:
-        return jsonify({'status': 'error', 'message': 'Sonarr not configured'})
-    
-    try:
-        headers = {'X-Api-Key': s.sonarr_api_key}
-        base_url = s.sonarr_url.rstrip('/')
-        if base_url.endswith('/api'):
-            base_url = base_url[:-4]
-        if base_url.endswith('/api/v3'):
-            base_url = base_url[:-7]
-        
-        # Get episodes for the season
-        episodes_url = f"{base_url}/api/v3/episode?seriesId={series_id}"
-        episodes_resp = requests.get(episodes_url, headers=headers, timeout=10)
-        if episodes_resp.status_code != 200:
-            return jsonify({'status': 'error', 'message': 'Failed to fetch episodes'})
-        
-        episodes = episodes_resp.json()
-        season_episodes = [ep.get('id') for ep in episodes if ep.get('seasonNumber') == season_number]
-        
-        if not season_episodes:
-            return jsonify({'status': 'success', 'message': 'No episodes in this season'})
-        
-        # Refresh episodes
-        command_url = f"{base_url}/api/v3/command"
-        payload = {
-            'name': 'EpisodeSearch',
-            'episodeIds': season_episodes
-        }
-        # First trigger refresh for the series
-        refresh_payload = {
-            'name': 'RefreshSeries',
-            'seriesId': series_id
-        }
-        requests.post(command_url, json=refresh_payload, headers=headers, timeout=10)
-        
-        return jsonify({'status': 'success', 'message': f'Refresh started for season {season_number}'})
-    except Exception as e:
-        _log_api_exception("sonarr_refresh_season", e)
-        return jsonify({'status': 'error', 'message': 'Request failed'})
 
 @api_bp.route('/api/sonarr/search-episode/<int:episode_id>', methods=['POST'])
 @login_required
@@ -4600,68 +3751,6 @@ def sonarr_search_episode(episode_id):
         _log_api_exception("sonarr_search_episode", e)
         return jsonify({'status': 'error', 'message': 'Request failed'})
 
-@api_bp.route('/api/sonarr/refresh-episode/<int:episode_id>', methods=['POST'])
-@login_required
-def sonarr_refresh_episode(episode_id):
-    """Refresh a specific episode."""
-    s = current_user.settings
-    if not s.sonarr_url or not s.sonarr_api_key:
-        return jsonify({'status': 'error', 'message': 'Sonarr not configured'})
-    
-    try:
-        headers = {'X-Api-Key': s.sonarr_api_key}
-        base_url = s.sonarr_url.rstrip('/')
-        if base_url.endswith('/api'):
-            base_url = base_url[:-4]
-        if base_url.endswith('/api/v3'):
-            base_url = base_url[:-7]
-        
-        # Get episode to find series ID
-        episode_url = f"{base_url}/api/v3/episode/{episode_id}"
-        episode_resp = requests.get(episode_url, headers=headers, timeout=10)
-        if episode_resp.status_code != 200:
-            return jsonify({'status': 'error', 'message': 'Episode not found'})
-        
-        episode = episode_resp.json()
-        series_id = episode.get('seriesId')
-        
-        if not series_id:
-            return jsonify({'status': 'error', 'message': 'Invalid episode data'})
-        
-        # Refresh the series (which will refresh all episodes)
-        command_url = f"{base_url}/api/v3/command"
-        refresh_payload = {
-            'name': 'RefreshSeries',
-            'seriesId': series_id
-        }
-        resp = requests.post(command_url, json=refresh_payload, headers=headers, timeout=10)
-        if resp.status_code in [200, 201]:
-            return jsonify({'status': 'success', 'message': 'Refresh started for episode'})
-        return jsonify({'status': 'error', 'message': 'Failed to start refresh'})
-    except Exception as e:
-        _log_api_exception("sonarr_refresh_episode", e)
-        return jsonify({'status': 'error', 'message': 'Request failed'})
-
-@api_bp.route('/api/radarr/download', methods=['POST'])
-@login_required
-@rate_limit_decorator("20 per minute")
-def radarr_download():
-    """Download a specific release in Radarr."""
-    s = current_user.settings
-    if not s.radarr_url or not s.radarr_api_key:
-        return jsonify({'status': 'error', 'message': 'Radarr not configured'})
-    
-    data = request.json
-    if not data:
-        return jsonify({'status': 'error', 'message': 'No data provided'})
-    
-    guid = data.get('guid')
-    indexer_id = data.get('indexerId')
-    movie_id = data.get('movieId')
-    release_data = data.get('releaseData')  # Full release object if provided
-    override = data.get('override', False)  # Override flag for forced downloads
-    
-    # Validate guid
     if not guid:
         return jsonify({'status': 'error', 'message': 'Release GUID required'})
     if not isinstance(guid, str) or len(guid) > 2000:  # Reasonable limit
@@ -5144,46 +4233,6 @@ def sonarr_download():
         _log_api_exception("sonarr_download", e)
         return jsonify({'status': 'error', 'message': 'Request failed'})
 
-@api_bp.route('/api/sonarr/missing-episodes', methods=['GET'])
-@login_required
-def sonarr_missing_episodes():
-    """Get missing episodes for a series."""
-    s = current_user.settings
-    if not s.sonarr_url or not s.sonarr_api_key:
-        return jsonify({'status': 'error', 'message': 'Sonarr not configured', 'episodes': []})
-    
-    series_id = request.args.get('series_id')
-    if not series_id:
-        return jsonify({'status': 'error', 'message': 'Series ID required', 'episodes': []})
-    
-    try:
-        headers = {'X-Api-Key': s.sonarr_api_key}
-        base_url = s.sonarr_url.rstrip('/')
-        
-        episodes_url = f"{base_url}/api/v3/episode?seriesId={series_id}"
-        episodes_resp = requests.get(episodes_url, headers=headers, timeout=10)
-        if episodes_resp.status_code == 200:
-            episodes = episodes_resp.json()
-            # missing = no file: not (hasFile or episodeFile or episodeFileId > 0)
-            def _ep_has_file(ep):
-                h = ep.get('hasFile') or ep.get('episodeFile')
-                if h: return True
-                eid = ep.get('episodeFileId')
-                return eid is not None and int(eid) > 0
-            missing = [{
-                'id': ep.get('id'),
-                'seasonNumber': ep.get('seasonNumber'),
-                'episodeNumber': ep.get('episodeNumber'),
-                'title': ep.get('title'),
-                'airDate': ep.get('airDate'),
-                'airDateUtc': ep.get('airDateUtc')
-            } for ep in episodes if not _ep_has_file(ep)]
-            return jsonify({'status': 'success', 'episodes': missing})
-        else:
-            return jsonify({'status': 'error', 'message': 'Failed to fetch episodes', 'episodes': []})
-    except Exception as e:
-        _log_api_exception("sonarr_missing_episodes", e)
-        return jsonify({'status': 'error', 'message': 'Request failed', 'episodes': []})
 
 
 @api_bp.route('/api/calendar/episode/<int:episode_id>', methods=['GET'])
