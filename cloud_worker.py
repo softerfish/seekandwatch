@@ -140,7 +140,7 @@ def process_item(settings, req_db):
         req_db.status = 'completed'
         print(f"SUCCESS: Processed {req_db.title}")
 
-        # so it shows on the Media → Requested tab (that tab lists AppRequest + Overseerr)
+        # so it shows on the Media -> Requested tab (that tab lists AppRequest + Overseerr)
         if settings and getattr(settings, 'user_id', None):
             requested_via = 'Overseerr' if handler_to_use == 'overseerr' else ('Radarr' if req_db.media_type == 'movie' else 'Sonarr')
             try:
@@ -396,7 +396,7 @@ def fetch_cloud_requests(settings):
     except requests.exceptions.ConnectionError:
         return (False, "Could not reach the cloud. Check your connection.")
     except Exception:
-        return (False, "Could not sync. Check your connection and API key.")
+        return (False, "Could not sync with the cloud. Check your internet connection and that your API key in Requests Settings is correct.")
 
 
 def _record_last_poll(settings, ok):

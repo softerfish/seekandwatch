@@ -796,7 +796,7 @@ def sync_plex_library(app_obj):
     """Sync Plex library to TMDB index (TmdbAlias). First run clears old DB and plex_cache.json. Uses guids then IMDB/TVDB/title+year resolution like web.
     Works with both direct URLs (e.g. http://192.168.1.50:32400) and Plex relay (.plex.direct) URLs; local IP is usually faster and more reliable."""
     if is_system_locked():
-        return False, "System is busy. Please wait."
+        return False, "Another task is running. Please wait and try again."
 
     print("--- STARTING PLEX LIBRARY SYNC (TMDB INDEX) ---")
 
@@ -805,7 +805,7 @@ def sync_plex_library(app_obj):
         if not settings or not settings.plex_url or not settings.plex_token:
             return False, "Plex not configured."
         if not (getattr(settings, 'tmdb_key', None) and str(settings.tmdb_key).strip()):
-            return False, "TMDB API key required to sync library (Settings → APIs)."
+            return False, "TMDB API key required to sync library (Settings -> APIs)."
 
         write_log("info", "Plex", "Started Plex library sync (TMDB index).", app_obj=app_obj)
         set_system_lock("Syncing Plex library...")
@@ -922,7 +922,7 @@ def sync_plex_library(app_obj):
             print(f"Plex library sync failed: {e}")
             err_str = str(e)
             if "Connection refused" in err_str or "Max retries exceeded" in err_str or "NewConnectionError" in err_str:
-                hint = "Plex server unreachable. Check that the server is running and the URL in Settings → APIs (e.g. use http://YOUR_LOCAL_IP:32400 if .plex.direct fails from this host)."
+                hint = "Plex server unreachable. Check that the server is running and the URL in Settings -> APIs (e.g. use http://YOUR_LOCAL_IP:32400 if .plex.direct fails from this host)."
                 write_log("error", "Plex", f"Sync failed: {hint} ({err_str[:120]})", app_obj=app_obj)
             else:
                 write_log("error", "Plex", f"Sync failed: {err_str}", app_obj=app_obj)
@@ -934,7 +934,7 @@ def sync_plex_library(app_obj):
 def refresh_radarr_sonarr_cache(app_obj):
     """Scan Radarr and Sonarr libraries and store items in database."""
     if is_system_locked():
-        return False, "System is busy. Please wait."
+        return False, "Another task is running. Please wait and try again."
 
     print("--- STARTING RADARR/SONARR CACHE REFRESH ---")
     
@@ -1193,6 +1193,90 @@ def owned_list_hash_for_cloud(movie_ids, tv_ids):
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
+def get_collection_visibility(server, section_id, rating_key):
+    """Read Home / Library / Friends visibility from Plex using the same hub URL we use when setting it
+    (apply_collection_visibility: PUT /hubs/sections/{section_id}/manage/{hub_id}). So we GET that hub to read state."""
+    def _bool_attr(v):
+        if v is None:
+            return False
+        if isinstance(v, bool):
+            return v
+        return str(v).strip().lower() in ('1', 'true', 'yes')
+
+    def _from_elem(elem):
+        if elem is None or not hasattr(elem, 'attrib'):
+            return None
+        a = elem.attrib
+        if 'promotedToOwnHome' not in a and 'promotedToRecommended' not in a and 'promotedToLibrary' not in a:
+            return None
+        home = _bool_attr(a.get('promotedToOwnHome'))
+        lib = _bool_attr(a.get('promotedToRecommended')) or _bool_attr(a.get('promotedToLibrary'))
+        friends = _bool_attr(a.get('promotedToSharedHome'))
+        return (home, lib, friends)
+
+    try:
+        # Same hub path we use when setting visibility in apply_collection_visibility (playlist Run Now / set visibility)
+        hub_id = 'custom.collection.%s.%s' % (section_id, rating_key)
+        path = '/hubs/sections/%s/manage/%s' % (section_id, hub_id)
+        data = server.query(path)
+        if data is None:
+            return (None, None, None)
+        # Response may be MediaContainer with Directory/Hub children; attributes can be on root or any descendant
+        def walk(e):
+            if e is None:
+                return None
+            r = _from_elem(e)
+            if r is not None:
+                return r
+            try:
+                for child in list(e) if hasattr(e, '__iter__') and not isinstance(e, (str, bytes)) else []:
+                    r = walk(child)
+                    if r is not None:
+                        return r
+            except (TypeError, AttributeError):
+                pass
+            return None
+        result = walk(data)
+        if result is not None:
+            return result
+        # Explicit finds for common structures (ElementTree root is the container)
+        if hasattr(data, 'find') and callable(data.find):
+            for tag in ('Directory', 'directory', 'Hub', 'hub'):
+                elem = data.find(tag) or data.find('.//' + tag)
+                if elem is not None:
+                    result = _from_elem(elem)
+                    if result is not None:
+                        return result
+        if hasattr(data, 'attrib'):
+            result = _from_elem(data)
+            if result is not None:
+                return result
+    except Exception as e:
+        log.debug("get_collection_visibility (manage/%s): %s", hub_id, e)
+    # Fallback: manage?metadataItemId= (PlexAPI style) in case GET /manage/hub_id is not supported for read
+    try:
+        path2 = '/hubs/sections/%s/manage?metadataItemId=%s' % (section_id, rating_key)
+        data = server.query(path2)
+        if data is not None:
+            result = walk(data)
+            if result is None and hasattr(data, 'find') and callable(data.find):
+                for tag in ('Directory', 'directory', 'Hub', 'hub'):
+                    elem = data.find(tag) or data.find('.//' + tag)
+                    if elem is not None:
+                        result = _from_elem(elem)
+                        if result is not None:
+                            return result
+            if result is not None:
+                return result
+            if hasattr(data, 'attrib'):
+                result = _from_elem(data)
+                if result is not None:
+                    return result
+    except Exception as e:
+        log.debug("get_collection_visibility (metadataItemId): %s", e)
+    return (None, None, None)
+
+
 def apply_collection_visibility(plex_collection, visible_home=False, visible_library=False, visible_friends=False):
     """Set where the collection appears: home, library recommended, shared users' home (friends).
     Best-effort: if Plex rejects the prefs request (e.g. 400), we don't fail; sync still succeeds."""
@@ -1339,7 +1423,7 @@ def _get_plex_tmdb_id(plex_item):
 
 # collection syncing logic
 def run_collection_logic(settings, preset, key, app_obj=None):
-    if is_system_locked(): return False, "System busy."
+    if is_system_locked(): return False, "Another task is running. Please wait and try again."
     
     set_system_lock(f"Syncing {preset.get('title', 'Collection')}...")
     write_log("info", "Sync", f"Starting Sync: {key}", app_obj=app_obj)
@@ -1430,20 +1514,26 @@ def run_collection_logic(settings, preset, key, app_obj=None):
                     kept.append(i)
             tmdb_items = kept
 
-        # safety check - don't wipe collections if TMDB returns nothing
+        # When TMDB returns no items, leave collection unchanged (don't treat as error or wipe)
         if not tmdb_items:
-            return False, "Aborted: No items returned from TMDB. Possible API outage?"
+            write_log("warning", "Sync", f"TMDB returned no items for preset '{preset.get('title', key)}'. Collection unchanged.", app_obj=app_obj)
+            return True, "TMDB returned no items for this preset. Collection unchanged."
 
-        # Load owned TMDB index and alias map (TMDB ID -> Plex title) from TmdbAlias
+        # Load owned TMDB index and alias map (TMDB ID -> Plex title) from TmdbAlias.
+        # Filter by media_type so TV presets (e.g. HBO) only match TV library items, not movies.
+        want_type = preset.get('media_type', 'movie')
         id_map = {}
         try:
-            rows = TmdbAlias.query.filter(TmdbAlias.tmdb_id > 0).with_entities(TmdbAlias.tmdb_id, TmdbAlias.plex_title).all()
+            rows = TmdbAlias.query.filter(
+                TmdbAlias.tmdb_id > 0,
+                TmdbAlias.media_type == want_type
+            ).with_entities(TmdbAlias.tmdb_id, TmdbAlias.plex_title).all()
             for r in rows:
                 id_map[r.tmdb_id] = r.plex_title
         except Exception as e:
             log.warning("Load alias map for preset: %s", e)
 
-        # Match TMDB items to what we own (TMDB index only)
+        # Match TMDB items to what we own (TMDB index only; id_map is already filtered by media_type)
         potential_matches = []
         for item in tmdb_items:
             if item['id'] in id_map:
@@ -1451,10 +1541,11 @@ def run_collection_logic(settings, preset, key, app_obj=None):
                 potential_matches.append(item)
 
         # actually search plex to verify these items exist
-        target_type = 'movie' if preset['media_type'] == 'movie' else 'show'
+        target_type = 'movie' if want_type == 'movie' else 'show'
         target_lib = next((s for s in plex.library.sections() if s.type == target_type), None)
-        if not target_lib: 
-            return False, f"No library found for {preset['media_type']}"
+        if not target_lib:
+            lib_label = "Movie" if preset['media_type'] == 'movie' else "TV"
+            return False, f"No {lib_label} library found in Plex. Add a {lib_label} library in Plex and try again."
 
         # match by TMDB id (guid) so we don't add wrong titles (e.g. kids cartoons into horror)
         found_items = []
@@ -1520,7 +1611,7 @@ def run_collection_logic(settings, preset, key, app_obj=None):
                 return True, (
                     f"A collection named \"{want_title}\" already exists and is a smart collection (filter-based), "
                     f"so a new regular collection was created as \"{alt_title}\" with {len(found_items)} items. "
-                    "If it doesn't show under Manage Recommendations, open it in Plex → ⋮ → Visible On → check the columns."
+                    "If it doesn't show under Manage Recommendations, open it in Plex -> ⋮ -> Visible On -> check the columns."
                 )
             return True, f"A smart collection named \"{want_title}\" exists; no items to add. Create a regular one with a different preset name if needed."
 
@@ -1535,11 +1626,26 @@ def run_collection_logic(settings, preset, key, app_obj=None):
                 )
                 return True, (
                     f"Created '{preset['title']}' with {len(found_items)} items. "
-                    "If it doesn't show under Manage Recommendations, open the collection in Plex → ⋮ → Visible On → check the columns you want."
+                    "If it doesn't show under Manage Recommendations, open the collection in Plex -> ⋮ -> Visible On -> check the columns you want."
                 )
             if not id_map:
-                return True, "No items found. Run Sync Engine and Background Alias Discovery in Settings first so the app knows what you have in Plex."
-            return True, "No items found."
+                return True, "No items found. Run Sync library now in Settings (Import library) first so the app knows what you have in Plex."
+            # id_map has entries but no items matched this preset
+            write_log(
+                "warning", "Sync",
+                f"Preset '{preset.get('title', key)}': TMDB returned {len(tmdb_items)}, {len(potential_matches)} in library index, 0 found in Plex.",
+                app_obj=app_obj
+            )
+            if len(potential_matches) == 0:
+                return True, (
+                    f"No items from this collection are in your Plex library. "
+                    f"TMDB returned {len(tmdb_items)} titles for this preset but none match your indexed library. "
+                    "If you have this content in Plex, run Sync library now (Settings -> Import library) and ensure your libraries use the TMDB or Plex TV Series agent so titles resolve correctly."
+                )
+            return True, (
+                f"No items could be added. {len(potential_matches)} titles matched your library index but Plex search did not find them. "
+                "Check that the matching shows/movies are in the correct Plex library and that titles match (TMDB or Plex TV Series agent helps)."
+            )
         # existing collection is regular, so we can add/remove items
         current_items = existing_col.items()
         current_ids = {x.ratingKey for x in current_items}
@@ -1554,7 +1660,7 @@ def run_collection_logic(settings, preset, key, app_obj=None):
 
         # Guardrail: bulk add limit to avoid Plex rate limits.
         if len(to_add) > 1000:
-            return False, f"Aborted: Attempted to add {len(to_add)} items. Limit is 1000."
+            return False, f"Cannot add more than 1000 items at once (Plex limit). Try a smaller preset or sync in stages. ({len(to_add)} items would be added.)"
 
         if to_add: existing_col.addItems(to_add)
         if to_remove: existing_col.removeItems(to_remove)
@@ -1572,8 +1678,8 @@ def run_collection_logic(settings, preset, key, app_obj=None):
 
     except Exception as e:
         write_log("error", "Sync", f"Collection sync failed: {str(e)}", app_obj=app_obj)
-        return False, "Collection sync failed. Please check the logs for details."
-    
+        return False, "Collection sync failed. Check the logs for details. If it keeps happening, ensure Plex and TMDB are reachable."
+
     finally:
         # Release lock.
         remove_system_lock()
@@ -1713,15 +1819,15 @@ def send_overseerr_request(settings, media_type, tmdb_id, uid=None):
             log.debug("Overseerr response parse: %s", e)
             error_msg = f"HTTP Error {r.status_code}"
 
-        # Friendly error messages.
+        # Friendly messages (treat "already available/requested" as success so UI doesn't show error).
         error_lower = str(error_msg).lower()
         if "already available" in error_lower:
-            return False, "Already Available"
+            return True, "Already available in your library."
         if "already requested" in error_lower:
-            return False, "Already Requested"
+            return True, "Already requested."
         if "no seasons" in error_lower or "seasons available" in error_lower:
-            return False, "No seasons available to request (all seasons may already be in your library or requested)"
-            
+            return False, "No seasons available to request (all seasons may already be in your library or requested)."
+
         return False, f"Overseerr: {error_msg}"
 
     except Exception as e:
@@ -2123,10 +2229,10 @@ def is_docker():
 def is_unraid():
     """Detect if this is an Unraid App Store install (so we disable one-click updater and show "update via App Store").
     Checks (in order):
-    1. SEEKANDWATCH_UNRAID or SEEKANDWATCH_SOURCE=unraid — set by the Unraid Community Applications template.
+    1. SEEKANDWATCH_UNRAID or SEEKANDWATCH_SOURCE=unraid - set by the Unraid Community Applications template.
        Template maintainers: add Variable SEEKANDWATCH_UNRAID=1 to the template so App Store installs are detected.
-    2. UNRAID_VERSION / UNRAID_API_KEY — sometimes present when Unraid injects env into containers.
-    3. /etc/unraid-version, /boot/config, /usr/local/emhttp — host paths; only exist if the container has them mounted."""
+    2. UNRAID_VERSION / UNRAID_API_KEY - sometimes present when Unraid injects env into containers.
+    3. /etc/unraid-version, /boot/config, /usr/local/emhttp - host paths; only exist if the container has them mounted."""
     if os.environ.get('SEEKANDWATCH_UNRAID') or os.environ.get('SEEKANDWATCH_SOURCE') == 'unraid':
         return True
     if os.environ.get('UNRAID_VERSION') or os.environ.get('UNRAID_API_KEY'):

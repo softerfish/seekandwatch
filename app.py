@@ -49,7 +49,7 @@ from sqlalchemy import text
 
 # basic app setup stuff
 
-VERSION = "1.5.10"
+VERSION = "1.5.11"
 
 UPDATE_CACHE = {
     'version': None,
@@ -1729,7 +1729,7 @@ def settings():
     except Exception as e:
         err_str = str(e)
         if "Connection refused" in err_str or "Max retries exceeded" in err_str or "plex.direct" in err_str:
-            write_log("warning", "Settings", f"Plex libraries unreachable (connection refused). Use Plex Local URL like http://YOUR_IP:32400 in Settings → APIs if .plex.direct fails. ({err_str[:100]})")
+            write_log("warning", "Settings", f"Plex libraries unreachable (connection refused). Use Plex Local URL like http://YOUR_IP:32400 in Settings -> APIs if .plex.direct fails. ({err_str[:100]})")
         else:
             write_log("warning", "Settings", f"Failed to fetch Plex libraries: {err_str}")
     
@@ -1857,12 +1857,6 @@ def kometa():
 def media():
     s = current_user.settings
     return render_template('media.html', settings=s)
-
-@app.route('/calendar')
-@login_required
-def calendar_page():
-    s = current_user.settings
-    return render_template('calendar.html', settings=s)
 
 @app.route('/support')
 @login_required

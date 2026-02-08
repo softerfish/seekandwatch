@@ -1,10 +1,10 @@
 # SeekAndWatch
 
-![Version](https://img.shields.io/badge/version-1.5.10-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) ![License](https://img.shields.io/badge/License-MIT-green.svg)
+![Version](https://img.shields.io/badge/version-1.5.11-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
 **Saved you a scroll or two?** If this app saves you from endless scrolling, a star for the project helps a lot.
 
-Self-hosted Plex companion: Smart Discovery from your watch history, add movies/shows via Radarr/Sonarr, Kometa builder, Plex collections, Overseerr, Tautulli. One dashboard -less scrolling, more watching.
+Self-hosted Plex companion: Smart Discovery from your watch history, add movies/shows via Radarr/Sonarr, view requested items (Overseerr), Kometa builder, Plex collections, Tautulli. One dashboard -less scrolling, more watching.
 
 **[SeekAndWatch Cloud](https://www.SeekAndWatch.com) (beta)** - Hosted option so friends and family can request from your Plex server without needing access to your apps. You approve or deny; requests sync to Radarr, Sonarr, or Overseerr. Zero port forwarding.
 
@@ -46,7 +46,7 @@ Goal: spend less time browsing, more time watching. It uses your watch history a
 ### Radarr & Sonarr
 
 - **Add movies/shows from the app**  - Request from Smart Discovery or elsewhere; opens in Radarr/Sonarr with quality profile and root folder.
-- **Media page**  - View your Radarr/Sonarr libraries (requested, monitored, downloaded), open in Radarr/Sonarr, toggle monitored, search/refresh.
+- **Requested (Media page)**  - View and manage requested items from Overseerr in one place. Adding to Radarr/Sonarr is done from Smart Discovery or the request flow, not from a Radarr/Sonarr library view in the app.
 - **Radarr & Sonarr Scanner** (optional)  - Background scan of your Radarr/Sonarr libraries so those items are treated as "owned" and excluded from Smart Discovery (in addition to Plex).
 
 ### Kometa Config Builder (no YAML needed)
@@ -60,7 +60,7 @@ Goal: spend less time browsing, more time watching. It uses your watch history a
 
 - **90+ preset collections** - decades, genres, studios, themes, international, awards. Categories are collapsible so you can focus on what you use.
 - **Visibility** - Home, Library recommended, and Friends checkboxes on every collection; changes apply to Plex right away (no need to run the collection again).
-- **Library Browser** - Live view of all collections on your Plex server with the same visibility toggles. In Plex you can reorder and change options under Settings → Manage → Libraries → Manage Recommendations.
+- **Library Browser** - Live view of all collections on your Plex server with the same visibility toggles. In Plex you can reorder and change options under Settings -> Manage -> Libraries -> Manage Recommendations.
 - Auto-update (daily/weekly/manual), sync strict or append-only, bulk list import (IMDb/Letterboxd/Reddit) with smart matching, custom builder.
 
 ### Library quality & requests
@@ -95,7 +95,7 @@ Cloud is currently **in beta**. To request access: [r/SeekAndWatch](https://www.
 | :--- | :--- | :--- |
 | **Plex** | Recommended | Library access and watch history; ownership filtering in Smart Discovery. |
 | **TMDB API Key** | **Required** | Posters, metadata, recommendations. Free at [themoviedb.org](https://www.themoviedb.org/settings/api). |
-| **Radarr / Sonarr** | Optional | Add movies/shows from the app; Media page; optional scanner for “owned” filtering. |
+| **Radarr / Sonarr** | Optional | Add movies/shows from the app; optional scanner for “owned” filtering in Smart Discovery. |
 | **Overseerr** | Optional | One-click requests. |
 | **Tautulli** | Optional | Trending on server. |
 | **OMDB API Key** | Optional | Rotten Tomatoes / critic scores in Smart Discovery. |
@@ -146,6 +146,21 @@ docker compose up -d
 
 ## Changelog
 
+v1.5.11
+
+**SeekAndWatch Cloud (beta)**
+- new categories and tracking requests for server owner
+
+**SeekAndWatch Local**
+- removed lots of code for hidden features that cannot be added yet
+- removed calendar for now due to bugs. It might come back in a future update
+- many layout fixes
+- Plex collection improvements and error logging
+- Regional Trending in Plex Collections now defaults to sync Daily and Strict Sync for new generations. If you already have one generated, you will have to make the change to Daily if you want Daily
+
+<details>
+  <summary><b>Past Changelog</b></summary>
+
 v1.5.10
 
 **SeekAndWatch Cloud (beta)**
@@ -157,8 +172,6 @@ v1.5.10
 - webhook for instant Cloud to Local syncs for https://www.seekandwatch.com
 - updated the xml file to sense Unraid App Store installs
 
-<details>
-  <summary><b>Past Changelog</b></summary>
   
 v1.5.9
 
