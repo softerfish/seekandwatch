@@ -50,7 +50,7 @@ def get_cloud_import_log(limit=20):
     except (json.JSONDecodeError, OSError):
         return []
 
-# CONFIGURATION (POLL_INTERVAL_MIN/MAX from config; override via SEEKANDWATCH_POLL_INTERVAL_MIN / SEEKANDWATCH_POLL_INTERVAL_MAX env)
+# configuration (poll intervals from config or env overrides)
 # After 429 we back off: next N cycles use interval * BACKOFF_MULT; then decay back to 1
 BACKOFF_MULT_AFTER_429 = 2.0
 BACKOFF_CYCLES = 3

@@ -2569,7 +2569,7 @@ def send_to_radarr_sonarr(settings, media_type, tmdb_id):
             else:
                 return False, f"Radarr Error: {resp.text}"
 
-        # --- TV SHOWS (SONARR) ---
+        # tv shows (sonarr)
         elif media_type == 'tv':
             if not settings.sonarr_url or not settings.sonarr_api_key:
                 return False, "Sonarr not configured."

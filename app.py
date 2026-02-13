@@ -49,7 +49,7 @@ from sqlalchemy import text
 
 # basic app setup stuff
 
-VERSION = "1.5.11"
+VERSION = "1.5.12"
 
 UPDATE_CACHE = {
     'version': None,
@@ -2248,7 +2248,7 @@ def delete_request(req_id):
     req = CloudRequest.query.get_or_404(req_id)
     title = req.title # Save for message
     
-    # --- 1. TELL CLOUD TO DELETE ---
+    # tell cloud to delete
     # If this request came from the cloud, we must kill it at the source
     cloud_id_val = (str(req.cloud_id).strip() if req.cloud_id else None) or None
     cloud_delete_ok = True
@@ -2283,7 +2283,7 @@ def delete_request(req_id):
             cloud_delete_ok = False
             cloud_delete_error_detail = "request failed (check network or API key)"
             print(f"Warning: Could not delete from cloud: {e}")
-    # -------------------------------
+
 
     # --- 2. RECORD DELETION SO WE DON'T RE-IMPORT FROM CLOUD ---
     if cloud_id_val:
@@ -2293,7 +2293,7 @@ def delete_request(req_id):
                 db.session.flush()
         except Exception:
             pass  # table may not exist yet on old installs
-    # --- 3. DELETE LOCALLY ---
+    # delete locally
     try:
         db.session.delete(req)
         db.session.commit()

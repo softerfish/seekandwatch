@@ -122,7 +122,7 @@ PLAYLIST_PRESETS = {
     'new_releases_mov': {'title': 'New Releases', 'category': 'Decades', 'icon': '🆕', 'media_type': 'movie', 'description': 'This year.', 'tmdb_params': {'primary_release_date.gte': '2025-01-01', 'sort_by': 'popularity.desc'}},
     'best_rated_mov': {'title': 'Best Rated', 'category': 'Awards & Acclaim', 'icon': '⭐', 'media_type': 'movie', 'description': 'Top rated ever.', 'tmdb_params': {'vote_average.gte': '8.0', 'vote_count.gte': '2000', 'sort_by': 'vote_average.desc'}},
 
-    # --- TV decades, more themes, networks, international, genres ---
+    # tv decades, more themes, networks, international, genres
 
     # TV Decades (first_air_date)
     'tv_90s': {'title': 'The 1990s (TV)', 'category': 'Decades', 'icon': '📺', 'media_type': 'tv', 'description': 'Classic 90s shows.', 'tmdb_params': {'first_air_date.gte': '1990-01-01', 'first_air_date.lte': '1999-12-31', 'sort_by': 'popularity.desc'}},

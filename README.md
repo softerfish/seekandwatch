@@ -146,6 +146,20 @@ docker compose up -d
 
 ## Changelog
 
+v1.5.12
+
+**SeekAndWatch Cloud (beta)**
+- many new features, layout and bugfixes
+- better results in genres
+
+**SeekAndWatch Local**
+- a complete new layout *mostly* finished to match the cloud app
+- small bugfixes
+
+
+<details>
+  <summary><b>Past Changelog</b></summary>
+
 v1.5.11
 
 **SeekAndWatch Cloud (beta)**
@@ -157,9 +171,6 @@ v1.5.11
 - many layout fixes
 - Plex collection improvements and error logging
 - Regional Trending in Plex Collections now defaults to sync Daily and Strict Sync for new generations. If you already have one generated, you will have to make the change to Daily if you want Daily
-
-<details>
-  <summary><b>Past Changelog</b></summary>
 
 v1.5.10
 
