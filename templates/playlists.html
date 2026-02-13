@@ -6,39 +6,33 @@
         <h2>Plex Collections</h2>
         <div class="tab-header">
             <button class="tab-btn active" onclick="openTab(event, 'tab-manager')">Auto-Manager</button>
-            <button class="tab-btn" onclick="openTab(event, 'tab-viewer'); loadLiveCollections();">Library Browser</button>
         </div>
     </div>
     <div id="tab-manager" class="tab-content active playlists-center">
         <p class="media-sub">Curated lists, imported text, and custom builders.</p>
 
-    <div class="stats-bar">
-        <span title="Your custom created lists"><b>{{ custom_presets|length }}</b> Custom</span>
-        <span class="stats-label">|</span>
-        <span title="Available built-in presets"><b>{{ presets|length }}</b> Presets</span>
-        <span id="schedule-save-feedback" style="display:none; margin-left:12px; color: var(--success, #2ecc71); font-size: 0.9em;"></span>
-    </div>
+        <div class="stats-bar">
+            <span class="stats-label">{{ custom_presets|length }} Custom</span>
+            <span class="stats-label">|</span>
+            <span class="stats-label">{{ presets|length }} Presets</span>
+        </div>
 
-    <div class="action-bar">
-        <a href="{{ url_for('builder') }}">
-            <button class="btn-builder" id="btn-builder-nav">Custom Builder</button>
-        </a>
-        <button onclick="openImportModal()" class="btn-import" id="btn-import-open">Import List</button>
-    </div>
+        <div class="action-bar">
+            <button class="btn-builder" onclick="window.location.href='{{ url_for('builder') }}'">Custom Builder</button>
+            <button class="btn-import" onclick="openImportModal()">Import List</button>
+        </div>
 
         <div class="type-toggle-group">
-        <button onclick="filterType('movie')" id="btn-movie" class="type-toggle-btn active">Movies</button>
-        <button onclick="filterType('tv')" id="btn-tv" class="type-toggle-btn">TV Shows</button>
+            <button onclick="filterType('movie')" id="btn-movie" class="type-toggle-btn active">Movies</button>
+            <button onclick="filterType('tv')" id="btn-tv" class="type-toggle-btn">TV Shows</button>
         </div>
 
         <div class="schedule-time-row">
-            <div class="schedule-time-compact">
-                <span class="schedule-label">Global Schedule Time:</span>
-                <input type="time" id="globalTime" class="form-control schedule-time-input" value="{{ schedule_time }}">
-            </div>
+            <span class="schedule-label">Global Schedule Time:</span>
+            <input type="time" id="globalTime" class="form-control schedule-time-input" value="{{ schedule_time }}">
             <button class="btn btn-primary schedule-save-btn" onclick="saveGlobalTime()">Save</button>
-            <span id="save-time-feedback" class="save-feedback" style="display:none;">Saved</span>
         </div>
+        <span id="save-time-feedback" class="save-feedback" style="display:none;">Saved</span>
     </div>
     <div id="tab-viewer" class="tab-content">
         <div style="text-align:center; color:#aaa; margin-bottom: 30px;">
@@ -209,7 +203,7 @@ function saveGlobalTime() {
     {% if playlist.category == cat %}
     <div class="card playlist-card" data-type="{{ playlist.media_type }}">
         <div>
-            <div class="playlist-icon">{{ playlist.icon }}</div>
+
             <h3 class="playlist-title">{{ playlist.title }}</h3>
             <p class="playlist-desc">{{ playlist.description }}</p>
         </div>

@@ -143,13 +143,13 @@
             </div>
             <div class="selection-info">
                 <div class="selection-title">{{ movie.title }}</div>
-                <div class="fs-small text-muted">{{ movie.year }}</div>
+                <div class="fs-small text-muted">{{ movie.year or '' }}</div>
             </div>
         </div>
         {% endfor %}
     </div>
 
-    <button type="submit" class="btn btn-save mt-40">Generate Recommendations</button>
+    <button type="submit" class="btn btn-save">Generate Recommendations</button>
 </form>
 
 <div id="loadingOverlay">

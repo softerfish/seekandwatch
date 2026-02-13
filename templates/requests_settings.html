@@ -156,21 +156,25 @@
                     <span class="badge bg-success" style="font-size: 0.7em; font-weight: 600;">RECOMMENDED</span>
                     <a href="https://github.com/softerfish/seekandwatch/wiki/SeekAndWatch-Cloud-%E2%80%90-Server-Owners-Guide" target="_blank" rel="noopener" class="text-info small" title="Configuration guide">Wiki: Server Owners Guide <i class="fas fa-external-link-alt fa-xs"></i></a>
                 </h6>
-                <p class="text-muted small mb-3">Get approved requests synced instantly and reduce cloud API calls. With webhook set, backup polling runs every 30-45 min. Leave blank to use poll only (75-120 s). Same network: local/LAN URL; any network: public tunnel URL.</p>
+                <p class="text-muted small mb-1">Get approved requests synced instantly and reduce cloud API calls. With webhook set, backup polling runs every 30-45 min. Leave blank to use poll only (75-120 s). Same network: local/LAN URL; any network: public tunnel URL.</p>
+                <p class="text-muted small mb-3" style="font-size: 0.85rem;">If you don’t open the GitHub link, the instructions below are all you need.</p>
+                <div class="alert alert-info py-2 px-3 mb-3" style="background: #1a2a2a; border-color: #2a4a4a; color: #9ab;">
+                    <strong>Add your URL</strong> including the path, e.g. <code>http://192.168.2.20:5000/api/seekandwatch/approved</code>. The host and port may be different for your install (use the address where this app is reachable). Use a <strong>random password</strong> for the webhook secret and enter the same value here and in any tunnel/proxy config if needed.
+                </div>
                 <div class="form-group mb-3">
                     <label for="cloudWebhookUrl" class="font-weight-bold text-white">Local app URL</label>
                     <input type="url" class="form-control" name="cloud_webhook_url" id="cloudWebhookUrl"
                            value="{{ settings.cloud_webhook_url or '' }}"
-                           placeholder="Leave blank for poll only">
-                    <small class="form-text text-muted">Optional. Blank = poll only.</small>
+                           placeholder="e.g. http://192.168.2.20:5000/api/seekandwatch/approved">
+                    <small class="form-text text-muted">Full URL including path. Host/port depend on your install. Blank = poll only.</small>
                 </div>
                 <div class="form-group mb-4">
                     <label for="cloudWebhookSecret" class="font-weight-bold text-white">Webhook secret {% if settings.cloud_webhook_secret %}<span class="badge bg-success ms-2" style="font-size: 0.7em; font-weight: normal;">Saved</span>{% endif %}</label>
                     <input type="password" class="form-control" name="cloud_webhook_secret" id="cloudWebhookSecret"
-                           value="" placeholder="{% if settings.cloud_webhook_secret %}••••••••{% else %}Optional{% endif %}"
+                           value="" placeholder="{% if settings.cloud_webhook_secret %}••••••••{% else %}Random password (e.g. generate one){% endif %}"
                            {% if settings.cloud_webhook_secret %}data-key-set="1"{% endif %} autocomplete="off">
                     {% if settings.cloud_webhook_secret %}<input type="hidden" name="cloud_webhook_secret_unchanged" value="1" id="cloudWebhookSecret_unchanged_h">{% endif %}
-                    <small class="form-text text-muted">Only if you set a URL above.</small>
+                    <small class="form-text text-muted">Use a random password; the cloud sends it in the <code>X-Webhook-Secret</code> header. Required when URL is set.</small>
                 </div>
 
                 <button type="submit" class="btn btn-primary">

@@ -24,7 +24,7 @@
 
 {% if current_user.is_admin %}
 <div id="tab-users" class="tab-content">
-    <div class="card setting-card border-purple">
+    <div class="card setting-card border-accent">
         <h3>Manage Users</h3>
         <p class="text-muted">Grant admin privileges or remove users from the system.</p>
         
@@ -271,7 +271,7 @@ function copyRecoveryCodes() {
                 </div>
             </div>
             {% endif %}
-            <form class="card setting-card border-orange" onsubmit="return false;" autocomplete="off">
+            <form class="card setting-card border-accent" onsubmit="return false;" autocomplete="off">
                 <input type="text" name="username" autocomplete="username" tabindex="-1" aria-hidden="true" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0;">
                 <h3>Plex Integration</h3>
                 <p class="text-muted small" style="margin-top: 0; margin-bottom: 12px;">Link your Plex account (like SeekAndWatch Cloud) to get a token via API. Use <b>Sync library now</b> below to import your Plex movie/TV library into the app.</p>
@@ -382,7 +382,7 @@ function copyRecoveryCodes() {
                 </div>
                 {% endif %}
             </form>
-            <form class="card setting-card border-green" onsubmit="return false;" autocomplete="off">
+            <form class="card setting-card border-accent" onsubmit="return false;" autocomplete="off">
                 <input type="text" name="username" autocomplete="username" tabindex="-1" aria-hidden="true" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0;">
                 <h3>Metadata APIs</h3>
 
@@ -436,7 +436,7 @@ function copyRecoveryCodes() {
                     <p class="helper-text">Comma separated ISO codes (e.g. <code>US, CA, GB</code>).</p>
                 </div>
             </form>
-            <div class="card setting-card border-purple">
+            <div class="card setting-card border-accent">
                 <h3>Overseerr & Tautulli</h3>
                 <form onsubmit="return false;" autocomplete="off" style="margin-bottom: 24px;">
                     <input type="text" name="username" autocomplete="username" tabindex="-1" aria-hidden="true" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0;">
@@ -493,7 +493,7 @@ function copyRecoveryCodes() {
                     </div>
                 </form>
             </div>
-            <div class="card setting-card border-blue">
+            <div class="card setting-card border-accent">
                 <h3>Radarr & Sonarr</h3>
                 <form onsubmit="return false;" autocomplete="off" style="margin-bottom: 24px;">
                     <input type="text" name="username" autocomplete="username" tabindex="-1" aria-hidden="true" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0;">
@@ -556,7 +556,7 @@ function copyRecoveryCodes() {
         <div id="tab-scanners" class="tab-content" data-settings-section="scanners">
             <fieldset class="settings-fieldset" style="border:none;margin:0;padding:0;min-width:0;">
                 <legend class="visually-hidden">Keyword Memory</legend>
-            <div class="card setting-card border-blue">
+            <div class="card setting-card border-accent">
                 <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; padding-bottom:10px; margin-bottom:15px;">
                     <h3 style="margin:0;">Keyword Memory (Cache)</h3>
                     <span class="settings-count-badge">
@@ -583,7 +583,7 @@ function copyRecoveryCodes() {
             </fieldset>
             <fieldset class="settings-fieldset" style="border:none;margin:0;padding:0;min-width:0;">
                 <legend class="visually-hidden">Runtime Memory</legend>
-            <div class="card setting-card border-green">
+            <div class="card setting-card border-accent">
                 <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; padding-bottom:10px; margin-bottom:15px;">
                     <h3 style="margin:0;">Runtime Memory (Cache)</h3>
                     <span class="settings-count-badge">
@@ -610,7 +610,7 @@ function copyRecoveryCodes() {
             </fieldset>
             <fieldset class="settings-fieldset" style="border:none;margin:0;padding:0;min-width:0;">
                 <legend class="visually-hidden">Library Index</legend>
-            <div class="card setting-card border-purple">
+            <div class="card setting-card border-accent">
                 <div class="card-header bg-transparent d-flex justify-content-between align-items-center" style="padding:0; margin-bottom:15px;">
                     <h3 style="margin:0; display:flex; align-items:center; gap:10px;">Library Index</h3>
                     <span class="settings-count-badge" id="db-count-badge">Loading...</span>
@@ -625,7 +625,7 @@ function copyRecoveryCodes() {
             </fieldset>
             <fieldset class="settings-fieldset" style="border:none;margin:0;padding:0;min-width:0;">
                 <legend class="visually-hidden">Radarr and Sonarr Scanner</legend>
-            <div class="card setting-card border-blue" style="margin-top: 30px;">
+            <div class="card setting-card border-accent" style="margin-top: 30px;">
                 <div class="card-header bg-transparent d-flex justify-content-between align-items-center" style="padding:0; margin-bottom:15px;">
                     <h3 style="margin:0; display:flex; align-items:center; gap:10px;">Radarr & Sonarr Scanner</h3>
                     <div>
@@ -637,13 +637,13 @@ function copyRecoveryCodes() {
                     Scan your Radarr and Sonarr libraries to exclude items from recommendations. Items in Radarr/Sonarr are considered "owned" and won't appear in Smart Discovery results.
                 </p>
                 
-                <div style="margin-bottom: 15px; padding: 10px; background: rgba(52, 152, 219, 0.1); border-radius: 6px; border: 1px solid rgba(52, 152, 219, 0.3);">
+                <div style="margin-bottom: 15px; padding: 10px; background: rgba(124, 93, 250, 0.1); border-radius: 6px; border: 1px solid rgba(124, 93, 250, 0.3);">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <div>
-                            <strong style="color: #3498db;">Last Scan:</strong>
+                            <strong style="color: var(--accent-color);">Last Scan:</strong>
                             <span id="radarr-sonarr-last-scan" style="color: #ccc; margin-left: 8px;">Never</span>
                         </div>
-                        <button type="button" class="btn-primary" style="background:#3498db; color:white; border:none; padding:6px 15px; border-radius:4px; cursor:pointer;" onclick="forceRadarrSonarrCacheRefresh()">
+                        <button type="button" class="btn-primary" style="background:var(--accent-color); color:white; border:none; padding:6px 15px; border-radius:4px; cursor:pointer;" onclick="forceRadarrSonarrCacheRefresh()">
                             Force Refresh Now
                         </button>
                     </div>
@@ -678,7 +678,7 @@ function copyRecoveryCodes() {
         <fieldset class="settings-fieldset" style="border:none;margin:0;padding:0;min-width:0;">
             <legend class="visually-hidden">System and maintenance</legend>
         <div id="tab-system" class="tab-content" data-settings-section="system">
-            <div class="card setting-card border-blue">
+            <div class="card setting-card border-accent">
                 <h3>System Maintenance</h3>
                 <div class="flex-row-wrap" style="display:flex; gap:20px; margin-bottom:20px;">
                     <div class="input-group flex-item" style="flex:1;">
@@ -716,7 +716,7 @@ function copyRecoveryCodes() {
                 </div>
             </div>
 
-            <div class="card setting-card border-blue">
+            <div class="card setting-card border-accent">
                 <h3>Change password</h3>
                 <p class="text-muted">Set a new password for your account. You must enter your current password.</p>
                 <form id="change-password-form" method="post" action="javascript:void(0);" onsubmit="submitChangePassword(); return false;" aria-label="Change password" autocomplete="on">
@@ -739,7 +739,7 @@ function copyRecoveryCodes() {
                 </form>
             </div>
 
-            <div class="card setting-card border-purple">
+            <div class="card setting-card border-accent">
                 <h3>Account recovery</h3>
                 <p class="text-muted">Generate one-time recovery codes. Save them somewhere safe; if you lose your password, use one code on the login page to set a new password. Old codes are invalid when you generate new ones. If you're the only admin and get locked out with no codes, the server owner can reset your password in the database.</p>
                 <button type="button" onclick="generateRecoveryCodes()" class="btn-secondary" id="btn-generate-codes" style="padding:8px 15px;">Generate recovery codes</button>
