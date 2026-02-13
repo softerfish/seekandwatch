@@ -1,20 +1,18 @@
-/* =========================================
-   global vars and base styles
-   ========================================= */
+/* global vars and base styles */
 :root {
-    --bg-color: #000000;
-    --card-bg: #0a0a0a;
-    --text-color: #ffffff;
-    --accent-color: #00CC66;
-    --accent-dark: #106F30;
-    --border-color: #0A4D22;
-    --input-bg: #111;
+    --bg-color: #0f1016;
+    --card-bg: #181924;
+    --text-color: #e4e4e7;
+    --accent-color: #7c5dfa;
+    --accent-dark: #6b4df0;
+    --border-color: #2e2f3e;
+    --input-bg: #181924;
     --success: #00CC66;
-    --error: #e74c3c;
+    --error: #ef4444;
     --info: #3498db;
-    --warning-bg: rgba(0, 204, 102, 0.1);
-    --warning-border: #00CC66;
-    --text-muted: #AAAAAA;
+    --warning-bg: rgba(124, 93, 250, 0.15);
+    --warning-border: #7c5dfa;
+    --text-muted: #a1a1aa;
     /* consistent control/button row height (tabs, inputs, small buttons) */
     --control-height: 32px;
     --control-radius: 6px;
@@ -41,13 +39,13 @@ body {
 
 /* when sidebar is active, body uses sidebar background */
 .main-content-wrapper {
-    background-color: #000000;
+    background-color: var(--bg-color);
 }
 
 /* fallback for browsers that support :has() */
 @supports selector(:has(*)) {
     body:has(.app-sidebar) {
-        background-color: #000000;
+        background-color: var(--bg-color);
     }
 }
 body.modal-open {
@@ -85,9 +83,7 @@ ul { list-style: none; padding: 0; margin: 0; }
     padding: 0;
 }
 
-/* =========================================
-   sidebar navigation (new layout)
-   ========================================= */
+/* sidebar navigation (new layout) */
 
 /* sidebar container */
 .app-sidebar {
@@ -96,15 +92,15 @@ ul { list-style: none; padding: 0; margin: 0; }
     top: 0;
     width: 240px;
     height: 100vh;
-    background-color: #000000;
-    color: #ffffff;
+    background-color: var(--bg-color);
+    color: var(--text-color);
     display: flex;
     flex-direction: column;
     z-index: 1000;
     overflow-y: auto;
     overflow-x: hidden;
     transition: transform 0.3s ease;
-    border-right: 1px solid #0A4D22;
+    border-right: 1px solid var(--border-color);
 }
 
 /* custom scrollbar for sidebar */
@@ -117,12 +113,12 @@ ul { list-style: none; padding: 0; margin: 0; }
 }
 
 .app-sidebar::-webkit-scrollbar-thumb {
-    background: #0A4D22;
+    background: var(--border-color);
     border-radius: 3px;
 }
 
 .app-sidebar::-webkit-scrollbar-thumb:hover {
-    background: #106F30;
+    background: var(--accent-color);
 }
 
 /* sidebar header + logo */
@@ -238,10 +234,10 @@ ul { list-style: none; padding: 0; margin: 0; }
 }
 
 .nav-item.active {
-    background-color: rgba(0, 204, 102, 0.1);
-    color: #00CC66;
+    background-color: var(--warning-bg);
+    color: var(--accent-color);
     font-weight: 600;
-    border-left: 2px solid #00CC66;
+    border-left: 2px solid var(--accent-color);
 }
 
 .nav-item.active i {
@@ -290,8 +286,8 @@ ul { list-style: none; padding: 0; margin: 0; }
     top: 16px;
     left: 16px;
     z-index: 1001;
-    background: #0A4D22;
-    border: 1px solid #106F30;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
     color: #fff;
     width: 40px;
     height: 40px;
@@ -304,7 +300,7 @@ ul { list-style: none; padding: 0; margin: 0; }
 }
 
 .sidebar-toggle:hover {
-    background: #106F30;
+    background: var(--border-color);
     border-color: var(--accent-color);
 }
 
@@ -318,8 +314,8 @@ ul { list-style: none; padding: 0; margin: 0; }
 
 /* main header bar */
 .main-header {
-    background-color: #000000;
-    border-bottom: 1px solid #0A4D22;
+    background-color: var(--bg-color);
+    border-bottom: 1px solid var(--border-color);
     padding: 16px 24px;
     display: flex;
     align-items: center;
@@ -394,7 +390,7 @@ ul { list-style: none; padding: 0; margin: 0; }
     padding: 3px 10px;
     border-radius: 999px;
     background: rgba(26, 26, 26, 0.95);
-    border: 1px solid rgba(0, 204, 102, 0.4);
+    border: 1px solid rgba(124, 93, 250, 0.4);
     font-weight: 600;
     font-size: 0.76em;
     letter-spacing: 0.02em;
@@ -405,8 +401,8 @@ ul { list-style: none; padding: 0; margin: 0; }
     color: var(--accent-color);
 }
 .header-link-friends-wrap.header-link-wiki-wrap:hover {
-    color: #00e673;
-    border-color: rgba(0, 204, 102, 0.7);
+    color: var(--accent-color);
+    border-color: rgba(124, 93, 250, 0.7);
 }
 .header-link-friends-wrap.header-link-wiki-wrap .header-partner-label {
     margin-right: 0.35em;
@@ -430,7 +426,7 @@ ul { list-style: none; padding: 0; margin: 0; }
     transition: color 0.2s ease, filter 0.2s ease;
 }
 .header-link-friends-wrap .header-link-friends:hover {
-    color: #00e673;
+    color: var(--accent-color);
     filter: brightness(1.15);
 }
 .header-link-friends-wrap .header-link-friends i {
@@ -455,7 +451,7 @@ ul { list-style: none; padding: 0; margin: 0; }
 }
 
 .header-link i.fa-star {
-    color: #00CC66;
+    color: var(--accent-color);
 }
 
 /* buy me a coffee button in header */
@@ -489,10 +485,10 @@ ul { list-style: none; padding: 0; margin: 0; }
     right: -2px;
     width: 6px;
     height: 6px;
-    background-color: #00CC66;
+    background-color: var(--accent-color);
     border-radius: 50%;
     display: none;
-    box-shadow: 0 0 4px rgba(0, 204, 102, 0.8);
+    box-shadow: 0 0 4px rgba(124, 93, 250, 0.8);
 }
 
 /* main content area */
@@ -592,9 +588,7 @@ ul { list-style: none; padding: 0; margin: 0; }
     display: none; /* hide old navbar */
 }
 
-/* =========================================
-   basic components - cards, buttons, inputs
-   ========================================= */
+/* basic components - cards, buttons, inputs */
 .card h3, .card h4, .setting-card h3, .setting-card h4 {
     color: var(--text-color);
     margin-top: 0;
@@ -623,7 +617,7 @@ ul { list-style: none; padding: 0; margin: 0; }
     filter: grayscale(100%);
     pointer-events: none;
 }
-.btn-primary { background: var(--accent-color); color: #000000; }
+.btn-primary { background: var(--accent-color); color: #ffffff; }
 .btn-secondary {
     background: transparent;
     border: 1px solid var(--accent-color);
@@ -668,8 +662,8 @@ input[type="checkbox"] {
     flex-shrink: 0;
 }
 input[type="checkbox"]:checked {
-    background: #3498db;
-    border-color: #3498db;
+    background: var(--accent-color);
+    border-color: var(--accent-color);
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'%3E%3C/polyline%3E%3C/svg%3E");
     background-size: 14px 14px;
     background-position: center;
@@ -764,9 +758,9 @@ input[type="checkbox"]:checked:hover {
 }
 
 .schedule-time-input {
-    width: 115px !important;
+    width: 135px !important;
     min-width: 0 !important;
-    max-width: 115px !important;
+    max-width: 135px !important;
     padding: 6px 8px !important;
     font-size: 1rem !important;
     font-weight: 500 !important;
@@ -794,13 +788,13 @@ input[type="checkbox"]:checked:hover {
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    color: #00CC66;
+    color: var(--accent-color);
     font-weight: 700;
 }
 .setup-notice__toggle {
     background: transparent;
-    border: 1px solid #00CC66;
-    color: #00CC66;
+    border: 1px solid var(--accent-color);
+    color: var(--accent-color);
     padding: 4px 10px;
     border-radius: 999px;
     font-size: 0.8em;
@@ -863,9 +857,7 @@ input[type="checkbox"]:checked:hover {
     }
 }
 
-/* =========================================
-   4. login & auth
-   ========================================= */
+/* login & auth */
 .login-wrapper {
     display: flex;
     justify-content: center;
@@ -958,9 +950,7 @@ input[type="checkbox"]:checked:hover {
     font-size: 0.85em;
     color: #666;
 }
-/* =========================================
-   5. dashboard styles
-   ========================================= */
+/* dashboard styles */
 
 /* section titles (trending, etc) - 30% smaller */
 .section-title {
@@ -1095,10 +1085,10 @@ input[type="checkbox"]:checked:hover {
     opacity: 0.9;
 }
 .btn-scan.movie {
-    background: #00CC66;
+    background: var(--accent-color);
 }
 .btn-scan.tv {
-    background: #01d277;
+    background: var(--info);
 }
 .btn-lucky {
     width: 100%;
@@ -1371,9 +1361,7 @@ input[type="checkbox"]:checked:hover {
     width: 100%;
     margin-bottom: 0;
 }
-/* =========================================
-   trending widget (tautulli top 5)
-   ========================================= */
+/* trending widget (tautulli top 5) */
 .trending-header {
     display: flex;
     justify-content: space-between;
@@ -1581,9 +1569,7 @@ input[type="checkbox"]:checked:hover {
     margin-right: auto;
 }
 
-/* =========================================
-   search components (main search bar and results)
-   ========================================= */
+/* search components (main search bar and results) */
 .main-search {
     width: 100%;
     padding: 20px;
@@ -1700,9 +1686,7 @@ input[type="checkbox"]:checked:hover {
     gap: 10px;
     width: 100%;
 }
-/* =========================================
-   kometa config builder page
-   ========================================= */
+/* kometa config builder page */
 
 /* kometa builder layout and containers */
 .k-container {
@@ -1765,7 +1749,7 @@ input[type="checkbox"]:checked:hover {
 }
 .k-group h4 {
     margin: 0 0 15px 0;
-    color: #00CC66;
+    color: #fff;
     border-bottom: 1px solid #444;
     padding-bottom: 10px;
     display: flex;
@@ -2342,9 +2326,7 @@ input[type="checkbox"]:checked:hover {
     gap: 10px;
     margin-top: 20px;
 }
-/* =========================================
-   playlists and collections page
-   ========================================= */
+/* playlists and collections page */
 .playlist-header {
     text-align: center;
     margin-bottom: 40px;
@@ -2357,69 +2339,124 @@ input[type="checkbox"]:checked:hover {
 
 /* stats bar */
 .stats-bar {
-    background: rgba(255,255,255,0.05);
-    padding: 10px 20px;
+    background: transparent;
+    padding: 6px 16px;
     border-radius: 20px;
     display: inline-flex;
-    gap: 20px;
+    gap: 12px;
     border: 1px solid var(--border-color);
-    margin-bottom: 14px;
+    margin-bottom: 20px;
+    font-size: 0.9em;
 }
 .stats-label {
-    color: #555;
+    color: #fff;
+    font-weight: 500;
 }
 
 /* action buttons (custom builder, import list) */
 .action-bar {
-    margin: 0 0 14px 0;
+    margin: 0 0 20px 0;
+    display: flex;
+    justify-content: center;
+    gap: 12px;
 }
 .btn-builder,
 .btn-import {
-    padding: 6px 16px;
-    font-weight: bold;
+    padding: 8px 20px;
+    font-weight: 600;
     border: none;
-    border-radius: 30px;
-    font-size: 0.875rem;
+    border-radius: 20px;
+    font-size: 0.9rem;
     cursor: pointer;
     text-decoration: none;
-    display: inline-block;
-    transition: transform 0.2s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.2s, box-shadow 0.2s;
+    height: 36px;
+    margin: 0;
 }
 .btn-builder {
-    background: linear-gradient(45deg, #106F30, #00CC66);
+    background: #00CC66;
     color: #000000;
-    box-shadow: 0 5px 15px rgba(0, 204, 102, 0.4);
-    margin-right: 10px;
+    box-shadow: 0 0 10px rgba(0, 204, 102, 0.3);
 }
 .btn-import {
-    background: linear-gradient(45deg, #9b59b6, #8e44ad);
+    background: #9b59b6;
     color: white;
-    box-shadow: 0 5px 15px rgba(155, 89, 182, 0.4);
+    box-shadow: 0 0 10px rgba(155, 89, 182, 0.3);
 }
 .btn-builder:hover,
 .btn-import:hover {
-    transform: scale(1.05);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
 }
 
 /* type toggles */
 .type-toggle-group {
-    margin: 0 0 14px 0;
+    margin: 0 0 24px 0;
+    display: flex;
+    justify-content: center;
+    gap: 10px;
 }
 .type-toggle-btn {
     background: transparent;
-    border: 2px solid var(--accent-color);
-    color: var(--text-color);
-    padding: 10px 20px;
-    font-weight: bold;
+    border: 1px solid var(--accent-color);
+    color: #fff;
+    padding: 8px 24px;
+    font-weight: 600;
     cursor: pointer;
-    border-radius: 5px;
-    margin: 0 5px;
-    transition: 0.2s;
+    border-radius: 6px;
+    margin: 0;
+    transition: all 0.2s;
+    font-size: 0.95em;
+    min-width: 100px;
 }
 .type-toggle-btn.active,
 .type-toggle-btn:hover {
     background: var(--accent-color);
-    color: #121212;
+    color: #fff;
+}
+
+/* schedule time row */
+.schedule-time-row {
+    display: inline-flex;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.05);
+    padding: 8px 16px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    gap: 12px;
+    margin-bottom: 10px;
+}
+.schedule-label {
+    color: #fff;
+    font-weight: 500;
+    font-size: 0.95em;
+}
+.schedule-time-input {
+    background: #000;
+    border: 1px solid #333;
+    color: #fff;
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 0.95em;
+    width: auto;
+}
+.schedule-save-btn {
+    background: var(--accent-color);
+    color: #fff;
+    border: none;
+    padding: 6px 16px;
+    border-radius: 4px;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 0.9em;
+    transition: background 0.2s;
+}
+.schedule-save-btn:hover {
+    filter: brightness(1.1);
 }
 
 /* preset grid and card styles */
@@ -3070,9 +3107,7 @@ details.help-box code {
     font-size: 0.9em;
     color: var(--text-muted);
 }
-/* =========================================
-   10. custom builder
-   ========================================= */
+/* custom builder */
 .builder-container {
     max-width: 800px;
     margin: 30px auto;
@@ -3177,22 +3212,26 @@ details.help-box code {
 }
 
 .btn-save {
-    width: 100%;
-    padding: 15px;
+    display: block;
+    width: auto;
+    min-width: 250px;
+    margin: 25px auto 0 auto;
+    padding: 12px 30px;
     font-size: 1.1em;
-    font-weight: bold;
-    background: linear-gradient(45deg, #2ecc71, #27ae60);
+    font-weight: 600;
+    background: var(--accent-color);
     color: white;
     border: none;
-    border-radius: 8px;
-    margin-top: 25px;
+    border-radius: 50px;
     cursor: pointer;
-    transition: transform 0.2s;
-    box-shadow: 0 5px 15px rgba(46, 204, 113, 0.3);
+    transition: all 0.2s;
+    box-shadow: 0 4px 15px rgba(124, 93, 250, 0.3);
 }
 .btn-save:hover {
-    transform: scale(1.02);
-    box-shadow: 0 8px 20px rgba(46, 204, 113, 0.5);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(124, 93, 250, 0.5);
+    filter: brightness(1.1);
+    background-color: var(--accent-color);
 }
 
 .preview-list {
@@ -3243,9 +3282,7 @@ details.help-box code {
     flex-direction: column;
 }
 
-/* =========================================
-   blocklist and management page
-   ========================================= */
+/* blocklist and management page */
 
 /* blocklist page tabs (movies vs tv) */
 .tab-container {
@@ -3322,9 +3359,7 @@ details.help-box code {
     max-width: 600px;
     margin: 0 auto 30px auto;
 }
-/* =========================================
-   12. results page
-   ========================================= */
+/* results page */
 
 /* results page header and layout */
 .results-header {
@@ -3711,9 +3746,7 @@ details.help-box code {
 }
 
 /* view toggle (grid/list) */
-/* =========================================
-   13. review & selection page
-   ========================================= */
+/* review & selection page */
 .top-filters-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -3831,9 +3864,7 @@ details.help-box code {
     transform: scale(1.1);
 }
 
-/* =========================================
-   modals and loading states
-   ========================================= */
+/* modals and loading states */
 .k-modal {
     display: none;
     position: fixed;
@@ -3957,9 +3988,7 @@ details.help-box code {
     display: flex;
     flex-direction: column;
 }
-/* =========================================
-   15. settings page
-   ========================================= */
+/* settings page */
 
 /* settings header & tabs */
 .settings-container {
@@ -4112,6 +4141,9 @@ details.help-box code {
 .setting-card.border-purple {
     border-left: 4px solid #9b59b6;
 }
+.setting-card.border-accent {
+    border-left: 4px solid var(--accent-color);
+}
 .setting-card.border-info {
     border-left: 4px solid #3498db;
 }
@@ -4124,9 +4156,9 @@ details.help-box code {
     font-size: 0.9em;
     padding: 5px 10px;
     border-radius: 4px;
-    background: rgba(0, 204, 102, 0.2);
+    background: rgba(124, 93, 250, 0.2);
     color: var(--accent-color);
-    border: 1px solid rgba(0, 204, 102, 0.4);
+    border: 1px solid rgba(124, 93, 250, 0.4);
 }
 .settings-count-badge strong { color: inherit; }
 
@@ -4431,9 +4463,7 @@ details.help-box code {
     display: none;
 }
 
-/* =========================================
-   tv status overlays (for results page)
-   ========================================= */
+/* tv status overlays (for results page) */
 .status-overlay {
     position: absolute; top: 10px; right: 10px;
     padding: 4px 8px; border-radius: 4px;
@@ -4460,9 +4490,7 @@ details.help-box code {
 .status-overlay.pilot {
     background-color: #6610f2;
 }
-/* =========================================
-   18. error pages (error.html)
-   ========================================= */
+/* error pages (error.html) */
 .error-container {
     text-align: center;
     margin-top: 50px;
@@ -4491,18 +4519,16 @@ details.help-box code {
     color: #000000;
 }
 
-/* =========================================
-   19. logs page (logs.html)
-   ========================================= */
+/* logs page (logs.html) */
 /* Sticky header on Logs page so controls stay visible when scrolling */
 .logs-page-header {
     position: sticky;
     top: 56px;
     z-index: 99;
-    background-color: #000000;
+    background-color: var(--bg-color);
     padding-bottom: 20px;
     margin-bottom: 20px;
-    border-bottom: 1px solid rgba(10, 77, 34, 0.5);
+    border-bottom: 1px solid var(--border-color);
 }
 
 .logs-header-row {
@@ -4537,17 +4563,17 @@ details.help-box code {
     z-index: 10;
 }
 .logs-table th {
-    background: #0d0d0d;
+    background: var(--card-bg);
     text-align: left;
-    border-bottom: 1px solid #0A4D22;
+    border-bottom: 1px solid var(--border-color);
     padding: 15px;
     color: #AAAAAA;
     font-weight: bold;
-    box-shadow: 0 1px 0 0 #0A4D22;
+    box-shadow: 0 1px 0 0 var(--border-color);
 }
 .logs-table td {
     padding: 12px 15px;
-    border-bottom: 1px solid #0A4D22;
+    border-bottom: 1px solid var(--border-color);
     color: #ffffff;
     vertical-align: top;
 }
@@ -4573,7 +4599,7 @@ details.help-box code {
     background: #27ae60;
 }
 .log-badge.warning {
-    background: #00CC66;
+    background: #e5a00d;
     color: #000000;
 }
 .log-badge.error {
@@ -4593,21 +4619,19 @@ details.help-box code {
     font-size: 0.9em;
 }
 
-/* =========================================
-   20. global utilities & polish
-   ========================================= */
+/* global utilities & polish */
 /* custom scrollbar */
 ::-webkit-scrollbar {
     width: 10px;
     height: 10px;
 }
 ::-webkit-scrollbar-track {
-    background: #000000;
+    background: var(--bg-color);
 }
 ::-webkit-scrollbar-thumb {
-    background: #0A4D22;
+    background: var(--border-color);
     border-radius: 5px;
-    border: 2px solid #000000;
+    border: 2px solid var(--bg-color);
 }
 ::-webkit-scrollbar-thumb:hover {
     background: var(--accent-color);
@@ -4639,7 +4663,7 @@ details.help-box code {
 
 /* text color utilities */
 .text-warning {
-    color: #00CC66 !important;
+    color: #e5a00d !important;
 }
 .text-danger {
     color: #e74c3c !important;
@@ -4672,9 +4696,7 @@ details.help-box code {
 .animate-slide-in {
     animation: slideIn 0.3s ease-out;
 }
-/* =========================================
-   misc stuff
-   ========================================= */
+/* misc stuff */
 
 /* dashboard loader text (nuclear scan spinner) */
 .loader-title {
@@ -4691,9 +4713,7 @@ details.help-box code {
 
 /* empty state */
 
-/* =========================================
-   utility classes for common inline styles
-   ========================================= */
+/* utility classes for common inline styles */
 
 /* text alignment */
 .text-center { text-align: center; }
@@ -5256,9 +5276,7 @@ details.help-box code {
     cursor: not-allowed;
 }
 
-/* =========================================
-   calendar (releases from Radarr / Sonarr)
-   ========================================= */
+/* calendar (releases from Radarr / Sonarr) */
 
 .calendar-container {
     padding: 20px;
