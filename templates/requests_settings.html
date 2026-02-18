@@ -4,7 +4,97 @@
 <style>
     .input-group-text { background-color: #2a2a2a; border-color: #444; color: #fff; display: flex; align-items: center; }
     #cloudApiKey { background-color: #1e1e1e; border-color: #444; color: #fff; }
-    .requests-settings-card .form-control { background: #1e1e1e; color: white; border-color: #444; }
+    .requests-settings-card .form-control { 
+        background: #1e1e1e; 
+        color: white; 
+        border-color: #444; 
+        border-radius: 6px;
+        height: 42px;
+    }
+    
+    /* New Layout Styles */
+    .seekandwatch-promo-settings {
+        background-color: #000000; /* Pure black */
+        border: 1px solid #00bcd4; /* Cyan border */
+        border-radius: 8px;
+    }
+    .seekandwatch-promo-settings .card-header {
+        background-color: #00bcd4 !important; /* Cyan header */
+        color: #000 !important;
+        border-bottom: none;
+        font-weight: bold;
+        border-radius: 7px 7px 0 0;
+    }
+    .seekandwatch-promo-settings .card-body {
+        background-color: transparent !important;
+        color: #fff !important;
+    }
+    .seekandwatch-promo-settings a {
+        color: #00bcd4 !important;
+        text-decoration: underline;
+    }
+    
+    .btn-back-config {
+        background-color: transparent;
+        border: 1px solid #6f42c1; /* Purple border */
+        color: #a0a0a0;
+        border-radius: 20px;
+        padding: 5px 15px;
+        font-size: 0.9em;
+        transition: all 0.2s;
+    }
+    .btn-back-config:hover {
+        background-color: #6f42c1;
+        color: white;
+        text-decoration: none;
+    }
+    
+    .btn-test-connection {
+        background-color: #7c5dfa;
+        border-color: #7c5dfa;
+        color: #000000;
+        font-weight: bold;
+        border-radius: 6px;
+        padding: 0 20px;
+        height: 42px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .btn-test-connection:hover {
+        background-color: #7c5dfa;
+        border-color: #7c5dfa;
+        color: #000000;
+        filter: brightness(1.1);
+    }
+
+    .btn-save-settings {
+        background-color: #7c5dfa;
+        border-color: #7c5dfa;
+        color: #000000;
+        font-weight: bold;
+        border-radius: 6px;
+    }
+    .btn-save-settings:hover {
+        background-color: #7c5dfa;
+        border-color: #7c5dfa;
+        color: #000000;
+        filter: brightness(1.1);
+    }
+    /* Checkbox custom style */
+    .custom-checkbox-container {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 15px;
+        font-weight: bold;
+    }
+    .custom-checkbox-container input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+        accent-color: #7c5dfa; /* Purple check */
+        cursor: pointer;
+    }
 </style>
 
 <div class="container mt-4">
@@ -16,16 +106,16 @@
     </div>
 
     <!-- SeekAndWatch beta notice (dismissible) -->
-    <div id="seekandwatch-promo" class="card mb-4 border-info seekandwatch-promo-settings" style="display: none;">
-        <div class="card-header bg-info text-dark d-flex justify-content-between align-items-center py-2">
-            <span class="font-weight-bold"><i class="fas fa-info-circle mr-1"></i> What is SeekAndWatch?</span>
-            <button type="button" class="btn btn-sm btn-outline-dark btn-close-promo" id="promo-dismiss" title="Close and don't show again" aria-label="Close"><i class="fas fa-times"></i></button>
+    <div id="seekandwatch-promo" class="card mb-4 seekandwatch-promo-settings" style="display: none;">
+        <div class="card-header d-flex justify-content-between align-items-center py-2">
+            <span><i class="fas fa-info-circle mr-1"></i> What is SeekAndWatch?</span>
+            <button type="button" class="btn btn-sm btn-link text-dark btn-close-promo" id="promo-dismiss" title="Close and don't show again" aria-label="Close" style="text-decoration: none;"><i class="fas fa-times"></i></button>
         </div>
-        <div class="card-body bg-dark text-white">
-            <p class="mb-2"><strong>SeekAndWatch</strong> (<a href="https://seekandwatch.com" target="_blank" rel="noopener" class="text-info">seekandwatch.com</a>) lets your friends and family <strong>request movies and TV shows</strong> from your Plex server without needing access to Plex or Radarr/Sonarr. Approved items sync to this app and are sent to Radarr/Sonarr (or Overseerr).</p>
+        <div class="card-body">
+            <p class="mb-2"><strong>SeekAndWatch</strong> (<a href="https://seekandwatch.com" target="_blank" rel="noopener">seekandwatch.com</a>) lets your friends and family <strong>request movies and TV shows</strong> from your Plex server without needing access to Plex or Radarr/Sonarr. Approved items sync to this app and are sent to Radarr/Sonarr (or Overseerr).</p>
             <p class="mb-2"><strong>Why it's safe:</strong> Your Plex URL and tokens stay on your machine. The cloud service only relays requests and connection keys; it does not store your media or control your server.</p>
             <p class="mb-0">
-                <span class="badge badge-warning text-dark">Beta</span> SeekAndWatch is currently in <strong>beta</strong>. To request access, go to <a href="https://www.reddit.com/r/SeekAndWatch/" target="_blank" rel="noopener" class="text-info font-weight-bold">r/SeekAndWatch</a> and either <strong>post for access</strong> or <strong>send a mod a PM</strong>.
+                SeekAndWatch is currently in <strong>beta</strong>. To request access, go to <a href="https://www.reddit.com/r/SeekAndWatch/" target="_blank" rel="noopener">r/SeekAndWatch</a> and either <strong>post for access</strong> or <strong>send a mod a PM</strong>.
             </p>
         </div>
     </div>
@@ -55,7 +145,7 @@
 
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2>Requests Settings</h2>
-        <a href="{{ url_for('settings') }}" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Back to Configuration</a>
+        <a href="{{ url_for('settings') }}" class="btn btn-back-config"><i class="fas fa-arrow-left"></i> Back to Configuration</a>
     </div>
 
     <div class="card mb-4 requests-settings-card">
@@ -72,7 +162,7 @@
                         <input type="password" class="form-control" name="cloud_api_key" id="cloudApiKey" style="max-width: 400px;"
                                value="" placeholder="{% if settings.cloud_api_key %}••••••••{% else %}Paste your key here (e.g. 8f9a...){% endif %}"
                                {% if settings.cloud_api_key %}data-key-set="1"{% endif %} autocomplete="off">
-                        <button type="button" class="btn btn-info" id="cloudTestBtn" onclick="testCloudConnection()">Test connection</button>
+                        <button type="button" class="btn btn-test-connection" id="cloudTestBtn" onclick="testCloudConnection()">Test connection</button>
                         <span id="cloudTestResult" class="small ms-2" style="display: none;"></span>
                     </div>
                     {% if settings.cloud_api_key %}<input type="hidden" name="cloud_api_key_unchanged" value="1" id="cloudApiKey_unchanged_h">{% endif %}
@@ -108,77 +198,26 @@
 
                 <h6 class="text-white mb-3">Sync with SeekAndWatch (poll API)</h6>
                 <p class="text-muted small mb-2">This app uses the <strong>poll API</strong>: it calls SeekAndWatch for approved requests, adds them to Radarr/Sonarr (or Overseerr), then marks them synced. You can also click <strong>Refresh</strong> on the Requests page to sync immediately. No URL or tunnel needed.</p>
-                <div class="form-group mb-3">
-                    <label class="font-weight-bold text-white d-flex align-items-center" style="gap: 10px;">
-                        <input type="checkbox" name="cloud_sync_owned_enabled" id="syncOwnedCheck" {% if settings.cloud_sync_owned_enabled %}checked{% endif %} style="width: 20px; height: 20px;">
-                        Enable cloud sync
-                    </label>
-                    <small class="form-text text-muted">When on, the app polls for approved requests and adds them to your handlers. When off, the key is saved but no syncing runs.</small>
-                    <div class="mt-2 d-flex align-items-center gap-2" style="font-size: 0.9em;">
-                        <span class="text-muted">Last poll:</span>
-                        <span id="lastPollTime">{% if settings.last_cloud_poll_at %}{{ settings.last_cloud_poll_at.strftime('%Y-%m-%d %H:%M') }}{% else %}Never{% endif %}</span>
-                        {% if settings.last_cloud_poll_at %}
-                        {% if settings.last_cloud_poll_ok %}
-                        <span class="text-success" title="Last poll succeeded">●</span>
-                        {% else %}
-                        <span class="text-danger" title="Last poll failed">●</span>
-                        {% endif %}
-                        {% else %}
-                        <span class="text-secondary" title="No poll yet">●</span>
-                        {% endif %}
-                    </div>
-                </div>
-                <div class="row mb-4">
-                    <div class="col-md-6">
-                        <div class="form-group">
-                            <label for="cloudPollIntervalMin" class="font-weight-bold text-white">Poll interval min (seconds)</label>
-                            <input type="number" class="form-control" name="cloud_poll_interval_min" id="cloudPollIntervalMin" min="30" step="1"
-                                   value="{{ settings.cloud_poll_interval_min if settings.cloud_poll_interval_min is not none else '' }}"
-                                   placeholder="75">
-                            <small class="form-text text-muted">Leave blank for default (75). Minimum 30.</small>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="form-group">
-                            <label for="cloudPollIntervalMax" class="font-weight-bold text-white">Poll interval max (seconds)</label>
-                            <input type="number" class="form-control" name="cloud_poll_interval_max" id="cloudPollIntervalMax" min="30" step="1"
-                                   value="{{ settings.cloud_poll_interval_max if settings.cloud_poll_interval_max is not none else '' }}"
-                                   placeholder="120">
-                            <small class="form-text text-muted">Leave blank for default (120). Must be &ge; min.</small>
-                        </div>
-                    </div>
+                
+                <div class="custom-checkbox-container">
+                    <input type="checkbox" name="cloud_sync_owned_enabled" id="syncOwnedCheck" {% if settings.cloud_sync_owned_enabled %}checked{% endif %}>
+                    <label for="syncOwnedCheck" class="mb-0 text-white cursor-pointer">Enable cloud sync</label>
                 </div>
 
-                <hr style="border-color: #444; margin: 24px 0;">
+                <!-- Hidden inputs for legacy/advanced settings -->
+                <input type="hidden" name="cloud_poll_interval_min" value="{{ settings.cloud_poll_interval_min or 75 }}">
+                <input type="hidden" name="cloud_poll_interval_max" value="{{ settings.cloud_poll_interval_max or 120 }}">
+                <input type="hidden" name="cloud_webhook_url" value="{{ settings.cloud_webhook_url or '' }}">
+                <input type="hidden" name="cloud_webhook_secret_unchanged" value="1">
 
-                <h6 class="text-white mb-2 d-flex align-items-center flex-wrap" style="font-size:0.95rem; gap: 8px;">
-                    Instant sync (webhook)
-                    <span class="badge bg-success" style="font-size: 0.7em; font-weight: 600;">RECOMMENDED</span>
-                    <a href="https://github.com/softerfish/seekandwatch/wiki/SeekAndWatch-Cloud-%E2%80%90-Server-Owners-Guide" target="_blank" rel="noopener" class="text-info small" title="Configuration guide">Wiki: Server Owners Guide <i class="fas fa-external-link-alt fa-xs"></i></a>
-                </h6>
-                <p class="text-muted small mb-1">Get approved requests synced instantly and reduce cloud API calls. With webhook set, backup polling runs every 30-45 min. Leave blank to use poll only (75-120 s). Same network: local/LAN URL; any network: public tunnel URL.</p>
-                <p class="text-muted small mb-3" style="font-size: 0.85rem;">If you don’t open the GitHub link, the instructions below are all you need.</p>
-                <div class="alert alert-info py-2 px-3 mb-3" style="background: #1a2a2a; border-color: #2a4a4a; color: #9ab;">
-                    <strong>Add your URL</strong> including the path, e.g. <code>http://192.168.2.20:5000/api/seekandwatch/approved</code>. The host and port may be different for your install (use the address where this app is reachable). Use a <strong>random password</strong> for the webhook secret and enter the same value here and in any tunnel/proxy config if needed.
-                </div>
-                <div class="form-group mb-3">
-                    <label for="cloudWebhookUrl" class="font-weight-bold text-white">Local app URL</label>
-                    <input type="url" class="form-control" name="cloud_webhook_url" id="cloudWebhookUrl"
-                           value="{{ settings.cloud_webhook_url or '' }}"
-                           placeholder="e.g. http://192.168.2.20:5000/api/seekandwatch/approved">
-                    <small class="form-text text-muted">Full URL including path. Host/port depend on your install. Blank = poll only.</small>
-                </div>
-                <div class="form-group mb-4">
-                    <label for="cloudWebhookSecret" class="font-weight-bold text-white">Webhook secret {% if settings.cloud_webhook_secret %}<span class="badge bg-success ms-2" style="font-size: 0.7em; font-weight: normal;">Saved</span>{% endif %}</label>
-                    <input type="password" class="form-control" name="cloud_webhook_secret" id="cloudWebhookSecret"
-                           value="" placeholder="{% if settings.cloud_webhook_secret %}••••••••{% else %}Random password (e.g. generate one){% endif %}"
-                           {% if settings.cloud_webhook_secret %}data-key-set="1"{% endif %} autocomplete="off">
-                    {% if settings.cloud_webhook_secret %}<input type="hidden" name="cloud_webhook_secret_unchanged" value="1" id="cloudWebhookSecret_unchanged_h">{% endif %}
-                    <small class="form-text text-muted">Use a random password; the cloud sends it in the <code>X-Webhook-Secret</code> header. Required when URL is set.</small>
-                </div>
-
-                <button type="submit" class="btn btn-primary">
-                    <i class="fas fa-save"></i> Save Settings
+                <!-- Save button is usually at the bottom, but screenshot doesn't show it. Assuming it's needed. -->
+                <!-- If the user wants strictly the screenshot layout, maybe the form autosaves or the button is hidden? 
+                     But typical settings pages have save buttons. I'll keep it but maybe move it or style it if needed. 
+                     The screenshot cuts off after the checkbox. I'll assume the save button is still there below the fold or user didn't capture it.
+                     However, to be safe, I'll keep the button. -->
+                
+                <button type="submit" class="btn btn-save-settings mt-4">
+                    Save Settings
                 </button>
             </form>
         </div>

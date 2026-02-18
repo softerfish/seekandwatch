@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
 {% block content %}
+<div id="background-container"></div>
 <div class="login-wrapper">
     <div class="login-card">
         
@@ -50,7 +51,71 @@
 </div>
 
 <script>
+    // Animated background
+    document.addEventListener('DOMContentLoaded', () => {
+        fetch("{{ url_for('popular_movies_posters') }}")
+            .then(response => {
+                if (!response.ok) throw new Error('Network response was not ok');
+                return response.json();
+            })
+            .then(posters => {
+                if (!posters || posters.length === 0) return;
+
+                const bgContainer = document.getElementById('background-container');
+                if (!bgContainer) return;
+
+                // Preload images
+                let loadedCount = 0;
+                posters.forEach(p => {
+                    const img = new Image();
+                    img.src = p;
+                    img.onload = () => {
+                        loadedCount++;
+                        if (loadedCount === posters.length) {
+                            startSlideshow(posters, bgContainer);
+                        }
+                    };
+                });
+            })
+            .catch(error => {
+                console.error('Failed to fetch background posters:', error);
+            });
+    });
+
+    function startSlideshow(posters, container) {
+        let current = 0;
+
+        function cycle() {
+            // Fade out old image
+            const oldImage = container.querySelector('.bg-image.active');
+            if (oldImage) {
+                oldImage.classList.remove('active');
+            }
+
+            // Create and fade in new image
+            const newImage = document.createElement('div');
+            newImage.className = 'bg-image';
+            newImage.style.backgroundImage = `url(${posters[current]})`;
+            container.appendChild(newImage);
+
+            // This timeout ensures the new image is in the DOM before we add the active class
+            setTimeout(() => newImage.classList.add('active'), 50);
+
+            // Clean up old images from the DOM after they've faded out
+            setTimeout(() => {
+                const oldImages = container.querySelectorAll('.bg-image:not(.active)');
+                oldImages.forEach(img => container.removeChild(img));
+            }, 2000); // 2s transition
+
+            current = (current + 1) % posters.length;
+        }
+
+        cycle(); // Start immediately
+        setInterval(cycle, 6000); // Then every 6 seconds
+    }
+
     const CSRF_TOKEN = "{{ csrf_token() }}";
+
 
     // UI state
     let currentMode = 'login';

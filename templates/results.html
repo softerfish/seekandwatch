@@ -19,7 +19,7 @@
     <a href="{{ url_for('dashboard') }}" class="back-link">← Back to Dashboard</a>
     <h2 class="m-0">Top Picks For You</h2>
     <div class="d-flex gap-10" style="align-items: center;">
-        <button class="btn btn-primary" onclick="spinWheel()">🎡 Spin Wheel</button>
+        <button class="btn btn-primary" onclick="spinWheel()">Spin Wheel</button>
     </div>
 </div>
 
@@ -109,7 +109,7 @@
             {% endif %}
         </div>
 
-        <button class="btn btn-lucky w-100 fw-bold fs-large" onclick="updateFilters()">
+        <button class="btn btn-primary w-100 fw-bold fs-large" onclick="updateFilters()">
             Update Results
         </button>
     </div>
@@ -125,7 +125,7 @@
         
         {% if not is_lucky %}
         <div class="load-more-wrapper">
-            <button id="load-more-btn" onclick="loadMore(this)" class="load-more-btn">Load More Results</button>
+            <button id="load-more-btn" onclick="loadMore(this)" class="load-more-btn fw-bold">Load More Results</button>
         </div>
         {% endif %}
     </div>

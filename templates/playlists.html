@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block page_title %}Plex Collections{% endblock %}
 {% block content %}
-
+    
     <div class="playlist-header">
         <h2>Plex Collections</h2>
         <div class="tab-header">
@@ -49,7 +49,8 @@
         <div id="viewer-grid" class="playlist-grid" style="display:none; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));">
         </div>
     </div>
-<div id="preview-modal" class="import-modal" onclick="if(event.target===this) closePreviewModal()">
+<!-- Preview Modal -->
+<div id="preview-modal" class="import-modal" onclick="if(event.target===this) closePreviewModal()" style="display: none;">
     <div class="import-content wide">
         <span onclick="closePreviewModal()" class="close-btn">&times;</span>
         <h2 id="preview-title" style="margin-top:0;">👀 Collection Preview</h2>
@@ -57,7 +58,8 @@
     </div>
 </div>
 
-<div id="import-modal" class="import-modal">
+<!-- Import Modal -->
+<div id="import-modal" class="import-modal" style="display: none;">
     <div class="import-content">
         <span onclick="closeImportModal()" class="close-btn">&times;</span>
         <h2 style="margin-top:0;">Import from List</h2>
@@ -91,7 +93,7 @@
             <label class="visibility-check"><input type="checkbox" id="import-visibility-friends"> Friends</label>
         </div>
         
-        <button onclick="analyzeList()" id="analyze-btn" class="btn-analyze">🔍 Analyze & Match</button>
+        <button onclick="analyzeList()" id="analyze-btn" class="btn-analyze">Analyze & Match</button>
         
         <div id="import-results" class="import-results-container"></div>
         
@@ -125,7 +127,7 @@ function saveGlobalTime() {
 <div class="category-block category-block--collapsed" data-type="any">
     <button type="button" class="category-header category-header--toggle" aria-expanded="false" aria-controls="custom-collections-grid">
         <span class="category-chevron" aria-hidden="true">▶</span>
-        Your Custom Collections
+        Custom Collections
     </button>
     <div id="custom-collections-grid" class="playlist-grid category-grid" hidden>
     {% for key, playlist in custom_presets.items() %}
@@ -141,6 +143,7 @@ function saveGlobalTime() {
         
         <div class="playlist-controls">
             {% if 'Imported' not in playlist.description %}
+            
             <div class="playlist-control-section">
                 <div class="control-row">
                     <label>Auto-Update</label>
@@ -164,6 +167,39 @@ function saveGlobalTime() {
                         <option value="sync" {% if sm == 'sync' %}selected{% endif %}>Sync (Strict)</option>
                     </select>
                 </div>
+                <div class="control-row">
+                    <label class="control-label-with-tip">
+                        Sort Order
+                        <span class="tooltip-container">
+                            <span class="info-icon" aria-label="Help">ℹ️</span>
+                            <span class="tooltip-text"><strong>Release Date:</strong> By release date.<br><strong>Alphabetical:</strong> A-Z by title.<br><strong>TMDB Popularity:</strong> By TMDB popularity score.<br><strong>TMDB Rating:</strong> By TMDB rating.<br><strong>Random:</strong> Shuffled order.</span>
+                        </span>
+                    </label>
+                    {% set sort_order = (sort_orders or {}).get(key, 'release_desc') %}
+                    <select id="sort-{{ key }}" onchange="saveSettings('{{ key }}')" class="control-select">
+                        <option value="release_desc" {% if sort_order == 'release_desc' or sort_order == 'release' %}selected{% endif %}>Release Date (Newest First)</option>
+                        <option value="release_asc" {% if sort_order == 'release_asc' %}selected{% endif %}>Release Date (Oldest First)</option>
+                        <option value="alpha" {% if sort_order == 'alpha' %}selected{% endif %}>Alphabetical (A-Z)</option>
+                        <option value="popularity_desc" {% if sort_order == 'popularity_desc' %}selected{% endif %}>TMDB Popularity (High to Low)</option>
+                        <option value="popularity_asc" {% if sort_order == 'popularity_asc' %}selected{% endif %}>TMDB Popularity (Low to High)</option>
+                        <option value="rating_desc" {% if sort_order == 'rating_desc' %}selected{% endif %}>TMDB Rating (High to Low)</option>
+                        <option value="rating_asc" {% if sort_order == 'rating_asc' %}selected{% endif %}>TMDB Rating (Low to High)</option>
+                        <option value="random" {% if sort_order == 'random' %}selected{% endif %}>Random</option>
+                    </select>
+                </div>
+                <div class="control-row" style="grid-column: 1 / -1;">
+                    <label class="control-label-with-tip">
+                        Description (Optional)
+                        <span class="tooltip-container">
+                            <span class="info-icon" aria-label="Help">ℹ️</span>
+                            <span class="tooltip-text">Custom description that appears in Plex. Leave blank for default.</span>
+                        </span>
+                    </label>
+                    {% set summary = (summaries or {}).get(key, '') %}
+                    <textarea id="summary-{{ key }}" onblur="saveSettings('{{ key }}')" class="control-textarea" rows="2" placeholder="Optional custom description for this collection">{{ summary }}</textarea>
+                </div>
+
+
             </div>
             <div class="playlist-control-section">
                 <div class="visibility-label-block">Where it appears in Plex</div>
@@ -174,9 +210,12 @@ function saveGlobalTime() {
                 </div>
                 <p class="visibility-hint">Check at least one. In Plex: <strong>Settings -> Manage -> Libraries</strong>, then <strong>Manage Recommendations</strong> to reorder or change where collections appear.</p>
             </div>
+            
             <div class="playlist-control-section playlist-control-section--actions">
                 <button onclick="previewCollection('{{ key }}', '{{ playlist.title|replace("'", "\\'") }}')" class="btn-preview" title="Preview Contents">👀</button>
-                <button onclick="createCollection('{{ key }}')" id="btn-{{ key }}" class="btn-sync">Sync Now</button>
+                <button onclick="openArtworkModal('{{ key }}', '{{ playlist.title|replace("'", "\\'") }}')" class="btn-artwork" title="Custom Artwork">🎨</button>
+                <button onclick="createCollection('{{ key }}')" id="btn-{{ key }}" class="btn-sync">Run Now</button>
+                <button onclick="deleteCollection('{{ key }}', event)" class="btn-delete-inline" title="Remove from app and Plex">Delete</button>
             </div>
             {% else %}
             <div class="static-badge">Static Import</div>
@@ -188,8 +227,361 @@ function saveGlobalTime() {
     </div>
 </div>
 {% endif %}
+<!-- Artwork Modal -->
+<div id="artwork-modal" class="artwork-modal" onclick="if(event.target===this) closeArtworkModal()" style="display: none;">
+    <div class="artwork-content">
+        <div class="artwork-title-bar">
+            <h2 id="artwork-title">Custom Artwork</h2>
+            <button class="artwork-close-btn" onclick="closeArtworkModal()">&times;</button>
+        </div>
+        
+        <p style="color:#aaa; font-size:13px; margin-bottom:15px;">
+            Set a custom poster for this collection. It will be uploaded to Plex and locked so it doesn't get overwritten.
+        </p>
+        <p style="color:#888; font-size:12px; margin-bottom:20px;">
+            💡 Tip: Use 2:3 aspect ratio images (e.g., 2000x3000px) for best results
+        </p>
+        
+        <div id="artwork-current-container" style="display: none; margin-bottom: 20px;">
+            <p style="margin:0 0 10px; color:#ccc;">Current Artwork:</p>
+            <img id="artwork-current-preview" class="artwork-preview" style="margin-bottom: 10px;">
+            <button onclick="deleteArtwork()" class="btn-delete">Delete Artwork</button>
+        </div>
 
-{% set categories = ['Regional Trending', 'International & World', 'Decades', 'Themes & Vibes', 'Awards & Acclaim', 'Studios & Networks', 'Genre (Movies)', 'Genre (TV)', 'Content Ratings'] %}
+        <div class="artwork-tabs">
+            <button id="artwork-tab-btn-upload" class="artwork-tab active" onclick="switchArtworkTab(event, 'upload')">📁 Upload File</button>
+            <button id="artwork-tab-btn-url" class="artwork-tab" onclick="switchArtworkTab(event, 'url')">🔗 From URL</button>
+            <button id="artwork-tab-btn-tmdb" class="artwork-tab" onclick="switchArtworkTab(event, 'tmdb')">🎬 TMDB Search</button>
+        </div>
+        
+        <div id="artwork-tab-upload">
+            <div class="artwork-dropzone" id="artwork-dropzone">
+                <div class="dropzone-icon">📤</div>
+                <p style="margin:10px 0 0; font-size:16px; font-weight:500;">Drag & drop or click to select</p>
+                <p style="margin:5px 0 0; font-size:12px; color:#888;">JPG, JPEG or PNG (max 10MB)</p>
+                <input type="file" id="artwork-file" style="display:none" accept=".jpg,.jpeg,.png" onchange="handleFileSelect(this)">
+            </div>
+        </div>
+        
+        <div id="artwork-tab-url" style="display:none;">
+            <p style="margin:0 0 8px; color:#ccc; font-size:14px;">Paste Image URL:</p>
+            <input type="text" id="artwork-url" class="artwork-url-input" placeholder="https://image.tmdb.org/t/p/original/...">
+            <button onclick="previewUrlImage()" class="btn-preview-url">Preview</button>
+        </div>
+        
+        <div id="artwork-tab-tmdb" style="display:none;">
+            <p style="margin:0 0 8px; color:#ccc; font-size:14px;">Search for posters on TMDB:</p>
+            <div style="display:flex; gap:8px; margin-bottom:15px;">
+                <input type="text" id="tmdb-search" class="artwork-url-input" placeholder="Enter movie or show title..." style="flex:1;">
+                <button onclick="searchTMDB()" class="btn-primary" style="padding:8px 16px;">Search</button>
+            </div>
+            <div id="tmdb-results" class="tmdb-results"></div>
+        </div>
+        
+        <div id="artwork-preview-container" style="display:none; margin-top:20px;">
+            <p style="margin:0 0 10px; color:#ccc; font-size:14px;">Preview:</p>
+            <img id="artwork-preview" class="artwork-preview">
+            <p id="artwork-dimensions" style="margin:8px 0 0; font-size:12px; color:#888;"></p>
+        </div>
+        
+        <div style="margin-top:20px;">
+            <label style="display:flex; align-items:center; gap:8px; margin-bottom:15px; cursor:pointer; color:#ccc;">
+                <input type="checkbox" id="apply-immediately" style="width:16px; height:16px; cursor:pointer;">
+                <span>Apply immediately (run collection now)</span>
+            </label>
+            <div style="display:flex; justify-content:flex-end; gap:10px;">
+                <button onclick="closeArtworkModal()" class="btn-secondary">Cancel</button>
+                <button onclick="saveArtwork()" id="btn-save-artwork" class="btn-primary">Save Artwork</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentArtworkPreset = null;
+let currentArtworkFile = null;
+let currentArtworkUrl = null;
+
+function openArtworkModal(key, title) {
+    currentArtworkPreset = key;
+    currentArtworkFile = null;
+    currentArtworkUrl = null;
+    document.getElementById('artwork-title').textContent = 'Artwork: ' + title;
+    const modal = document.getElementById('artwork-modal');
+    modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+    document.getElementById('artwork-preview-container').style.display = 'none';
+    document.getElementById('artwork-url').value = '';
+    document.getElementById('artwork-file').value = '';
+    document.getElementById('tmdb-search').value = '';
+    document.getElementById('tmdb-results').innerHTML = '';
+    document.getElementById('apply-immediately').checked = false;
+
+    const currentContainer = document.getElementById('artwork-current-container');
+    const currentPreview = document.getElementById('artwork-current-preview');
+    
+    // check for existing artwork
+    fetch(`/api/get_artwork_path?preset_id=${key}`)
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'success' && data.path) {
+                currentPreview.src = data.path + '?t=' + new Date().getTime(); // bust cache
+                currentContainer.style.display = 'block';
+            } else {
+                currentContainer.style.display = 'none';
+            }
+        })
+        .catch(() => currentContainer.style.display = 'none');
+
+    switchArtworkTab(null, 'upload');
+    setupDragAndDrop();
+}
+
+function setupDragAndDrop() {
+    const dropzone = document.getElementById('artwork-dropzone');
+    
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        dropzone.addEventListener(eventName, preventDefaults, false);
+    });
+    
+    function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+    
+    ['dragenter', 'dragover'].forEach(eventName => {
+        dropzone.addEventListener(eventName, () => {
+            dropzone.classList.add('dragover');
+        }, false);
+    });
+    
+    ['dragleave', 'drop'].forEach(eventName => {
+        dropzone.addEventListener(eventName, () => {
+            dropzone.classList.remove('dragover');
+        }, false);
+    });
+    
+    dropzone.addEventListener('drop', (e) => {
+        const dt = e.dataTransfer;
+        const files = dt.files;
+        if (files.length > 0) {
+            document.getElementById('artwork-file').files = files;
+            handleFileSelect({ files: files });
+        }
+    }, false);
+    
+    dropzone.addEventListener('click', () => {
+        document.getElementById('artwork-file').click();
+    });
+}
+
+function deleteArtwork() {
+    if (!currentArtworkPreset) return;
+    if (!confirm('Are you sure you want to delete the custom artwork for this collection?')) return;
+
+    fetch('/api/delete_artwork', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify({ preset_id: currentArtworkPreset })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'success') {
+            closeArtworkModal();
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(err => {
+        alert('Failed to delete artwork: ' + err);
+    });
+}
+
+function closeArtworkModal() {
+    document.getElementById('artwork-modal').style.display = 'none';
+    document.body.style.overflow = '';
+}
+
+function switchArtworkTab(event, tab) {
+    document.querySelectorAll('.artwork-tab').forEach(t => t.classList.remove('active'));
+    
+    if (event && event.target) {
+        event.target.classList.add('active');
+    } else {
+        document.getElementById('artwork-tab-btn-' + tab).classList.add('active');
+    }
+    
+    document.getElementById('artwork-tab-upload').style.display = tab === 'upload' ? 'block' : 'none';
+    document.getElementById('artwork-tab-url').style.display = tab === 'url' ? 'block' : 'none';
+    document.getElementById('artwork-tab-tmdb').style.display = tab === 'tmdb' ? 'block' : 'none';
+}
+
+function handleFileSelect(input) {
+    if (input.files && input.files[0]) {
+        const file = input.files[0];
+        
+        // Check file size (10MB limit)
+        if (file.size > 10 * 1024 * 1024) {
+            alert('File is too large. Maximum size is 10MB.');
+            return;
+        }
+        
+        currentArtworkFile = file;
+        currentArtworkUrl = null;
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            showPreview(e.target.result, file);
+        }
+        reader.readAsDataURL(file);
+    }
+}
+
+function previewUrlImage() {
+    const url = document.getElementById('artwork-url').value.trim();
+    if (!url) {
+        alert('Please enter a URL');
+        return;
+    }
+    
+    currentArtworkUrl = url;
+    currentArtworkFile = null;
+    showPreview(url);
+}
+
+function showPreview(src, file = null) {
+    const container = document.getElementById('artwork-preview-container');
+    const img = document.getElementById('artwork-preview');
+    const dimensions = document.getElementById('artwork-dimensions');
+    
+    img.src = src;
+    img.onload = function() {
+        const width = this.naturalWidth;
+        const height = this.naturalHeight;
+        const ratio = (width / height).toFixed(2);
+        const aspectRatio = ratio == 0.67 ? '2:3 (Perfect!)' : `${width}:${height}`;
+        dimensions.textContent = `${width} × ${height}px (${aspectRatio})`;
+        
+        if (ratio < 0.6 || ratio > 0.75) {
+            dimensions.textContent += ' ⚠️ Recommended: 2:3 ratio';
+            dimensions.style.color = '#f39c12';
+        } else {
+            dimensions.style.color = '#27ae60';
+        }
+    };
+    container.style.display = 'block';
+}
+
+function searchTMDB() {
+    const query = document.getElementById('tmdb-search').value.trim();
+    if (!query) {
+        alert('Please enter a search term');
+        return;
+    }
+    
+    const resultsDiv = document.getElementById('tmdb-results');
+    resultsDiv.innerHTML = '<p style="color:#888; text-align:center; padding:20px;">Searching...</p>';
+    
+    fetch(`/api/tmdb_poster_search?query=${encodeURIComponent(query)}`)
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'success' && data.results && data.results.length > 0) {
+                let html = '<div class="tmdb-grid">';
+                data.results.slice(0, 12).forEach(item => {
+                    const posterUrl = item.poster_path 
+                        ? `https://image.tmdb.org/t/p/w500${item.poster_path}`
+                        : '/static/icon.png';
+                    const title = item.title || item.name;
+                    const year = (item.release_date || item.first_air_date || '').substring(0, 4);
+                    html += `
+                        <div class="tmdb-item" onclick="selectTMDBPoster('${posterUrl.replace(/'/g, "\\'")}', '${title.replace(/'/g, "\\'")}')">
+                            <img src="${posterUrl}" alt="${title}">
+                            <p>${title} ${year ? `(${year})` : ''}</p>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+                resultsDiv.innerHTML = html;
+            } else {
+                resultsDiv.innerHTML = '<p style="color:#888; text-align:center; padding:20px;">No results found</p>';
+            }
+        })
+        .catch(err => {
+            resultsDiv.innerHTML = '<p style="color:#e74c3c; text-align:center; padding:20px;">Search failed</p>';
+        });
+}
+
+function selectTMDBPoster(url, title) {
+    currentArtworkUrl = url.replace('/w500/', '/original/');
+    currentArtworkFile = null;
+    showPreview(currentArtworkUrl);
+}
+
+function saveArtwork() {
+    if (!currentArtworkPreset) return;
+    
+    const btn = document.getElementById('btn-save-artwork');
+    const originalText = btn.textContent;
+    btn.textContent = 'Uploading...';
+    btn.disabled = true;
+    
+    const formData = new FormData();
+    formData.append('preset_id', currentArtworkPreset);
+    
+    const activeTab = document.querySelector('.artwork-tab.active').id.replace('artwork-tab-btn-', '');
+    
+    if (activeTab === 'upload') {
+        if (!currentArtworkFile) {
+            alert('Please select a file first');
+            btn.textContent = originalText;
+            btn.disabled = false;
+            return;
+        }
+        formData.append('file', currentArtworkFile);
+    } else {
+        // URL or TMDB
+        const url = currentArtworkUrl || document.getElementById('artwork-url').value.trim();
+        if (!url) {
+            alert('Please enter a URL or select an image');
+            btn.textContent = originalText;
+            btn.disabled = false;
+            return;
+        }
+        formData.append('url', url);
+    }
+    
+    fetch('/api/upload_artwork', {
+        method: 'POST',
+        headers: {'X-CSRFToken': '{{ csrf_token() }}'},
+        body: formData
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.status === 'success') {
+            const applyNow = document.getElementById('apply-immediately').checked;
+            if (applyNow) {
+                closeArtworkModal();
+                createCollection(currentArtworkPreset);
+            } else {
+                closeArtworkModal();
+            }
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(err => {
+        alert('Upload failed: ' + err);
+    })
+    .finally(() => {
+        btn.textContent = originalText;
+        btn.disabled = false;
+    });
+}
+</script>
+
+{% set categories = ['Trending Movies', 'Trending TV', 'International & World', 'Decades', 'Themes & Vibes', 'Awards & Acclaim', 'Studios & Networks', 'Genre (Movies)', 'Genre (TV)', 'Content Ratings'] %}
 
 {% for cat in categories %}
 {% set cat_id = cat|replace(' ', '-')|replace('&', '')|replace('(', '')|replace(')', '') %}
@@ -213,8 +605,8 @@ function saveGlobalTime() {
                 <div class="control-row">
                     <label>Auto-Update</label>
                     <select id="freq-{{ key }}" onchange="saveSettings('{{ key }}')" class="control-select">
-                        <option value="manual" {% if schedules.get(key) == 'manual' or (schedules.get(key) is none and playlist.category != 'Regional Trending') %}selected{% endif %}>Off</option>
-                        <option value="daily" {% if schedules.get(key) == 'daily' or (schedules.get(key) is none and playlist.category == 'Regional Trending') %}selected{% endif %}>Daily</option>
+                        <option value="manual" {% if schedules.get(key) == 'manual' or (schedules.get(key) is none and playlist.category not in ['Trending Movies', 'Trending TV']) %}selected{% endif %}>Off</option>
+                        <option value="daily" {% if schedules.get(key) == 'daily' or (schedules.get(key) is none and playlist.category in ['Trending Movies', 'Trending TV']) %}selected{% endif %}>Daily</option>
                         <option value="weekly" {% if schedules.get(key) == 'weekly' %}selected{% endif %}>Weekly</option>
                     </select>
                 </div>
@@ -239,6 +631,39 @@ function saveGlobalTime() {
                         </select>
                     {% endif %}
                 </div>
+                <div class="control-row">
+                    <label class="control-label-with-tip">
+                        Sort Order
+                        <span class="tooltip-container">
+                            <span class="info-icon" aria-label="Help">ℹ️</span>
+                            <span class="tooltip-text"><strong>Release Date:</strong> By release date.<br><strong>Alphabetical:</strong> A-Z by title.<br><strong>TMDB Popularity:</strong> By TMDB popularity score.<br><strong>TMDB Rating:</strong> By TMDB rating.<br><strong>Random:</strong> Shuffled order.</span>
+                        </span>
+                    </label>
+                    {% set sort_order = (sort_orders or {}).get(key, 'release_desc') %}
+                    <select id="sort-{{ key }}" onchange="saveSettings('{{ key }}')" class="control-select">
+                        <option value="release_desc" {% if sort_order == 'release_desc' or sort_order == 'release' %}selected{% endif %}>Release Date (Newest First)</option>
+                        <option value="release_asc" {% if sort_order == 'release_asc' %}selected{% endif %}>Release Date (Oldest First)</option>
+                        <option value="alpha" {% if sort_order == 'alpha' %}selected{% endif %}>Alphabetical (A-Z)</option>
+                        <option value="popularity_desc" {% if sort_order == 'popularity_desc' %}selected{% endif %}>TMDB Popularity (High to Low)</option>
+                        <option value="popularity_asc" {% if sort_order == 'popularity_asc' %}selected{% endif %}>TMDB Popularity (Low to High)</option>
+                        <option value="rating_desc" {% if sort_order == 'rating_desc' %}selected{% endif %}>TMDB Rating (High to Low)</option>
+                        <option value="rating_asc" {% if sort_order == 'rating_asc' %}selected{% endif %}>TMDB Rating (Low to High)</option>
+                        <option value="random" {% if sort_order == 'random' %}selected{% endif %}>Random</option>
+                    </select>
+                </div>
+                <div class="control-row" style="grid-column: 1 / -1;">
+                    <label class="control-label-with-tip">
+                        Description (Optional)
+                        <span class="tooltip-container">
+                            <span class="info-icon" aria-label="Help">ℹ️</span>
+                            <span class="tooltip-text">Custom description that appears in Plex. Leave blank for default.</span>
+                        </span>
+                    </label>
+                    {% set summary = (summaries or {}).get(key, '') %}
+                    <textarea id="summary-{{ key }}" onblur="saveSettings('{{ key }}')" class="control-textarea" rows="2" placeholder="Optional custom description for this collection">{{ summary }}</textarea>
+                </div>
+
+
             </div>
 
             {% set vis = (visibility or {}).get(key, {}) %}
@@ -254,6 +679,7 @@ function saveGlobalTime() {
 
             <div class="playlist-control-section playlist-control-section--actions">
                 <button onclick="previewCollection('{{ key }}', '{{ playlist.title|replace("'", "\\'") }}')" class="btn-preview" title="Preview Contents">👀</button>
+                <button onclick="openArtworkModal('{{ key }}', '{{ playlist.title|replace("'", "\\'") }}')" class="btn-artwork" title="Custom Artwork">🎨</button>
                 <button onclick="createCollection('{{ key }}')" id="btn-{{ key }}" class="btn-sync">Run Now</button>
                 {% if schedules.get(key) is not none %}
                 <button onclick="deleteCollection('{{ key }}', event)" class="btn-delete-inline" title="Remove from app and Plex">Delete</button>
@@ -396,30 +822,31 @@ function openTab(evt, tabName) {
 // Check cache lockout so we don't fire while busy.
 setInterval(checkCacheStatus, 2000); 
 
+// Efficiently check cache status to avoid UI lag
+let syncButtons = [];
+let importButton = null;
+let builderButton = null;
+
+function initStatusCheckElements() {
+    importButton = document.querySelector('.btn-import');
+    builderButton = document.querySelector('.btn-builder');
+}
+
 function checkCacheStatus() {
     fetch(API_GET_CACHE_STATUS).then(r => r.json()).then(data => {
-        const btns = document.querySelectorAll('.btn-sync');
-        const importBtn = document.getElementById('btn-import-open');
-        const builderBtn = document.getElementById('btn-builder-nav');
-        
-        if(data.running) {
-            btns.forEach(b => {
-                b.disabled = true; b.innerText = "System Busy ⏳"; 
-                b.style.opacity = "0.5"; b.style.cursor = "not-allowed";
-            });
-            if(importBtn) { importBtn.disabled = true; importBtn.style.opacity = "0.5"; }
-            if(builderBtn) { builderBtn.disabled = true; builderBtn.style.opacity = "0.5"; }
+        if (data.running) {
+            document.querySelectorAll('.btn-sync').forEach(b => { b.disabled = true; b.innerText = "System Busy ⏳"; b.style.opacity = "0.5"; b.style.cursor = "not-allowed"; });
+            if (importButton) { importButton.disabled = true; importButton.style.opacity = "0.5"; }
+            if (builderButton) { builderButton.disabled = true; builderButton.style.opacity = "0.5"; }
         } else {
-            btns.forEach(b => {
-                if(b.disabled && b.innerText.includes("System Busy")) {
-                    b.disabled = false;
-                    b.style.opacity = "1";
-                    b.style.cursor = "pointer";
-                    b.innerText = (b.id && b.id.startsWith("btn-custom")) ? "Sync Now" : "Run Now";
-                }
+            document.querySelectorAll('.btn-sync').forEach(b => { 
+                b.disabled = false; 
+                b.style.opacity = "1"; 
+                b.style.cursor = "pointer"; 
+                b.innerText = (b.id && b.id.startsWith("btn-custom")) ? "Sync Now" : "Run Now";
             });
-            if(importBtn) { importBtn.disabled = false; importBtn.style.opacity = "1"; }
-            if(builderBtn) { builderBtn.disabled = false; builderBtn.style.opacity = "1"; }
+            if (importButton) { importButton.disabled = false; importButton.style.opacity = "1"; }
+            if (builderButton) { builderButton.disabled = false; builderButton.style.opacity = "1"; }
         }
     });
 }
@@ -513,6 +940,7 @@ document.addEventListener('DOMContentLoaded', () => {
     filterType(savedType);
     restoreOpenCategories();
     initCategoryToggles();
+    initStatusCheckElements();
 });
 
 // Preview modal
@@ -530,17 +958,24 @@ function previewCollection(key, title) {
     .then(data => {
         clearTimeout(previewTimeout);
         if(data.status === 'success') {
+            let items = data.items;
+
             let html = '';
-            data.items.forEach(item => {
+            items.forEach(item => {
                 const opacity = item.owned ? '1' : '0.6';
                 const status = item.owned ? '✅ Owned' : 'missing';
                 const poster = item.poster_path ? 'https://image.tmdb.org/t/p/w200' + item.poster_path : 'https://via.placeholder.com/200x300?text=No+Poster';
+                const vote = (item.vote_average || 0) * 10;
+                const pct = Math.round(vote) + '%';
+                const ratingBadge = `<span class="preview-badge" style="background:${vote>=70?'#2ecc71':(vote>=50?'#f1c40f':'#e74c3c')}">${pct}</span>`;
                 html += `<div class="preview-item" style="opacity: ${opacity};">
                     <img src="${escapeHtml(poster)}" class="preview-poster" alt="">
+                    ${ratingBadge}
                     <div class="preview-title">${escapeHtml(String(item.title || ''))}</div>
                     <div class="preview-meta">${escapeHtml(String(item.year || ''))} • ${escapeHtml(String(status || ''))}</div>
                 </div>`;
             });
+            const grid = document.getElementById('preview-grid');
             grid.innerHTML = html;
         } else {
             grid.innerHTML = `<div style="color:var(--error); grid-column:1/-1; text-align:center;">Error: ${(data.message || 'Unknown error').replace(/</g, '&lt;')}</div>`;
@@ -587,6 +1022,7 @@ function createCollection(key) {
     if (!btn) return;
     const originalText = btn.innerText;
     btn.disabled = true; btn.innerText = "Processing... ⏳"; btn.style.background = "#555";
+
     const visHome = document.getElementById('visibility-home-' + key);
     const visLib = document.getElementById('visibility-library-' + key);
     const visFriends = document.getElementById('visibility-friends-' + key);
@@ -632,12 +1068,16 @@ function createCollection(key) {
 function saveSettings(key) {
     const freqEl = document.getElementById('freq-' + key);
     const syncEl = document.getElementById('sync-' + key);
+    const sortEl = document.getElementById('sort-' + key);
+    const summaryEl = document.getElementById('summary-' + key);
     const visHomeEl = document.getElementById('visibility-home-' + key);
     const visLibEl = document.getElementById('visibility-library-' + key);
     const visFriendsEl = document.getElementById('visibility-friends-' + key);
     
     const freq = freqEl ? freqEl.value : 'manual';
     const sync = (syncEl && syncEl.value) ? syncEl.value : 'sync';
+    const sort = (sortEl && sortEl.value) ? sortEl.value : 'release';
+    const summary = (summaryEl && summaryEl.value) ? summaryEl.value.trim() : '';
     const visibility_home = (visHomeEl && visHomeEl.checked) ? '1' : '0';
     const visibility_library = (visLibEl && visLibEl.checked) ? '1' : '0';
     const visibility_friends = (visFriendsEl && visFriendsEl.checked) ? '1' : '0';
@@ -648,7 +1088,7 @@ function saveSettings(key) {
     fetch(API_SCHEDULE_COLLECTION, {
         method: 'POST',
         headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': '{{ csrf_token() }}'},
-        body: `preset_key=${encodeURIComponent(key)}&frequency=${encodeURIComponent(freq)}&sync_mode=${encodeURIComponent(sync)}&visibility_home=${visibility_home}&visibility_library=${visibility_library}&visibility_friends=${visibility_friends}`
+        body: `preset_key=${encodeURIComponent(key)}&frequency=${encodeURIComponent(freq)}&sync_mode=${encodeURIComponent(sync)}&sort_order=${encodeURIComponent(sort)}&summary=${encodeURIComponent(summary)}&visibility_home=${visibility_home}&visibility_library=${visibility_library}&visibility_friends=${visibility_friends}`
     })
     .then(r => r.json())
     .then(data => {
@@ -657,7 +1097,7 @@ function saveSettings(key) {
             fb.textContent = 'Settings saved';
             fb.style.display = 'inline';
             setTimeout(() => { fb.style.display = 'none'; }, 2500);
-        } else if (data.message) {
+        } else if (data.status === 'error' && data.message) {
             alert(data.message);
         }
     })
@@ -766,5 +1206,7 @@ document.addEventListener('keydown', function(e) {
     if (preview && preview.style.display === 'block') closePreviewModal();
     else if (importModal && importModal.style.display === 'block') closeImportModal();
 });
+
+
 </script>
 {% endblock %}
