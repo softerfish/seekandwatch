@@ -1,6 +1,6 @@
 # SeekAndWatch
 
-![Version](https://img.shields.io/badge/version-1.5.11-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) ![License](https://img.shields.io/badge/License-MIT-green.svg)
+![Version](https://img.shields.io/badge/version-1.5.13-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
 **Saved you a scroll or two?** If this app saves you from endless scrolling, a star for the project helps a lot.
 
@@ -146,6 +146,33 @@ docker compose up -d
 
 ## Changelog
 
+v1.5.13
+
+**SeekAndWatch Local**
+- Plex Collections now have a sorting options:
+	- TMDB Popularity
+	- TMDB Rating
+	- Release date
+	- Alphabetical
+	- Random
+- New Plex Collection categories:
+	- Trending TV Today
+	- Trending TV This Week
+	- Trending Movies Today
+	- Trending Movies This Week
+- custom summary/description field for Plex Collections
+- custom posters for Plex Collections
+- duplicate collection detection in Plex Collections
+- updated Plex Collections logic for International & World Movies/TV 
+- adjusted many styling options
+- updated old screenshots
+
+**SeekAndWatch Cloud (beta)**
+- no longer going to mention in changelog
+
+<details>
+  <summary><b>Past Changelog</b></summary>
+
 v1.5.12
 
 **SeekAndWatch Cloud (beta)**
@@ -155,10 +182,6 @@ v1.5.12
 **SeekAndWatch Local**
 - a complete new layout *mostly* finished to match the cloud app
 - small bugfixes
-
-
-<details>
-  <summary><b>Past Changelog</b></summary>
 
 v1.5.11
 
@@ -234,6 +257,7 @@ v1.5.4
 - fixed small error not updating requested items through cloud app
 
 v1.5.3
+
 - csrf tokens have been changed. Currently in the previous app, you'd be given a fresh CSRF before each action, which was nice unless you timeout in one window or logout and go back to the first window. Now: 
 	- actions now fetch a fresh CSRF token before sending, so long-open or other tabs no longer hit "Invalid CSRF token"
 	- logout and login/register notify other tabs via localStorage so they reload and stay in sync
@@ -457,7 +481,7 @@ This product uses the TMDB API but is not endorsed or certified by TMDB.
 ## Screenshots
 
 <details>
-  <summary><b>View screenshots (v1.4.0)</b></summary>
+  <summary><b>View screenshots (v1.5.13)</b></summary>
   <br>
 
 | Smart Discovery (1) | Smart Discovery (2) | Smart Discovery (3) |

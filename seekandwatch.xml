@@ -9,7 +9,7 @@
   <Privileged>false</Privileged>
   <Support>https://www.reddit.com/r/SeekAndWatch/</Support>
   <Project>https://github.com/softerfish/seekandwatch</Project>
-  <Overview>Self-hosted Plex companion: Smart Discovery (recommendations from watch history and taste), add movies and shows from the app via Radarr/Sonarr, Kometa config builder (no YAML), Plex collections, Overseerr requests, Tautulli trending. One dashboard, less scrolling, more watching.</Overview>
+  <Overview>The ultimate self-hosted Plex companion. Now featuring SeekAndWatch Cloud: allow your users to request content easily without VPNs or reverse proxies. Includes Smart Discovery (recommendations based on history &amp; taste), direct Radarr/Sonarr integration, a no-code Kometa config builder, automated Plex collections, Overseerr support, and Tautulli trending. One dashboard: less scrolling, more watching.</Overview>
   <Category>MediaApp:Other Tools:Utilities</Category>
   <WebUI>http://[IP]:[PORT:5000]</WebUI>
   <Icon>https://raw.githubusercontent.com/softerfish/seekandwatch/main/icon.png</Icon>
@@ -17,6 +17,8 @@
   <Config Name="Web Port" Target="5000" Default="5000" Mode="tcp" Description="The Web UI Port" Type="Port" Display="always" Required="true" Mask="false">5000</Config>
   
   <Config Name="App Data" Target="/config" Default="/mnt/user/appdata/seekandwatch" Mode="rw" Description="Stores the database and settings" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/seekandwatch</Config>
+  
+  <Config Name="Timezone" Target="TZ" Default="UTC" Description="Container Timezone (e.g. America/New_York)" Type="Variable" Display="always" Required="false" Mask="false">UTC</Config>
   
   <Config Name="PUID" Target="PUID" Default="99" Description="Container User ID" Type="Variable" Display="advanced" Required="false" Mask="false">99</Config>
   <Config Name="PGID" Target="PGID" Default="100" Description="Container Group ID" Type="Variable" Display="advanced" Required="false" Mask="false">100</Config>

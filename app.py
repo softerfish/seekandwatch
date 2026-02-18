@@ -5,6 +5,9 @@ import time
 import os
 import re
 import sys
+import logging
+
+logging.basicConfig(level=logging.INFO)
 
 import config
 from config import CONFIG_DIR, DATABASE_URI, SECRET_KEY_FILE, CLOUD_REQUEST_TIMEOUT
@@ -49,7 +52,7 @@ from sqlalchemy import text
 
 # basic app setup stuff
 
-VERSION = "1.5.12"
+VERSION = "1.5.13"
 
 UPDATE_CACHE = {
     'version': None,
@@ -717,7 +720,10 @@ def dashboard():
     try:
         if s.plex_url and s.plex_token:
             p = PlexServer(s.plex_url, s.plex_token, timeout=2)
-            plex_libraries = [sec.title for sec in p.library.sections() if sec.type in ['movie', 'show']]
+            all_sections = list(p.library.sections())
+            logging.info(f"Dashboard: Plex libraries found: {[(sec.title, sec.type) for sec in all_sections]}")
+            plex_libraries = [sec.title for sec in all_sections if sec.type in ['movie', 'show']]
+            logging.info(f"Dashboard: Filtered libraries: {plex_libraries}")
     except Exception: pass
        
     return render_template('dashboard.html', 
@@ -1542,6 +1548,8 @@ def playlists():
 
     schedules = {}
     sync_modes = {}
+    sort_orders = {}
+    summaries = {}
     visibility = {}  # preset_key -> { home, library, friends }
     for sch in CollectionSchedule.query.all():
         schedules[sch.preset_key] = sch.frequency
@@ -1549,6 +1557,8 @@ def playlists():
             try:
                 config = json.loads(sch.configuration)
                 sync_modes[sch.preset_key] = config.get('sync_mode', 'append')
+                sort_orders[sch.preset_key] = config.get('sort_order', 'release_desc')
+                summaries[sch.preset_key] = config.get('summary', '')
                 visibility[sch.preset_key] = {
                     'home': config.get('visibility_home', True),
                     'library': config.get('visibility_library', False),
@@ -1556,6 +1566,8 @@ def playlists():
                 }
             except Exception:
                 sync_modes[sch.preset_key] = 'append'
+                sort_orders[sch.preset_key] = 'release_desc'
+                summaries[sch.preset_key] = ''
                 visibility[sch.preset_key] = {'home': True, 'library': False, 'friends': False}
 
     custom_presets = {}
@@ -1580,6 +1592,8 @@ def playlists():
                            presets=PLAYLIST_PRESETS, 
                            schedules=schedules, 
                            sync_modes=sync_modes,
+                           sort_orders=sort_orders,
+                           summaries=summaries,
                            visibility=visibility,
                            custom_presets=custom_presets,
                            schedule_time=current_time)
@@ -1725,7 +1739,10 @@ def settings():
     try:
         if s.plex_url and s.plex_token:
             p = PlexServer(s.plex_url, s.plex_token, timeout=3)
-            plex_libraries = [sec.title for sec in p.library.sections() if sec.type in ['movie', 'show']]
+            all_sections = list(p.library.sections())
+            logging.info(f"Settings: Plex libraries found: {[(sec.title, sec.type) for sec in all_sections]}")
+            plex_libraries = [sec.title for sec in all_sections if sec.type in ['movie', 'show']]
+            logging.info(f"Settings: Filtered libraries: {plex_libraries}")
     except Exception as e:
         err_str = str(e)
         if "Connection refused" in err_str or "Max retries exceeded" in err_str or "plex.direct" in err_str:
@@ -2185,7 +2202,7 @@ def save_cloud_settings():
 @app.route('/approve_request/<int:req_id>', methods=['POST'])
 @login_required
 def approve_request(req_id):
-    # --- IMPORTANT: Local Import to prevent crash ---
+    # important: local import to prevent crash
     from cloud_worker import process_item
 
     req = CloudRequest.query.get_or_404(req_id)
@@ -2285,7 +2302,7 @@ def delete_request(req_id):
             print(f"Warning: Could not delete from cloud: {e}")
 
 
-    # --- 2. RECORD DELETION SO WE DON'T RE-IMPORT FROM CLOUD ---
+    # record deletion so we don't re-import from cloud
     if cloud_id_val:
         try:
             if not DeletedCloudId.query.filter_by(cloud_id=cloud_id_val).first():
@@ -2311,5 +2328,64 @@ def delete_request(req_id):
         flash(f"Error deleting request: {e}", "error")
         
     return redirect(url_for('requests_page'))
+from utils import CUSTOM_POSTER_DIR
+
+@app.route('/img/custom_posters/<path:filename>')
+def custom_poster(filename):
+    return send_from_directory(CUSTOM_POSTER_DIR, filename)
+
+@app.route('/api/popular_movies_posters')
+def popular_movies_posters():
+    """Endpoint to get a list of popular movie posters for the login background."""
+    try:
+        # Use the current user's settings if authenticated, otherwise the first user's.
+        # This is for the login page, where the user isn't logged in yet.
+        settings = None
+        if current_user.is_authenticated:
+            settings = current_user.settings
+        else:
+            # Fallback for login page: use first admin user's settings
+            admin_user = User.query.filter_by(is_admin=True).first()
+            if admin_user:
+                settings = admin_user.settings
+
+        if not settings or not settings.tmdb_key:
+            # Last resort: try to find any user with a key
+            if not settings:
+                all_settings = Settings.query.all()
+                for s in all_settings:
+                    if s.tmdb_key:
+                        settings = s
+                        break
+            
+            if not settings or not settings.tmdb_key:
+                return jsonify({'error': 'TMDB API key not configured for any user.'}), 500
+
+        # Fetch popular movies from TMDB
+        tmdb_url = f"https://api.themoviedb.org/3/movie/popular?api_key={settings.tmdb_key}&language=en-US&page=1"
+        response = requests.get(tmdb_url, timeout=10)
+        response.raise_for_status()
+        
+        data = response.json()
+        
+        # Get up to 20 posters with a high resolution
+        posters = []
+        for movie in data.get('results', [])[:20]:
+            if movie.get('poster_path'):
+                posters.append(f"https://image.tmdb.org/t/p/original{movie['poster_path']}")
+        
+        # Shuffle so it's not the same every time
+        random.shuffle(posters)
+        
+        return jsonify(posters)
+        
+    except Exception as e:
+        # Log the error so the admin can see what went wrong
+        try:
+            write_log("error", "Backgrounds", f"Failed to fetch popular movie posters: {e}")
+        except Exception:
+            pass # logging might not be set up
+        return jsonify({'error': 'Could not fetch movie posters.'}), 500
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)

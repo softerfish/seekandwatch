@@ -434,7 +434,7 @@ def process_cloud_queue():
             
         # Do not log API key or any part of it (security: clear-text logging)
         
-        # --- NEW STEP: Sync Deletions (and pick up X-Poll-Interval from sync response if present) ---
+        # sync deletions (and pick up X-Poll-Interval from sync response if present)
         sync_response = sync_deletions(settings)
         if sync_response is not None:
             try:
@@ -455,7 +455,7 @@ def process_cloud_queue():
             # 2. Poll the Cloud for new Mail
             response = requests.get(f"{base}/api/poll.php", headers=headers, timeout=CLOUD_REQUEST_TIMEOUT)
             
-            # --- HANDLE 304 (Not Modified) ---
+            # handle 304 (not modified)
             if response.status_code == 304:
                 _record_last_poll(settings, True)
                 try:
@@ -473,7 +473,7 @@ def process_cloud_queue():
                     pass
                 return
 
-            # --- HANDLE 429 (Throttled): respect Retry-After and back off next cycles ---
+            # handle 429 (throttled), respect Retry-After and back off next cycles
             if response.status_code == 429:
                 _record_last_poll(settings, False)
                 retry_after = int(response.headers.get('Retry-After', 60))
@@ -520,7 +520,7 @@ def process_cloud_queue():
                 print("Cloud Error: Non-JSON response received (response body not logged).")
                 return
 
-            # --- Handle poll: approved_to_sync = items owner approved on web; add to Radarr/Sonarr and mark_synced
+            # handle poll: approved_to_sync = items owner approved on web; add to Radarr/Sonarr and mark_synced
             approved_list = data.get('approved_to_sync', []) if isinstance(data, dict) else []
             for item in (approved_list or []):
                 process_approved_from_web(settings, item, source='poll_approved')

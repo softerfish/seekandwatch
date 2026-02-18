@@ -2,12 +2,13 @@
 
 import concurrent.futures
 import logging
-import datetime
+from datetime import datetime, timedelta
 import difflib
 import ipaddress
 import json
 import math
 import os
+import platform
 import random
 import re
 import shutil
@@ -22,6 +23,8 @@ import zipfile
 from urllib.parse import urlencode, urlparse
 
 import requests
+import socket
+from urllib.parse import urlparse
 from flask import flash, redirect, url_for, session, render_template, has_app_context, current_app
 from plexapi.server import PlexServer
 from werkzeug.utils import secure_filename
@@ -38,7 +41,7 @@ from config import (
     get_history_cache_file,
 )
 from models import db, CollectionSchedule, SystemLog, Settings, TmdbAlias, TmdbKeywordCache, TmdbRuntimeCache, RadarrSonarrCache
-from presets import PLAYLIST_PRESETS
+from presets import PLAYLIST_PRESETS, TMDB_GENRE_MAP, TMDB_STUDIO_MAP
 
 log = logging.getLogger(__name__)
 
@@ -55,6 +58,7 @@ LOCK_FILE = get_lock_file()
 SCANNER_LOG_FILE = get_scanner_log_file()
 RESULTS_CACHE_FILE = get_results_cache_file()
 HISTORY_CACHE_FILE = get_history_cache_file()
+CUSTOM_POSTER_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'assets', 'custom_posters')
 
 # in-memory caches (also persisted to disk)
 RESULTS_CACHE = {}
@@ -1421,6 +1425,77 @@ def _get_plex_tmdb_id(plex_item):
         log.debug("Parse Plex section ID: %s", e)
     return None
 
+def _fetch_local_candidates(target_lib, preset):
+    """
+    Scans local Plex library for items matching the preset's criteria (Genre, Studio, Decade).
+    This guarantees that 'rare' items not returned by TMDB discovery are included.
+    """
+    local_items = []
+    tmdb_params = preset.get('tmdb_params', {})
+    
+    # 1. Map Genres
+    # TMDB uses IDs, Plex uses strings.
+    
+    filters = {}
+    
+    # Genres
+    g_ids = tmdb_params.get('with_genres', '')
+    if g_ids:
+        # If multiple genres are OR'd (pipe), we fetch each and merge.
+        # If AND'd (comma), we fetch intersect? Plex search(genre=X) is usually strict.
+        # For now, handle single genre or OR.
+        parts = g_ids.replace(',', '|').split('|')
+        for pid in parts:
+            g_name = TMDB_GENRE_MAP.get(str(pid))
+            if g_name:
+                try:
+                    # 'genre' argument in plexapi search matches the Genre tag
+                    hits = target_lib.search(genre=g_name)
+                    local_items.extend(hits)
+                except: pass
+
+    # Decades (primary_release_date range)
+    # e.g. 1990-01-01 to 1999-12-31 -> decade=1990
+    d_gte = tmdb_params.get('primary_release_date.gte') or tmdb_params.get('first_air_date.gte')
+    if d_gte and (d_gte.endswith('-01-01') or d_gte == '2020-01-01'):
+        try:
+            year = int(d_gte[:4])
+            if year % 10 == 0:
+                hits = target_lib.search(decade=year)
+                local_items.extend(hits)
+        except: pass
+
+    # Content Ratings
+    cert = tmdb_params.get('certification')
+    if cert:
+        # map common US ratings
+        # Plex often uses "pg-13", "R", "tv-ma" etc.
+        try:
+            hits = target_lib.search(contentRating=cert)
+            local_items.extend(hits)
+        except: pass
+
+    # Studios / Networks
+    # Map common IDs from presets
+    company_ids = tmdb_params.get('with_companies') or tmdb_params.get('with_networks')
+    if company_ids:
+        parts = str(company_ids).replace(',', '|').split('|')
+        for cid in parts:
+            s_name = TMDB_STUDIO_MAP.get(str(cid))
+            if s_name:
+                try:
+                    # studio or network search
+                    hits = target_lib.search(studio=s_name)
+                    local_items.extend(hits)
+                    # For TV networks, sometimes 'network' is the field? plexapi uses 'network' for show?
+                    # check if 'network' filter works for TV
+                    if preset.get('media_type') == 'tv':
+                        hits2 = target_lib.search(network=s_name)
+                        local_items.extend(hits2)
+                except: pass
+
+    return local_items
+
 # collection syncing logic
 def run_collection_logic(settings, preset, key, app_obj=None):
     if is_system_locked(): return False, "Another task is running. Please wait and try again."
@@ -1432,6 +1507,34 @@ def run_collection_logic(settings, preset, key, app_obj=None):
         plex = PlexServer(settings.plex_url, settings.plex_token)
         want_type = preset.get('media_type', 'movie')
         tmdb_items = []
+        
+        # Duplicate collection detection - warn if similar collections exist
+        want_title = (preset.get('title') or '').strip()
+        if want_title:
+            target_type = 'movie' if want_type == 'movie' else 'show'
+            target_lib = next((s for s in plex.library.sections() if s.type == target_type), None)
+            if target_lib:
+                try:
+                    # Search for collections with similar names
+                    all_collections = target_lib.search(libtype='collection')
+                    similar = []
+                    want_lower = want_title.lower()
+                    for col in all_collections:
+                        col_title = (getattr(col, 'title', None) or '').strip()
+                        col_lower = col_title.lower()
+                        # Skip exact match (we'll handle that later)
+                        if col_lower == want_lower:
+                            continue
+                        # Check for similar names (contains or is contained)
+                        if want_lower in col_lower or col_lower in want_lower:
+                            similar.append(col_title)
+                    
+                    if similar and len(similar) <= 3:
+                        similar_list = ', '.join(f'"{t}"' for t in similar[:3])
+                        write_log("warning", "Sync", f"Similar collection(s) found: {similar_list}. Check if this is a duplicate.", app_obj=app_obj)
+                except Exception as e:
+                    log.debug(f"Duplicate detection: {e}")
+
 
         # figure out if this is a trending collection (needs strict sync)
         category = preset.get('category', '')
@@ -1470,6 +1573,17 @@ def run_collection_logic(settings, preset, key, app_obj=None):
             if 'language' not in params:
                 params['language'] = 'en-US'
 
+            # Handle dynamic date calculation (days_old -> primary_release_date.gte)
+            days_old = preset.get('days_old')
+            if days_old and isinstance(days_old, int):
+                cutoff = (datetime.now() - timedelta(days=days_old)).strftime('%Y-%m-%d')
+                if want_type == 'movie':
+                    params['primary_release_date.gte'] = cutoff
+                    params['primary_release_date.lte'] = datetime.now().strftime('%Y-%m-%d')
+                else:
+                    params['first_air_date.gte'] = cutoff
+                    params['first_air_date.lte'] = datetime.now().strftime('%Y-%m-%d')
+
             # grab items from TMDB (collection or discover)
             if 'with_collection_id' in params:
                 col_id = params.pop('with_collection_id')
@@ -1477,7 +1591,14 @@ def run_collection_logic(settings, preset, key, app_obj=None):
                 data = requests.get(url, timeout=10).json()
                 tmdb_items = data.get('parts', [])
             else:
-                url = f"https://api.themoviedb.org/3/discover/{want_type}"
+                endpoint = preset.get('tmdb_endpoint')
+                if endpoint:
+                    url = f"https://api.themoviedb.org/3/{endpoint}"
+                else:
+                    url = f"https://api.themoviedb.org/3/discover/{want_type}"
+
+
+                
                 def fetch_page(p):
                     try:
                         p_params = params.copy()
@@ -1492,16 +1613,42 @@ def run_collection_logic(settings, preset, key, app_obj=None):
                         return []
 
                 with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-                    results = executor.map(fetch_page, range(1, max_pages + 1))
+                    # When sorting by rating or random, we need DEEP pagination to find all matching items
+                    # (Popularity naturally bubbles owned items to the top, but high-rated items might be obscure)
+                    # Fetching 100 pages = 2000 items, which should cover most users' libraries for a genre.
+                    fetch_pages = max_pages
+                    results = executor.map(fetch_page, range(1, fetch_pages + 1))
                     for page_items in results:
                         if page_items: tmdb_items.extend(page_items)
-
+                        
         # only keep items that match preset type (movie has 'title', tv has 'name') so we never add wrong type (e.g. kids cartoons into horror)
         want_type = preset.get('media_type', 'movie')
         if want_type == 'tv':
             tmdb_items = [i for i in tmdb_items if i.get('name')]
         else:
             tmdb_items = [i for i in tmdb_items if i.get('title')]
+        
+        # OMDb fetch removed to use local Plex metadata instead.
+        # This avoids API limits and matches what the user sees in Plex.
+ 
+
+            
+        # IMPORTANT: For "Regional Trending" (or any preset with 'strict_limit' implied by context),
+        # we want the collection to represent the ACTUAL top X items.
+        # If the user doesn't own #2, we should NOT fill the slot with #11.
+        # We should only check ownership for the top X items in the source list.
+        # This ensures "Top 10" really means "Top 10" (and you might end up with only 3 items if you only own 3).
+        
+        # Use tmdb_limit if specified (for fetching more items from TMDB), otherwise use limit
+        tmdb_fetch_limit = preset.get('tmdb_limit') or preset.get('limit')
+        
+        if tmdb_fetch_limit and isinstance(tmdb_fetch_limit, int) and tmdb_fetch_limit > 0:
+            # Check if this is a "Top Charts" type preset where rank matters more than quantity.
+            is_trending = preset.get('category') in ['Trending Movies', 'Trending TV'] or 'trending' in (preset.get('tmdb_endpoint') or '')
+            if is_trending:
+                tmdb_items = tmdb_items[:tmdb_fetch_limit]
+        
+        # critic_rating sort is now handled AFTER finding items in Plex, using Plex's own metadata.
 
         # post-filter: Horror TV must exclude Animation/Kids/Family (TMDB without_genres can be unreliable, so we filter here)
         if key == 'genre_horror_tv' and want_type == 'tv':
@@ -1546,9 +1693,32 @@ def run_collection_logic(settings, preset, key, app_obj=None):
         if not target_lib:
             lib_label = "Movie" if preset['media_type'] == 'movie' else "TV"
             return False, f"No {lib_label} library found in Plex. Add a {lib_label} library in Plex and try again."
+        
+        # 1. Scan Local Library for "Guaranteed" inclusions (Genres, Decades, Studios)
+        # This ensures rare items are added even if TMDB doesn't list them in top 2000.
+        # Only do this for specific categories where "All" is implied.
+        cat = preset.get('category', '')
+        should_scan_local = cat in ['Genre (Movies)', 'Genre (TV)', 'Decades', 'Studios & Networks', 'Content Ratings']
+        # Also enable for some Themes if they are simple genres (like 'Western', 'War')
+        if 'theme_' in key and ('genre' in preset.get('tmdb_params', {}).keys() or 'with_genres' in preset.get('tmdb_params', {})):
+             should_scan_local = True
+
+        local_candidates = []
+        if should_scan_local:
+            try:
+                local_candidates = _fetch_local_candidates(target_lib, preset)
+                if local_candidates:
+                    write_log("info", "Sync", f"Local scan found {len(local_candidates)} items for '{preset.get('title')}'", app_obj=app_obj)
+            except Exception as e:
+                log.warning("Local scan failed: %s", e)
 
         # match by TMDB id (guid) so we don't add wrong titles (e.g. kids cartoons into horror)
         found_items = []
+        # Pre-sort the potential matches list by the user's criteria (Popularity/Rating/etc.)
+        # This ensures that when we iterate and add them to found_items, the order is preserved.
+        # Note: We already sorted 'tmdb_items' above, and 'potential_matches' was built by iterating over 'tmdb_items',
+        # so 'potential_matches' should already be sorted correctly.
+        
         if potential_matches:
             for item in potential_matches:
                 search_title = item.get('mapped_plex_title', item.get('title', item.get('name')))
@@ -1576,11 +1746,33 @@ def run_collection_logic(settings, preset, key, app_obj=None):
                             matched = r
                             break
                     if matched and matched not in found_items:
+                        # Attach TMDB data to the Plex object so we can sort by it later
+                        matched._tmdb_rating = item.get('vote_average', 0) or 0
+                        matched._tmdb_popularity = item.get('popularity', 0) or 0
                         found_items.append(matched)
                 except Exception as e:
                     log.debug("Plex search match: %s", e)
+        
+        # Merge local candidates (deduplicate by ratingKey)
+        if local_candidates:
+            # Sort local candidates to match the requested sort order as best as possible
 
-        found_items = list(set(found_items))
+
+            existing_keys = {x.ratingKey for x in found_items}
+            for item in local_candidates:
+                if item.ratingKey not in existing_keys:
+                    found_items.append(item)
+                    existing_keys.add(item.ratingKey)
+
+        # We already check 'if matched not in found_items' above to avoid duplicates.
+        # found_items is now a list of Plex objects in the correct order.
+        
+
+
+        # Apply limit if preset has one (e.g. Top 10 Trending)
+        limit = preset.get('limit')
+        if limit and isinstance(limit, int) and limit > 0:
+            found_items = found_items[:limit]
 
         # Sync or append. Only treat as "existing" if title matches (case-insensitive, trimmed); Plex search can return partial matches.
         want_title = (preset['title'] or '').strip()
@@ -1602,6 +1794,8 @@ def run_collection_logic(settings, preset, key, app_obj=None):
             alt_title = want_title + suffix
             if found_items:
                 col = target_lib.createCollection(title=alt_title, items=found_items)
+
+
                 apply_collection_visibility(
                     col,
                     visible_home=preset.get('visibility_home', True),
@@ -1617,7 +1811,116 @@ def run_collection_logic(settings, preset, key, app_obj=None):
 
         if not existing_col:
             if found_items:
+                # Get sort order from schedule config
+                sort_order = 'release_desc'  # default
+                try:
+                    schedule = CollectionSchedule.query.filter_by(preset_key=key).first()
+                    if schedule and schedule.configuration:
+                        config = json.loads(schedule.configuration)
+                        sort_order = config.get('sort_order', 'release_desc')
+                except Exception:
+                    pass
+                
+                # Apply sort order to found_items before creating collection
+                if sort_order == 'random':
+                    import random
+                    random.shuffle(found_items)
+                elif sort_order == 'alpha':
+                    found_items.sort(key=lambda x: getattr(x, 'title', '').lower())
+                elif sort_order == 'release_asc':
+                    # Sort by release date (oldest first)
+                    # Use originallyAvailableAt which is the release date
+                    found_items.sort(key=lambda x: getattr(x, 'originallyAvailableAt', None) or datetime(1900, 1, 1))
+                    log.info(f"Sorted {len(found_items)} items by release date (oldest first)")
+                elif sort_order == 'release_desc':
+                    # Sort by release date (newest first)
+                    found_items.sort(key=lambda x: getattr(x, 'originallyAvailableAt', None) or datetime(1900, 1, 1), reverse=True)
+                    log.info(f"Sorted {len(found_items)} items by release date (newest first)")
+                elif sort_order == 'popularity_desc':
+                    # Sort by TMDB popularity (high to low)
+                    found_items.sort(key=lambda x: getattr(x, '_tmdb_popularity', 0), reverse=True)
+                    log.info(f"Sorted {len(found_items)} items by TMDB popularity (high to low)")
+                elif sort_order == 'popularity_asc':
+                    # Sort by TMDB popularity (low to high)
+                    found_items.sort(key=lambda x: getattr(x, '_tmdb_popularity', 0))
+                    log.info(f"Sorted {len(found_items)} items by TMDB popularity (low to high)")
+                elif sort_order == 'rating_desc':
+                    # Sort by TMDB rating (high to low)
+                    found_items.sort(key=lambda x: getattr(x, '_tmdb_rating', 0), reverse=True)
+                    log.info(f"Sorted {len(found_items)} items by TMDB rating (high to low)")
+                elif sort_order == 'rating_asc':
+                    # Sort by TMDB rating (low to high)
+                    found_items.sort(key=lambda x: getattr(x, '_tmdb_rating', 0))
+                    log.info(f"Sorted {len(found_items)} items by TMDB rating (low to high)")
+                
+                # For custom sorting, we need to set sort_title on each item
+                # Then use alpha sort so they appear in the correct order
+                # This is how Kometa and other tools achieve custom ordering
+                log.info(f"Setting sort titles for {len(found_items)} items to achieve {sort_order} order")
+                for idx, item in enumerate(found_items):
+                    try:
+                        # Use zero-padded index as sort title (e.g., "0001", "0002", etc.)
+                        sort_title = f"{idx:04d}"
+                        item.editSortTitle(sort_title)
+                    except Exception as e:
+                        log.debug(f"Failed to set sort title for {item.title}: {e}")
+                
+                # Create the collection with all items at once
                 col = target_lib.createCollection(title=preset['title'], items=found_items)
+                
+                # Set to alphabetical sort so our sort_title ordering is used
+                try:
+                    col.editAdvanced(collectionSort=1)  # 1 = alpha
+                    log.info(f"Set collection to alphabetical sort mode (using sort_title)")
+                except Exception as e:
+                    log.warning(f"Failed to set alpha sort: {e}")
+                
+                log.info(f"Created collection '{preset['title']}' with {len(found_items)} items in {sort_order} order")
+                
+                # Apply custom summary if provided
+                try:
+                    schedule = CollectionSchedule.query.filter_by(preset_key=key).first()
+                    if schedule and schedule.configuration:
+                        config = json.loads(schedule.configuration)
+                        custom_summary = config.get('summary', '').strip()
+                        if custom_summary:
+                            col.edit(**{'summary.value': custom_summary, 'summary.locked': 1})
+                except Exception as e:
+                    log.warning(f"Failed to set custom summary: {e}")
+                
+                
+                # Apply locks immediately after creation
+                lock_kwargs = {
+                    "title.locked": 1,
+                    "summary.locked": 1,
+                    "titleSort.locked": 1
+                }
+                
+                try:
+                    schedule = CollectionSchedule.query.filter_by(preset_key=key).first()
+                    if schedule:
+                        config = json.loads(schedule.configuration or '{}')
+                        poster_path = config.get('custom_poster')
+                        if poster_path and os.path.exists(poster_path):
+                            try:
+                                col.edit(**{'thumb.locked': 0}) # Unlock poster
+                                col.uploadPoster(filepath=poster_path)
+                                col.edit(**{'thumb.locked': 1}) # Re-lock poster
+                                config['force_poster_update'] = False
+                                schedule.configuration = json.dumps(config)
+                                db.session.commit()
+                            except Exception as e:
+                                log.warning(f"Failed to upload/lock custom poster for {key}: {e}")
+                except Exception as e:
+                    log.warning(f"Failed to process custom poster for {key}: {e}")
+
+                try:
+                    col.edit(**lock_kwargs)
+                except Exception as e:
+                    log.warning(f"Failed to lock collection fields: {e}")
+                
+
+
                 apply_collection_visibility(
                     col,
                     visible_home=preset.get('visibility_home', True),
@@ -1647,23 +1950,110 @@ def run_collection_logic(settings, preset, key, app_obj=None):
                 "Check that the matching shows/movies are in the correct Plex library and that titles match (TMDB or Plex TV Series agent helps)."
             )
         # existing collection is regular, so we can add/remove items
+        # This is the new, corrected logic for updating an existing collection.
+        # It correctly handles adding, removing, and sorting.
+        
+        # Get sort order from schedule config and apply it to found_items
+        sort_order = 'release_desc'  # default
+        try:
+            schedule = CollectionSchedule.query.filter_by(preset_key=key).first()
+            if schedule and schedule.configuration:
+                config = json.loads(schedule.configuration)
+                sort_order = config.get('sort_order', 'release_desc')
+        except Exception:
+            pass
+        
+        # Apply sort order to found_items before updating collection
+        if sort_order == 'random':
+            import random
+            random.shuffle(found_items)
+        elif sort_order == 'alpha':
+            found_items.sort(key=lambda x: getattr(x, 'title', '').lower())
+        elif sort_order == 'release_asc':
+            # Sort by release date (oldest first)
+            found_items.sort(key=lambda x: getattr(x, 'originallyAvailableAt', None) or datetime(1900, 1, 1))
+            log.info(f"Sorted {len(found_items)} items by release date (oldest first)")
+        elif sort_order == 'release_desc':
+            # Sort by release date (newest first)
+            found_items.sort(key=lambda x: getattr(x, 'originallyAvailableAt', None) or datetime(1900, 1, 1), reverse=True)
+            log.info(f"Sorted {len(found_items)} items by release date (newest first)")
+        elif sort_order == 'popularity_desc':
+            # Sort by TMDB popularity (high to low)
+            found_items.sort(key=lambda x: getattr(x, '_tmdb_popularity', 0), reverse=True)
+            log.info(f"Sorted {len(found_items)} items by TMDB popularity (high to low)")
+        elif sort_order == 'popularity_asc':
+            # Sort by TMDB popularity (low to high)
+            found_items.sort(key=lambda x: getattr(x, '_tmdb_popularity', 0))
+            log.info(f"Sorted {len(found_items)} items by TMDB popularity (low to high)")
+        elif sort_order == 'rating_desc':
+            # Sort by TMDB rating (high to low)
+            found_items.sort(key=lambda x: getattr(x, '_tmdb_rating', 0), reverse=True)
+            log.info(f"Sorted {len(found_items)} items by TMDB rating (high to low)")
+        elif sort_order == 'rating_asc':
+            # Sort by TMDB rating (low to high)
+            found_items.sort(key=lambda x: getattr(x, '_tmdb_rating', 0))
+            log.info(f"Sorted {len(found_items)} items by TMDB rating (low to high)")
+        
+        # `found_items` is the final list of items for the collection, already sorted.
+        
         current_items = existing_col.items()
-        current_ids = {x.ratingKey for x in current_items}
-        new_ids = {x.ratingKey for x in found_items}
+        current_keys = {item.ratingKey for item in current_items}
+        found_keys = {item.ratingKey for item in found_items}
         
-        to_add = [x for x in found_items if x.ratingKey not in current_ids]
+        # Determine what to add and remove
+        to_add_keys = found_keys - current_keys
+        to_add = [item for item in found_items if item.ratingKey in to_add_keys]
         
+        to_remove = []
         if mode == 'sync':
-            to_remove = [x for x in current_items if x.ratingKey not in new_ids]
-        else:
-            to_remove = []
+            to_remove_keys = current_keys - found_keys
+            to_remove = [item for item in current_items if item.ratingKey in to_remove_keys]
 
-        # Guardrail: bulk add limit to avoid Plex rate limits.
-        if len(to_add) > 1000:
-            return False, f"Cannot add more than 1000 items at once (Plex limit). Try a smaller preset or sync in stages. ({len(to_add)} items would be added.)"
+        # For custom sorting, set sort_title on each item based on desired order
+        # Then use alpha sort so they appear in the correct order
+        log.info(f"Setting sort titles for {len(found_items)} items to achieve {sort_order} order")
+        for idx, item in enumerate(found_items):
+            try:
+                # Use zero-padded index as sort title (e.g., "0001", "0002", etc.)
+                sort_title = f"{idx:04d}"
+                item.editSortTitle(sort_title)
+            except Exception as e:
+                log.debug(f"Failed to set sort title for {item.title}: {e}")
+        
+        # Perform adds and removes
+        if to_remove:
+            existing_col.removeItems(to_remove)
+            
+        # Set to alphabetical sort so our sort_title ordering is used
+        try:
+            existing_col.editAdvanced(collectionSort=1)  # 1 = alpha
+            log.info(f"Set collection to alphabetical sort mode (using sort_title)")
+        except Exception as e:
+            log.warning(f"Failed to update sort mode: {e}")
+            
+        if to_add:
+            existing_col.addItems(to_add)
+        
+        # Apply custom summary if provided
+        try:
+            schedule = CollectionSchedule.query.filter_by(preset_key=key).first()
+            if schedule and schedule.configuration:
+                config = json.loads(schedule.configuration)
+                custom_summary = config.get('summary', '').strip()
+                if custom_summary:
+                    existing_col.edit(**{'summary.value': custom_summary, 'summary.locked': 1})
+        except Exception as e:
+            log.warning(f"Failed to set custom summary: {e}")
+            
+        # Ensure locks are applied to existing collections too
+        try:
+            existing_col.edit(**{
+                "title.locked": 1,
+                "summary.locked": 1,
+                "titleSort.locked": 1
+            })
+        except Exception: pass
 
-        if to_add: existing_col.addItems(to_add)
-        if to_remove: existing_col.removeItems(to_remove)
         # re-apply visibility in case preset was updated
         apply_collection_visibility(
             existing_col,
@@ -1671,6 +2061,28 @@ def run_collection_logic(settings, preset, key, app_obj=None):
             visible_library=preset.get('visibility_library', True),
             visible_friends=preset.get('visibility_friends', False)
         )
+        
+        try:
+            schedule = CollectionSchedule.query.filter_by(preset_key=key).first()
+            if schedule:
+                config = json.loads(schedule.configuration or '{}')
+                poster_path = config.get('custom_poster')
+                # Always upload custom poster if it exists (not just when force_poster_update is True)
+                if poster_path and os.path.exists(poster_path):
+                    try:
+                        existing_col.edit(**{'thumb.locked': 0}) # Unlock poster
+                        existing_col.uploadPoster(filepath=poster_path)
+                        existing_col.edit(**{'thumb.locked': 1}) # Re-lock poster
+                        # Clear the force flag after successful upload
+                        if config.get('force_poster_update'):
+                            config['force_poster_update'] = False
+                            schedule.configuration = json.dumps(config)
+                            db.session.commit()
+                    except Exception as e:
+                        log.warning(f"Failed to upload/lock custom poster for {key}: {e}")
+        except Exception as e:
+            log.warning(f"Failed to update custom poster for {key}: {e}")
+
         action = "Synced (Strict)" if mode == 'sync' else "Appended"
         msg = f"{action} '{preset['title']}': Added {len(to_add)}, Removed {len(to_remove)}."
         write_log("success", "Sync", msg, app_obj=app_obj)
@@ -1740,15 +2152,13 @@ def is_owned_item(tmdb_item, media_type):
 
 # Helpers
 def fetch_omdb_ratings(title, year, api_key):
-    if not api_key: return []
-    try:
-        url = f"https://www.omdbapi.com/?apikey={api_key}&t={title}&y={year}"
-        r = requests.get(url, timeout=2)
-        if r.status_code == 200:
-            return r.json().get('Ratings', [])
-    except Exception as e:
-        log.debug("OMDB ratings: %s", e)
+    # OMDb fetch removed to prevent API limit issues.
+    # We now rely on Plex's internal metadata for critic ratings.
     return []
+
+def prefetch_omdb_parallel(items, api_key):
+    # OMDb prefetch removed.
+    pass
     
 def send_overseerr_request(settings, media_type, tmdb_id, uid=None):
     if not settings.overseerr_url or not settings.overseerr_api_key:
@@ -1869,7 +2279,7 @@ def check_for_updates(current_version, url):
 def handle_lucky_mode(settings):
     try:
         random_genre = random.choice([28, 35, 18, 878, 27, 53]) 
-        url = f"https://api.themoviedb.org/3/discover/movie?api_key={settings.tmdb_key}&with_genres={random_genre}&sort_by=popularity.desc&page={random.randint(1, 10)}"
+        url = f"https://api.themoviedb.org/3/discover/movie?api_key={settings.tmdb_key}&with_genres={random_genre}&page={random.randint(1, 10)}"
         data = requests.get(url, timeout=10).json().get('results', [])
         
         random.shuffle(data)
@@ -2228,19 +2638,24 @@ def is_docker():
 
 def is_unraid():
     """Detect if this is an Unraid App Store install (so we disable one-click updater and show "update via App Store").
-    Checks (in order):
-    1. SEEKANDWATCH_UNRAID or SEEKANDWATCH_SOURCE=unraid - set by the Unraid Community Applications template.
-       Template maintainers: add Variable SEEKANDWATCH_UNRAID=1 to the template so App Store installs are detected.
-    2. UNRAID_VERSION / UNRAID_API_KEY - sometimes present when Unraid injects env into containers.
-    3. /etc/unraid-version, /boot/config, /usr/local/emhttp - host paths; only exist if the container has them mounted."""
+    
+    Revised Logic:
+    - If .git folder exists and is writable, we are running from source (manual install), so allow updates regardless of OS.
+    - Only flag as "Unraid App Store" if explicitly marked via env vars (set by template) AND we are not a git repo.
+    """
+    # 1. If we are a git repo, we are NOT a locked-down App Store container.
+    #    We allow manual git pulls even on Unraid if the user mapped the volume.
+    if is_git_repo():
+        return False
+
+    # 2. Check for explicit Unraid App Store markers
     if os.environ.get('SEEKANDWATCH_UNRAID') or os.environ.get('SEEKANDWATCH_SOURCE') == 'unraid':
         return True
-    if os.environ.get('UNRAID_VERSION') or os.environ.get('UNRAID_API_KEY'):
-        return True
+    
+    # 3. Check for injected Unraid paths (only if not git repo)
     if os.path.exists('/etc/unraid-version'):
         return True
-    if os.path.exists('/boot/config') or os.path.exists('/usr/local/emhttp'):
-        return True
+        
     return False
 
 def is_git_repo():
@@ -2300,6 +2715,45 @@ def _validate_path(path, allowed_dirs, description="path"):
             continue
     
     return False, None, f"Invalid {description}: path outside allowed directories"
+
+def validate_url_safety(url):
+    """
+    Validates that a URL is safe to fetch (SSRF protection).
+    Blocks localhost, private IPs, and AWS metadata.
+    """
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.hostname
+        if not hostname: return False
+        
+        # Block schemes other than http/https
+        if parsed.scheme not in ('http', 'https'):
+            return False
+            
+        # Check against blacklist
+        blacklist = ['localhost', '127.0.0.1', '0.0.0.0', '::1']
+        if hostname.lower() in blacklist:
+            return False
+            
+        # Resolve hostname to IP
+        try:
+            ip = socket.gethostbyname(hostname)
+        except socket.gaierror:
+            return False # Can't resolve, safer to block
+            
+        # Check private IP ranges
+        import ipaddress
+        ip_addr = ipaddress.ip_address(ip)
+        if ip_addr.is_loopback or ip_addr.is_private or ip_addr.is_link_local:
+            return False
+            
+        # Block AWS metadata specifically (169.254.169.254)
+        if str(ip_addr) == "169.254.169.254":
+            return False
+            
+        return True
+    except Exception:
+        return False
 
 def _copy_tree(src, dst):
     """
@@ -2534,7 +2988,7 @@ def send_to_radarr_sonarr(settings, media_type, tmdb_id):
         return False, "Settings not configured."
 
     try:
-        # --- MOVIES (RADARR) ---
+        # movies (radarr)
         if media_type == 'movie':
             if not settings.radarr_url or not settings.radarr_api_key:
                 return False, "Radarr not configured."
