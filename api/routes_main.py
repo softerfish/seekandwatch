@@ -64,11 +64,162 @@ from utils import (
     prefetch_omdb_parallel,
     score_recommendation,
     get_owned_tmdb_ids_for_cloud,
+    CUSTOM_POSTER_DIR,
+    validate_url_safety,
 )
 from presets import PLAYLIST_PRESETS
 from config import CLOUD_URL
 
 # recommendation loading and filtering
+
+@api_bp.route('/api/upload_artwork', methods=['POST'])
+@login_required
+@admin_required
+def upload_artwork():
+    """Upload or link custom artwork for a collection preset."""
+    try:
+        preset_id = request.form.get('preset_id')
+        if not preset_id:
+            return _error_response("Missing preset ID")
+            
+        # Security: Whitelist validation for preset_id
+        # Must be in PLAYLIST_PRESETS OR be a known custom collection in DB
+        # Since custom collections aren't in presets.py, we check the DB too.
+        is_valid_preset = False
+        if preset_id in PLAYLIST_PRESETS:
+            is_valid_preset = True
+        else:
+            # Check DB for user-created collections
+            # (Assuming CollectionSchedule covers all tracked collections)
+            sched = CollectionSchedule.query.filter_by(preset_key=preset_id).first()
+            if sched: is_valid_preset = True
+            
+        if not is_valid_preset:
+            # If it's a "new" imported list that hasn't been saved to DB yet, this might fail.
+            # But artwork is usually added AFTER creation.
+            # Allow alphanumeric + underscore/dash to prevent path traversal at least.
+            if not re.fullmatch(r'^[a-zA-Z0-9_\-]+$', preset_id):
+                 return _error_response("Invalid preset ID format")
+
+        # Create assets/custom_posters if it doesn't exist
+        os.makedirs(CUSTOM_POSTER_DIR, exist_ok=True)
+        
+        # Cleanup old artwork for this preset
+        base_name = secure_filename(preset_id)
+        for ext in ['.jpg', '.jpeg', '.png']:
+            old_path = os.path.join(CUSTOM_POSTER_DIR, f"{base_name}{ext}")
+            if os.path.exists(old_path):
+                try:
+                    os.remove(old_path)
+                except Exception:
+                    pass
+
+        file = request.files.get('file')
+        url = request.form.get('url')
+
+        if file and file.filename:
+            # Handle file upload
+            ext = os.path.splitext(file.filename)[1].lower()
+            if ext not in ['.jpg', '.jpeg', '.png']:
+                return _error_response("Invalid file type. Only JPG, JPEG, and PNG allowed.")
+            
+            # Normalize .jpeg to .jpg for simplicity
+            if ext == '.jpeg': ext = '.jpg'
+            
+            # Verify file content (magic numbers) to prevent renaming attacks
+            # Read first 32 bytes
+            header = file.read(32)
+            file.seek(0) # Reset pointer
+            
+            is_valid = False
+            if ext == '.jpg':
+                # JPEG magic: FF D8 FF
+                if header.startswith(b'\xff\xd8\xff'): is_valid = True
+            elif ext == '.png':
+                # PNG magic: 89 50 4E 47 0D 0A 1A 0A
+                if header.startswith(b'\x89PNG\r\n\x1a\n'): is_valid = True
+                
+            if not is_valid:
+                return _error_response("Invalid file content. The file extension does not match the file type.")
+            
+            save_path = os.path.join(CUSTOM_POSTER_DIR, f"{base_name}{ext}")
+            file.save(save_path)
+            
+            # Save reference in presets.json (or separate config)
+            # For now, we'll use a sidecar config or update the preset directly if possible.
+            # Since presets.py is code, we should store this metadata in the DB or a separate JSON.
+            # We'll use CollectionSchedule to store it since that's where user customizations live.
+            schedule = CollectionSchedule.query.filter_by(preset_key=preset_id).first()
+            if not schedule:
+                schedule = CollectionSchedule(preset_key=preset_id, frequency='manual')
+                db.session.add(schedule)
+            
+            config = json.loads(schedule.configuration or '{}')
+            config['custom_poster'] = save_path
+            config['force_poster_update'] = True
+            schedule.configuration = json.dumps(config)
+            db.session.commit()
+            
+            return jsonify({'status': 'success', 'message': 'Artwork uploaded successfully'})
+
+        elif url:
+            # Handle URL - Download it locally
+            if not validate_url_safety(url):
+                return _error_response("Invalid or unsafe URL")
+
+            try:
+                resp = requests.get(url, timeout=10, stream=True)
+                if resp.status_code == 200:
+                    content_type = resp.headers.get('content-type', '')
+                    if 'image/jpeg' in content_type:
+                        ext = '.jpg'
+                    elif 'image/png' in content_type:
+                        ext = '.png'
+                    else:
+                        # Fallback based on URL or default to jpg
+                        if url.lower().endswith('.png'): ext = '.png'
+                        else: ext = '.jpg'
+                    
+                    save_path = os.path.join(CUSTOM_POSTER_DIR, f"{base_name}{ext}")
+                    with open(save_path, 'wb') as f:
+                        for chunk in resp.iter_content(1024):
+                            f.write(chunk)
+                            
+                    # Verify downloaded file content
+                    is_valid = False
+                    try:
+                        with open(save_path, 'rb') as f:
+                            header = f.read(32)
+                            if ext == '.jpg' and header.startswith(b'\xff\xd8\xff'): is_valid = True
+                            elif ext == '.png' and header.startswith(b'\x89PNG\r\n\x1a\n'): is_valid = True
+                    except Exception:
+                        pass
+                        
+                    if not is_valid:
+                        try: os.remove(save_path)
+                        except: pass
+                        return _error_response("Invalid file content from URL.")
+                            
+                    schedule = CollectionSchedule.query.filter_by(preset_key=preset_id).first()
+                    if not schedule:
+                        schedule = CollectionSchedule(preset_key=preset_id, frequency='manual')
+                        db.session.add(schedule)
+                    
+                    schedule.custom_poster = save_path
+                    schedule.force_poster_update = True
+                    db.session.commit()
+                    
+                    return jsonify({'status': 'success', 'message': 'Artwork downloaded successfully'})
+                else:
+                    return _error_response("Failed to download image from URL")
+            except Exception as e:
+                return _error_response(f"Download failed: {str(e)}")
+
+        return _error_response("No file or URL provided")
+
+    except Exception as e:
+        _log_api_exception("upload_artwork", e)
+        return _error_response(str(e))
 
 @api_bp.route('/load_more_recs')
 @login_required
@@ -441,12 +592,60 @@ def get_plex_libraries():
     s = current_user.settings
     try:
         plex = PlexServer(s.plex_url, s.plex_token)
+        # log all libraries for debugging
+        all_sections = list(plex.library.sections())
+        logging.info(f"Plex libraries found: {[(sec.title, sec.type) for sec in all_sections]}")
         # only grab movie/TV libraries (ignore music, photos, etc)
-        libs = [{'title': sec.title, 'type': sec.type, 'name': sec.title} for sec in plex.library.sections() if sec.type in ['movie', 'show']]
+        libs = [{'title': sec.title, 'type': sec.type, 'name': sec.title} for sec in all_sections if sec.type in ['movie', 'show']]
+        logging.info(f"Filtered to movie/show libraries: {[lib['title'] for lib in libs]}")
         return jsonify({'status': 'success', 'libraries': libs})
     except Exception as e:
         _log_api_exception("get_plex_libraries", e)
         return _error_response("Could not connect to Plex. Check that the server is running and the URL and token in Settings are correct.")
+
+@api_bp.route('/debug_plex_libraries')
+@login_required
+def debug_plex_libraries():
+    """Debug endpoint to show all Plex libraries and their types (safe to share, no sensitive data)"""
+    s = current_user.settings
+    if not s.plex_url or not s.plex_token:
+        return jsonify({
+            'status': 'error',
+            'message': 'Plex not configured. Add Plex URL and token in Settings first.'
+        })
+    
+    try:
+        plex = PlexServer(s.plex_url, s.plex_token, timeout=5)
+        all_sections = list(plex.library.sections())
+        
+        # safe info to share (no tokens, URLs, or personal data)
+        debug_info = {
+            'status': 'success',
+            'total_libraries': len(all_sections),
+            'all_libraries': [
+                {
+                    'title': sec.title,
+                    'type': sec.type,
+                    'agent': getattr(sec, 'agent', 'unknown'),
+                    'language': getattr(sec, 'language', 'unknown')
+                }
+                for sec in all_sections
+            ],
+            'filtered_movie_show': [
+                {'title': sec.title, 'type': sec.type}
+                for sec in all_sections if sec.type in ['movie', 'show']
+            ],
+            'filter_logic': "Only showing libraries where type is 'movie' or 'show'"
+        }
+        
+        return jsonify(debug_info)
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': f'Could not connect to Plex: {str(e)[:200]}'
+        })
+
         
 @api_bp.route('/get_plex_collections')
 @login_required
@@ -790,6 +989,11 @@ def create_bulk_collection():
             try: lib.fetchItem(k).addCollection(title)
             except Exception: pass
 
+
+
+
+
+
         # fetch the new collection and apply visibility (home / library / friends)
         # default at least library or home visible so it shows in Manage Recommendations
         visible_home = data.get('visibility_home', True)
@@ -865,6 +1069,9 @@ def preview_preset_items(key):
                     items.append({
                         'title': it.get('title') or it.get('name'),
                         'year': (it.get('release_date') or it.get('first_air_date') or '')[:4],
+                        'release_date': it.get('release_date') or it.get('first_air_date'),
+                        'popularity': float(i.get('popularity') or 0),
+                        'vote_average': float(i.get('vote_average') or 0),
                         'poster_path': it.get('poster_path'),
                         'owned': False,
                         'tmdb_id': it.get('id')
@@ -877,12 +1084,23 @@ def preview_preset_items(key):
         params['api_key'] = s.tmdb_key
         if 'language' not in params:
             params['language'] = 'en-US'
-        url = f"https://api.themoviedb.org/3/discover/{preset['media_type']}"
+            
+        endpoint = preset.get('tmdb_endpoint')
+        if endpoint:
+            url = f"https://api.themoviedb.org/3/{endpoint}"
+        else:
+            url = f"https://api.themoviedb.org/3/discover/{preset['media_type']}"
+            
         page = 1
         max_pages = 5
         # Horror TV: exclude Animation/Kids/Family (same post-filter as run_collection_logic)
         exclude_horror_genres = {16, 10762, 10751} if key == 'genre_horror_tv' and media_type == 'tv' else None
-        while len(items) < 12 and page <= max_pages:
+        
+        limit = preset.get('limit', 12)
+        # If no explicit limit (like 100 or 10), default to 12 for grid view.
+        # But if the preset has a limit (e.g. Top 10), we should respect it in preview so user sees exactly what they get.
+        
+        while len(items) < limit and page <= max_pages:
             params['page'] = page
             r = requests.get(url, params=params, timeout=5).json()
             results = r.get('results', [])
@@ -896,11 +1114,14 @@ def preview_preset_items(key):
                     items.append({
                         'title': i.get('title', i.get('name')),
                         'year': (i.get('release_date') or i.get('first_air_date') or '')[:4],
+                        'release_date': i.get('release_date') or i.get('first_air_date'),
+                        'popularity': float(i.get('popularity') or 0),
+                        'vote_average': float(i.get('vote_average') or 0),
                         'poster_path': i.get('poster_path'),
                         'owned': False,
                         'tmdb_id': i.get('id')
                     })
-                if len(items) >= 12:
+                if len(items) >= limit:
                     break
             page += 1
         
@@ -929,8 +1150,10 @@ def create_collection(key):
         if job and job.configuration:
             try: 
                 user_config = json.loads(job.configuration)
+
                 if 'sync_mode' in user_config:
                     preset['sync_mode'] = user_config['sync_mode']
+
                 for vk in ('visibility_home', 'visibility_library', 'visibility_friends'):
                     if vk in user_config:
                         preset[vk] = user_config[vk]
@@ -938,9 +1161,12 @@ def create_collection(key):
     
     # Run Now sends current visibility checkboxes so first run (or any run) uses them
     data = request.get_json(silent=True) or {}
+    # This is the correct location for the Run Now sort override
+
     for vk in ('visibility_home', 'visibility_library', 'visibility_friends'):
         if vk in data:
             preset[vk] = bool(data[vk])
+
             
     from flask import current_app
     success, msg = run_collection_logic(s, preset, key, app_obj=current_app._get_current_object())
@@ -982,6 +1208,8 @@ def schedule_collection():
     preset_key = request.form.get('preset_key')
     frequency = request.form.get('frequency')  # manual, daily, weekly
     sync_mode = request.form.get('sync_mode', 'append')
+    sort_order = request.form.get('sort_order', 'release_desc')  # release_desc, release_asc, alpha, popularity_desc, popularity_asc, rating_desc, rating_asc, random
+    summary = request.form.get('summary', '').strip()  # custom description
     # visibility: 1/0 or true/false from form
     visibility_home = request.form.get('visibility_home', '1') in ('1', 'true', 'yes')
     visibility_library = request.form.get('visibility_library', '0') in ('1', 'true', 'yes')
@@ -999,6 +1227,8 @@ def schedule_collection():
         except Exception: current_config = {}
             
     current_config['sync_mode'] = sync_mode
+    current_config['sort_order'] = sort_order
+    current_config['summary'] = summary
     current_config['visibility_home'] = visibility_home
     current_config['visibility_library'] = visibility_library
     current_config['visibility_friends'] = visibility_friends
@@ -1021,7 +1251,6 @@ def preview_custom_collection():
     # convert UI form fields to TMDB API parameters
     params = {
         'api_key': s.tmdb_key,
-        'sort_by': data['sort_by'],
         'vote_average.gte': data['min_rating'],
         'with_genres': data['with_genres'],
         'with_keywords': data.get('with_keywords', '')
@@ -1077,7 +1306,6 @@ def save_custom_collection():
         'description': 'Custom Smart Collection',
         'media_type': data['media_type'],
         'tmdb_params': {
-            'sort_by': data['sort_by'],
             'vote_average.gte': data['min_rating'],
             'with_genres': data['with_genres'],
             'with_keywords': data.get('with_keywords', '')
@@ -2915,6 +3143,100 @@ def add_to_sonarr():
     except Exception as e:
         _log_api_exception("add_to_sonarr", e)
         return _error_response('Request failed')
+
+@api_bp.route('/api/get_artwork_path', methods=['GET'])
+@login_required
+@admin_required
+def get_artwork_path():
+    preset_id = request.args.get('preset_id')
+    if not preset_id:
+        return _error_response("Missing preset ID")
+
+    # Check for custom artwork file
+    artwork_path = None
+    for ext in ['.jpg', '.jpeg', '.png']:
+        path = os.path.join(CUSTOM_POSTER_DIR, f'{preset_id}{ext}')
+        if os.path.exists(path):
+            # Return the URL path, not the filesystem path
+            artwork_path = f'/img/custom_posters/{preset_id}{ext}'
+            break
+
+    if artwork_path:
+        return jsonify({'status': 'success', 'path': artwork_path})
+    else:
+        return jsonify({'status': 'not_found'})
+
+@api_bp.route('/api/delete_artwork', methods=['POST'])
+@login_required
+@admin_required
+def delete_artwork():
+    try:
+        data = request.get_json()
+        preset_id = data.get('preset_id')
+        if not preset_id:
+            return _error_response("Missing preset ID")
+
+        # Find and delete the artwork file
+        deleted = False
+        for ext in ['.jpg', '.jpeg', '.png']:
+            path = os.path.join(CUSTOM_POSTER_DIR, f'{preset_id}{ext}')
+            if os.path.exists(path):
+                os.remove(path)
+                deleted = True
+                break
+
+        if deleted:
+            return jsonify({'status': 'success', 'message': 'Artwork deleted.'})
+        else:
+            return _error_response("No artwork found to delete.")
+
+    except Exception as e:
+        return _error_response(f"An unexpected error occurred: {str(e)}")
+
+@api_bp.route('/api/tmdb_poster_search', methods=['GET'])
+@login_required
+@admin_required
+def tmdb_poster_search():
+    """Search TMDB for posters by title."""
+    try:
+        query = request.args.get('query', '').strip()
+        if not query:
+            return _error_response("Missing search query")
+        
+        # Search both movies and TV shows
+        tmdb_api_key = current_app.config.get('TMDB_API_KEY', 'd6420b603675ee303d2046a8d0b6bb60')
+        
+        results = []
+        
+        # Search movies
+        try:
+            movie_url = f"https://api.themoviedb.org/3/search/movie?api_key={tmdb_api_key}&query={query}"
+            movie_resp = requests.get(movie_url, timeout=5)
+            if movie_resp.status_code == 200:
+                movie_data = movie_resp.json()
+                results.extend(movie_data.get('results', [])[:6])
+        except Exception:
+            pass
+        
+        # Search TV shows
+        try:
+            tv_url = f"https://api.themoviedb.org/3/search/tv?api_key={tmdb_api_key}&query={query}"
+            tv_resp = requests.get(tv_url, timeout=5)
+            if tv_resp.status_code == 200:
+                tv_data = tv_resp.json()
+                results.extend(tv_data.get('results', [])[:6])
+        except Exception:
+            pass
+        
+        # Filter out items without posters and sort by popularity
+        results = [r for r in results if r.get('poster_path')]
+        results.sort(key=lambda x: x.get('popularity', 0), reverse=True)
+        
+        return jsonify({'status': 'success', 'results': results[:12]})
+        
+    except Exception as e:
+        return _error_response(f"Search failed: {str(e)}")
+
 
 
 
