@@ -146,6 +146,14 @@ docker compose up -d
 
 ## Changelog
 
+v1.5.14
+
+**SeekAndWatch Local**
+- small bugfixes
+
+<details>
+  <summary><b>Past Changelog</b></summary>
+  
 v1.5.13
 
 **SeekAndWatch Local**
@@ -170,8 +178,6 @@ v1.5.13
 **SeekAndWatch Cloud (beta)**
 - no longer going to mention in changelog
 
-<details>
-  <summary><b>Past Changelog</b></summary>
 
 v1.5.12
 
