@@ -52,7 +52,7 @@ from sqlalchemy import text
 
 # basic app setup stuff
 
-VERSION = "1.5.13"
+VERSION = "1.5.14"
 
 UPDATE_CACHE = {
     'version': None,
@@ -82,6 +82,13 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = get_persistent_key()
 app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URI
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# Check for stale config.py in volume (from older versions) that shadows the app's config
+_stale_config_path = os.path.join(CONFIG_DIR, 'config.py')
+if os.path.exists(_stale_config_path):
+    logging.warning(f"Found old config.py in {CONFIG_DIR} - this file is no longer used and may cause import errors. Consider removing it.")
+    logging.warning("The app's config is now in the application directory, not the /config volume.")
+
 # Limit request body size (mitigates CVE-2024-49767 / multipart exhaustion)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB
 # Session cookie hardening. Set SECURE_COOKIE=1 (or SESSION_COOKIE_SECURE=1) when serving over HTTPS.
