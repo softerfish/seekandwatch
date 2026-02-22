@@ -149,6 +149,7 @@ docker compose up -d
 v1.5.16
 
 - API fixes for Cloud users
+- fixed styling and colors
 
 <details>
   <summary><b>Past Changelog</b></summary>
