@@ -4,7 +4,7 @@ import hashlib
 import hmac
 import json
 import time
-from flask import request, jsonify
+from flask import request, jsonify, current_app
 from api import api_bp
 from models import db, Settings, CloudRequest, DeletedCloudId
 from utils import write_log
@@ -112,4 +112,6 @@ def webhook_test():
             'message': 'Webhook endpoint is reachable'
         }), 200
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        # don't expose exception details to prevent information leakage
+        current_app.logger.exception("Webhook test failed")
+        return jsonify({'status': 'error', 'message': 'Webhook test failed'}), 500

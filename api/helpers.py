@@ -22,17 +22,21 @@ def validate_url_safety(url):
         if not parsed.hostname:
             return False
         
-        # Block localhost and private IPs
+        # Resolve hostname to IP and check if it's private
+        # This prevents DNS rebinding attacks
         try:
-            ip = ipaddress.ip_address(parsed.hostname)
-            if ip.is_private or ip.is_loopback or ip.is_link_local:
-                return False
-        except ValueError:
-            # Not an IP, check hostname
-            hostname_lower = parsed.hostname.lower()
-            blocked_hosts = ['localhost', '127.0.0.1', '0.0.0.0', '::1']
-            if hostname_lower in blocked_hosts or hostname_lower.startswith('192.168.') or hostname_lower.startswith('10.') or hostname_lower.startswith('172.'):
-                return False
+            import socket
+            # Get all IPs for this hostname
+            addr_info = socket.getaddrinfo(parsed.hostname, None)
+            for info in addr_info:
+                ip_str = info[4][0]
+                ip = ipaddress.ip_address(ip_str)
+                # Block private, loopback, link-local, multicast IPs
+                if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast:
+                    return False
+        except (socket.gaierror, ValueError, OSError):
+            # DNS resolution failed or invalid IP
+            return False
         
         return True
     except Exception:
