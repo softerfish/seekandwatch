@@ -641,9 +641,10 @@ def debug_plex_libraries():
         return jsonify(debug_info)
         
     except Exception as e:
+        current_app.logger.error(f"Plex connection error: {str(e)}")
         return jsonify({
             'status': 'error',
-            'message': f'Could not connect to Plex: {str(e)[:200]}'
+            'message': 'Could not connect to Plex. Check your server URL and token.'
         })
 
         
@@ -3151,14 +3152,22 @@ def get_artwork_path():
     preset_id = request.args.get('preset_id')
     if not preset_id:
         return _error_response("Missing preset ID")
+    
+    # Sanitize preset_id to prevent path traversal
+    safe_preset_id = secure_filename(preset_id)
+    if not safe_preset_id or safe_preset_id != preset_id or '/' in preset_id or '\\' in preset_id:
+        return _error_response("Invalid preset ID")
 
     # Check for custom artwork file
     artwork_path = None
     for ext in ['.jpg', '.jpeg', '.png']:
-        path = os.path.join(CUSTOM_POSTER_DIR, f'{preset_id}{ext}')
+        path = os.path.join(CUSTOM_POSTER_DIR, f'{safe_preset_id}{ext}')
+        # Verify the path is actually inside CUSTOM_POSTER_DIR (prevent path traversal)
+        if not os.path.abspath(path).startswith(os.path.abspath(CUSTOM_POSTER_DIR)):
+            return _error_response("Invalid path")
         if os.path.exists(path):
             # Return the URL path, not the filesystem path
-            artwork_path = f'/img/custom_posters/{preset_id}{ext}'
+            artwork_path = f'/img/custom_posters/{safe_preset_id}{ext}'
             break
 
     if artwork_path:
@@ -3175,11 +3184,19 @@ def delete_artwork():
         preset_id = data.get('preset_id')
         if not preset_id:
             return _error_response("Missing preset ID")
+        
+        # Sanitize preset_id to prevent path traversal
+        safe_preset_id = secure_filename(preset_id)
+        if not safe_preset_id or safe_preset_id != preset_id or '/' in preset_id or '\\' in preset_id:
+            return _error_response("Invalid preset ID")
 
         # Find and delete the artwork file
         deleted = False
         for ext in ['.jpg', '.jpeg', '.png']:
-            path = os.path.join(CUSTOM_POSTER_DIR, f'{preset_id}{ext}')
+            path = os.path.join(CUSTOM_POSTER_DIR, f'{safe_preset_id}{ext}')
+            # Verify the path is actually inside CUSTOM_POSTER_DIR (prevent path traversal)
+            if not os.path.abspath(path).startswith(os.path.abspath(CUSTOM_POSTER_DIR)):
+                return _error_response("Invalid path")
             if os.path.exists(path):
                 os.remove(path)
                 deleted = True
@@ -3191,7 +3208,8 @@ def delete_artwork():
             return _error_response("No artwork found to delete.")
 
     except Exception as e:
-        return _error_response(f"An unexpected error occurred: {str(e)}")
+        current_app.logger.error(f"Error deleting artwork: {str(e)}")
+        return _error_response("Failed to delete artwork")
 
 @api_bp.route('/api/tmdb_poster_search', methods=['GET'])
 @login_required
