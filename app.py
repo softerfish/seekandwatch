@@ -52,7 +52,7 @@ from sqlalchemy import text
 
 # basic app setup stuff
 
-VERSION = "1.5.15"
+VERSION = "1.5.16"
 
 UPDATE_CACHE = {
     'version': None,
