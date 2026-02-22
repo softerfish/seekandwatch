@@ -52,7 +52,7 @@ from sqlalchemy import text
 
 # basic app setup stuff
 
-VERSION = "1.5.14"
+VERSION = "1.5.15"
 
 UPDATE_CACHE = {
     'version': None,
@@ -107,9 +107,10 @@ limiter = Limiter(
 
 scheduler = APScheduler()
 scheduler.init_app(app)
-scheduler.start()
 
 db.init_app(app)
+
+# Don't start scheduler yet - wait until after migrations run
 
 login_manager = LoginManager()
 login_manager.login_view = 'login'
@@ -309,6 +310,12 @@ def run_migrations():
                     _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN last_cloud_poll_at DATETIME")
                 if 'last_cloud_poll_ok' not in settings_columns:
                     _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN last_cloud_poll_ok BOOLEAN")
+                if 'discord_last_message_id' not in settings_columns:
+                    print("--- [Migration] Adding 'discord_last_message_id' column ---")
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN discord_last_message_id VARCHAR(64)")
+                if 'cloud_webhook_backup_hours' not in settings_columns:
+                    print("--- [Migration] Adding 'cloud_webhook_backup_hours' column ---")
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN cloud_webhook_backup_hours INTEGER DEFAULT 6")
                 conn.commit()
                 
                 # Check if kometa_template table exists
@@ -432,6 +439,10 @@ try:
 except Exception as e:
     print(f"--- STARTUP ERROR: migrations failed: {e} ---", flush=True)
     sys.exit(1)
+
+# Start scheduler AFTER migrations complete (so background tasks don't crash on missing columns)
+scheduler.start()
+print("--- [Startup] Scheduler started after migrations ---", flush=True)
 
 # clear any leftover lock files from crashes/restarts
 print("--- BOOT SEQUENCE: CLEARING LOCKS ---", flush=True)
@@ -1889,7 +1900,11 @@ def support_us():
 
 # background scheduler - runs collections, cache refreshes, etc on a schedule
 
+# track last cloud poll time so we can use backup interval when webhook is enabled
+_last_cloud_poll_time = 0
+
 def scheduled_tasks():
+    global _last_cloud_poll_time
     with app.app_context():
         # prune backups at 4am
         if datetime.datetime.now().hour == 4 and datetime.datetime.now().minute == 0:
@@ -1979,12 +1994,31 @@ def scheduled_tasks():
                     threading.Thread(target=refresh_radarr_sonarr_cache, args=(app,)).start()
 
         # Cloud polling: fetch approved requests from SeekAndWatch Cloud
+        # When direct webhook is enabled, only poll as backup (every 6-24 hours)
+        now_ts = time.time()
+        
+        webhook_url = (getattr(s, 'cloud_webhook_url', None) or '').strip()
+        
         if getattr(s, 'cloud_enabled', False) and getattr(s, 'cloud_api_key', None) and getattr(s, 'cloud_sync_owned_enabled', True):
-            try:
-                from cloud_worker import process_cloud_queue
-                process_cloud_queue()
-            except Exception as e:
-                print(f"Cloud poll error: {e}")
+            # figure out how long to wait between polls
+            if webhook_url:
+                # direct webhook enabled: use backup interval (6-24 hours)
+                backup_hours = getattr(s, 'cloud_webhook_backup_hours', 6) or 6
+                backup_hours = max(6, min(24, backup_hours))
+                poll_interval_sec = backup_hours * 3600
+                print(f"Cloud: Webhook enabled, using {backup_hours}h backup poll interval")
+            else:
+                # no webhook: use normal interval (75-120 seconds by default)
+                poll_interval_sec = 90  # average of default range
+            
+            # only poll if enough time has passed
+            if now_ts - _last_cloud_poll_time >= poll_interval_sec:
+                try:
+                    from cloud_worker import process_cloud_queue
+                    process_cloud_queue()
+                    _last_cloud_poll_time = now_ts
+                except Exception as e:
+                    print(f"Cloud poll error: {e}")
 
 scheduler.add_job(id='master_task', func=scheduled_tasks, trigger='interval', minutes=1)
 
@@ -2040,17 +2074,32 @@ def webhook_approved():
     if request.method == 'OPTIONS':
         return _add_cors(jsonify({'status': 'ok'})), 200
     secret = (request.headers.get('X-Webhook-Secret') or '').strip()
+    if not secret:
+        return _add_cors(jsonify({'error': 'Unauthorized'})), 401
+    
+    # optimized lookup: use hash comparison on secret (constant time)
     settings = None
-    for s in Settings.query.filter(Settings.cloud_webhook_url.isnot(None)).all():
-        if secrets.compare_digest(s.cloud_webhook_secret or '', secret):
-            settings = s
-            break
+    try:
+        # grab all users with webhooks configured (should be small set)
+        all_settings = Settings.query.filter(Settings.cloud_webhook_url.isnot(None), Settings.cloud_webhook_secret.isnot(None)).all()
+        for s in all_settings:
+            if s.cloud_webhook_secret and secrets.compare_digest(s.cloud_webhook_secret, secret):
+                settings = s
+                break
+    except Exception:
+        pass
+    
     if not settings:
         return _add_cors(jsonify({'error': 'Unauthorized'})), 401
     try:
         data = request.get_json(force=True, silent=True) or {}
     except Exception:
         return _add_cors(jsonify({'error': 'Invalid JSON'})), 400
+    
+    # test webhook (just respond OK)
+    if data.get('event') == 'test':
+        return _add_cors(jsonify({'status': 'ok', 'message': 'Test webhook received'})), 200
+    
     # Push: new pending request (friend submitted); add to local list so UI updates without poll
     if data.get('event') == 'new_pending' and isinstance(data.get('request'), dict):
         from cloud_worker import add_pending_from_web, set_last_webhook_received
@@ -2147,6 +2196,7 @@ def save_cloud_settings():
     settings.cloud_sync_owned_enabled = 'cloud_sync_owned_enabled' in request.form
 
     webhook_url = (request.form.get('cloud_webhook_url') or '').strip()
+    
     if 'cloud_webhook_secret' in request.form:
         if 'cloud_webhook_secret_unchanged' in request.form:
             pass  # keep existing
@@ -2160,6 +2210,15 @@ def save_cloud_settings():
                 settings.cloud_webhook_secret = None
     settings.cloud_webhook_url = webhook_url or None
     webhook_secret = (settings.cloud_webhook_secret or '').strip()  # for register_webhook below
+
+    # backup poll interval when webhook is enabled (6, 12, or 24 hours)
+    raw_backup = (request.form.get('cloud_webhook_backup_hours') or '').strip()
+    if raw_backup.isdigit():
+        backup_hours = int(raw_backup)
+        backup_hours = max(6, min(24, backup_hours))  # clamp to 6-24
+        settings.cloud_webhook_backup_hours = backup_hours
+    elif not settings.cloud_webhook_backup_hours:
+        settings.cloud_webhook_backup_hours = 6  # default
 
     raw_min = (request.form.get('cloud_poll_interval_min') or '').strip()
     raw_max = (request.form.get('cloud_poll_interval_max') or '').strip()
@@ -2205,6 +2264,51 @@ def save_cloud_settings():
         flash("Cloud settings updated successfully", "success")
 
     return redirect(url_for('requests_settings_page'))
+
+@app.route('/api/webhook/test', methods=['POST'])
+@login_required
+def test_webhook_delivery():
+    """Test webhook delivery by calling cloud's test_webhook.php endpoint"""
+    settings = current_user.settings
+
+    if not settings.cloud_api_key or not settings.cloud_enabled:
+        return jsonify({'status': 'error', 'message': 'Cloud API key not configured'}), 400
+
+    if not settings.cloud_webhook_url:
+        return jsonify({'status': 'error', 'message': 'Webhook URL not configured'}), 400
+
+    try:
+        base = get_cloud_base_url(settings)
+        r = requests.post(
+            f"{base}/api/test_webhook.php",
+            headers={'X-Server-Key': settings.cloud_api_key},
+            timeout=15,
+        )
+
+        if r.status_code == 200:
+            data = r.json()
+            if data.get('status') == 'success':
+                return jsonify({
+                    'status': 'success',
+                    'message': data.get('message', 'Webhook test successful'),
+                    'duration_ms': data.get('duration_ms'),
+                })
+            else:
+                return jsonify({
+                    'status': 'error',
+                    'message': data.get('message', 'Webhook test failed'),
+                })
+        else:
+            return jsonify({'status': 'error', 'message': f'Cloud returned status {r.status_code}'}), 200
+
+    except requests.exceptions.Timeout:
+        return jsonify({'status': 'error', 'message': 'Connection timed out'}), 200
+    except requests.exceptions.ConnectionError:
+        return jsonify({'status': 'error', 'message': 'Could not reach cloud'}), 200
+    except Exception as e:
+        write_log("warning", "Webhook Test", str(e))
+        return jsonify({'status': 'error', 'message': 'Test failed'}), 200
+
 
 @app.route('/approve_request/<int:req_id>', methods=['POST'])
 @login_required

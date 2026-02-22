@@ -1,6 +1,6 @@
 # SeekAndWatch
 
-![Version](https://img.shields.io/badge/version-1.5.13-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) ![License](https://img.shields.io/badge/License-MIT-green.svg)
+![Version](https://img.shields.io/badge/version-1.5.15-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
 **Saved you a scroll or two?** If this app saves you from endless scrolling, a star for the project helps a lot.
 
@@ -146,13 +146,19 @@ docker compose up -d
 
 ## Changelog
 
+v1.5.15
+
+**SeekAndWatch Local**
+- Webhooks updates
+- Backups and restore updates
+
+<details>
+  <summary><b>Past Changelog</b></summary>
+
 v1.5.14
 
 **SeekAndWatch Local**
 - small bugfixes
-
-<details>
-  <summary><b>Past Changelog</b></summary>
   
 v1.5.13
 

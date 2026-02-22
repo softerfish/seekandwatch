@@ -97,10 +97,12 @@ class Settings(db.Model):
     last_owned_sync_at = db.Column(db.DateTime, nullable=True)  # last successful sync to Cloud
     cloud_webhook_url = db.Column(db.String(512), nullable=True)   # when set, cloud POSTs approved requests here for instant sync
     cloud_webhook_secret = db.Column(db.String(255), nullable=True)  # secret sent in X-Webhook-Secret when cloud calls webhook
+    cloud_webhook_backup_hours = db.Column(db.Integer, default=6)  # backup poll interval when webhook is enabled (6, 12, or 24 hours)
     cloud_poll_interval_min = db.Column(db.Integer, nullable=True)  # seconds between polls (min); null = use config/env default
     cloud_poll_interval_max = db.Column(db.Integer, nullable=True)  # seconds between polls (max); null = use config/env default
     last_cloud_poll_at = db.Column(db.DateTime, nullable=True)   # when we last attempted a cloud poll
     last_cloud_poll_ok = db.Column(db.Boolean, nullable=True)     # True = last poll succeeded, False = failed
+    discord_last_message_id = db.Column(db.String(64), nullable=True)  # last Discord message ID we processed (for Discord relay)
 
 class Blocklist(db.Model):
     __table_args__ = {'extend_existing': True}

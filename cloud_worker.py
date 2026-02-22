@@ -8,7 +8,13 @@ from app import app, db
 from models import Settings, CloudRequest, AppRequest, DeletedCloudId
 
 # cloud processing uses these (defined in utils.py only; api.py has HTTP endpoints, not these helpers)
-from config import CONFIG_DIR, CLOUD_REQUEST_TIMEOUT, SCHEDULER_USER_ID, POLL_INTERVAL_MIN, POLL_INTERVAL_MAX
+from config import CONFIG_DIR, CLOUD_REQUEST_TIMEOUT, SCHEDULER_USER_ID
+# fallback for older config files that don't have poll interval constants
+try:
+    from config import POLL_INTERVAL_MIN, POLL_INTERVAL_MAX
+except ImportError:
+    POLL_INTERVAL_MIN = 75
+    POLL_INTERVAL_MAX = 120
 from utils import get_cloud_base_url, send_to_radarr_sonarr, send_to_overseerr
 
 CLOUD_IMPORT_LOG_FILE = os.path.join(CONFIG_DIR, 'cloud_import_log.json')
@@ -71,7 +77,7 @@ def set_last_webhook_received():
 
 def get_poll_sleep_seconds():
     """Return how many seconds to sleep before next poll (jitter + backoff + cloud recommendation). Use from app or __main__."""
-    # When webhook URL is set, poll is only a backup: use 30-45 min and ignore user's min/max (600/900 etc.)
+    # When webhook URL is set, poll is only a backup: use user's backup interval (default 6 hours)
     try:
         with app.app_context():
             s = Settings.query.filter_by(user_id=SCHEDULER_USER_ID).first() if SCHEDULER_USER_ID is not None else None
@@ -79,7 +85,11 @@ def get_poll_sleep_seconds():
                 s = Settings.query.first()
             webhook_url = (getattr(s, 'cloud_webhook_url', None) or '').strip()
             if s and webhook_url:
-                base = random.randint(1800, 2700)  # 30-45 min when webhook is on
+                backup_hours = getattr(s, 'cloud_webhook_backup_hours', 6) or 6
+                backup_hours = max(6, min(24, backup_hours))  # clamp to 6-24 hours
+                min_sec = backup_hours * 3600
+                max_sec = min_sec + 1800  # add 30 min jitter
+                base = random.randint(min_sec, max_sec)
                 if backoff_remaining > 0:
                     base = min(BACKOFF_CAP_SEC, int(base * BACKOFF_MULT_AFTER_429))
                 return max(base, recommended_poll_interval_sec)

@@ -2294,7 +2294,7 @@ def handle_lucky_mode(settings):
 
 # backup/restore functions
 def create_backup():
-    filename = f"backup_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+    filename = f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
     filepath = os.path.join(BACKUP_DIR, filename)
     
     with zipfile.ZipFile(filepath, 'w', zipfile.ZIP_DEFLATED) as zipf:
@@ -2316,7 +2316,7 @@ def list_backups():
         try:
             sz = os.path.getsize(path)
             size_str = f"{round(sz / 1024, 2)} KB" if sz < 1024*1024 else f"{round(sz / (1024*1024), 2)} MB"
-            date = datetime.datetime.fromtimestamp(os.path.getmtime(path)).strftime('%Y-%m-%d %H:%M')
+            date = datetime.fromtimestamp(os.path.getmtime(path)).strftime('%Y-%m-%d %H:%M')
             backups.append({'filename': f, 'size': size_str, 'date': date})
         except OSError as e:
             write_log("warning", "Utils", f"list_backups stat failed ({type(e).__name__}): {f}")
