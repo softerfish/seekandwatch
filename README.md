@@ -58,7 +58,7 @@ Goal: spend less time browsing, more time watching. It uses your watch history a
 
 ### Plex collections
 
-- **90+ preset collections** - decades, genres, studios, themes, international, awards. Categories are collapsible so you can focus on what you use.
+- **140+ preset collections** - decades, genres, studios, themes, international, awards. Categories are collapsible so you can focus on what you use.
 - **Visibility** - Home, Library recommended, and Friends checkboxes on every collection; changes apply to Plex right away (no need to run the collection again).
 - **Library Browser** - Live view of all collections on your Plex server with the same visibility toggles. In Plex you can reorder and change options under Settings -> Manage -> Libraries -> Manage Recommendations.
 - Auto-update (daily/weekly/manual), sync strict or append-only, bulk list import (IMDb/Letterboxd/Reddit) with smart matching, custom builder.
