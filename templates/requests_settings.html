@@ -98,13 +98,6 @@
 </style>
 
 <div class="container mt-4">
-    <!-- Cloud requests sync notice (dismissible) -->
-    <div id="requests-sync-notice" class="requests-sync-notice">
-        <i class="fas fa-check-circle"></i>
-        <span>No approved items to sync.</span>
-        <button type="button" class="requests-sync-dismiss" id="requests-sync-dismiss" title="Dismiss" aria-label="Dismiss"><i class="fas fa-times"></i></button>
-    </div>
-
     <!-- SeekAndWatch beta notice (dismissible) -->
     <div id="seekandwatch-promo" class="card mb-4 seekandwatch-promo-settings" style="display: none;">
         <div class="card-header d-flex justify-content-between align-items-center py-2">
@@ -121,21 +114,13 @@
     </div>
     <script>
     (function() {
-        var NOTICE_KEY = 'seekandwatch_requests_sync_notice_dismissed';
         var PROMO_KEY = 'seekandwatch_promo_dismissed';
-        var notice = document.getElementById('requests-sync-notice');
         var promo = document.getElementById('seekandwatch-promo');
-        var dismissNotice = document.getElementById('requests-sync-dismiss');
         var dismissPromo = document.getElementById('promo-dismiss');
         try {
-            if (localStorage.getItem(NOTICE_KEY) === '1') { if (notice) notice.style.display = 'none'; }
             if (localStorage.getItem(PROMO_KEY) === 'true') { if (promo) promo.style.display = 'none'; }
             else if (promo) promo.style.display = 'block';
         } catch (e) {}
-        if (dismissNotice) dismissNotice.addEventListener('click', function() {
-            try { localStorage.setItem(NOTICE_KEY, '1'); } catch (e) {}
-            if (notice) notice.style.display = 'none';
-        });
         if (dismissPromo) dismissPromo.addEventListener('click', function() {
             try { localStorage.setItem(PROMO_KEY, 'true'); } catch (e) {}
             if (promo) promo.style.display = 'none';
@@ -196,6 +181,47 @@
 
                 <hr style="border-color: #444; margin: 24px 0;">
 
+                <h6 class="text-white mb-3">Instant sync webhook (recommended)</h6>
+                <p class="text-muted small mb-3">When you approve a request on SeekAndWatch Cloud, it can instantly POST to your local app via webhook instead of waiting for the next poll. This is faster and more reliable.</p>
+                
+                <p class="text-muted small mb-3"><strong>Setup options:</strong> Cloudflare Tunnel, ngrok, Tailscale, port forwarding, or direct public URL. <a href="https://github.com/softerfish/seekandwatch/wiki/SeekAndWatch-Cloud-Server-Owners-Guide#instant-sync-webhook---recommended" target="_blank" rel="noopener" class="text-info">Full setup guide</a></p>
+
+                <div class="form-group mb-3">
+                    <label for="cloudWebhookUrl" class="font-weight-bold text-white">Webhook URL</label>
+                    <input type="text" class="form-control" name="cloud_webhook_url" id="cloudWebhookUrl" 
+                           value="{{ settings.cloud_webhook_url or '' }}" 
+                           placeholder="https://your-domain.com/api/webhook/approved"
+                           autocomplete="off">
+                    <small class="form-text text-muted">Use your public URL (requires ngrok, Cloudflare Tunnel, or port forwarding). Leave blank to use poll only.</small>
+                </div>
+
+                <div class="form-group mb-4">
+                    <label for="cloudWebhookSecret" class="font-weight-bold text-white">Webhook Secret {% if settings.cloud_webhook_secret %}<span class="badge bg-success ms-2" style="font-size: 0.7em; font-weight: normal;">Saved</span>{% endif %}</label>
+                    <div class="d-flex gap-2 align-items-center flex-wrap">
+                        <input type="password" class="form-control" name="cloud_webhook_secret" id="cloudWebhookSecret" style="max-width: 400px;"
+                               value="" 
+                               placeholder="{% if settings.cloud_webhook_secret %}••••••••{% else %}Generate a random string (e.g. openssl rand -hex 32){% endif %}"
+                               {% if settings.cloud_webhook_secret %}data-key-set="1"{% endif %}
+                               autocomplete="off">
+                        <button type="button" class="btn btn-secondary" id="webhookTestBtn" onclick="testWebhook()" style="padding: 0 20px; height: 42px;">Test webhook</button>
+                        <span id="webhookTestResult" class="small ms-2" style="display: none;"></span>
+                    </div>
+                    {% if settings.cloud_webhook_secret %}<input type="hidden" name="cloud_webhook_secret_unchanged" value="1" id="cloudWebhookSecret_unchanged_h">{% endif %}
+                    <small class="form-text text-muted">{% if settings.cloud_webhook_secret %}Secret is set. Leave blank to keep it, or enter a new one to replace. {% endif %}Used to verify webhook requests from the cloud. Keep this private.</small>
+                </div>
+
+                <div class="form-group mb-4">
+                    <label for="cloudWebhookBackupHours" class="font-weight-bold text-white">Backup poll interval (when webhook is enabled)</label>
+                    <select name="cloud_webhook_backup_hours" id="cloudWebhookBackupHours" class="form-control" style="max-width: 200px;">
+                        <option value="6" {% if (settings.cloud_webhook_backup_hours or 6) == 6 %}selected{% endif %}>6 hours</option>
+                        <option value="12" {% if settings.cloud_webhook_backup_hours == 12 %}selected{% endif %}>12 hours</option>
+                        <option value="24" {% if settings.cloud_webhook_backup_hours == 24 %}selected{% endif %}>24 hours</option>
+                    </select>
+                    <small class="form-text text-muted">When webhook is configured, the app still polls the cloud as a backup (in case webhook fails). This controls how often that backup poll runs.</small>
+                </div>
+
+                <hr style="border-color: #444; margin: 24px 0;">
+
                 <h6 class="text-white mb-3">Sync with SeekAndWatch (poll API)</h6>
                 <p class="text-muted small mb-2">This app uses the <strong>poll API</strong>: it calls SeekAndWatch for approved requests, adds them to Radarr/Sonarr (or Overseerr), then marks them synced. You can also click <strong>Refresh</strong> on the Requests page to sync immediately. No URL or tunnel needed.</p>
                 
@@ -207,8 +233,6 @@
                 <!-- Hidden inputs for legacy/advanced settings -->
                 <input type="hidden" name="cloud_poll_interval_min" value="{{ settings.cloud_poll_interval_min or 75 }}">
                 <input type="hidden" name="cloud_poll_interval_max" value="{{ settings.cloud_poll_interval_max or 120 }}">
-                <input type="hidden" name="cloud_webhook_url" value="{{ settings.cloud_webhook_url or '' }}">
-                <input type="hidden" name="cloud_webhook_secret_unchanged" value="1">
 
                 <!-- Save button is usually at the bottom, but screenshot doesn't show it. Assuming it's needed. -->
                 <!-- If the user wants strictly the screenshot layout, maybe the form autosaves or the button is hidden? 
@@ -305,6 +329,33 @@ function testCloudConnection() {
             tick();
         });
 }
+
+function testWebhook() {
+    var btn = document.getElementById('webhookTestBtn');
+    var resultEl = document.getElementById('webhookTestResult');
+    var csrf = document.querySelector('input[name="csrf_token"]');
+    var headers = { 'Content-Type': 'application/json' };
+    if (csrf && csrf.value) headers['X-CSRFToken'] = csrf.value;
+    if (btn) { btn.disabled = true; btn.textContent = 'Testing...'; }
+    if (resultEl) { resultEl.style.display = 'none'; resultEl.className = 'small ms-2'; }
+    fetch('{{ url_for("test_webhook_delivery") }}', { method: 'POST', headers: headers })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (resultEl) {
+                resultEl.style.display = 'inline';
+                resultEl.textContent = d.message || (d.status === 'success' ? 'OK' : 'Failed');
+                var cls = d.status === 'success' ? 'text-success' : 'text-danger';
+                resultEl.classList.add(cls);
+            }
+        })
+        .catch(function() {
+            if (resultEl) { resultEl.style.display = 'inline'; resultEl.className = 'small ms-2 text-danger'; resultEl.textContent = 'Request failed.'; }
+        })
+        .finally(function() {
+            if (btn) { btn.disabled = false; btn.textContent = 'Test webhook'; }
+        });
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     ['cloudApiKey', 'cloudWebhookSecret'].forEach(function(id) {
         var el = document.getElementById(id);

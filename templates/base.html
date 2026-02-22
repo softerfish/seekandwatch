@@ -143,7 +143,15 @@
             </div>
             <div class="header-right">
                 <div class="header-info-group">
-                    <span class="header-link-friends-wrap"><span class="header-partner-label">Partner Projects:</span> <a href="https://huntarr.io/" target="_blank" rel="noopener noreferrer" class="header-link header-link-friends" title="Huntarr - find missing &amp; upgrade media"><i class="fas fa-external-link-alt"></i><span>Huntarr</span></a></span>
+                    <span class="header-link-friends-wrap" id="partner-project-link">
+                        <span class="header-partner-label">Partner Projects:</span> 
+                        <a href="https://huntarr.io/" target="_blank" rel="noopener noreferrer" class="header-link header-link-friends partner-link-huntarr" title="Huntarr - find missing &amp; upgrade media">
+                            <i class="fas fa-external-link-alt"></i><span>Huntarr</span>
+                        </a>
+                        <a href="https://plexguide.com" target="_blank" rel="noopener noreferrer" class="header-link header-link-friends partner-link-plexguide" title="PlexGuide - automated Plex server deployment" style="display: none;">
+                            <i class="fas fa-external-link-alt"></i><span>PlexGuide</span>
+                        </a>
+                    </span>
                     <a href="https://github.com/softerfish/seekandwatch/wiki" target="_blank" rel="noopener noreferrer" class="header-link-friends-wrap header-link-wiki-wrap" title="Help: GitHub Wiki"><span class="header-partner-label">Help:</span> <span>GitHub Wiki</span><i class="fas fa-external-link-alt"></i></a>
                     <span class="version-info">
                         <span>Ver:</span>
@@ -463,6 +471,21 @@
     document.addEventListener("DOMContentLoaded", function() {
         // Reveal main content (avoids brief flash of previous/home layout on full-page load).
         document.querySelectorAll('.main-content.content-pending').forEach(function(el) { el.classList.remove('content-pending'); });
+        
+        // Rotate partner project links 50/50 between Huntarr and PlexGuide
+        const huntarrLink = document.querySelector('.partner-link-huntarr');
+        const plexguideLink = document.querySelector('.partner-link-plexguide');
+        if (huntarrLink && plexguideLink) {
+            // 50/50 random selection
+            if (Math.random() < 0.5) {
+                huntarrLink.style.display = 'inline-flex';
+                plexguideLink.style.display = 'none';
+            } else {
+                huntarrLink.style.display = 'none';
+                plexguideLink.style.display = 'inline-flex';
+            }
+        }
+        
         // Populate the GitHub stars in the header.
         const starCountHeader = document.getElementById('gh-star-count-header');
         if (starCountHeader) {
