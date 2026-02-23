@@ -22,21 +22,18 @@ TMDB_STUDIO_MAP = {
 
 PLAYLIST_PRESETS = {
 
-    # Trending Movies
-    'trending_us_movies': {'title': 'Trending Movies Today', 'category': 'Trending Movies', 'icon': '🔥', 'media_type': 'movie', 'description': 'Top 10 trending movies in the last 24 hours.', 'limit': 10, 'tmdb_limit': 30, 'tmdb_endpoint': 'trending/movie/day', 'tmdb_params': {'sort_by': 'popularity.desc'}},
-    'trending_week_movies': {'title': 'Trending Movies This Week', 'category': 'Trending Movies', 'icon': '📈', 'media_type': 'movie', 'description': 'Top 10 trending movies this week.', 'limit': 10, 'tmdb_limit': 30, 'tmdb_endpoint': 'trending/movie/week', 'tmdb_params': {'sort_by': 'popularity.desc'}},
+    # Regional trending - UPDATED to use TMDB Trending Weekly
+    'trending_us_movies': {'title': 'TMDB Trending Weekly', 'category': 'Regional Trending', 'media_type': 'movie', 'description': 'Top 10 trending movies this week.', 'limit': 10, 'tmdb_endpoint': 'trending/movie/week', 'tmdb_params': {'sort_by': 'popularity.desc'}},
     
-    # Trending TV
-    'trending_us_tv': {'title': 'Trending TV Today', 'category': 'Trending TV', 'icon': '🔥', 'media_type': 'tv', 'description': 'Top 10 trending shows in the last 24 hours.', 'limit': 10, 'tmdb_limit': 30, 'tmdb_endpoint': 'trending/tv/day', 'tmdb_params': {'sort_by': 'popularity.desc'}},
-    'trending_week_tv': {'title': 'Trending TV This Week', 'category': 'Trending TV', 'icon': '📈', 'media_type': 'tv', 'description': 'Top 10 trending shows this week.', 'limit': 10, 'tmdb_limit': 30, 'tmdb_endpoint': 'trending/tv/week', 'tmdb_params': {'sort_by': 'popularity.desc'}},
+    'trending_us_tv': {'title': 'TMDB Trending Weekly', 'category': 'Regional Trending', 'media_type': 'tv', 'description': 'Top 10 trending TV this week.', 'limit': 10, 'tmdb_endpoint': 'trending/tv/week', 'tmdb_params': {'sort_by': 'popularity.desc'}},
     
     # International
     'k_drama': {'title': 'K-Dramas', 'category': 'International & World', 'icon': '🇰🇷', 'media_type': 'tv', 'description': 'Korean dramas & romance.', 'tmdb_params': {'with_original_language': 'ko', 'with_genres': '18', 'sort_by': 'popularity.desc'}},
     'anime_movies': {'title': 'Anime Movies', 'category': 'International & World', 'icon': '🗾', 'media_type': 'movie', 'description': 'Japanese animation.', 'tmdb_params': {'with_original_language': 'ja', 'with_genres': '16', 'sort_by': 'popularity.desc'}},
     'bollywood_hits': {'title': 'Bollywood Hits', 'category': 'International & World', 'icon': '🇮🇳', 'media_type': 'movie', 'description': 'Cinema from India.', 'tmdb_params': {'with_original_language': 'hi', 'sort_by': 'popularity.desc'}},
-    'nordic_noir': {'title': 'Nordic Noir', 'category': 'International & World', 'icon': '❄️', 'media_type': 'tv', 'description': 'Scandi crime dramas.', 'tmdb_params': {'with_original_language': 'da|sv|no', 'with_genres': '80', 'without_origin_country': 'US', 'sort_by': 'vote_average.desc'}},
+    'nordic_noir': {'title': 'Nordic Noir', 'category': 'International & World', 'icon': '❄️', 'media_type': 'tv', 'description': 'Scandi crime dramas.', 'tmdb_params': {'with_original_language': 'da|sv|no', 'with_genres': '80', 'sort_by': 'vote_average.desc'}},
     'french_cinema': {'title': 'French Cinema', 'category': 'International & World', 'icon': '🇫🇷', 'media_type': 'movie', 'description': 'Art & drama from France.', 'tmdb_params': {'with_original_language': 'fr', 'sort_by': 'popularity.desc'}},
-    'british_crime': {'title': 'British Crime', 'category': 'International & World', 'icon': '🇬🇧', 'media_type': 'tv', 'description': 'Gritty UK procedurals.', 'tmdb_params': {'with_origin_country': 'GB', 'with_genres': '80', 'without_origin_country': 'US', 'sort_by': 'popularity.desc'}},
+    'british_crime': {'title': 'British Crime', 'category': 'International & World', 'icon': '🇬🇧', 'media_type': 'tv', 'description': 'Gritty UK procedurals.', 'tmdb_params': {'with_origin_country': 'GB', 'with_genres': '80', 'sort_by': 'popularity.desc'}},
 
     # Decades
     'movies_40s': {'title': 'The 1940s', 'category': 'Decades', 'icon': '🎩', 'media_type': 'movie', 'description': 'Golden Age classics.', 'tmdb_params': {'primary_release_date.gte': '1940-01-01', 'primary_release_date.lte': '1949-12-31', 'sort_by': 'popularity.desc'}},
@@ -67,23 +64,13 @@ PLAYLIST_PRESETS = {
 
     # Studios + networks
     'studio_a24': {'title': 'A24 Films', 'category': 'Studios & Networks', 'icon': '🅰️', 'media_type': 'movie', 'description': 'Indie horror/drama.', 'tmdb_params': {'with_companies': '41077', 'sort_by': 'release_date.desc'}},
-    'studio_a24_best': {'title': 'Best of A24', 'category': 'Studios & Networks', 'icon': '⭐', 'media_type': 'movie', 'description': 'Critically acclaimed A24.', 'tmdb_params': {'with_companies': '41077', 'vote_average.gte': '7.0', 'vote_count.gte': '500', 'sort_by': 'vote_average.desc'}},
     'studio_pixar': {'title': 'Pixar', 'category': 'Studios & Networks', 'icon': '💡', 'media_type': 'movie', 'description': 'Animation gold.', 'tmdb_params': {'with_companies': '3', 'sort_by': 'popularity.desc'}},
     'studio_ghibli': {'title': 'Studio Ghibli', 'category': 'Studios & Networks', 'icon': '🍃', 'media_type': 'movie', 'description': 'Anime classics.', 'tmdb_params': {'with_companies': '10342', 'sort_by': 'popularity.desc'}},
     'studio_dreamworks': {'title': 'Dreamworks', 'category': 'Studios & Networks', 'icon': '🌙', 'media_type': 'movie', 'description': 'Shrek, Kung Fu Panda.', 'tmdb_params': {'with_companies': '521', 'sort_by': 'popularity.desc'}},
     'studio_blumhouse': {'title': 'Blumhouse', 'category': 'Studios & Networks', 'icon': '👻', 'media_type': 'movie', 'description': 'Modern horror.', 'tmdb_params': {'with_companies': '3172', 'sort_by': 'popularity.desc'}},
-    'studio_sony': {'title': 'Sony Pictures', 'category': 'Studios & Networks', 'icon': '🎬', 'media_type': 'movie', 'description': 'Spider-Man, Venom.', 'tmdb_params': {'with_companies': '34', 'sort_by': 'popularity.desc'}},
-    'studio_lionsgate': {'title': 'Lionsgate', 'category': 'Studios & Networks', 'icon': '🦁', 'media_type': 'movie', 'description': 'John Wick, Hunger Games.', 'tmdb_params': {'with_companies': '1632', 'sort_by': 'popularity.desc'}},
-    'studio_20th_century': {'title': '20th Century Studios', 'category': 'Studios & Networks', 'icon': '🎥', 'media_type': 'movie', 'description': 'Avatar, Planet of the Apes.', 'tmdb_params': {'with_companies': '25', 'sort_by': 'popularity.desc'}},
-    'studio_new_line': {'title': 'New Line Cinema', 'category': 'Studios & Networks', 'icon': '🎞️', 'media_type': 'movie', 'description': 'Lord of the Rings, The Conjuring.', 'tmdb_params': {'with_companies': '12', 'sort_by': 'popularity.desc'}},
     'network_hbo': {'title': 'HBO Series', 'category': 'Studios & Networks', 'icon': '📺', 'media_type': 'tv', 'description': 'Prestige TV.', 'tmdb_params': {'with_networks': '49', 'sort_by': 'vote_average.desc', 'vote_count.gte': '300'}},
-    'network_hbo_best': {'title': 'Best of HBO', 'category': 'Studios & Networks', 'icon': '⭐', 'media_type': 'tv', 'description': 'Top rated HBO shows.', 'tmdb_params': {'with_networks': '49', 'vote_average.gte': '8.0', 'vote_count.gte': '500', 'sort_by': 'vote_average.desc'}},
     'network_netflix': {'title': 'Netflix Originals', 'category': 'Studios & Networks', 'icon': '🟥', 'media_type': 'tv', 'description': 'Streaming hits.', 'tmdb_params': {'with_networks': '213', 'sort_by': 'popularity.desc'}},
-    'network_netflix_best': {'title': 'Best of Netflix', 'category': 'Studios & Networks', 'icon': '⭐', 'media_type': 'tv', 'description': 'Highest rated originals.', 'tmdb_params': {'with_networks': '213', 'vote_average.gte': '7.5', 'vote_count.gte': '300', 'sort_by': 'vote_average.desc'}},
     'network_apple': {'title': 'Apple TV+', 'category': 'Studios & Networks', 'icon': '🍏', 'media_type': 'tv', 'description': 'Apple Originals.', 'tmdb_params': {'with_networks': '2552', 'sort_by': 'popularity.desc'}},
-    'network_peacock': {'title': 'Peacock', 'category': 'Studios & Networks', 'icon': '🦚', 'media_type': 'tv', 'description': 'NBC streaming.', 'tmdb_params': {'with_networks': '3353', 'sort_by': 'popularity.desc'}},
-    'network_paramount_plus': {'title': 'Paramount+', 'category': 'Studios & Networks', 'icon': '⛰️', 'media_type': 'tv', 'description': 'Star Trek, Yellowstone.', 'tmdb_params': {'with_networks': '4330', 'sort_by': 'popularity.desc'}},
-    'network_starz': {'title': 'Starz', 'category': 'Studios & Networks', 'icon': '⭐', 'media_type': 'tv', 'description': 'Power, Outlander.', 'tmdb_params': {'with_networks': '318', 'sort_by': 'popularity.desc'}},
 
     # Genres (movies)
     'genre_action_mov': {'title': 'Action', 'category': 'Genre (Movies)', 'icon': '💥', 'media_type': 'movie', 'description': 'Adrenaline rush.', 'tmdb_params': {'with_genres': '28', 'sort_by': 'popularity.desc'}},
@@ -134,25 +121,14 @@ PLAYLIST_PRESETS = {
 
     # more international
     'spanish_cinema': {'title': 'Spanish Language', 'category': 'International & World', 'icon': '🇪🇸', 'media_type': 'movie', 'description': 'Spain & Latin America.', 'tmdb_params': {'with_original_language': 'es', 'sort_by': 'popularity.desc'}},
-    'australian_movies': {'title': 'Australian', 'category': 'International & World', 'icon': '🇦🇺', 'media_type': 'movie', 'description': 'Cinema from down under.', 'tmdb_params': {'with_origin_country': 'AU', 'without_origin_country': 'US', 'sort_by': 'popularity.desc'}},
+    'australian_movies': {'title': 'Australian', 'category': 'International & World', 'icon': '🇦🇺', 'media_type': 'movie', 'description': 'Cinema from down under.', 'tmdb_params': {'with_origin_country': 'AU', 'sort_by': 'popularity.desc'}},
     'german_cinema': {'title': 'German', 'category': 'International & World', 'icon': '🇩🇪', 'media_type': 'movie', 'description': 'German film.', 'tmdb_params': {'with_original_language': 'de', 'sort_by': 'popularity.desc'}},
-    'british_comedy_tv': {'title': 'British Comedy', 'category': 'International & World', 'icon': '🇬🇧', 'media_type': 'tv', 'description': 'UK sitcoms & comedy.', 'tmdb_params': {'with_origin_country': 'GB', 'with_genres': '35', 'without_origin_country': 'US', 'sort_by': 'popularity.desc'}},
+    'british_comedy_tv': {'title': 'British Comedy', 'category': 'International & World', 'icon': '🇬🇧', 'media_type': 'tv', 'description': 'UK sitcoms & comedy.', 'tmdb_params': {'with_origin_country': 'GB', 'with_genres': '35', 'sort_by': 'popularity.desc'}},
 
     # more studios & networks
     'studio_marvel': {'title': 'Marvel', 'category': 'Studios & Networks', 'icon': '🦸', 'media_type': 'movie', 'description': 'MCU & more.', 'tmdb_params': {'with_companies': '420', 'sort_by': 'release_date.desc'}},
     'studio_disney_animation': {'title': 'Disney Animation', 'category': 'Studios & Networks', 'icon': '🏰', 'media_type': 'movie', 'description': 'Classic & new.', 'tmdb_params': {'with_companies': '2', 'sort_by': 'popularity.desc'}},
-    'studio_dc': {'title': 'DC', 'category': 'Studios & Networks', 'icon': '🦇', 'media_type': 'movie', 'description': 'DC Comics films.', 'tmdb_params': {'with_companies': '429', 'sort_by': 'release_date.desc'}},
-    'studio_universal': {'title': 'Universal', 'category': 'Studios & Networks', 'icon': '🌐', 'media_type': 'movie', 'description': 'Universal Pictures.', 'tmdb_params': {'with_companies': '33', 'sort_by': 'popularity.desc'}},
-    'studio_warner': {'title': 'Warner Bros', 'category': 'Studios & Networks', 'icon': '🎬', 'media_type': 'movie', 'description': 'WB films.', 'tmdb_params': {'with_companies': '174', 'sort_by': 'popularity.desc'}},
-    'studio_paramount': {'title': 'Paramount', 'category': 'Studios & Networks', 'icon': '🏔️', 'media_type': 'movie', 'description': 'Paramount Pictures.', 'tmdb_params': {'with_companies': '4', 'sort_by': 'popularity.desc'}},
     'network_bbc': {'title': 'BBC', 'category': 'Studios & Networks', 'icon': '🇬🇧', 'media_type': 'tv', 'description': 'British drama & docs.', 'tmdb_params': {'with_networks': '12', 'sort_by': 'vote_average.desc', 'vote_count.gte': '100'}},
-    'network_hulu': {'title': 'Hulu Originals', 'category': 'Studios & Networks', 'icon': '🟢', 'media_type': 'tv', 'description': 'Hulu series.', 'tmdb_params': {'with_networks': '453', 'sort_by': 'popularity.desc'}},
-    'network_disney_plus': {'title': 'Disney+ Originals', 'category': 'Studios & Networks', 'icon': '✨', 'media_type': 'tv', 'description': 'Disney+ series.', 'tmdb_params': {'with_networks': '2739', 'sort_by': 'popularity.desc'}},
-    'network_prime': {'title': 'Prime Video', 'category': 'Studios & Networks', 'icon': '📦', 'media_type': 'tv', 'description': 'Amazon Originals.', 'tmdb_params': {'with_networks': '1024', 'sort_by': 'popularity.desc'}},
-    'network_fx': {'title': 'FX', 'category': 'Studios & Networks', 'icon': '📺', 'media_type': 'tv', 'description': 'FX series.', 'tmdb_params': {'with_networks': '3186', 'sort_by': 'vote_average.desc', 'vote_count.gte': '100'}},
-    'network_amc': {'title': 'AMC', 'category': 'Studios & Networks', 'icon': '🧟', 'media_type': 'tv', 'description': 'AMC drama.', 'tmdb_params': {'with_networks': '88', 'sort_by': 'vote_average.desc', 'vote_count.gte': '100'}},
-    'network_showtime': {'title': 'Showtime', 'category': 'Studios & Networks', 'icon': '📺', 'media_type': 'tv', 'description': 'Showtime series.', 'tmdb_params': {'with_networks': '67', 'sort_by': 'popularity.desc'}},
-    'network_cw': {'title': 'The CW', 'category': 'Studios & Networks', 'icon': '📺', 'media_type': 'tv', 'description': 'CW drama & genre.', 'tmdb_params': {'with_networks': '71', 'sort_by': 'popularity.desc'}},
 
     # more genres / niche
     'genre_romance_tv': {'title': 'Romance TV', 'category': 'Genre (TV)', 'icon': '💕', 'media_type': 'tv', 'description': 'Love stories.', 'tmdb_params': {'with_genres': '10749', 'sort_by': 'popularity.desc'}},
@@ -192,12 +168,25 @@ PLAYLIST_PRESETS = {
     # More international (movies + TV)
     'japanese_cinema': {'title': 'Japanese Cinema', 'category': 'International & World', 'icon': '🇯🇵', 'media_type': 'movie', 'description': 'Japan film.', 'tmdb_params': {'with_original_language': 'ja', 'sort_by': 'popularity.desc'}},
     'italian_cinema': {'title': 'Italian Cinema', 'category': 'International & World', 'icon': '🇮🇹', 'media_type': 'movie', 'description': 'Neorealism & more.', 'tmdb_params': {'with_original_language': 'it', 'sort_by': 'popularity.desc'}},
-    'mexican_cinema': {'title': 'Mexican Cinema', 'category': 'International & World', 'icon': '🇲🇽', 'media_type': 'movie', 'description': 'Mexico film.', 'tmdb_params': {'with_origin_country': 'MX', 'without_origin_country': 'US', 'sort_by': 'popularity.desc'}},
+    'mexican_cinema': {'title': 'Mexican Cinema', 'category': 'International & World', 'icon': '🇲🇽', 'media_type': 'movie', 'description': 'Mexico film.', 'tmdb_params': {'with_origin_country': 'MX', 'sort_by': 'popularity.desc'}},
     'anime_tv': {'title': 'Anime (TV)', 'category': 'International & World', 'icon': '🗾', 'media_type': 'tv', 'description': 'Japanese animation.', 'tmdb_params': {'with_original_language': 'ja', 'with_genres': '16', 'sort_by': 'popularity.desc'}},
     'spanish_tv': {'title': 'Spanish & Latin TV', 'category': 'International & World', 'icon': '🇪🇸', 'media_type': 'tv', 'description': 'Telenovelas & drama.', 'tmdb_params': {'with_original_language': 'es', 'sort_by': 'popularity.desc'}},
-    'australian_tv': {'title': 'Australian TV', 'category': 'International & World', 'icon': '🇦🇺', 'media_type': 'tv', 'description': 'Down under series.', 'tmdb_params': {'with_origin_country': 'AU', 'without_origin_country': 'US', 'sort_by': 'popularity.desc'}},
-    'canadian_tv': {'title': 'Canadian TV', 'category': 'International & World', 'icon': '🇨🇦', 'media_type': 'tv', 'description': 'Canadian series.', 'tmdb_params': {'with_origin_country': 'CA', 'without_origin_country': 'US', 'sort_by': 'popularity.desc'}},
-    'canadian_movies': {'title': 'Canadian Movies', 'category': 'International & World', 'icon': '🇨🇦', 'media_type': 'movie', 'description': 'Canadian films.', 'tmdb_params': {'with_origin_country': 'CA', 'without_origin_country': 'US', 'sort_by': 'popularity.desc'}},
+    'australian_tv': {'title': 'Australian TV', 'category': 'International & World', 'icon': '🇦🇺', 'media_type': 'tv', 'description': 'Down under series.', 'tmdb_params': {'with_origin_country': 'AU', 'sort_by': 'popularity.desc'}},
+    'canadian_tv': {'title': 'Canadian TV', 'category': 'International & World', 'icon': '🇨🇦', 'media_type': 'tv', 'description': 'Canadian series.', 'tmdb_params': {'with_origin_country': 'CA', 'sort_by': 'popularity.desc'}},
+    'canadian_movies': {'title': 'Canadian Movies', 'category': 'International & World', 'icon': '🇨🇦', 'media_type': 'movie', 'description': 'Canadian films.', 'tmdb_params': {'with_origin_country': 'CA', 'sort_by': 'popularity.desc'}},
+
+    # More studios & networks (FlixPatrol-style “Networks Top”)
+    'studio_dc': {'title': 'DC', 'category': 'Studios & Networks', 'icon': '🦇', 'media_type': 'movie', 'description': 'DC Comics films.', 'tmdb_params': {'with_companies': '174', 'sort_by': 'release_date.desc'}},
+    'studio_universal': {'title': 'Universal', 'category': 'Studios & Networks', 'icon': '🌐', 'media_type': 'movie', 'description': 'Universal Pictures.', 'tmdb_params': {'with_companies': '33', 'sort_by': 'popularity.desc'}},
+    'studio_warner': {'title': 'Warner Bros', 'category': 'Studios & Networks', 'icon': '🎬', 'media_type': 'movie', 'description': 'WB films.', 'tmdb_params': {'with_companies': '174', 'sort_by': 'popularity.desc'}},
+    'studio_paramount': {'title': 'Paramount', 'category': 'Studios & Networks', 'icon': '🏔️', 'media_type': 'movie', 'description': 'Paramount Pictures.', 'tmdb_params': {'with_companies': '4', 'sort_by': 'popularity.desc'}},
+    'network_hulu': {'title': 'Hulu Originals', 'category': 'Studios & Networks', 'icon': '🟢', 'media_type': 'tv', 'description': 'Hulu series.', 'tmdb_params': {'with_networks': '453', 'sort_by': 'popularity.desc'}},
+    'network_disney_plus': {'title': 'Disney+ Originals', 'category': 'Studios & Networks', 'icon': '✨', 'media_type': 'tv', 'description': 'Disney+ series.', 'tmdb_params': {'with_networks': '2739', 'sort_by': 'popularity.desc'}},
+    'network_prime': {'title': 'Prime Video', 'category': 'Studios & Networks', 'icon': '📦', 'media_type': 'tv', 'description': 'Amazon Originals.', 'tmdb_params': {'with_networks': '1024', 'sort_by': 'popularity.desc'}},
+    'network_fx': {'title': 'FX', 'category': 'Studios & Networks', 'icon': '📺', 'media_type': 'tv', 'description': 'FX series.', 'tmdb_params': {'with_networks': '3186', 'sort_by': 'vote_average.desc', 'vote_count.gte': '100'}},
+    'network_amc': {'title': 'AMC', 'category': 'Studios & Networks', 'icon': '🧟', 'media_type': 'tv', 'description': 'AMC drama.', 'tmdb_params': {'with_networks': '88', 'sort_by': 'vote_average.desc', 'vote_count.gte': '100'}},
+    'network_showtime': {'title': 'Showtime', 'category': 'Studios & Networks', 'icon': '📺', 'media_type': 'tv', 'description': 'Showtime series.', 'tmdb_params': {'with_networks': '67', 'sort_by': 'popularity.desc'}},
+    'network_cw': {'title': 'The CW', 'category': 'Studios & Networks', 'icon': '📺', 'media_type': 'tv', 'description': 'CW drama & genre.', 'tmdb_params': {'with_networks': '71', 'sort_by': 'popularity.desc'}},
 
     # More genres (TV) - Fantasy, Thriller, Adventure
     'genre_fantasy_tv': {'title': 'Fantasy TV', 'category': 'Genre (TV)', 'icon': '🐉', 'media_type': 'tv', 'description': 'Magic & myth.', 'tmdb_params': {'with_genres': '10765', 'sort_by': 'popularity.desc'}},

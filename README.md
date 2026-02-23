@@ -1,6 +1,6 @@
 # SeekAndWatch
 
-![Version](https://img.shields.io/badge/version-1.5.16-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) ![License](https://img.shields.io/badge/License-MIT-green.svg)
+![Version](https://img.shields.io/badge/version-1.6.1-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
 **Saved you a scroll or two?** If this app saves you from endless scrolling, a star for the project helps a lot.
 
@@ -58,7 +58,7 @@ Goal: spend less time browsing, more time watching. It uses your watch history a
 
 ### Plex collections
 
-- **140+ preset collections** - decades, genres, studios, themes, international, awards. Categories are collapsible so you can focus on what you use.
+- **90+ preset collections** - decades, genres, studios, themes, international, awards. Categories are collapsible so you can focus on what you use.
 - **Visibility** - Home, Library recommended, and Friends checkboxes on every collection; changes apply to Plex right away (no need to run the collection again).
 - **Library Browser** - Live view of all collections on your Plex server with the same visibility toggles. In Plex you can reorder and change options under Settings -> Manage -> Libraries -> Manage Recommendations.
 - Auto-update (daily/weekly/manual), sync strict or append-only, bulk list import (IMDb/Letterboxd/Reddit) with smart matching, custom builder.
@@ -146,49 +146,33 @@ docker compose up -d
 
 ## Changelog
 
-v1.5.16
+v1.6.1
 
-- API fixes for Cloud users
-- fixed styling and colors
+- a complete rewrite and handling of webhooks. We now use quick tunnels or your own API
+- code cleanup
 
 <details>
   <summary><b>Past Changelog</b></summary>
 
 v1.5.15
 
-**SeekAndWatch Local**
 - Webhooks updates
 - Backups and restore updates
 
 v1.5.14
 
-**SeekAndWatch Local**
 - small bugfixes
-  
+
 v1.5.13
 
 **SeekAndWatch Local**
-- Plex Collections now have a sorting options:
-	- TMDB Popularity
-	- TMDB Rating
-	- Release date
-	- Alphabetical
-	- Random
-- New Plex Collection categories:
-	- Trending TV Today
-	- Trending TV This Week
-	- Trending Movies Today
-	- Trending Movies This Week
-- custom summary/description field for Plex Collections
-- custom posters for Plex Collections
-- duplicate collection detection in Plex Collections
-- updated Plex Collections logic for International & World Movies/TV 
+- Plex collections now have a sorting option
+- updated some Plex Collections logic
 - adjusted many styling options
 - updated old screenshots
 
 **SeekAndWatch Cloud (beta)**
 - no longer going to mention in changelog
-
 
 v1.5.12
 

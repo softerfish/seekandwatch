@@ -97,12 +97,26 @@ class Settings(db.Model):
     last_owned_sync_at = db.Column(db.DateTime, nullable=True)  # last successful sync to Cloud
     cloud_webhook_url = db.Column(db.String(512), nullable=True)   # when set, cloud POSTs approved requests here for instant sync
     cloud_webhook_secret = db.Column(db.String(255), nullable=True)  # secret sent in X-Webhook-Secret when cloud calls webhook
-    cloud_webhook_backup_hours = db.Column(db.Integer, default=6)  # backup poll interval when webhook is enabled (6, 12, or 24 hours)
+    cloud_webhook_failsafe_hours = db.Column(db.Integer, default=6)  # when webhook enabled, poll every X hours as failsafe (6, 12, or 24)
     cloud_poll_interval_min = db.Column(db.Integer, nullable=True)  # seconds between polls (min); null = use config/env default
     cloud_poll_interval_max = db.Column(db.Integer, nullable=True)  # seconds between polls (max); null = use config/env default
     last_cloud_poll_at = db.Column(db.DateTime, nullable=True)   # when we last attempted a cloud poll
     last_cloud_poll_ok = db.Column(db.Boolean, nullable=True)     # True = last poll succeeded, False = failed
-    discord_last_message_id = db.Column(db.String(64), nullable=True)  # last Discord message ID we processed (for Discord relay)
+    
+    # Cloudflare Tunnel
+    tunnel_enabled = db.Column(db.Boolean, default=False)
+    tunnel_url = db.Column(db.String(512), nullable=True)
+    tunnel_name = db.Column(db.String(100), nullable=True)
+    tunnel_credentials_encrypted = db.Column(db.Text, nullable=True)
+    tunnel_last_started = db.Column(db.DateTime, nullable=True)
+    tunnel_last_error = db.Column(db.String(512), nullable=True)
+    tunnel_status = db.Column(db.String(20), default='disconnected')  # disconnected, connecting, connected, error
+    tunnel_restart_count = db.Column(db.Integer, default=0)
+    tunnel_last_health_check = db.Column(db.DateTime, nullable=True)
+    cloudflare_api_token = db.Column(db.String(255), nullable=True)  # user's cloudflare API token for creating tunnels
+    cloudflare_account_id = db.Column(db.String(100), nullable=True)  # optional, auto-detected if not provided
+    pairing_token = db.Column(db.String(100), nullable=True) # temporary token for zero-config cloud link
+    pairing_token_expires = db.Column(db.DateTime, nullable=True)
 
 class Blocklist(db.Model):
     __table_args__ = {'extend_existing': True}
@@ -208,3 +222,5 @@ class CloudRequest(db.Model):
     notes = db.Column(db.Text, nullable=True)  # optional notes from requester (e.g. "Season 2 only")
     status = db.Column(db.String(20), default='pending') # pending, approved, denied, completed
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    webhook_received_at = db.Column(db.DateTime, nullable=True)  # when webhook delivered this (if via webhook)
+    webhook_process_after = db.Column(db.DateTime, nullable=True)  # when to actually process (webhook_received_at + delay)

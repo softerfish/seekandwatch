@@ -7,7 +7,11 @@ import re
 import sys
 import logging
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
+
+# quiet down noisy loggers
+logging.getLogger('urllib3').setLevel(logging.WARNING)
+logging.getLogger('urllib3.connectionpool').setLevel(logging.WARNING)
 
 import config
 from config import CONFIG_DIR, DATABASE_URI, SECRET_KEY_FILE, CLOUD_REQUEST_TIMEOUT
@@ -35,6 +39,72 @@ from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFProtect, generate_csrf
 from plexapi.server import PlexServer
 from models import db, Blocklist, CollectionSchedule, TmdbAlias, SystemLog, Settings, User, TmdbKeywordCache, TmdbRuntimeCache, RadarrSonarrCache, RecoveryCode, CloudRequest, DeletedCloudId
+
+# auto-migrate: add cloudflare and webhook columns if they don't exist (runs before tunnel init)
+def ensure_cloudflare_columns():
+    """Add cloudflare_api_token, cloudflare_account_id, cloud_webhook_failsafe_hours, and CloudRequest webhook columns if missing."""
+    try:
+        from sqlalchemy import inspect
+        inspector = inspect(db.engine)
+        
+        # Settings table columns
+        columns = [col['name'] for col in inspector.get_columns('settings')]
+        
+        if 'cloudflare_api_token' not in columns:
+            print("Adding cloudflare_api_token column...")
+            with db.engine.connect() as conn:
+                conn.execute(text('ALTER TABLE settings ADD COLUMN cloudflare_api_token VARCHAR(255)'))
+                conn.commit()
+            print("✓ Added cloudflare_api_token")
+        
+        if 'cloudflare_account_id' not in columns:
+            print("Adding cloudflare_account_id column...")
+            with db.engine.connect() as conn:
+                conn.execute(text('ALTER TABLE settings ADD COLUMN cloudflare_account_id VARCHAR(100)'))
+                conn.commit()
+            print("✓ Added cloudflare_account_id")
+        
+        if 'cloud_webhook_failsafe_hours' not in columns:
+            print("Adding cloud_webhook_failsafe_hours column...")
+            with db.engine.connect() as conn:
+                conn.execute(text('ALTER TABLE settings ADD COLUMN cloud_webhook_failsafe_hours INTEGER DEFAULT 6'))
+                conn.commit()
+            print("✓ Added cloud_webhook_failsafe_hours")
+
+        if 'pairing_token' not in columns:
+            print("Adding pairing_token column...")
+            with db.engine.connect() as conn:
+                conn.execute(text('ALTER TABLE settings ADD COLUMN pairing_token VARCHAR(100)'))
+                conn.commit()
+            print("✓ Added pairing_token")
+
+        if 'pairing_token_expires' not in columns:
+            print("Adding pairing_token_expires column...")
+            with db.engine.connect() as conn:
+                conn.execute(text('ALTER TABLE settings ADD COLUMN pairing_token_expires DATETIME'))
+                conn.commit()
+            print("✓ Added pairing_token_expires")
+        
+        # CloudRequest table columns (for future webhook delay feature)
+        if 'cloud_request' in inspector.get_table_names():
+            cloud_req_columns = [col['name'] for col in inspector.get_columns('cloud_request')]
+            
+            if 'webhook_received_at' not in cloud_req_columns:
+                print("Adding webhook_received_at column to cloud_request...")
+                with db.engine.connect() as conn:
+                    conn.execute(text('ALTER TABLE cloud_request ADD COLUMN webhook_received_at DATETIME'))
+                    conn.commit()
+                print("✓ Added webhook_received_at")
+            
+            if 'webhook_process_after' not in cloud_req_columns:
+                print("Adding webhook_process_after column to cloud_request...")
+                with db.engine.connect() as conn:
+                    conn.execute(text('ALTER TABLE cloud_request ADD COLUMN webhook_process_after DATETIME'))
+                    conn.commit()
+                print("✓ Added webhook_process_after")
+    except Exception as e:
+        print(f"Warning: Could not add early migration columns: {e}")
+
 from utils import (normalize_title, is_duplicate, is_owned_item, fetch_omdb_ratings, send_overseerr_request, 
                    run_collection_logic, create_backup, list_backups, restore_backup, 
                    prune_backups, BACKUP_DIR, sync_remote_aliases, get_tmdb_aliases, 
@@ -52,7 +122,7 @@ from sqlalchemy import text
 
 # basic app setup stuff
 
-VERSION = "1.5.16"
+VERSION = "1.5.13"
 
 UPDATE_CACHE = {
     'version': None,
@@ -82,13 +152,6 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = get_persistent_key()
 app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URI
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
-# Check for stale config.py in volume (from older versions) that shadows the app's config
-_stale_config_path = os.path.join(CONFIG_DIR, 'config.py')
-if os.path.exists(_stale_config_path):
-    logging.warning(f"Found old config.py in {CONFIG_DIR} - this file is no longer used and may cause import errors. Consider removing it.")
-    logging.warning("The app's config is now in the application directory, not the /config volume.")
-
 # Limit request body size (mitigates CVE-2024-49767 / multipart exhaustion)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB
 # Session cookie hardening. Set SECURE_COOKIE=1 (or SESSION_COOKIE_SECURE=1) when serving over HTTPS.
@@ -107,14 +170,104 @@ limiter = Limiter(
 
 scheduler = APScheduler()
 scheduler.init_app(app)
+scheduler.start()
 
 db.init_app(app)
 
-# Don't start scheduler yet - wait until after migrations run
+# run database migrations on startup
+with app.app_context():
+    ensure_cloudflare_columns()
 
 login_manager = LoginManager()
 login_manager.login_view = 'login'
 login_manager.init_app(app)
+
+# initialize tunnel manager and health monitor
+tunnel_manager = None
+health_monitor = None
+
+def init_tunnel_services():
+    """Initialize tunnel manager and health monitor on app startup."""
+    global tunnel_manager, health_monitor
+    
+    try:
+        from tunnel.manager import TunnelManager
+        from tunnel.health import HealthMonitor
+        
+        # create tunnel manager instance
+        tunnel_manager = TunnelManager(app, db)
+        app.tunnel_manager = tunnel_manager
+        
+        # create health monitor
+        health_monitor = HealthMonitor(tunnel_manager, check_interval=60)
+        
+        # start tunnels for users who have them enabled AND have the required credentials
+        with app.app_context():
+            from models import Settings
+            enabled_users = Settings.query.filter_by(tunnel_enabled=True).all()
+            
+            for settings in enabled_users:
+                # Check for Quick Tunnel first
+                if settings.tunnel_name == 'quick-tunnel' or not hasattr(settings, 'cloudflare_api_token') or not settings.cloudflare_api_token:
+                    app.logger.info(f"Starting quick tunnel for user {settings.user_id}")
+                    tunnel_url = tunnel_manager.start_quick_tunnel(settings.user_id)
+                    
+                    if tunnel_url and settings.cloud_enabled and settings.cloud_api_key and settings.cloud_base_url:
+                        # re-register webhook with new URL
+                        app.logger.info(f"Re-registering webhook for quick tunnel: {tunnel_url}")
+                        tunnel_manager.register_webhook(
+                            tunnel_url=tunnel_url,
+                            api_key=settings.cloud_api_key,
+                            cloud_base_url=settings.cloud_base_url,
+                            user_id=settings.user_id,
+                            webhook_secret=settings.cloud_webhook_secret or ''
+                        )
+                    continue
+
+                # only try to start if user has cloudflare API token (needed for API-based tunnels)
+                if not hasattr(settings, 'cloudflare_api_token') or not settings.cloudflare_api_token:
+                    app.logger.warning(f"Skipping tunnel start for user {settings.user_id}: no Cloudflare API token")
+                    continue
+                
+                # check if we have encrypted tunnel credentials with token
+                if not settings.tunnel_credentials_encrypted:
+                    app.logger.warning(f"Skipping tunnel start for user {settings.user_id}: no tunnel credentials")
+                    continue
+                
+                try:
+                    app.logger.info(f"Starting tunnel for user {settings.user_id}")
+                    
+                    # decrypt credentials to get tunnel token
+                    credentials = tunnel_manager._decrypt_credentials(settings.tunnel_credentials_encrypted)
+                    
+                    if not credentials or 'tunnel_token' not in credentials:
+                        app.logger.error(f"Failed to decrypt tunnel token for user {settings.user_id}")
+                        continue
+                    
+                    # start tunnel with token (API-based approach)
+                    tunnel_manager.start_tunnel_with_token(settings.user_id, credentials['tunnel_token'])
+                    
+                except Exception as e:
+                    app.logger.error(f"Failed to start tunnel for user {settings.user_id}: {str(e)}")
+            
+            # start health monitoring
+            if enabled_users:
+                health_monitor.start()
+                app.logger.info("Tunnel health monitor started")
+        
+    except Exception as e:
+        app.logger.error(f"Failed to initialize tunnel services: {str(e)}")
+
+# initialize tunnel services after a short delay (let app finish starting up)
+import threading
+def delayed_tunnel_init():
+    import time
+    time.sleep(5)  # wait 5 seconds for app to be ready
+    init_tunnel_services()
+
+tunnel_init_thread = threading.Thread(target=delayed_tunnel_init, daemon=True)
+tunnel_init_thread.start()
+
 
 
 @app.after_request
@@ -300,6 +453,9 @@ def run_migrations():
                 if 'cloud_webhook_secret' not in settings_columns:
                     print("--- [Migration] Adding 'cloud_webhook_secret' column ---")
                     _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN cloud_webhook_secret VARCHAR(255)")
+                if 'cloud_webhook_failsafe_hours' not in settings_columns:
+                    print("--- [Migration] Adding 'cloud_webhook_failsafe_hours' column ---")
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN cloud_webhook_failsafe_hours INTEGER DEFAULT 6")
                 if 'cloud_poll_interval_min' not in settings_columns:
                     print("--- [Migration] Adding 'cloud_poll_interval_min' column ---")
                     _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN cloud_poll_interval_min INTEGER")
@@ -310,12 +466,36 @@ def run_migrations():
                     _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN last_cloud_poll_at DATETIME")
                 if 'last_cloud_poll_ok' not in settings_columns:
                     _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN last_cloud_poll_ok BOOLEAN")
-                if 'discord_last_message_id' not in settings_columns:
-                    print("--- [Migration] Adding 'discord_last_message_id' column ---")
-                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN discord_last_message_id VARCHAR(64)")
-                if 'cloud_webhook_backup_hours' not in settings_columns:
-                    print("--- [Migration] Adding 'cloud_webhook_backup_hours' column ---")
-                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN cloud_webhook_backup_hours INTEGER DEFAULT 6")
+                
+                # Cloudflare Tunnel columns
+                if 'tunnel_enabled' not in settings_columns:
+                    print("--- [Migration] Adding 'tunnel_enabled' column ---")
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN tunnel_enabled BOOLEAN DEFAULT 0")
+                if 'tunnel_url' not in settings_columns:
+                    print("--- [Migration] Adding 'tunnel_url' column ---")
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN tunnel_url VARCHAR(512)")
+                if 'tunnel_name' not in settings_columns:
+                    print("--- [Migration] Adding 'tunnel_name' column ---")
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN tunnel_name VARCHAR(100)")
+                if 'tunnel_credentials_encrypted' not in settings_columns:
+                    print("--- [Migration] Adding 'tunnel_credentials_encrypted' column ---")
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN tunnel_credentials_encrypted TEXT")
+                if 'tunnel_last_started' not in settings_columns:
+                    print("--- [Migration] Adding 'tunnel_last_started' column ---")
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN tunnel_last_started DATETIME")
+                if 'tunnel_last_error' not in settings_columns:
+                    print("--- [Migration] Adding 'tunnel_last_error' column ---")
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN tunnel_last_error VARCHAR(512)")
+                if 'tunnel_status' not in settings_columns:
+                    print("--- [Migration] Adding 'tunnel_status' column ---")
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN tunnel_status VARCHAR(20) DEFAULT 'disconnected'")
+                if 'tunnel_restart_count' not in settings_columns:
+                    print("--- [Migration] Adding 'tunnel_restart_count' column ---")
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN tunnel_restart_count INTEGER DEFAULT 0")
+                if 'tunnel_last_health_check' not in settings_columns:
+                    print("--- [Migration] Adding 'tunnel_last_health_check' column ---")
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN tunnel_last_health_check DATETIME")
+                
                 conn.commit()
                 
                 # Check if kometa_template table exists
@@ -439,10 +619,6 @@ try:
 except Exception as e:
     print(f"--- STARTUP ERROR: migrations failed: {e} ---", flush=True)
     sys.exit(1)
-
-# Start scheduler AFTER migrations complete (so background tasks don't crash on missing columns)
-scheduler.start()
-print("--- [Startup] Scheduler started after migrations ---", flush=True)
 
 # clear any leftover lock files from crashes/restarts
 print("--- BOOT SEQUENCE: CLEARING LOCKS ---", flush=True)
@@ -607,6 +783,35 @@ def _no_users_exist():
     except Exception:
         return False
 
+@app.route('/api/public/posters')
+def get_public_posters():
+    """Grab a list of trending movie posters for the login background. Unauthenticated."""
+    try:
+        # try to get the first user's TMDB key to fetch fresh trending posters
+        s = Settings.query.first()
+        if s and s.tmdb_key:
+            url = f"https://api.themoviedb.org/3/trending/movie/week?api_key={s.tmdb_key}"
+            r = requests.get(url, timeout=5)
+            if r.status_code == 200:
+                data = r.json()
+                posters = [f"https://image.tmdb.org/t/p/original{m['poster_path']}" for m in data.get('results', []) if m.get('poster_path')]
+                if posters:
+                    return jsonify({'posters': posters})
+    except Exception:
+        pass
+
+    # fallback high-quality posters if TMDB fails or no key set
+    fallbacks = [
+        "https://image.tmdb.org/t/p/original/8Gxv0mYmUctXsbS1vD9274asvBf.jpg", # Interstellar
+        "https://image.tmdb.org/t/p/original/dfS9q3hlvY6PSwwabyeT6LZJpcS.jpg", # Inception
+        "https://image.tmdb.org/t/p/original/qJ2tW6WMUDp9sZKsjrswHn64GvK.jpg", # The Dark Knight
+        "https://image.tmdb.org/t/p/original/ow3wq89wMvEbSruS9RGUhbjLs9X.jpg", # Dune
+        "https://image.tmdb.org/t/p/original/v9X97AnSntmYvOnmQUv99m6YpEq.jpg", # Oppenheimer
+        "https://image.tmdb.org/t/p/original/6FfCtvT2mno1mSpmEQsF61oKEXi.jpg", # Star Wars
+    ]
+    return jsonify({'posters': fallbacks})
+
+
 @app.route('/login', methods=['GET', 'POST'])
 @limiter.limit("5 per minute", exempt_when=_no_users_exist)
 def login():
@@ -738,10 +943,7 @@ def dashboard():
     try:
         if s.plex_url and s.plex_token:
             p = PlexServer(s.plex_url, s.plex_token, timeout=2)
-            all_sections = list(p.library.sections())
-            logging.info(f"Dashboard: Plex libraries found: {[(sec.title, sec.type) for sec in all_sections]}")
-            plex_libraries = [sec.title for sec in all_sections if sec.type in ['movie', 'show']]
-            logging.info(f"Dashboard: Filtered libraries: {plex_libraries}")
+            plex_libraries = [sec.title for sec in p.library.sections() if sec.type in ['movie', 'show']]
     except Exception: pass
        
     return render_template('dashboard.html', 
@@ -1566,8 +1768,6 @@ def playlists():
 
     schedules = {}
     sync_modes = {}
-    sort_orders = {}
-    summaries = {}
     visibility = {}  # preset_key -> { home, library, friends }
     for sch in CollectionSchedule.query.all():
         schedules[sch.preset_key] = sch.frequency
@@ -1575,8 +1775,6 @@ def playlists():
             try:
                 config = json.loads(sch.configuration)
                 sync_modes[sch.preset_key] = config.get('sync_mode', 'append')
-                sort_orders[sch.preset_key] = config.get('sort_order', 'release_desc')
-                summaries[sch.preset_key] = config.get('summary', '')
                 visibility[sch.preset_key] = {
                     'home': config.get('visibility_home', True),
                     'library': config.get('visibility_library', False),
@@ -1584,8 +1782,6 @@ def playlists():
                 }
             except Exception:
                 sync_modes[sch.preset_key] = 'append'
-                sort_orders[sch.preset_key] = 'release_desc'
-                summaries[sch.preset_key] = ''
                 visibility[sch.preset_key] = {'home': True, 'library': False, 'friends': False}
 
     custom_presets = {}
@@ -1610,8 +1806,6 @@ def playlists():
                            presets=PLAYLIST_PRESETS, 
                            schedules=schedules, 
                            sync_modes=sync_modes,
-                           sort_orders=sort_orders,
-                           summaries=summaries,
                            visibility=visibility,
                            custom_presets=custom_presets,
                            schedule_time=current_time)
@@ -1757,10 +1951,7 @@ def settings():
     try:
         if s.plex_url and s.plex_token:
             p = PlexServer(s.plex_url, s.plex_token, timeout=3)
-            all_sections = list(p.library.sections())
-            logging.info(f"Settings: Plex libraries found: {[(sec.title, sec.type) for sec in all_sections]}")
-            plex_libraries = [sec.title for sec in all_sections if sec.type in ['movie', 'show']]
-            logging.info(f"Settings: Filtered libraries: {plex_libraries}")
+            plex_libraries = [sec.title for sec in p.library.sections() if sec.type in ['movie', 'show']]
     except Exception as e:
         err_str = str(e)
         if "Connection refused" in err_str or "Max retries exceeded" in err_str or "plex.direct" in err_str:
@@ -1898,134 +2089,116 @@ def media():
 def support_us():
     return render_template('support.html')
 
+from services.CollectionService import CollectionService
+from services.CloudService import CloudService
+
 # background scheduler - runs collections, cache refreshes, etc on a schedule
 
-# track last cloud poll time so we can use backup interval when webhook is enabled
-_last_cloud_poll_time = 0
-
 def scheduled_tasks():
-    global _last_cloud_poll_time
     with app.app_context():
-        # prune backups at 4am
-        if datetime.datetime.now().hour == 4 and datetime.datetime.now().minute == 0:
-            prune_backups()
+        # prune backups
+        try:
+            if datetime.datetime.now().hour == 4 and datetime.datetime.now().minute == 0:
+                prune_backups()
+        except Exception as e:
+            print(f"Scheduler Error (Pruning): {e}")
             
-        # cache refresh + collection schedule (no request context; use config user or first row)
-        if getattr(config, 'SCHEDULER_USER_ID', None) is not None:
-            s = Settings.query.filter_by(user_id=config.SCHEDULER_USER_ID).first()
-        else:
-            s = Settings.query.first()
-        if not s:
+        # grab Settings (needed for remaining tasks)
+        try:
+            if getattr(config, 'SCHEDULER_USER_ID', None) is not None:
+                s = Settings.query.filter_by(user_id=config.SCHEDULER_USER_ID).first()
+            else:
+                s = Settings.query.first()
+            if not s: return
+        except Exception as e:
+            print(f"Scheduler Error (DB Access): {e}")
             return
         
-        # Plex library sync (TMDB index) on interval (0 = disabled). Only run after at least one manual sync.
-        last_sync = s.last_alias_scan or 0
-        interval_hours = (s.cache_interval or 0)
-        if interval_hours > 0 and last_sync > 0 and (time.time() - last_sync) >= interval_hours * 3600:
-            if not is_system_locked():
-                print("Scheduler: Starting Plex library sync...")
-                sync_plex_library(app)
-
-        # check if any collections need to run
+        # sync Plex library
         try:
-            target_hour, target_minute = map(int, (s.schedule_time or "04:00").split(':'))
-        except (ValueError, TypeError, AttributeError):
+            last_sync = s.last_alias_scan or 0
+            interval_hours = (s.cache_interval or 0)
+            if interval_hours > 0 and last_sync > 0 and (time.time() - last_sync) >= interval_hours * 3600:
+                if not is_system_locked():
+                    print("Scheduler: Starting Plex library sync...")
+                    sync_plex_library(app)
+        except Exception as e:
+            print(f"Scheduler Error (Plex Sync): {e}")
+
+        # collection scheduling
+        try:
             target_hour, target_minute = 4, 0
-            
-        now = datetime.datetime.now()
+            try:
+                target_hour, target_minute = map(int, (s.schedule_time or "04:00").split(':'))
+            except: pass
+                
+            now = datetime.datetime.now()
+            for sch in CollectionSchedule.query.all():
+                try:
+                    if sch.frequency == 'manual': continue
+                    
+                    should_run = False
+                    last = sch.last_run
+                    
+                    if sch.frequency == 'daily':
+                        run_today = (last and last.date() == now.date())
+                        past_target_time = (now.hour > target_hour or (now.hour == target_hour and now.minute >= target_minute))
+                        if not run_today and past_target_time: should_run = True
+                    elif sch.frequency == 'weekly':
+                        if not last or (now - last).days >= 7: should_run = True
+                        
+                    if should_run:
+                        # process collection
+                        if sch.preset_key.startswith('custom_'):
+                             try: preset_data = json.loads(sch.configuration)
+                             except: preset_data = None
+                        else:
+                             preset_data = PLAYLIST_PRESETS.get(sch.preset_key, {}).copy()
+                             if sch.configuration and preset_data:
+                                 try: preset_data.update(json.loads(sch.configuration))
+                                 except: pass
+                        
+                        if not preset_data:
+                            print(f"Scheduler: ⚠️ Deleting missing or invalid collection '{sch.preset_key}' from database.")
+                            db.session.delete(sch)
+                            db.session.commit()
+                            continue
 
-        for sch in CollectionSchedule.query.all():
-            if sch.frequency == 'manual': continue
-            
-            should_run = False
-            last = sch.last_run
-            
-            # daily collections run once per day after the target time
-            if sch.frequency == 'daily':
-                run_today = False
-                if last and last.date() == now.date():
-                    run_today = True
-                
-                past_target_time = False
-                if now.hour > target_hour or (now.hour == target_hour and now.minute >= target_minute):
-                    past_target_time = True
-                
-                if not run_today and past_target_time:
-                    should_run = True
-
-            # weekly
-            elif sch.frequency == 'weekly':
-                if not last:
-                    should_run = True
-                else:
-                    delta = now - last
-                    if delta.days >= 7: should_run = True
-                
-            if should_run:
-                print(f"Scheduler: Running collection {sch.preset_key}...")
-                
-                if sch.preset_key.startswith('custom_'):
-                     preset_data = json.loads(sch.configuration)
-                else:
-                     preset_data = PLAYLIST_PRESETS.get(sch.preset_key, {}).copy()
-                     
-                     # merge user overrides
-                     if sch.configuration:
-                         try:
-                             user_config = json.loads(sch.configuration)
-                             preset_data.update(user_config)
-                         except Exception: pass
-                
-                if preset_data:
-                    success, msg = run_collection_logic(s, preset_data, sch.preset_key, app_obj=app)
-                    if success:
+                        print(f"Scheduler: Running collection {sch.preset_key}...")
+                        CollectionService.run_collection_logic(s, preset_data, sch.preset_key, app_obj=app)
                         sch.last_run = now
                         db.session.commit()
+                except Exception as task_err:
+                    print(f"Scheduler Error (Collection {sch.preset_key}): {task_err}")
+        except Exception as e:
+            print(f"Scheduler Error (Collection Loop): {e}")
 
-        # background Radarr/Sonarr scanner
-        if s.radarr_sonarr_scanner_enabled:
-            last = s.last_radarr_sonarr_scan or 0
-            now_ts = int(time.time())
-            interval_sec = (s.radarr_sonarr_scanner_interval or 24) * 3600  # convert hours to seconds
-            
-            if now_ts - last >= interval_sec:
-                if not is_system_locked():
-                    print("Scheduler: Starting Radarr/Sonarr Cache Refresh...")
-                    threading.Thread(target=refresh_radarr_sonarr_cache, args=(app,)).start()
+        # Radarr/Sonarr scanner
+        try:
+            if s.radarr_sonarr_scanner_enabled:
+                last = s.last_radarr_sonarr_scan or 0
+                if int(time.time()) - last >= (s.radarr_sonarr_scanner_interval or 24) * 3600:
+                    if not is_system_locked():
+                        print("Scheduler: Starting Radarr/Sonarr Cache Refresh...")
+                        threading.Thread(target=refresh_radarr_sonarr_cache, args=(app,)).start()
+        except Exception as e:
+            print(f"Scheduler Error (Integrations): {e}")
 
-        # Cloud polling: fetch approved requests from SeekAndWatch Cloud
-        # When direct webhook is enabled, only poll as backup (every 6-24 hours)
-        now_ts = time.time()
-        
-        webhook_url = (getattr(s, 'cloud_webhook_url', None) or '').strip()
-        
-        if getattr(s, 'cloud_enabled', False) and getattr(s, 'cloud_api_key', None) and getattr(s, 'cloud_sync_owned_enabled', True):
-            # figure out how long to wait between polls
-            if webhook_url:
-                # direct webhook enabled: use backup interval (6-24 hours)
-                backup_hours = getattr(s, 'cloud_webhook_backup_hours', 6) or 6
-                backup_hours = max(6, min(24, backup_hours))
-                poll_interval_sec = backup_hours * 3600
-                print(f"Cloud: Webhook enabled, using {backup_hours}h backup poll interval")
-            else:
-                # no webhook: use normal interval (75-120 seconds by default)
-                poll_interval_sec = 90  # average of default range
-            
-            # only poll if enough time has passed
-            if now_ts - _last_cloud_poll_time >= poll_interval_sec:
-                try:
-                    from cloud_worker import process_cloud_queue
-                    process_cloud_queue()
-                    _last_cloud_poll_time = now_ts
-                except Exception as e:
-                    print(f"Cloud poll error: {e}")
+        # Cloud polling
+        try:
+            if getattr(s, 'cloud_enabled', False) and getattr(s, 'cloud_api_key', None) and getattr(s, 'cloud_sync_owned_enabled', True):
+                CloudService.process_cloud_queue(app)
+        except Exception as e:
+            print(f"Scheduler Error (Cloud Poll): {e}")
 
 scheduler.add_job(id='master_task', func=scheduled_tasks, trigger='interval', minutes=1)
 
 # Import API blueprint - must be after app creation
 try:
     from api import api_bp
-    app.register_blueprint(api_bp)
+    app.register_blueprint(api_bp, url_prefix='/api')
+    # Exempt webhook from CSRF protection
+    csrf.exempt(api_bp)
     import api
     api.limiter = limiter
 except ImportError as e:
@@ -2074,32 +2247,17 @@ def webhook_approved():
     if request.method == 'OPTIONS':
         return _add_cors(jsonify({'status': 'ok'})), 200
     secret = (request.headers.get('X-Webhook-Secret') or '').strip()
-    if not secret:
-        return _add_cors(jsonify({'error': 'Unauthorized'})), 401
-    
-    # optimized lookup: use hash comparison on secret (constant time)
     settings = None
-    try:
-        # grab all users with webhooks configured (should be small set)
-        all_settings = Settings.query.filter(Settings.cloud_webhook_url.isnot(None), Settings.cloud_webhook_secret.isnot(None)).all()
-        for s in all_settings:
-            if s.cloud_webhook_secret and secrets.compare_digest(s.cloud_webhook_secret, secret):
-                settings = s
-                break
-    except Exception:
-        pass
-    
+    for s in Settings.query.filter(Settings.cloud_webhook_url.isnot(None)).all():
+        if secrets.compare_digest(s.cloud_webhook_secret or '', secret):
+            settings = s
+            break
     if not settings:
         return _add_cors(jsonify({'error': 'Unauthorized'})), 401
     try:
         data = request.get_json(force=True, silent=True) or {}
     except Exception:
         return _add_cors(jsonify({'error': 'Invalid JSON'})), 400
-    
-    # test webhook (just respond OK)
-    if data.get('event') == 'test':
-        return _add_cors(jsonify({'status': 'ok', 'message': 'Test webhook received'})), 200
-    
     # Push: new pending request (friend submitted); add to local list so UI updates without poll
     if data.get('event') == 'new_pending' and isinstance(data.get('request'), dict):
         from cloud_worker import add_pending_from_web, set_last_webhook_received
@@ -2133,9 +2291,8 @@ def requests_page():
 @app.route('/requests/settings')
 @login_required
 def requests_settings_page():
-    from cloud_worker import get_cloud_import_log
     settings = current_user.settings
-    cloud_import_log = get_cloud_import_log(20)
+    cloud_import_log = CloudService.get_cloud_import_log(20)
     return render_template('requests_settings.html', settings=settings, cloud_import_log=cloud_import_log)
 
 
@@ -2152,7 +2309,7 @@ def test_cloud_connection():
     if not key:
         return jsonify({'status': 'error', 'message': 'No API key provided. Enter a key and try again.'}), 400
     try:
-        base = get_cloud_base_url(settings)
+        base = CloudService.get_cloud_base_url(settings)
         r = requests.get(
             f"{base}/api/poll.php",
             headers={'X-Server-Key': key},
@@ -2195,8 +2352,16 @@ def save_cloud_settings():
     settings.cloud_tv_handler = request.form.get('cloud_tv_handler')
     settings.cloud_sync_owned_enabled = 'cloud_sync_owned_enabled' in request.form
 
-    webhook_url = (request.form.get('cloud_webhook_url') or '').strip()
+    # save cloudflare tunnel settings
+    settings.cloudflare_api_token = (request.form.get('cloudflare_api_token') or '').strip() or None
+    settings.cloudflare_account_id = (request.form.get('cloudflare_account_id') or '').strip() or None
     
+    # save webhook failsafe poll interval (6, 12, or 24 hours)
+    webhook_failsafe = request.form.get('cloud_webhook_failsafe_hours')
+    if webhook_failsafe and webhook_failsafe in ['6', '12', '24']:
+        settings.cloud_webhook_failsafe_hours = int(webhook_failsafe)
+
+    webhook_url = (request.form.get('cloud_webhook_url') or '').strip()
     if 'cloud_webhook_secret' in request.form:
         if 'cloud_webhook_secret_unchanged' in request.form:
             pass  # keep existing
@@ -2210,15 +2375,6 @@ def save_cloud_settings():
                 settings.cloud_webhook_secret = None
     settings.cloud_webhook_url = webhook_url or None
     webhook_secret = (settings.cloud_webhook_secret or '').strip()  # for register_webhook below
-
-    # backup poll interval when webhook is enabled (6, 12, or 24 hours)
-    raw_backup = (request.form.get('cloud_webhook_backup_hours') or '').strip()
-    if raw_backup.isdigit():
-        backup_hours = int(raw_backup)
-        backup_hours = max(6, min(24, backup_hours))  # clamp to 6-24
-        settings.cloud_webhook_backup_hours = backup_hours
-    elif not settings.cloud_webhook_backup_hours:
-        settings.cloud_webhook_backup_hours = 6  # default
 
     raw_min = (request.form.get('cloud_poll_interval_min') or '').strip()
     raw_max = (request.form.get('cloud_poll_interval_max') or '').strip()
@@ -2237,27 +2393,10 @@ def save_cloud_settings():
         # Only call cloud to register/clear webhook when we have a webhook URL or had one (so cloud stays in sync)
         # If user left webhook blank, skip the API call so we don't show "webhook failed" when they only added the API key
         if webhook_url:
-            try:
-                base = get_cloud_base_url(settings)
-                r = requests.post(
-                    f"{base}/api/register_webhook.php",
-                    headers={
-                        'X-Server-Key': settings.cloud_api_key,
-                        'Content-Type': 'application/json',
-                    },
-                    json={
-                        'webhook_url': webhook_url or '',
-                        'webhook_secret': webhook_secret or '',
-                    },
-                    timeout=CLOUD_REQUEST_TIMEOUT,
-                )
-                if r.status_code != 200:
-                    flash("Cloud settings saved, but webhook registration failed (check API key).", "warning")
-                else:
-                    flash("Cloud settings updated successfully", "success")
-            except Exception as e:
-                write_log("warning", "Cloud", f"Webhook registration failed: {getattr(e, 'message', str(e))}")
-                flash("Cloud settings saved, but could not register webhook (check API key and network).", "warning")
+            if CloudService.register_webhook(settings, webhook_url, webhook_secret):
+                flash("Cloud settings updated successfully", "success")
+            else:
+                flash("Cloud settings saved, but webhook registration failed (check API key and network).", "warning")
         else:
             flash("Cloud settings updated successfully", "success")
     else:
@@ -2265,55 +2404,10 @@ def save_cloud_settings():
 
     return redirect(url_for('requests_settings_page'))
 
-@app.route('/api/webhook/test', methods=['POST'])
-@login_required
-def test_webhook_delivery():
-    """Test webhook delivery by calling cloud's test_webhook.php endpoint"""
-    settings = current_user.settings
-
-    if not settings.cloud_api_key or not settings.cloud_enabled:
-        return jsonify({'status': 'error', 'message': 'Cloud API key not configured'}), 400
-
-    if not settings.cloud_webhook_url:
-        return jsonify({'status': 'error', 'message': 'Webhook URL not configured'}), 400
-
-    try:
-        base = get_cloud_base_url(settings)
-        r = requests.post(
-            f"{base}/api/test_webhook.php",
-            headers={'X-Server-Key': settings.cloud_api_key},
-            timeout=15,
-        )
-
-        if r.status_code == 200:
-            data = r.json()
-            if data.get('status') == 'success':
-                return jsonify({
-                    'status': 'success',
-                    'message': data.get('message', 'Webhook test successful'),
-                    'duration_ms': data.get('duration_ms'),
-                })
-            else:
-                return jsonify({
-                    'status': 'error',
-                    'message': data.get('message', 'Webhook test failed'),
-                })
-        else:
-            return jsonify({'status': 'error', 'message': f'Cloud returned status {r.status_code}'}), 200
-
-    except requests.exceptions.Timeout:
-        return jsonify({'status': 'error', 'message': 'Connection timed out'}), 200
-    except requests.exceptions.ConnectionError:
-        return jsonify({'status': 'error', 'message': 'Could not reach cloud'}), 200
-    except Exception as e:
-        write_log("warning", "Webhook Test", str(e))
-        return jsonify({'status': 'error', 'message': 'Test failed'}), 200
-
-
 @app.route('/approve_request/<int:req_id>', methods=['POST'])
 @login_required
 def approve_request(req_id):
-    # important: local import to prevent crash
+    # --- IMPORTANT: Local Import to prevent crash ---
     from cloud_worker import process_item
 
     req = CloudRequest.query.get_or_404(req_id)
@@ -2413,7 +2507,7 @@ def delete_request(req_id):
             print(f"Warning: Could not delete from cloud: {e}")
 
 
-    # record deletion so we don't re-import from cloud
+    # --- 2. RECORD DELETION SO WE DON'T RE-IMPORT FROM CLOUD ---
     if cloud_id_val:
         try:
             if not DeletedCloudId.query.filter_by(cloud_id=cloud_id_val).first():
@@ -2444,59 +2538,6 @@ from utils import CUSTOM_POSTER_DIR
 @app.route('/img/custom_posters/<path:filename>')
 def custom_poster(filename):
     return send_from_directory(CUSTOM_POSTER_DIR, filename)
-
-@app.route('/api/popular_movies_posters')
-def popular_movies_posters():
-    """Endpoint to get a list of popular movie posters for the login background."""
-    try:
-        # Use the current user's settings if authenticated, otherwise the first user's.
-        # This is for the login page, where the user isn't logged in yet.
-        settings = None
-        if current_user.is_authenticated:
-            settings = current_user.settings
-        else:
-            # Fallback for login page: use first admin user's settings
-            admin_user = User.query.filter_by(is_admin=True).first()
-            if admin_user:
-                settings = admin_user.settings
-
-        if not settings or not settings.tmdb_key:
-            # Last resort: try to find any user with a key
-            if not settings:
-                all_settings = Settings.query.all()
-                for s in all_settings:
-                    if s.tmdb_key:
-                        settings = s
-                        break
-            
-            if not settings or not settings.tmdb_key:
-                return jsonify({'error': 'TMDB API key not configured for any user.'}), 500
-
-        # Fetch popular movies from TMDB
-        tmdb_url = f"https://api.themoviedb.org/3/movie/popular?api_key={settings.tmdb_key}&language=en-US&page=1"
-        response = requests.get(tmdb_url, timeout=10)
-        response.raise_for_status()
-        
-        data = response.json()
-        
-        # Get up to 20 posters with a high resolution
-        posters = []
-        for movie in data.get('results', [])[:20]:
-            if movie.get('poster_path'):
-                posters.append(f"https://image.tmdb.org/t/p/original{movie['poster_path']}")
-        
-        # Shuffle so it's not the same every time
-        random.shuffle(posters)
-        
-        return jsonify(posters)
-        
-    except Exception as e:
-        # Log the error so the admin can see what went wrong
-        try:
-            write_log("error", "Backgrounds", f"Failed to fetch popular movie posters: {e}")
-        except Exception:
-            pass # logging might not be set up
-        return jsonify({'error': 'Could not fetch movie posters.'}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
