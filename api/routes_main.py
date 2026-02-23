@@ -35,14 +35,13 @@ from api.helpers import (
 )
 from auth_decorators import admin_required
 from models import db, Blocklist, CollectionSchedule, TmdbAlias, SystemLog, Settings, User, AppRequest, RecoveryCode
+from services.CollectionService import CollectionService
 from utils import (
     normalize_title,
     is_duplicate,
     is_owned_item,
     fetch_omdb_ratings,
     send_overseerr_request,
-    get_collection_visibility,
-    run_collection_logic,
     sync_remote_aliases,
     get_tmdb_aliases,
     sync_plex_library,
@@ -592,61 +591,12 @@ def get_plex_libraries():
     s = current_user.settings
     try:
         plex = PlexServer(s.plex_url, s.plex_token)
-        # log all libraries for debugging
-        all_sections = list(plex.library.sections())
-        logging.info(f"Plex libraries found: {[(sec.title, sec.type) for sec in all_sections]}")
         # only grab movie/TV libraries (ignore music, photos, etc)
-        libs = [{'title': sec.title, 'type': sec.type, 'name': sec.title} for sec in all_sections if sec.type in ['movie', 'show']]
-        logging.info(f"Filtered to movie/show libraries: {[lib['title'] for lib in libs]}")
+        libs = [{'title': sec.title, 'type': sec.type, 'name': sec.title} for sec in plex.library.sections() if sec.type in ['movie', 'show']]
         return jsonify({'status': 'success', 'libraries': libs})
     except Exception as e:
         _log_api_exception("get_plex_libraries", e)
         return _error_response("Could not connect to Plex. Check that the server is running and the URL and token in Settings are correct.")
-
-@api_bp.route('/debug_plex_libraries')
-@login_required
-def debug_plex_libraries():
-    """Debug endpoint to show all Plex libraries and their types (safe to share, no sensitive data)"""
-    s = current_user.settings
-    if not s.plex_url or not s.plex_token:
-        return jsonify({
-            'status': 'error',
-            'message': 'Plex not configured. Add Plex URL and token in Settings first.'
-        })
-    
-    try:
-        plex = PlexServer(s.plex_url, s.plex_token, timeout=5)
-        all_sections = list(plex.library.sections())
-        
-        # safe info to share (no tokens, URLs, or personal data)
-        debug_info = {
-            'status': 'success',
-            'total_libraries': len(all_sections),
-            'all_libraries': [
-                {
-                    'title': sec.title,
-                    'type': sec.type,
-                    'agent': getattr(sec, 'agent', 'unknown'),
-                    'language': getattr(sec, 'language', 'unknown')
-                }
-                for sec in all_sections
-            ],
-            'filtered_movie_show': [
-                {'title': sec.title, 'type': sec.type}
-                for sec in all_sections if sec.type in ['movie', 'show']
-            ],
-            'filter_logic': "Only showing libraries where type is 'movie' or 'show'"
-        }
-        
-        return jsonify(debug_info)
-        
-    except Exception as e:
-        current_app.logger.error(f"Plex connection error: {str(e)}")
-        return jsonify({
-            'status': 'error',
-            'message': 'Could not connect to Plex. Check your server URL and token.'
-        })
-
         
 @api_bp.route('/get_plex_collections')
 @login_required
@@ -715,7 +665,7 @@ def get_plex_collections():
                 # 2) Fallback: hub manage API or preferences()
                 if not (visible_home or visible_library or visible_friends):
                     section_id = getattr(section, 'key', None)
-                    hub_home, hub_lib, hub_friends = get_collection_visibility(plex, section_id, rk) if section_id and rk else (None, None, None)
+                    hub_home, hub_lib, hub_friends = CollectionService.get_collection_visibility(plex, section_id, rk) if section_id and rk else (None, None, None)
                     if (hub_home, hub_lib, hub_friends) != (None, None, None):
                         visible_home, visible_library, visible_friends = hub_home, hub_lib, hub_friends
                     else:
@@ -1170,7 +1120,7 @@ def create_collection(key):
 
             
     from flask import current_app
-    success, msg = run_collection_logic(s, preset, key, app_obj=current_app._get_current_object())
+    success, msg = CollectionService.run_collection_logic(s, preset, key, app_obj=current_app._get_current_object())
     
     if success:
         # Update last run time and persist default visibility so options show after first run
@@ -1209,8 +1159,6 @@ def schedule_collection():
     preset_key = request.form.get('preset_key')
     frequency = request.form.get('frequency')  # manual, daily, weekly
     sync_mode = request.form.get('sync_mode', 'append')
-    sort_order = request.form.get('sort_order', 'release_desc')  # release_desc, release_asc, alpha, popularity_desc, popularity_asc, rating_desc, rating_asc, random
-    summary = request.form.get('summary', '').strip()  # custom description
     # visibility: 1/0 or true/false from form
     visibility_home = request.form.get('visibility_home', '1') in ('1', 'true', 'yes')
     visibility_library = request.form.get('visibility_library', '0') in ('1', 'true', 'yes')
@@ -1228,8 +1176,6 @@ def schedule_collection():
         except Exception: current_config = {}
             
     current_config['sync_mode'] = sync_mode
-    current_config['sort_order'] = sort_order
-    current_config['summary'] = summary
     current_config['visibility_home'] = visibility_home
     current_config['visibility_library'] = visibility_library
     current_config['visibility_friends'] = visibility_friends
@@ -2464,189 +2410,102 @@ def save_schedule_time():
 @api_bp.route('/api/media/requested')
 @login_required
 def get_requested_media():
-    """Get requested media from Overseerr and from app (Radarr/Sonarr adds)."""
+    """Grab requested items from Overseerr and local app history."""
     s = current_user.settings
     items = []
     
-    try:
-        if s.overseerr_url and s.overseerr_api_key:
+    # attempt to grab from Overseerr
+    if s.overseerr_url and s.overseerr_api_key:
+        try:
             headers = {'X-Api-Key': s.overseerr_api_key}
             base_url = s.overseerr_url.rstrip('/')
-            r = requests.get(f"{base_url}/api/v1/request", headers=headers, params={'take': 100, 'filter': 'all'}, timeout=10)
-            if r.status_code != 200:
-                return jsonify({'status': 'error', 'message': 'Failed to fetch requests', 'items': []})
-            requests_data = r.json().get('results', [])
-            for req in requests_data:
-                # Overseerr can return media data in 'media' or 'mediaInfo' fields
-                media = req.get('media', {}) or req.get('mediaInfo', {})
-                status_map = {1: 'Pending', 2: 'Approved', 3: 'Available', 4: 'Failed'}
-                status = status_map.get(req.get('status', 0), 'Unknown')
-                media_type = media.get('mediaType') or req.get('mediaType') or 'movie'
-                title = None
-                if media:
-                    title = (media.get('title') or media.get('name') or media.get('originalTitle') or media.get('originalName'))
-                if not title:
-                    title = (req.get('title') or req.get('name') or req.get('mediaTitle') or req.get('mediaName'))
-                tmdb_id = media.get('tmdbId') or req.get('tmdbId')
-                tmdb_data = None
-                if (not title or title == 'Unknown') and tmdb_id and s.tmdb_key:
-                    try:
-                        tmdb_type = 'movie' if media_type == 'movie' else 'tv'
-                        tmdb_url = f"https://api.themoviedb.org/3/{tmdb_type}/{tmdb_id}?api_key={s.tmdb_key}"
-                        tmdb_resp = requests.get(tmdb_url, timeout=5)
-                        if tmdb_resp.status_code == 200:
-                            tmdb_data = tmdb_resp.json()
-                            title = tmdb_data.get('title') or tmdb_data.get('name')
-                    except Exception:
-                        pass
-                title = title or 'Unknown'
-                year = None
-                if media:
-                    release_date = media.get('releaseDate') or media.get('release_date')
-                    first_air_date = media.get('firstAirDate') or media.get('first_air_date')
-                    if release_date:
-                        year = str(release_date)[:4] if release_date else None
-                    elif first_air_date:
-                        year = str(first_air_date)[:4] if first_air_date else None
-                if not year:
-                    release_date = req.get('releaseDate') or req.get('release_date')
-                    first_air_date = req.get('firstAirDate') or req.get('first_air_date')
-                    if release_date:
-                        year = str(release_date)[:4] if release_date else None
-                    elif first_air_date:
-                        year = str(first_air_date)[:4] if first_air_date else None
-                if not year and tmdb_data:
-                    try:
-                        release_date = tmdb_data.get('release_date') or tmdb_data.get('first_air_date')
-                        if release_date:
-                            year = str(release_date)[:4]
-                    except Exception:
-                        pass
-                requested_by_obj = req.get('requestedBy', {})
-                if isinstance(requested_by_obj, dict):
-                    requested_by = (requested_by_obj.get('displayName') or requested_by_obj.get('username') or requested_by_obj.get('email') or 'N/A')
-                else:
-                    requested_by = str(requested_by_obj) if requested_by_obj else 'N/A'
-                overseerr_url = None
-                if tmdb_id:
-                    overseerr_url = f"{base_url}/movie/{tmdb_id}" if media_type == 'movie' else f"{base_url}/tv/{tmdb_id}"
-                poster_url = None
-                if media:
-                    poster_path = media.get('posterPath') or media.get('poster_path')
-                    if poster_path:
-                        poster_url = poster_path if poster_path.startswith('http') else f"https://image.tmdb.org/t/p/w500{poster_path}"
-                if not poster_url and tmdb_data and tmdb_data.get('poster_path'):
-                    poster_url = f"https://image.tmdb.org/t/p/w500{tmdb_data.get('poster_path')}"
-                added_date = req.get('createdAt') or req.get('addedAt') or req.get('created_at')
-                items.append({
-                    'title': title,
-                    'year': year,
-                    'status': status,
-                    'requested_via': 'Overseerr',
-                    'requested_by': requested_by,
-                    'overseerr_url': overseerr_url,
-                    'poster_url': poster_url,
-                    'added': added_date,
-                    'media_type': media_type
-                })
-            # merge requests made from the app (Radarr/Sonarr add)
-            try:
-                app_requests = AppRequest.query.filter(
-                    (AppRequest.user_id == current_user.id) | (AppRequest.user_id == None)
-                ).order_by(AppRequest.requested_at.desc()).limit(500).all()
-                for ar in app_requests:
-                    added = ar.requested_at.isoformat() if ar.requested_at else ''
-                    items.append({
-                        'title': ar.title or 'Unknown',
-                        'year': None,
-                        'status': 'Requested',
-                        'requested_via': ar.requested_via or 'Radarr',
-                        'requested_by': 'SeekAndWatch',
-                        'overseerr_url': None,
-                        'poster_url': None,
-                        'added': added,
-                        'media_type': ar.media_type or 'movie'
-                    })
-            except Exception:
-                pass
-        else:
-            # no Overseerr - show only requests made from the app (Radarr/Sonarr)
-            try:
-                app_requests = AppRequest.query.filter(
-                    (AppRequest.user_id == current_user.id) | (AppRequest.user_id == None)
-                ).order_by(AppRequest.requested_at.desc()).limit(500).all()
-                for ar in app_requests:
-                    added = ar.requested_at.isoformat() if ar.requested_at else ''
-                    items.append({
-                        'title': ar.title or 'Unknown',
-                        'year': None,
-                        'status': 'Requested',
-                        'requested_via': ar.requested_via or 'Radarr',
-                        'requested_by': 'SeekAndWatch',
-                        'overseerr_url': None,
-                        'poster_url': None,
-                        'added': added,
-                        'media_type': ar.media_type or 'movie'
-                    })
-            except Exception:
-                pass
+            r = requests.get(f"{base_url}/api/v1/request", headers=headers, params={'take': 100, 'filter': 'all'}, timeout=5)
+            
+            if r.status_code == 200:
+                requests_data = r.json().get('results', [])
+                for req in requests_data:
+                    media = req.get('media', {}) or req.get('mediaInfo', {})
+                    status_map = {1: 'Pending', 2: 'Approved', 3: 'Available', 4: 'Failed'}
+                    
+                    # build clean item object
+                    item = {
+                        'title': (media.get('title') or media.get('name') or req.get('title') or 'Unknown'),
+                        'year': str(media.get('releaseDate') or req.get('releaseDate') or '')[:4],
+                        'status': status_map.get(req.get('status', 0), 'Unknown'),
+                        'requested_via': 'Overseerr',
+                        'requested_by': 'User',
+                        'overseerr_url': f"{base_url}/movie/{media.get('tmdbId')}" if media.get('mediaType') == 'movie' else f"{base_url}/tv/{media.get('tmdbId')}",
+                        'poster_url': f"https://image.tmdb.org/t/p/w500{media.get('posterPath')}" if media.get('posterPath') else None,
+                        'added': req.get('createdAt') or req.get('created_at'),
+                        'media_type': media.get('mediaType') or 'movie'
+                    }
+                    items.append(item)
+        except Exception as e:
+            # log warning but keep going so local requests still show
+            print(f"Requested Media: Skipping Overseerr (Connection failed: {e})", flush=True)
+
+    # grab local requests made directly from this app
+    try:
+        app_requests = AppRequest.query.filter(
+            (AppRequest.user_id == current_user.id) | (AppRequest.user_id == None)
+        ).order_by(AppRequest.requested_at.desc()).limit(500).all()
         
-        # Apply filters
+        for ar in app_requests:
+            items.append({
+                'title': ar.title or 'Unknown',
+                'year': None,
+                'status': 'Requested',
+                'requested_via': ar.requested_via or 'Radarr',
+                'requested_by': 'SeekAndWatch',
+                'overseerr_url': None,
+                'poster_url': None,
+                'added': ar.requested_at.isoformat() if ar.requested_at else '',
+                'media_type': ar.media_type or 'movie'
+            })
+    except Exception as e:
+        print(f"Requested Media: Local DB fetch failed: {e}", flush=True)
+
+    # final processing (filtering, sorting and paging)
+    try:
+        # apply filters
         status_filter = request.args.get('status', '').lower()
         source_filter = request.args.get('source', '').lower()
-        sort_by = request.args.get('sort', 'added_desc')
         
         if status_filter:
             items = [i for i in items if i['status'].lower() == status_filter]
         if source_filter:
             items = [i for i in items if i['requested_via'].lower() == source_filter]
-        
-        # Sort
+
+        # sort by date added (newest first)
+        sort_by = request.args.get('sort', 'added_desc')
         if sort_by == 'title_asc':
             items.sort(key=lambda x: (x.get('title') or '').lower())
         elif sort_by == 'year_desc':
-            items.sort(key=lambda x: int(x.get('year')) if x.get('year') else 0, reverse=True)
-        elif sort_by == 'added_desc':
+            items.sort(key=lambda x: str(x.get('year') or '0'), reverse=True)
+        else: # added_desc
             items.sort(key=lambda x: x.get('added') or '', reverse=True)
-        # Default is already sorted by Overseerr, but we handle it explicitly above
         
-        # Pagination - configurable page size (default 200, max 200)
-        try:
-            page = int(request.args.get('page', 1))
-            if page < 1 or page > 10000:  # Reasonable max
-                page = 1
-        except (ValueError, TypeError):
-            page = 1
+        # apply simple pagination
+        try: page = int(request.args.get('page', 1))
+        except: page = 1
         
-        try:
-            requested_page_size = int(request.args.get('page_size', 200))
-            # Limit to valid options: 50, 100, 150, or 200
-            valid_page_sizes = [50, 100, 150, 200]
-            page_size = requested_page_size if requested_page_size in valid_page_sizes else 200
-        except (ValueError, TypeError):
-            page_size = 200
+        page_size = 200
         total_items = len(items)
-        total_pages = (total_items + page_size - 1) // page_size  # Ceiling division
-        
-        # Get items for current page
         start_idx = (page - 1) * page_size
-        end_idx = start_idx + page_size
-        paginated_items = items[start_idx:end_idx]
         
         return jsonify({
             'status': 'success', 
-            'items': paginated_items,
+            'items': items[start_idx : start_idx + page_size],
             'pagination': {
                 'page': page,
                 'page_size': page_size,
                 'total_items': total_items,
-                'total_pages': total_pages
+                'total_pages': (total_items + page_size - 1) // page_size
             }
         })
-        
     except Exception as e:
-        _log_api_exception("get_requested_media", e)
-        return jsonify({'status': 'error', 'message': 'Request failed', 'items': []})
+        print(f"Requested Media: Error processing list: {e}", flush=True)
+        return jsonify({'status': 'error', 'message': 'Could not process list', 'items': []})
 
 # Media Management (Radarr/Sonarr/Overseerr)
 @api_bp.route('/api/media/overview')
@@ -2874,86 +2733,30 @@ def get_media_overview():
 def add_to_radarr():
     """Add a movie to Radarr."""
     s = current_user.settings
-    if not s:
-        return _error_response('Settings not found')
-    if not s.radarr_url or not s.radarr_api_key:
-        return _error_response('Radarr not configured')
+    if not s: return _error_response('Settings not found')
+    
     data = request.json or {}
     tmdb_id = data.get('tmdb_id')
-    if not tmdb_id:
-        return _error_response('TMDB ID required')
+    if not tmdb_id: return _error_response('TMDB ID required')
     
-    # Check if movie is already owned before attempting to add
-    try:
-        # Fetch movie details from TMDB to check ownership
-        if s.tmdb_key:
-            tmdb_check_url = f"https://api.themoviedb.org/3/movie/{tmdb_id}?api_key={s.tmdb_key}"
-            tmdb_check_resp = requests.get(tmdb_check_url, timeout=5)
-            if tmdb_check_resp.status_code == 200:
-                tmdb_item = tmdb_check_resp.json()
-                if is_owned_item(tmdb_item, 'movie'):
-                    movie_title = tmdb_item.get('title', 'This movie')
-                    return _error_response(f'{movie_title} is already in your library')
-    except Exception as e:
-        # If ownership check fails, continue anyway (don't block the request)
-        write_log("warning", "Radarr", "Ownership check failed")
+    from services.IntegrationsService import IntegrationsService
+    success, msg = IntegrationsService.send_to_radarr_sonarr(s, 'movie', tmdb_id)
     
-    try:
-        headers = {'X-Api-Key': s.radarr_api_key}
-        base_url = s.radarr_url.rstrip('/')
-
-        root_folder_path, root_err = _fetch_first_root_folder(base_url, headers)
-        if root_err:
-            return _error_response(root_err)
-
-        quality_profile_id = data.get('quality_profile_id')
-        if not quality_profile_id:
-            qp_list, qp_err = _fetch_quality_profiles(base_url, headers)
-            if qp_err or not qp_list:
-                return _error_response(qp_err or 'No quality profiles configured')
-            quality_profile_id = qp_list[0].get('id')
-            if quality_profile_id is None:
-                return _error_response('Failed to extract quality profile id')
-        
-        # Get movie details from TMDB
-        if not s.tmdb_key:
-            return _error_response('TMDB API key required')
-        tmdb_url = f"https://api.themoviedb.org/3/movie/{tmdb_id}?api_key={s.tmdb_key}"
-        tmdb_resp = requests.get(tmdb_url, timeout=5)
-        if tmdb_resp.status_code != 200:
-            return _error_response('Failed to fetch movie details')
-        tmdb_data = tmdb_resp.json()
-
-        # Add to Radarr
-        add_url = f"{base_url}/api/v3/movie"
-        payload = {
-            'title': tmdb_data.get('title'),
-            'qualityProfileId': quality_profile_id,
-            'titleSlug': tmdb_data.get('title', '').lower().replace(' ', '-'),
-            'images': [],
-            'tmdbId': tmdb_id,
-            'year': int(tmdb_data.get('release_date', '')[:4]) if tmdb_data.get('release_date') else None,
-            'rootFolderPath': root_folder_path,
-            'monitored': True,
-            'addOptions': {'searchForMovie': True}
-        }
-        
-        add_resp = requests.post(add_url, json=payload, headers=headers, timeout=10)
-        if add_resp.status_code in [200, 201]:
-            title = tmdb_data.get('title') or 'Unknown'
+    if success:
+        # log to history in background
+        def _log_history():
             try:
-                app_req = AppRequest(user_id=current_user.id, tmdb_id=int(tmdb_id), media_type='movie', title=title, requested_via='Radarr')
-                db.session.add(app_req)
-                db.session.commit()
-            except Exception:
-                db.session.rollback()
-            write_log("info", "Radarr", f"Added {title} to Radarr")
-            return jsonify({'status': 'success', 'message': f"Added {title} to Radarr"})
-        else:
-            return _error_response(_arr_error_message(add_resp, 'Failed to add movie'))
-    except Exception as e:
-        _log_api_exception("add_to_radarr", e)
-        return _error_response('Request failed')
+                with current_app.app_context():
+                    title = "Movie Request"
+                    if s.tmdb_key:
+                        r = requests.get(f"https://api.themoviedb.org/3/movie/{tmdb_id}?api_key={s.tmdb_key}", timeout=5)
+                        if r.ok: title = r.json().get('title', title)
+                    db.session.add(AppRequest(user_id=current_user.id, tmdb_id=int(tmdb_id), media_type='movie', title=title, requested_via='Radarr'))
+                    db.session.commit()
+            except: pass
+        threading.Thread(target=_log_history).start()
+        return jsonify({'status': 'success', 'message': msg})
+    return _error_response(msg)
 
 def _fetch_first_root_folder(base_url, headers):
     """Fetch root folders from *arr API and return first path. Returns (path, None) or (None, error_message)."""
@@ -3026,124 +2829,32 @@ def get_sonarr_quality_profiles():
 @api_bp.route('/api/sonarr/add', methods=['POST'])
 @login_required
 def add_to_sonarr():
-    """Add a TV show to Sonarr."""
+    """Add a show to Sonarr."""
     s = current_user.settings
-    if not s:
-        return _error_response('Settings not found')
-    if not s.sonarr_url or not s.sonarr_api_key:
-        return _error_response('Sonarr not configured')
+    if not s: return _error_response('Settings not found')
+    
     data = request.json or {}
     tmdb_id = data.get('tmdb_id')
-    if not tmdb_id:
-        return _error_response('TMDB ID required')
+    if not tmdb_id: return _error_response('TMDB ID required')
     
-    # Check if TV show is already owned before attempting to add
-    try:
-        # Fetch TV show details from TMDB to check ownership
-        if s.tmdb_key:
-            tmdb_check_url = f"https://api.themoviedb.org/3/tv/{tmdb_id}?api_key={s.tmdb_key}"
-            tmdb_check_resp = requests.get(tmdb_check_url, timeout=5)
-            if tmdb_check_resp.status_code == 200:
-                tmdb_item = tmdb_check_resp.json()
-                if is_owned_item(tmdb_item, 'tv'):
-                    show_title = tmdb_item.get('name', 'This TV show')
-                    return _error_response(f'{show_title} is already in your library')
-    except Exception as e:
-        # If ownership check fails, continue anyway (don't block the request)
-        write_log("warning", "Sonarr", "Ownership check failed")
+    from services.IntegrationsService import IntegrationsService
+    success, msg = IntegrationsService.send_to_radarr_sonarr(s, 'tv', tmdb_id)
     
-    try:
-        headers = {'X-Api-Key': s.sonarr_api_key}
-        base_url = s.sonarr_url.rstrip('/')
-
-        root_folder_path, root_err = _fetch_first_root_folder(base_url, headers)
-        if root_err:
-            return _error_response(root_err)
-
-        quality_profile_id = data.get('quality_profile_id')
-        if not quality_profile_id:
-            qp_list, qp_err = _fetch_quality_profiles(base_url, headers)
-            if qp_err or not qp_list:
-                return _error_response(qp_err or 'No quality profiles configured')
-            quality_profile_id = qp_list[0].get('id')
-            if quality_profile_id is None:
-                return _error_response('Failed to extract quality profile id')
-
-        # Get TV show details from TMDB
-        if not s.tmdb_key:
-            return _error_response('TMDB API key required')
-        tmdb_url = f"https://api.themoviedb.org/3/tv/{tmdb_id}?api_key={s.tmdb_key}"
-        tmdb_resp = requests.get(tmdb_url, timeout=5)
-        if tmdb_resp.status_code != 200:
-            return _error_response('Failed to fetch TV show details')
-        tmdb_data = tmdb_resp.json()
-        
-        # Sonarr lookup: try TMDB ID first, then TVDB ID (from TMDB external_ids), then by title
-        # (Sonarr/SkyHook sometimes returns empty for tmdb: so fallbacks help)
-        lookup_url = f"{base_url}/api/v3/series/lookup?term=tmdb:{tmdb_id}"
-        lookup_resp = requests.get(lookup_url, headers=headers, timeout=10)
-        series_list = lookup_resp.json() if lookup_resp.status_code == 200 else []
-
-        if not series_list:
-            # try TVDB ID from TMDB external_ids
-            ext_url = f"https://api.themoviedb.org/3/tv/{tmdb_id}/external_ids?api_key={s.tmdb_key}"
-            ext_resp = requests.get(ext_url, timeout=5)
-            if ext_resp.status_code == 200:
-                ext = ext_resp.json()
-                tvdb_id = ext.get('tvdb_id') or ext.get('tvdbId')
-                if tvdb_id:
-                    lookup_url = f"{base_url}/api/v3/series/lookup?term=tvdb:{tvdb_id}"
-                    lookup_resp = requests.get(lookup_url, headers=headers, timeout=10)
-                    series_list = lookup_resp.json() if lookup_resp.status_code == 200 else []
-            if not series_list:
-                # last resort: lookup by title (might return multiple; pick match by tmdb_id)
-                title = tmdb_data.get('name') or tmdb_data.get('original_name') or ''
-                if title:
-                    lookup_url = f"{base_url}/api/v3/series/lookup?term={quote_plus(title)}"
-                    lookup_resp = requests.get(lookup_url, headers=headers, timeout=10)
-                    candidates = lookup_resp.json() if lookup_resp.status_code == 200 else []
-                    for c in candidates:
-                        if isinstance(c, dict) and str(c.get('tmdbId')) == str(tmdb_id):
-                            series_list = [c]
-                            break
-                    if not series_list and candidates:
-                        series_list = [candidates[0]]
-        if not series_list:
-            return _error_response('Show not found in Sonarr lookup')
-
-        series_data = series_list[0]
-        
-        # Add to Sonarr
-        add_url = f"{base_url}/api/v3/series"
-        payload = {
-            'title': series_data.get('title'),
-            'qualityProfileId': quality_profile_id,
-            'titleSlug': series_data.get('titleSlug'),
-            'images': series_data.get('images', []),
-            'tvdbId': series_data.get('tvdbId'),
-            'tmdbId': tmdb_id,
-            'year': series_data.get('year'),
-            'rootFolderPath': root_folder_path,
-            'monitored': True,
-            'addOptions': {'searchForMissingEpisodes': True, 'monitor': 'all'}
-        }
-        
-        add_resp = requests.post(add_url, json=payload, headers=headers, timeout=10)
-        if add_resp.status_code in [200, 201]:
-            title = series_data.get('title') or 'Unknown'
+    if success:
+        # log to history in background
+        def _log_history():
             try:
-                app_req = AppRequest(user_id=current_user.id, tmdb_id=int(tmdb_id), media_type='tv', title=title, requested_via='Sonarr')
-                db.session.add(app_req)
-                db.session.commit()
-            except Exception:
-                db.session.rollback()
-            write_log("info", "Sonarr", f"Added {title} to Sonarr")
-            return jsonify({'status': 'success', 'message': f"Added {title} to Sonarr"})
-        else:
-            return _error_response(_arr_error_message(add_resp, 'Failed to add show'))
-    except Exception as e:
-        _log_api_exception("add_to_sonarr", e)
-        return _error_response('Request failed')
+                with current_app.app_context():
+                    title = "TV Request"
+                    if s.tmdb_key:
+                        r = requests.get(f"https://api.themoviedb.org/3/tv/{tmdb_id}?api_key={s.tmdb_key}", timeout=5)
+                        if r.ok: title = r.json().get('name', title)
+                    db.session.add(AppRequest(user_id=current_user.id, tmdb_id=int(tmdb_id), media_type='tv', title=title, requested_via='Sonarr'))
+                    db.session.commit()
+            except: pass
+        threading.Thread(target=_log_history).start()
+        return jsonify({'status': 'success', 'message': msg})
+    return _error_response(msg)
 
 @api_bp.route('/api/get_artwork_path', methods=['GET'])
 @login_required
@@ -3152,22 +2863,14 @@ def get_artwork_path():
     preset_id = request.args.get('preset_id')
     if not preset_id:
         return _error_response("Missing preset ID")
-    
-    # Sanitize preset_id to prevent path traversal
-    safe_preset_id = secure_filename(preset_id)
-    if not safe_preset_id or safe_preset_id != preset_id or '/' in preset_id or '\\' in preset_id:
-        return _error_response("Invalid preset ID")
 
     # Check for custom artwork file
     artwork_path = None
     for ext in ['.jpg', '.jpeg', '.png']:
-        path = os.path.join(CUSTOM_POSTER_DIR, f'{safe_preset_id}{ext}')
-        # Verify the path is actually inside CUSTOM_POSTER_DIR (prevent path traversal)
-        if not os.path.abspath(path).startswith(os.path.abspath(CUSTOM_POSTER_DIR)):
-            return _error_response("Invalid path")
+        path = os.path.join(CUSTOM_POSTER_DIR, f'{preset_id}{ext}')
         if os.path.exists(path):
             # Return the URL path, not the filesystem path
-            artwork_path = f'/img/custom_posters/{safe_preset_id}{ext}'
+            artwork_path = f'/img/custom_posters/{preset_id}{ext}'
             break
 
     if artwork_path:
@@ -3184,19 +2887,11 @@ def delete_artwork():
         preset_id = data.get('preset_id')
         if not preset_id:
             return _error_response("Missing preset ID")
-        
-        # Sanitize preset_id to prevent path traversal
-        safe_preset_id = secure_filename(preset_id)
-        if not safe_preset_id or safe_preset_id != preset_id or '/' in preset_id or '\\' in preset_id:
-            return _error_response("Invalid preset ID")
 
         # Find and delete the artwork file
         deleted = False
         for ext in ['.jpg', '.jpeg', '.png']:
-            path = os.path.join(CUSTOM_POSTER_DIR, f'{safe_preset_id}{ext}')
-            # Verify the path is actually inside CUSTOM_POSTER_DIR (prevent path traversal)
-            if not os.path.abspath(path).startswith(os.path.abspath(CUSTOM_POSTER_DIR)):
-                return _error_response("Invalid path")
+            path = os.path.join(CUSTOM_POSTER_DIR, f'{preset_id}{ext}')
             if os.path.exists(path):
                 os.remove(path)
                 deleted = True
@@ -3208,53 +2903,7 @@ def delete_artwork():
             return _error_response("No artwork found to delete.")
 
     except Exception as e:
-        current_app.logger.error(f"Error deleting artwork: {str(e)}")
-        return _error_response("Failed to delete artwork")
-
-@api_bp.route('/api/tmdb_poster_search', methods=['GET'])
-@login_required
-@admin_required
-def tmdb_poster_search():
-    """Search TMDB for posters by title."""
-    try:
-        query = request.args.get('query', '').strip()
-        if not query:
-            return _error_response("Missing search query")
-        
-        # Search both movies and TV shows
-        tmdb_api_key = current_app.config.get('TMDB_API_KEY', 'd6420b603675ee303d2046a8d0b6bb60')
-        
-        results = []
-        
-        # Search movies
-        try:
-            movie_url = f"https://api.themoviedb.org/3/search/movie?api_key={tmdb_api_key}&query={query}"
-            movie_resp = requests.get(movie_url, timeout=5)
-            if movie_resp.status_code == 200:
-                movie_data = movie_resp.json()
-                results.extend(movie_data.get('results', [])[:6])
-        except Exception:
-            pass
-        
-        # Search TV shows
-        try:
-            tv_url = f"https://api.themoviedb.org/3/search/tv?api_key={tmdb_api_key}&query={query}"
-            tv_resp = requests.get(tv_url, timeout=5)
-            if tv_resp.status_code == 200:
-                tv_data = tv_resp.json()
-                results.extend(tv_data.get('results', [])[:6])
-        except Exception:
-            pass
-        
-        # Filter out items without posters and sort by popularity
-        results = [r for r in results if r.get('poster_path')]
-        results.sort(key=lambda x: x.get('popularity', 0), reverse=True)
-        
-        return jsonify({'status': 'success', 'results': results[:12]})
-        
-    except Exception as e:
-        return _error_response(f"Search failed: {str(e)}")
-
+        return _error_response(f"An unexpected error occurred: {str(e)}")
 
 
 

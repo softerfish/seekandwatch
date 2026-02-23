@@ -3,44 +3,8 @@
 from flask import current_app
 from werkzeug.utils import secure_filename
 import os
-from urllib.parse import urlparse
-import ipaddress
 
 from utils import write_log, BACKUP_DIR
-
-
-def validate_url_safety(url):
-    """Validate URL to prevent SSRF attacks."""
-    try:
-        parsed = urlparse(url)
-        
-        # Only allow http/https
-        if parsed.scheme not in ['http', 'https']:
-            return False
-        
-        # Block if no hostname
-        if not parsed.hostname:
-            return False
-        
-        # Resolve hostname to IP and check if it's private
-        # This prevents DNS rebinding attacks
-        try:
-            import socket
-            # Get all IPs for this hostname
-            addr_info = socket.getaddrinfo(parsed.hostname, None)
-            for info in addr_info:
-                ip_str = info[4][0]
-                ip = ipaddress.ip_address(ip_str)
-                # Block private, loopback, link-local, multicast IPs
-                if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast:
-                    return False
-        except (socket.gaierror, ValueError, OSError):
-            # DNS resolution failed or invalid IP
-            return False
-        
-        return True
-    except Exception:
-        return False
 
 
 def _log_api_exception(context, exc):
