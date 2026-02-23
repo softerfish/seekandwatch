@@ -353,7 +353,7 @@ def tunnel_status():
         })
         
     except Exception as e:
-        current_app.logger.error(f"Error getting tunnel status: {str(e)}")
+        current_app.logger.error(f"Error in tunnel route: {str(e)}")
         return jsonify({
             'success': False,
             'error': 'Failed to grab tunnel status'
@@ -415,7 +415,7 @@ def test_tunnel():
         current_app.logger.error(f"Error testing tunnel connection: {str(e)}")
         return jsonify({
             'success': False,
-            'error': 'Failed to test connection'
+            'error': 'Failed to test connection. Please check the logs.'
         }), 500
 
 
@@ -452,5 +452,5 @@ def reset_tunnel():
         current_app.logger.error(f"Error resetting tunnel configuration: {str(e)}")
         return jsonify({
             'success': False,
-            'error': 'An unexpected error occurred'
+            'error': 'An unexpected error occurred. Please check the logs.'
         }), 500

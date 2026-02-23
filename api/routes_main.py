@@ -217,13 +217,14 @@ def upload_artwork():
                 else:
                     return _error_response("Failed to download image from URL")
             except Exception as e:
-                return _error_response(f"Download failed: {str(e)}")
+                _log_api_exception("upload_artwork_download", e)
+                return _error_response("Failed to download image.")
 
         return _error_response("No file or URL provided")
 
     except Exception as e:
         _log_api_exception("upload_artwork", e)
-        return _error_response(str(e))
+        return _error_response("An unexpected error occurred.")
 
 @api_bp.route('/load_more_recs')
 @login_required
@@ -1220,6 +1221,7 @@ def preview_custom_collection():
     try:
         r = requests.get(url, params=params, timeout=5).json()
     except Exception as e:
+        _log_api_exception("preview_custom_collection", e)
         return jsonify({'status': 'error', 'message': 'TMDB Error'})
 
     items = []
@@ -2915,7 +2917,8 @@ def delete_artwork():
             return _error_response("No artwork found to delete.")
 
     except Exception as e:
-        return _error_response(f"An unexpected error occurred: {str(e)}")
+        _log_api_exception("delete_artwork", e)
+        return _error_response("An unexpected error occurred.")
 
 
 
