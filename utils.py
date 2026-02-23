@@ -1553,36 +1553,36 @@ def validate_url_safety(url):
     try:
         parsed = urlparse(url)
         hostname = parsed.hostname
-        if not hostname: return False
+        if not hostname: return False, None
         
         # Block schemes other than http/https
         if parsed.scheme not in ('http', 'https'):
-            return False
+            return False, None
             
         # Check against blacklist
         blacklist = ['localhost', '127.0.0.1', '0.0.0.0', '::1']
         if hostname.lower() in blacklist:
-            return False
+            return False, None
             
         # Resolve hostname to IP
         try:
             ip = socket.gethostbyname(hostname)
         except socket.gaierror:
-            return False # Can't resolve, safer to block
+            return False, None # Can't resolve, safer to block
             
         # Check private IP ranges
         import ipaddress
         ip_addr = ipaddress.ip_address(ip)
         if ip_addr.is_loopback or ip_addr.is_private or ip_addr.is_link_local:
-            return False
+            return False, None
             
         # Block AWS metadata specifically (169.254.169.254)
         if str(ip_addr) == "169.254.169.254":
-            return False
+            return False, None
             
-        return True
+        return True, ip
     except Exception:
-        return False
+        return False, None
 
 def _copy_tree(src, dst):
     """

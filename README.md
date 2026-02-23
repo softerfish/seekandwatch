@@ -6,9 +6,9 @@
 
 Self-hosted Plex companion: Smart Discovery from your watch history, add movies/shows via Radarr/Sonarr, view requested items (Overseerr), Kometa builder, Plex collections, Tautulli. One dashboard -less scrolling, more watching.
 
-**[SeekAndWatch Cloud](https://www.SeekAndWatch.com) (beta)** - Hosted option so friends and family can request from your Plex server without needing access to your apps. You approve or deny; requests sync to Radarr, Sonarr, or Overseerr. Zero port forwarding.
+**[SeekAndWatch Cloud](https://github.com/softerfish/seekandwatch/wiki/SeekAndWatch-Cloud)** (beta) - Hosted option so friends and family can request from your Plex server without needing access to your apps. You approve or deny; requests sync to Radarr, Sonarr, or Overseerr. Zero port forwarding.
 
-**Documentation:** [Wiki](https://github.com/softerfish/seekandwatch/wiki) - install, Smart Discovery, Plex Collections, Radarr, Sonarr, Kometa builder, troubleshooting.
+**Documentation:** [Wiki](https://github.com/softerfish/seekandwatch/wiki) - [install](https://github.com/softerfish/seekandwatch/wiki/Installation-and-Update-Guide), [Smart Discovery](https://github.com/softerfish/seekandwatch/wiki/Smart-Discovery), [Plex Collections](https://github.com/softerfish/seekandwatch/wiki/Plex-Collections), [Radarr](https://github.com/softerfish/seekandwatch/wiki/Radarr), [Sonarr](https://github.com/softerfish/seekandwatch/wiki/Sonarr), [Kometa builder](https://github.com/softerfish/seekandwatch/wiki/Kometa-Config-Builder), troubleshooting.
 
 ---
 
@@ -58,7 +58,7 @@ Goal: spend less time browsing, more time watching. It uses your watch history a
 
 ### Plex collections
 
-- **90+ preset collections** - decades, genres, studios, themes, international, awards. Categories are collapsible so you can focus on what you use.
+- **130+ preset collections** - decades, genres, studios, themes, international, awards. Categories are collapsible so you can focus on what you use.
 - **Visibility** - Home, Library recommended, and Friends checkboxes on every collection; changes apply to Plex right away (no need to run the collection again).
 - **Library Browser** - Live view of all collections on your Plex server with the same visibility toggles. In Plex you can reorder and change options under Settings -> Manage -> Libraries -> Manage Recommendations.
 - Auto-update (daily/weekly/manual), sync strict or append-only, bulk list import (IMDb/Letterboxd/Reddit) with smart matching, custom builder.
@@ -104,7 +104,7 @@ Cloud is currently **in beta**. To request access: [r/SeekAndWatch](https://www.
 
 ## Installation
 
-Full install and troubleshooting: [Wiki  - Install & Troubleshooting](https://github.com/softerfish/seekandwatch/wiki).
+Full install and troubleshooting: [Wiki  - Install & Troubleshooting](https://github.com/softerfish/seekandwatch/wiki/Installation-and-Update-Guide).
 
 ### Unraid (now available as of 1.5.4)
 
@@ -140,7 +140,7 @@ docker compose up -d
 
 - **Manual Docker installs:** Use the version badge in the app (one-click updater) or run `docker pull ghcr.io/softerfish/seekandwatch:latest` and recreate the container. Your database and config in `/config` are not touched.
 - **Unraid App Store installs:** Update only through the Unraid App Store.
-- **Manual steps (if you prefer):** See [Wiki  - Install & Troubleshooting](https://github.com/softerfish/seekandwatch/wiki).
+- **Manual steps (if you prefer):** See [Wiki  - Install & Troubleshooting](https://github.com/softerfish/seekandwatch/wiki/Installation-and-Update-Guide).
 
 ---
 
