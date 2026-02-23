@@ -33,11 +33,8 @@ def receive_webhook():
             return jsonify({'error': 'Configuration error'}), 500
         
         # Diagnostic: Show masked key hash
-        import hashlib
         import hmac
         local_key = getattr(settings, 'cloud_api_key', '')
-        key_hash = hashlib.sha256(local_key.encode()).hexdigest() if local_key else 'None'
-        print(f"DEBUG: Local API Key Hash: {key_hash[:10]}...", flush=True)
         print(f"DEBUG: Configured User ID: {settings.user_id}", flush=True)
         
         webhook_secret = getattr(settings, 'cloud_webhook_secret', None) or ''

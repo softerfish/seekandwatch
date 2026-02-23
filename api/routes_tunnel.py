@@ -352,8 +352,8 @@ def tunnel_status():
             'status': status
         })
         
-    except Exception as e:
-        current_app.logger.error(f"Error in tunnel route: {str(e)}")
+    except Exception:
+        current_app.logger.error("Error in tunnel status route")
         return jsonify({
             'success': False,
             'error': 'Failed to grab tunnel status'
@@ -411,8 +411,8 @@ def test_tunnel():
                 'status': 'connection_failed'
             }), 400
         
-    except Exception as e:
-        current_app.logger.error(f"Error testing tunnel connection: {str(e)}")
+    except Exception:
+        current_app.logger.error("Error testing tunnel connection")
         return jsonify({
             'success': False,
             'error': 'Failed to test connection. Please check the logs.'

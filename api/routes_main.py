@@ -170,9 +170,9 @@ def upload_artwork():
                 return _error_response("URL blocked for security reasons (private IP or localhost)")
 
             try:
-                # Use a specific user agent and strict timeout
+                # Use a specific user agent and strict timeout. Disable redirects to prevent SSRF bypass (CodeQL)
                 headers = {'User-Agent': 'SeekAndWatch/1.0'}
-                resp = requests.get(url, headers=headers, timeout=10, stream=True)
+                resp = requests.get(url, headers=headers, timeout=10, stream=True, allow_redirects=False)
                 if resp.status_code == 200:
                     content_type = resp.headers.get('content-type', '')
                     if 'image/jpeg' in content_type:
@@ -2874,11 +2874,18 @@ def get_artwork_path():
     # Check for custom artwork file
     artwork_path = None
     for ext in ['.jpg', '.jpeg', '.png']:
-        safe_filename = os.path.basename(f"{preset_id}{ext}")
+        # Ensure name only contains safe characters and isn't a path itself (CodeQL)
+        safe_filename = secure_filename(f"{preset_id}{ext}")
+        if not safe_filename: continue # should not happen given the regex above but safer
+        
         path = os.path.join(CUSTOM_POSTER_DIR, safe_filename)
+        # Final safety check: ensure the resulting path is within our target directory
+        if not os.path.abspath(path).startswith(os.path.abspath(CUSTOM_POSTER_DIR)):
+            continue
+
         if os.path.exists(path):
             # Return the URL path, not the filesystem path
-            artwork_path = f'/img/custom_posters/{preset_id}{ext}'
+            artwork_path = f'/img/custom_posters/{safe_filename}'
             break
 
     if artwork_path:
@@ -2903,9 +2910,15 @@ def delete_artwork():
         # Find and delete the artwork file
         deleted = False
         for ext in ['.jpg', '.jpeg', '.png']:
-            # Using os.path.basename ensures we don't accidentally escape the directory
-            safe_filename = os.path.basename(f"{preset_id}{ext}")
+            # Using secure_filename ensures we don't accidentally escape the directory (CodeQL)
+            safe_filename = secure_filename(f"{preset_id}{ext}")
+            if not safe_filename: continue
+
             path = os.path.join(CUSTOM_POSTER_DIR, safe_filename)
+            # Final safety check: ensure the path is within the target directory
+            if not os.path.abspath(path).startswith(os.path.abspath(CUSTOM_POSTER_DIR)):
+                continue
+
             if os.path.exists(path):
                 os.remove(path)
                 deleted = True
