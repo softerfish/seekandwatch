@@ -32,23 +32,23 @@ def receive_webhook():
             print("Webhook Error: No settings found in database", flush=True)
             return jsonify({'error': 'Configuration error'}), 500
         
-        # Diagnostic: Show who we think we are
+        # Diagnostic: Show masked key hash
         import hashlib
+        import hmac
         local_key = getattr(settings, 'cloud_api_key', '')
         key_hash = hashlib.sha256(local_key.encode()).hexdigest() if local_key else 'None'
-        print(f"DEBUG: Local API Key Hash: {key_hash}", flush=True)
+        print(f"DEBUG: Local API Key Hash: {key_hash[:10]}...", flush=True)
         print(f"DEBUG: Configured User ID: {settings.user_id}", flush=True)
         
         webhook_secret = getattr(settings, 'cloud_webhook_secret', None) or ''
         provided_secret = request.headers.get('X-Webhook-Secret', '')
         
         print(f"Webhook IP: {request.remote_addr}", flush=True)
-        print(f"Webhook Secret Configured Locally: {'Yes' if webhook_secret else 'No'}", flush=True)
         
         # verify webhook secret if configured
         if webhook_secret:
-            if provided_secret != webhook_secret:
-                print(f"Webhook Error: Secret mismatch! Provided: '{provided_secret}' vs Local: '{webhook_secret}'", flush=True)
+            if not hmac.compare_digest(provided_secret, webhook_secret):
+                print("Webhook Error: Secret mismatch!", flush=True)
                 return jsonify({'error': 'Invalid webhook secret'}), 401
         
         # parse payload

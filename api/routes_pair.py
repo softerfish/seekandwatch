@@ -61,7 +61,7 @@ def pair_start():
         
     except Exception as e:
         current_app.logger.error(f"Pairing start failed: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Failed to initiate pairing'}), 500
 
 @api_bp.route('/pair/receive_key', methods=['POST'])
 def pair_receive_key():

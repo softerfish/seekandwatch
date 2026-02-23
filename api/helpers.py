@@ -17,6 +17,7 @@ def _log_api_exception(context, exc):
 
 def _error_response(message="Request failed", **extra):
     from flask import jsonify
+    # generic message for security
     out = {'status': 'error', 'message': message}
     out.update(extra)
     return jsonify(out)

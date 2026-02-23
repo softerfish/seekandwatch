@@ -163,11 +163,16 @@ def upload_artwork():
 
         elif url:
             # Handle URL - Download it locally
+            if not url.startswith(('http://', 'https://')):
+                return _error_response("Invalid URL scheme")
+                
             if not validate_url_safety(url):
-                return _error_response("Invalid or unsafe URL")
+                return _error_response("URL blocked for security reasons (private IP or localhost)")
 
             try:
-                resp = requests.get(url, timeout=10, stream=True)
+                # Use a specific user agent and strict timeout
+                headers = {'User-Agent': 'SeekAndWatch/1.0'}
+                resp = requests.get(url, headers=headers, timeout=10, stream=True)
                 if resp.status_code == 200:
                     content_type = resp.headers.get('content-type', '')
                     if 'image/jpeg' in content_type:
@@ -2861,13 +2866,14 @@ def add_to_sonarr():
 @admin_required
 def get_artwork_path():
     preset_id = request.args.get('preset_id')
-    if not preset_id:
-        return _error_response("Missing preset ID")
+    if not preset_id or not re.fullmatch(r'^[a-zA-Z0-9_\-]+$', preset_id):
+        return _error_response("Invalid preset ID")
 
     # Check for custom artwork file
     artwork_path = None
     for ext in ['.jpg', '.jpeg', '.png']:
-        path = os.path.join(CUSTOM_POSTER_DIR, f'{preset_id}{ext}')
+        safe_filename = os.path.basename(f"{preset_id}{ext}")
+        path = os.path.join(CUSTOM_POSTER_DIR, safe_filename)
         if os.path.exists(path):
             # Return the URL path, not the filesystem path
             artwork_path = f'/img/custom_posters/{preset_id}{ext}'
@@ -2888,10 +2894,16 @@ def delete_artwork():
         if not preset_id:
             return _error_response("Missing preset ID")
 
+        # Sanitize preset_id to prevent path traversal
+        if not preset_id or not re.fullmatch(r'^[a-zA-Z0-9_\-]+$', preset_id):
+            return _error_response("Invalid preset ID")
+
         # Find and delete the artwork file
         deleted = False
         for ext in ['.jpg', '.jpeg', '.png']:
-            path = os.path.join(CUSTOM_POSTER_DIR, f'{preset_id}{ext}')
+            # Using os.path.basename ensures we don't accidentally escape the directory
+            safe_filename = os.path.basename(f"{preset_id}{ext}")
+            path = os.path.join(CUSTOM_POSTER_DIR, safe_filename)
             if os.path.exists(path):
                 os.remove(path)
                 deleted = True

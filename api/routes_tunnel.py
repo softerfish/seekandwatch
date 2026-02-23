@@ -108,7 +108,7 @@ def enable_tunnel():
                 current_app.logger.error(f"Error starting quick tunnel: {str(e)}")
                 return jsonify({
                     'success': False,
-                    'error': f'Failed to start Quick Tunnel: {str(e)}',
+                    'error': 'Failed to start Quick Tunnel. Please check the logs.',
                     'step': 'quick_tunnel_logic'
                 }), 500
         
@@ -176,7 +176,7 @@ def enable_tunnel():
             current_app.logger.error(f"Error creating tunnel: {str(e)}")
             return jsonify({
                 'success': False,
-                'error': f'Failed to create tunnel: {str(e)}',
+                'error': 'Failed to create tunnel. Please check the logs.',
                 'step': 'tunnel_creation'
             }), 500
         
