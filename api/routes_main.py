@@ -166,13 +166,23 @@ def upload_artwork():
             if not url.startswith(('http://', 'https://')):
                 return _error_response("Invalid URL scheme")
                 
-            if not validate_url_safety(url):
+            is_safe, resolved_ip = validate_url_safety(url)
+            if not is_safe or not resolved_ip:
                 return _error_response("URL blocked for security reasons (private IP or localhost)")
 
             try:
-                # Use a specific user agent and strict timeout. Disable redirects to prevent SSRF bypass (CodeQL)
-                headers = {'User-Agent': 'SeekAndWatch/1.0'}
-                resp = requests.get(url, headers=headers, timeout=10, stream=True, allow_redirects=False)
+                from urllib.parse import urlparse
+                parsed = urlparse(url)
+                # Construct safe URL using the IP directly
+                safe_url = f"{parsed.scheme}://{resolved_ip}{parsed.path}"
+                if parsed.query: safe_url += f"?{parsed.query}"
+                
+                # Use a specific user agent, strict timeout, and original Host header
+                headers = {
+                    'User-Agent': 'SeekAndWatch/1.0',
+                    'Host': parsed.hostname
+                }
+                resp = requests.get(safe_url, headers=headers, timeout=10, stream=True, allow_redirects=False)
                 if resp.status_code == 200:
                     content_type = resp.headers.get('content-type', '')
                     if 'image/jpeg' in content_type:
