@@ -15,43 +15,6 @@
         body > style:not([data-injected="true"]) {
             display: none !important;
         }
-
-        /* Animated background for login */
-        #background-container {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: -1; /* Behind the login card */
-            background-color: #111;
-            overflow: hidden;
-        }
-        .bg-image {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-size: cover;
-            background-position: center;
-            opacity: 0;
-            transition: opacity 1.5s ease-in-out;
-            transform: scale(1.05);
-            animation: zoomEffect 20s infinite alternate;
-        }
-        .bg-image.active {
-            opacity: 0.3;
-        }
-
-        @keyframes zoomEffect {
-            from {
-                transform: scale(1.05);
-            }
-            to {
-                transform: scale(1.2);
-            }
-        }
     </style>
 
 </head>
@@ -95,7 +58,7 @@
                 <a href="{{ url_for('kometa') }}" class="nav-item {% if request.endpoint == 'kometa' %}active{% endif %}">
                     <span>Kometa</span>
                 </a>
-                <a href="{{ url_for('media') }}#requested" class="nav-item {% if request.endpoint == 'media' %}media-nav-item{% endif %}" data-tab="requested">
+                <a href="{{ url_for('media') }}" class="nav-item {% if request.endpoint == 'media' %}media-nav-item{% endif %}" data-tab="requested">
                     <span>Requested</span>
                 </a>
                 <a href="{{ url_for('manage_blocklist') }}" class="nav-item {% if request.endpoint == 'manage_blocklist' %}active{% endif %}">
@@ -143,15 +106,6 @@
             </div>
             <div class="header-right">
                 <div class="header-info-group">
-                    <span class="header-link-friends-wrap" id="partner-project-link">
-                        <span class="header-partner-label">Partner Projects:</span> 
-                        <a href="https://huntarr.io/" target="_blank" rel="noopener noreferrer" class="header-link header-link-friends partner-link-huntarr" title="Huntarr - find missing &amp; upgrade media">
-                            <i class="fas fa-external-link-alt"></i><span>Huntarr</span>
-                        </a>
-                        <a href="https://plexguide.com" target="_blank" rel="noopener noreferrer" class="header-link header-link-friends partner-link-plexguide" title="PlexGuide - automated Plex server deployment" style="display: none;">
-                            <i class="fas fa-external-link-alt"></i><span>PlexGuide</span>
-                        </a>
-                    </span>
                     <a href="https://github.com/softerfish/seekandwatch/wiki" target="_blank" rel="noopener noreferrer" class="header-link-friends-wrap header-link-wiki-wrap" title="Help: GitHub Wiki"><span class="header-partner-label">Help:</span> <span>GitHub Wiki</span><i class="fas fa-external-link-alt"></i></a>
                     <span class="version-info">
                         <span>Ver:</span>
@@ -471,21 +425,6 @@
     document.addEventListener("DOMContentLoaded", function() {
         // Reveal main content (avoids brief flash of previous/home layout on full-page load).
         document.querySelectorAll('.main-content.content-pending').forEach(function(el) { el.classList.remove('content-pending'); });
-        
-        // Rotate partner project links 50/50 between Huntarr and PlexGuide
-        const huntarrLink = document.querySelector('.partner-link-huntarr');
-        const plexguideLink = document.querySelector('.partner-link-plexguide');
-        if (huntarrLink && plexguideLink) {
-            // 50/50 random selection
-            if (Math.random() < 0.5) {
-                huntarrLink.style.display = 'inline-flex';
-                plexguideLink.style.display = 'none';
-            } else {
-                huntarrLink.style.display = 'none';
-                plexguideLink.style.display = 'inline-flex';
-            }
-        }
-        
         // Populate the GitHub stars in the header.
         const starCountHeader = document.getElementById('gh-star-count-header');
         if (starCountHeader) {
@@ -693,6 +632,11 @@ const API_SONARR_ADD = "{{ url_for('api.add_to_sonarr') }}";
 const API_RADARR_QUALITY_PROFILES = "{{ url_for('api.get_radarr_quality_profiles') }}";
 const API_SONARR_QUALITY_PROFILES = "{{ url_for('api.get_sonarr_quality_profiles') }}";
 
+// integration status
+const HAS_OVERSEERR = {% if current_user.is_authenticated and current_user.settings.overseerr_url and current_user.settings.overseerr_api_key %}true{% else %}false{% endif %};
+const HAS_RADARR = {% if current_user.is_authenticated and current_user.settings.radarr_url and current_user.settings.radarr_api_key %}true{% else %}false{% endif %};
+const HAS_SONARR = {% if current_user.is_authenticated and current_user.settings.sonarr_url and current_user.settings.sonarr_api_key %}true{% else %}false{% endif %};
+
 // keep track of what we're requesting
 let requestModalState = {
     mediaType: null,
@@ -735,21 +679,18 @@ function openRequestModal(mediaType, tmdbId, title, posterUrl, year) {
     instanceSelect.innerHTML = '<option value="">Select instance...</option>';
     
     // add overseerr if it's set up
-    const hasOverseerr = true; // todo: check from settings
-    if (hasOverseerr) {
+    if (HAS_OVERSEERR) {
         instanceSelect.innerHTML += '<option value="overseerr">Overseerr</option>';
     }
     
     // add radarr/sonarr based on what type it is
     if (mediaType === 'movie') {
-        const hasRadarr = true; // todo: check from settings
-        if (hasRadarr) {
-            instanceSelect.innerHTML += '<option value="radarr">Radarr - Radarr</option>';
+        if (HAS_RADARR) {
+            instanceSelect.innerHTML += '<option value="radarr">Radarr</option>';
         }
     } else if (mediaType === 'tv') {
-        const hasSonarr = true; // todo: check from settings
-        if (hasSonarr) {
-            instanceSelect.innerHTML += '<option value="sonarr">Sonarr - Sonarr</option>';
+        if (HAS_SONARR) {
+            instanceSelect.innerHTML += '<option value="sonarr">Sonarr</option>';
         }
     }
     

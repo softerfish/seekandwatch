@@ -1,7 +1,82 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div id="background-container"></div>
+<style>
+    /* Full screen background container */
+    .auth-background-container {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        z-index: -1;
+        background-color: #000;
+        overflow: hidden;
+    }
+
+    /* Individual poster layer */
+    .auth-bg-layer {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+        transition: opacity 1.5s ease-in-out;
+        opacity: 0;
+        filter: blur(15px) brightness(0.4);
+        transform: scale(1.1); /* Zoom in slightly to hide blur edges */
+    }
+
+    .auth-bg-layer.active {
+        opacity: 1;
+    }
+
+    /* Dark gradient overlay to ensure readability */
+    .auth-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 0;
+        background: radial-gradient(circle at center, transparent 0%, rgba(0,0,0,0.8) 100%);
+        pointer-events: none;
+    }
+
+    /* Ensure login card stays above background */
+    .login-wrapper {
+        position: relative;
+        z-index: 10;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+    }
+
+    .login-card {
+        background: rgba(26, 26, 26, 0.85) !important;
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.8) !important;
+    }
+
+    /* Fix for sidebar background conflict on login page */
+    body {
+        background-color: #000 !important;
+    }
+</style>
+
+<!-- Background layers for cross-fade -->
+<div class="auth-background-container">
+    <div id="bg-layer-1" class="auth-bg-layer active"></div>
+    <div id="bg-layer-2" class="auth-bg-layer"></div>
+</div>
+<div class="auth-overlay"></div>
+
 <div class="login-wrapper">
     <div class="login-card">
         
@@ -51,73 +126,50 @@
 </div>
 
 <script>
-    // Animated background
-    document.addEventListener('DOMContentLoaded', () => {
-        fetch("{{ url_for('popular_movies_posters') }}")
-            .then(response => {
-                if (!response.ok) throw new Error('Network response was not ok');
-                return response.json();
-            })
-            .then(posters => {
-                if (!posters || posters.length === 0) return;
-
-                const bgContainer = document.getElementById('background-container');
-                if (!bgContainer) return;
-
-                // Preload images
-                let loadedCount = 0;
-                posters.forEach(p => {
-                    const img = new Image();
-                    img.src = p;
-                    img.onload = () => {
-                        loadedCount++;
-                        if (loadedCount === posters.length) {
-                            startSlideshow(posters, bgContainer);
-                        }
-                    };
-                });
-            })
-            .catch(error => {
-                console.error('Failed to fetch background posters:', error);
-            });
-    });
-
-    function startSlideshow(posters, container) {
-        let current = 0;
-
-        function cycle() {
-            // Fade out old image
-            const oldImage = container.querySelector('.bg-image.active');
-            if (oldImage) {
-                oldImage.classList.remove('active');
-            }
-
-            // Create and fade in new image
-            const newImage = document.createElement('div');
-            newImage.className = 'bg-image';
-            newImage.style.backgroundImage = `url(${posters[current]})`;
-            container.appendChild(newImage);
-
-            // This timeout ensures the new image is in the DOM before we add the active class
-            setTimeout(() => newImage.classList.add('active'), 50);
-
-            // Clean up old images from the DOM after they've faded out
-            setTimeout(() => {
-                const oldImages = container.querySelectorAll('.bg-image:not(.active)');
-                oldImages.forEach(img => container.removeChild(img));
-            }, 2000); // 2s transition
-
-            current = (current + 1) % posters.length;
-        }
-
-        cycle(); // Start immediately
-        setInterval(cycle, 6000); // Then every 6 seconds
-    }
-
     const CSRF_TOKEN = "{{ csrf_token() }}";
 
+    // --- Background Cycling Logic ---
+    let posterList = [];
+    let currentPosterIndex = 0;
+    let activeLayer = 1;
 
-    // UI state
+    async function initBackground() {
+        try {
+            const resp = await fetch('/api/public/posters');
+            const data = await resp.json();
+            if (data.posters && data.posters.length > 0) {
+                posterList = data.posters;
+                // Preload and start cycling
+                cycleBackground();
+                setInterval(cycleBackground, 5000);
+            }
+        } catch (e) {
+            console.error("Failed to load background posters:", e);
+        }
+    }
+
+    function cycleBackground() {
+        if (posterList.length === 0) return;
+
+        const nextLayer = activeLayer === 1 ? 2 : 1;
+        const currentLayerEl = document.getElementById(`bg-layer-${activeLayer}`);
+        const nextLayerEl = document.getElementById(`bg-layer-${nextLayer}`);
+
+        // Update next layer's image
+        nextLayerEl.style.backgroundImage = `url(${posterList[currentPosterIndex]})`;
+        
+        // Cross-fade
+        nextLayerEl.classList.add('active');
+        currentLayerEl.classList.remove('active');
+
+        // Update state
+        activeLayer = nextLayer;
+        currentPosterIndex = (currentPosterIndex + 1) % posterList.length;
+    }
+
+    document.addEventListener('DOMContentLoaded', initBackground);
+
+    // --- existing UI state logic ---
     let currentMode = 'login';
 
     // Show recovery success message if we just reset password

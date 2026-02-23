@@ -3,31 +3,67 @@
 {% block content %}
 <div class="login-wrapper">
     <div class="login-card">
-        <h3 class="auth-heading">🔐 Your recovery codes (save these now)</h3>
-        <p class="text-muted" style="margin-bottom:1rem;">These one-time codes are shown only once. Store them somewhere safe. If you forget your password, use one code on the <a href="{{ url_for('reset_password_page') }}">Reset password</a> page to set a new password. Each code works only once.</p>
+        <h3 class="auth-heading">🔐 Your recovery codes</h3>
+        <p class="text-muted" style="margin-bottom: 1.5rem;">
+            These one-time codes are shown only once. Store them somewhere safe. If you forget your password, 
+            use one code on the <a href="{{ url_for('reset_password_page') }}" style="color: #7c5dfa;">reset password</a> 
+            page to set a new password. Each code works only once.
+        </p>
+        
         <div class="auth-body">
-            <pre id="recovery-codes-list" style="background:#1e1e1e; color:#2ecc71; padding:15px; border-radius:8px; font-size:0.85rem; overflow-x:auto; text-align:left;">{{ codes | join('\n') }}</pre>
-            <button type="button" onclick="copyCodes()" class="login-btn" style="margin-top:10px; margin-bottom:15px;">Copy all codes</button>
-            <p class="text-muted" style="font-size:0.9rem;">When you've saved your codes, click below to continue.</p>
-            <a href="{{ url_for('welcome_codes_done') }}" class="login-btn" style="display:inline-block; text-decoration:none; text-align:center;">Continue to Dashboard</a>
+            <div style="background: #1a1a2e; border: 1px solid #2d2d44; border-radius: 8px; padding: 20px; margin-bottom: 1rem;">
+                <pre id="recovery-codes-list" style="background: transparent; color: #7c5dfa; padding: 0; margin: 0; font-size: 0.95rem; line-height: 1.8; overflow-x: auto; text-align: left; font-family: 'Courier New', monospace;">{{ codes | join('\n') }}</pre>
+            </div>
+            
+            <button type="button" onclick="copyCodes()" class="login-btn" style="margin-bottom: 1rem; background: #2d2d44; border: 1px solid #3d3d54;">
+                <i class="fas fa-copy"></i> Copy all codes
+            </button>
+            
+            <p class="text-muted" style="font-size: 0.9rem; margin-bottom: 1rem;">
+                When you've saved your codes, click below to continue.
+            </p>
+            
+            <a href="{{ url_for('welcome_codes_done') }}" class="login-btn" style="display: inline-block; text-decoration: none; text-align: center;">
+                Continue to Dashboard <i class="fas fa-arrow-right" style="margin-left: 8px;"></i>
+            </a>
         </div>
     </div>
 </div>
+
 <script>
 function copyCodes() {
     var el = document.getElementById('recovery-codes-list');
     var text = (el.textContent || el.innerText || '').trim();
-    if (!text) { alert('No codes to copy.'); return; }
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).then(function() { alert('Copied to clipboard.'); });
-    } else {
-        var ta = document.createElement('textarea');
-        ta.value = text;
-        document.body.appendChild(ta);
-        ta.select();
-        try { document.execCommand('copy'); alert('Copied to clipboard.'); } catch (e) { alert('Copy failed.'); }
-        document.body.removeChild(ta);
+    if (!text) {
+        alert('No codes to copy.');
+        return;
     }
+    
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function() {
+            alert('Copied to clipboard.');
+        }).catch(function() {
+            fallbackCopy(text);
+        });
+    } else {
+        fallbackCopy(text);
+    }
+}
+
+function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+        document.execCommand('copy');
+        alert('Copied to clipboard.');
+    } catch (e) {
+        alert('Copy failed. Please copy manually.');
+    }
+    document.body.removeChild(ta);
 }
 </script>
 {% endblock %}

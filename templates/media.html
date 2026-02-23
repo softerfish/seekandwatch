@@ -10,12 +10,6 @@
 
     <!-- Requested Tab -->
     <div id="tab-requested" class="media-tab-content active">
-        {% if not settings.overseerr_url or not settings.overseerr_api_key %}
-        <div class="card setting-card" style="text-align: center; padding: 40px;">
-            <h3>⚠️ Overseerr Not Configured</h3>
-            <p>Please add your Overseerr URL and API key in <a href="{{ url_for('settings') }}">Settings</a> to view requested media.</p>
-        </div>
-        {% else %}
         <div class="media-filters">
             <div class="filter-row">
                 <select id="filter-status" class="filter-select" onchange="loadMediaData()">
@@ -28,7 +22,8 @@
                 <select id="filter-source" class="filter-select" onchange="loadMediaData()">
                     <option value="">All Sources</option>
                     <option value="overseerr">Overseerr</option>
-                    <option value="manual">Manual</option>
+                    <option value="radarr">Radarr</option>
+                    <option value="sonarr">Sonarr</option>
                 </select>
                 <select id="sort-by" class="filter-select" onchange="loadMediaData()">
                     <option value="added_desc">Recently Added</option>
@@ -46,7 +41,6 @@
         <div id="requested-table-container" class="media-poster-grid-container">
             <div style="text-align: center; padding: 40px; color: #888;">Loading requested media...</div>
         </div>
-        {% endif %}
     </div>
 </div>
 
@@ -116,10 +110,6 @@ function switchMediaTab(evt, tabName) {
     
     // Update sidebar active state
     updateSidebarActiveState(tabName);
-    
-    // Update URL hash
-    const newUrl = `${window.location.pathname}${window.location.search}#requested`;
-    window.history.replaceState({type: 'tab', tab: tabName}, '', newUrl);
     
     loadMediaData();
 }
@@ -392,9 +382,6 @@ document.addEventListener('DOMContentLoaded', function() {
     if (savedPageSizeRequested) {
         const select = document.getElementById('page-size-requested');
         if (select) select.value = savedPageSizeRequested;
-    }
-    if (!window.location.hash || window.location.hash !== '#requested') {
-        window.history.replaceState({type: 'tab', tab: 'requested'}, '', window.location.pathname + window.location.search + '#requested');
     }
     loadMediaData();
 });
