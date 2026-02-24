@@ -146,13 +146,16 @@ docker compose up -d
 
 ## Changelog
 
+v1.6.2
+
+- unraid installer fix
+
+<details>
+  <summary><b>Past Changelog</b></summary>
 v1.6.1
 
 - a complete rewrite and handling of webhooks. We now use quick tunnels or your own API
 - code cleanup
-
-<details>
-  <summary><b>Past Changelog</b></summary>
 
 v1.5.15
 
