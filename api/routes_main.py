@@ -226,13 +226,13 @@ def upload_artwork():
                     return jsonify({'status': 'success', 'message': 'Artwork downloaded successfully'})
                 else:
                     return _error_response("Failed to download image from URL")
-            except Exception as e:
+            except Exception:
                 _log_api_exception("upload_artwork_download")
                 return _error_response("Failed to download image.")
 
         return _error_response("No file or URL provided")
 
-    except Exception as e:
+    except Exception:
         _log_api_exception("upload_artwork")
         return _error_response("An unexpected error occurred.")
 
@@ -289,7 +289,7 @@ def load_more_recs():
             url = f"https://api.themoviedb.org/3/movie/{item['id']}?api_key={s.tmdb_key}"
             data = requests.get(url, timeout=5).json()
             item['runtime'] = data.get('runtime', 0)  # Runtime in minutes
-        except Exception as e:
+        except Exception:
             # Runtime fetch failures are non-critical, log as warning
             write_log("warning", "API", "Failed to fetch runtime for item")
             item['runtime'] = 0
@@ -453,7 +453,7 @@ def tmdb_search_proxy():
             res = requests.get(url, timeout=5).json().get('results', [])[:10]
             # Return as JSON (jsonify automatically escapes for JSON safety)
             return jsonify({'results': [{'id': k['id'], 'name': str(k.get('name', ''))} for k in res]})
-        except Exception as e:
+        except Exception:
             _log_api_exception("tmdb_keyword_search")
             return jsonify({'results': []})
         
@@ -477,17 +477,29 @@ def tmdb_search_proxy():
 @login_required
 def get_metadata(media_type, tmdb_id):
     s = current_user.settings
+    if not s or not s.tmdb_key:
+        print("DEBUG: get_metadata failed - TMDB key missing in settings", flush=True)
+        return _error_payload("TMDB API key required")
+        
     try:
         # get everything in one API call (faster)
         url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}?api_key={s.tmdb_key}&append_to_response=credits,videos,watch/providers"
-        data = requests.get(url, timeout=5).json()
+        resp = requests.get(url, timeout=5)
+        print(f"DEBUG: get_metadata TMDB status: {resp.status_code}", flush=True)
+        data = resp.json()
+        
+        if resp.status_code != 200:
+            print(f"DEBUG: get_metadata TMDB error: {data}", flush=True)
+            return _error_payload(f"TMDB Error: {resp.status_code}")
         
         # just grab top 5 cast members
         cast = [c['name'] for c in data.get('credits', {}).get('cast', [])[:5]]
         
         # find a trailer (prefer official ones)
         trailer = None
-        for v in data.get('videos', {}).get('results', []):
+        results = data.get('videos', {}).get('results', [])
+        print(f"DEBUG: TMDB Videos results for {media_type} {tmdb_id}: {results}", flush=True)
+        for v in results:
             if v['type'] == 'Trailer' and v['site'] == 'YouTube':
                 trailer = v['key']
                 break
@@ -512,7 +524,10 @@ def get_metadata(media_type, tmdb_id):
             'trailer_key': trailer,
             'providers': [{'name': p['provider_name'], 'logo': p['logo_path']} for p in prov]
         })
-    except Exception as e:
+    except Exception:
+        import traceback
+        print("DEBUG ERROR in get_metadata (Exception occurred)", flush=True)
+        traceback.print_exc()
         _log_api_exception("get_metadata")
         return _error_payload("Request failed")
 
@@ -520,9 +535,16 @@ def get_metadata(media_type, tmdb_id):
 @login_required
 def get_trailer(media_type, tmdb_id):
     s = current_user.settings
+    if not s or not s.tmdb_key:
+        print("DEBUG: get_trailer failed - TMDB key missing in settings", flush=True)
+        return _error_response("TMDB API key required")
+        
     try:
         url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}/videos?api_key={s.tmdb_key}&language=en-US"
-        results = requests.get(url, timeout=5).json().get('results', [])
+        resp = requests.get(url, timeout=5)
+        print(f"DEBUG: get_trailer response status: {resp.status_code}", flush=True)
+        results = resp.json().get('results', [])
+        print(f"DEBUG: get_trailer results: {results}", flush=True)
         
         # look for official trailers first
         for vid in results:
@@ -535,8 +557,11 @@ def get_trailer(media_type, tmdb_id):
                 return jsonify({'status': 'success', 'key': vid['key']})
                 
         return jsonify({'status': 'error', 'message': 'No trailer found'})
-    except Exception as e:
-        _log_api_exception("get_trailer", e)
+    except Exception:
+        import traceback
+        print("DEBUG ERROR in get_trailer (Exception occurred)", flush=True)
+        traceback.print_exc()
+        _log_api_exception("get_trailer")
         return _error_response("Request failed")
 
 @api_bp.route('/request_media', methods=['POST'])
@@ -568,8 +593,8 @@ def request_media():
              else:
                  return jsonify({'status': 'error', 'message': msg})
 
-    except Exception as e:
-        _log_api_exception("request_media", e)
+    except Exception:
+        _log_api_exception("request_media")
         return _error_response("Request failed")
         
 @api_bp.route('/block_movie', methods=['POST'])
@@ -610,8 +635,8 @@ def get_plex_libraries():
         # only grab movie/TV libraries (ignore music, photos, etc)
         libs = [{'title': sec.title, 'type': sec.type, 'name': sec.title} for sec in plex.library.sections() if sec.type in ['movie', 'show']]
         return jsonify({'status': 'success', 'libraries': libs})
-    except Exception as e:
-        _log_api_exception("get_plex_libraries", e)
+    except Exception:
+        _log_api_exception("get_plex_libraries")
         return _error_response("Could not connect to Plex. Check that the server is running and the URL and token in Settings are correct.")
         
 @api_bp.route('/get_plex_collections')
@@ -729,9 +754,9 @@ def get_plex_collections():
         
         return jsonify({'status': 'success', 'collections': collections})
         
-    except Exception as e:
+    except Exception:
         print(f"Error fetching collections: {e}")
-        _log_api_exception("get_plex_collections", e)
+        _log_api_exception("get_plex_collections")
         return _error_response("Could not load collections from Plex. Check that the server is running and try again.")
 
 @api_bp.route('/api/plex/collection/visibility', methods=['POST'])
@@ -797,8 +822,8 @@ def set_plex_collection_visibility():
             from utils import apply_collection_visibility
             apply_collection_visibility(col, visible_home=visible_home, visible_library=visible_library, visible_friends=visible_friends)
             return jsonify({'status': 'success', 'message': 'Visibility updated. Refresh Manage Recommendations in Plex to see the change.'})
-        except Exception as e:
-            _log_api_exception("set_plex_collection_visibility", e)
+        except Exception:
+            _log_api_exception("set_plex_collection_visibility")
             return jsonify({'status': 'error', 'message': 'Could not update collection visibility. Check that Plex is running and try again.'})
     else:
         return jsonify({'status': 'error', 'message': 'Please specify which collection (keyPath or preset_key).'})
@@ -817,8 +842,8 @@ def set_plex_collection_visibility():
             'message': 'Visibility updated. Refresh Manage Recommendations in Plex (reopen that page) to see the change.',
             'collectionPublished': bool(published)
         })
-    except Exception as e:
-        _log_api_exception("set_plex_collection_visibility", e)
+    except Exception:
+        _log_api_exception("set_plex_collection_visibility")
         return jsonify({'status': 'error', 'message': 'Could not update collection visibility. Check that Plex is running. Plex Pass may be required for collection publishing.'})
 
 def _strip_trailing_parenthetical_year(s):
@@ -931,8 +956,8 @@ def match_bulk_titles():
             results.append({'query': t, 'title': final_title, 'found': found, 'key': key})
             
         return jsonify({'status': 'success', 'results': results})
-    except Exception as e:
-        _log_api_exception("match_bulk_titles", e)
+    except Exception:
+        _log_api_exception("match_bulk_titles")
         return _error_response("Request failed")
 
 @api_bp.route('/create_bulk_collection', methods=['POST'])
@@ -996,8 +1021,8 @@ def create_bulk_collection():
         db.session.commit()
         
         return jsonify({'status': 'success', 'message': 'Collection Created'})
-    except Exception as e:
-        _log_api_exception("create_bulk_collection", e)
+    except Exception:
+        _log_api_exception("create_bulk_collection")
         return _error_response("Request failed")
 
 @api_bp.route('/preview_preset_items/<key>')
@@ -1093,8 +1118,8 @@ def preview_preset_items(key):
             page += 1
         
         return jsonify({'status': 'success', 'items': items})
-    except Exception as e:
-        _log_api_exception("preview_preset_items", e)
+    except Exception:
+        _log_api_exception("preview_preset_items")
         return _error_response("Request failed")
 
 @api_bp.route('/create_collection/<key>', methods=['POST'])
@@ -1230,8 +1255,8 @@ def preview_custom_collection():
     url = f"https://api.themoviedb.org/3/discover/{data['media_type']}"
     try:
         r = requests.get(url, params=params, timeout=5).json()
-    except Exception as e:
-        _log_api_exception("preview_custom_collection", e)
+    except Exception:
+        _log_api_exception("preview_custom_collection")
         return jsonify({'status': 'error', 'message': 'TMDB Error'})
 
     items = []
@@ -1303,8 +1328,8 @@ def _delete_collection_from_plex(plex, title, media_type, target_library=None):
             results = section.search(title=title, libtype='collection')
             for col in results:
                 col.delete()
-        except Exception as e:
-            _log_api_exception("delete_collection_plex", e)
+        except Exception:
+            _log_api_exception("delete_collection_plex")
 
 @api_bp.route('/delete_collection/<key>', methods=['POST'])
 @login_required
@@ -1347,8 +1372,8 @@ def delete_collection(key):
             try:
                 plex = PlexServer(plex_url, plex_token, timeout=10)
                 _delete_collection_from_plex(plex, title, media_type, target_library)
-            except Exception as e:
-                _log_api_exception("delete_collection_plex_bg", e)
+            except Exception:
+                _log_api_exception("delete_collection_plex_bg")
         t = threading.Thread(target=_bg_delete, daemon=True)
         t.start()
 
@@ -1454,8 +1479,8 @@ def test_connection():
 
         return jsonify({'status': 'error', 'message': 'Unknown service', 'msg': 'Unknown service'})
 
-    except Exception as e:
-        _log_api_exception("test_connection", e)
+    except Exception:
+        _log_api_exception("test_connection")
         return jsonify({'status': 'error', 'message': 'Connection failed', 'msg': 'Connection failed'})
         
         
@@ -1546,8 +1571,8 @@ def _plex_create_pin():
             'link': 'https://plex.tv/link',
             'expires_in': int(data.get('expiresIn', 900)),
         }
-    except requests.RequestException as e:
-        _log_api_exception("plex_pin_create", e)
+    except requests.RequestException:
+        _log_api_exception("plex_pin_create")
         return {'error': 'Could not reach Plex. Check your connection.'}
 
 def _plex_poll_pin(pin_id):
@@ -1581,8 +1606,8 @@ def _plex_poll_pin(pin_id):
             except Exception:
                 pass
         return {'status': 'pending', 'code': data.get('code', '')}
-    except requests.RequestException as e:
-        _log_api_exception("plex_poll_pin", e)
+    except requests.RequestException:
+        _log_api_exception("plex_poll_pin")
         return {'error': 'request_failed'}
 
 def _plex_is_local_uri(uri):
@@ -1670,8 +1695,8 @@ def _plex_get_user_and_connections(auth_token):
             d = r.json()
             if isinstance(d, dict) and d.get('id'):
                 user_info = {'id': str(d['id']), 'username': (d.get('username') or d.get('title') or 'Plex User').strip()}
-    except requests.RequestException as e:
-        _log_api_exception("plex_user", e)
+    except requests.RequestException:
+        _log_api_exception("plex_user")
     connections = []
     seen_uris = set()
     try:
@@ -1704,8 +1729,8 @@ def _plex_get_user_and_connections(auth_token):
                                     seen_uris.add(ip_uri)
                                 except Exception:
                                     pass
-    except requests.RequestException as e:
-        _log_api_exception("plex_resources", e)
+    except requests.RequestException:
+        _log_api_exception("plex_resources")
     # Sort: local IP recommended first, then other local, then remote
     def _sort_key(x):
         is_ip = '[local IP]' in (x.get('label') or '')
@@ -1817,8 +1842,8 @@ def get_radarr_sonarr_cache_status_route():
     try:
         from models import RadarrSonarrCache
         cache_count = RadarrSonarrCache.query.count()
-    except Exception as e:
-        _log_api_exception("Radarr/Sonarr count", e)
+    except Exception:
+        _log_api_exception("Radarr/Sonarr count")
         pass
     
     if s.last_radarr_sonarr_scan:
@@ -1826,8 +1851,8 @@ def get_radarr_sonarr_cache_status_route():
             import datetime
             dt = datetime.datetime.fromtimestamp(s.last_radarr_sonarr_scan)
             last_scan = dt.strftime('%Y-%m-%d %H:%M')
-        except Exception as e:
-            _log_api_exception("Last scan timestamp", e)
+        except Exception:
+            _log_api_exception("Last scan timestamp")
             pass
     
     return jsonify({
@@ -1977,8 +2002,8 @@ def update_scanner_log_size():
         s.scanner_log_size = int(data.get('scanner_log_size', 10))
         db.session.commit()
         return jsonify({'status': 'success'})
-    except Exception as e:
-        _log_api_exception("update_scanner_log_size", e)
+    except Exception:
+        _log_api_exception("update_scanner_log_size")
         return jsonify({'status': 'error', 'message': 'Request failed'})
 
 @api_bp.route('/api/scanner/reset', methods=['POST'])
@@ -2197,8 +2222,8 @@ def import_kometa_config():
         if hostname in ['::1', '[::1]', 'ip6-localhost', 'ip6-loopback']:
             return jsonify({'status': 'error', 'message': 'Local URLs are not allowed'}), 400
         
-    except Exception as e:
-        _log_api_exception("import_kometa_config_url_validation", e)
+    except Exception:
+        _log_api_exception("import_kometa_config_url_validation")
         return jsonify({'status': 'error', 'message': 'Invalid URL'}), 400
     
     # Resolve DNS and check actual IP to prevent DNS rebinding attacks
@@ -2210,8 +2235,8 @@ def import_kometa_config():
         # Block private IP ranges (10.x, 172.16-31.x, 192.168.x)
         if re.match(r'^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)', resolved_ip):
             return jsonify({'status': 'error', 'message': 'Private IP addresses are not allowed'}), 400
-    except (socket.gaierror, socket.herror, OSError) as e:
-        _log_api_exception("import_kometa_config_dns_resolution", e)
+    except (socket.gaierror, socket.herror, OSError):
+        _log_api_exception("import_kometa_config_dns_resolution")
         return jsonify({'status': 'error', 'message': 'Could not resolve hostname'}), 400
     
     # Reconstruct URL from validated components to prevent SSRF via malformed URL
@@ -2253,14 +2278,14 @@ def import_kometa_config():
         # Return the YAML text for client-side parsing
         return jsonify({'status': 'success', 'yaml': yaml_text})
         
-    except Timeout as e:
-        _log_api_exception("import_kometa_config_timeout", e)
+    except Timeout:
+        _log_api_exception("import_kometa_config_timeout")
         return jsonify({'status': 'error', 'message': 'Request timed out'}), 408
-    except RequestException as e:
-        _log_api_exception("import_kometa_config_request", e)
+    except RequestException:
+        _log_api_exception("import_kometa_config_request")
         return jsonify({'status': 'error', 'message': 'Failed to fetch URL'}), 400
-    except Exception as e:
-        _log_api_exception("import_kometa_config", e)
+    except Exception:
+        _log_api_exception("import_kometa_config")
         return jsonify({'status': 'error', 'message': 'Import failed'}), 500
 
 @api_bp.route('/api/sync_aliases', methods=['POST'])
@@ -2457,7 +2482,7 @@ def get_requested_media():
                         'media_type': media.get('mediaType') or 'movie'
                     }
                     items.append(item)
-        except Exception as e:
+        except Exception:
             # log warning but keep going so local requests still show
             print(f"Requested Media: Skipping Overseerr (Connection failed: {e})", flush=True)
 
@@ -2479,7 +2504,7 @@ def get_requested_media():
                 'added': ar.requested_at.isoformat() if ar.requested_at else '',
                 'media_type': ar.media_type or 'movie'
             })
-    except Exception as e:
+    except Exception:
         print(f"Requested Media: Local DB fetch failed: {e}", flush=True)
 
     # final processing (filtering, sorting and paging)
@@ -2520,7 +2545,7 @@ def get_requested_media():
                 'total_pages': (total_items + page_size - 1) // page_size
             }
         })
-    except Exception as e:
+    except Exception:
         print(f"Requested Media: Error processing list: {e}", flush=True)
         return jsonify({'status': 'error', 'message': 'Could not process list', 'items': []})
 
@@ -2593,8 +2618,8 @@ def get_media_overview():
                     })
             except Exception:
                 pass
-        except Exception as e:
-            _log_api_exception("get_media_overview_overseerr", e)
+        except Exception:
+            _log_api_exception("get_media_overview_overseerr")
     elif media_type in ['all', 'requested']:
         # no Overseerr configured - still show requests made from the app (Radarr/Sonarr)
         try:
@@ -2647,8 +2672,8 @@ def get_media_overview():
                         'tags': [t.get('label', '') for t in movie.get('tags', [])],
                         'poster': movie.get('images', [{}])[0].get('url') if movie.get('images') else None,
                     })
-        except Exception as e:
-            _log_api_exception("get_media_overview_radarr", e)
+        except Exception:
+            _log_api_exception("get_media_overview_radarr")
     
     # Fetch Sonarr shows
     if media_type in ['all', 'shows'] and s.sonarr_url and s.sonarr_api_key:
@@ -2694,8 +2719,8 @@ def get_media_overview():
                         'tags': [t.get('label', '') for t in show.get('tags', [])],
                         'poster': show.get('images', [{}])[0].get('url') if show.get('images') else None,
                     })
-        except Exception as e:
-            _log_api_exception("get_media_overview_sonarr", e)
+        except Exception:
+            _log_api_exception("get_media_overview_sonarr")
     
     # Apply filters and sorting
     def apply_filters_and_sort(items):
@@ -2789,8 +2814,8 @@ def _fetch_first_root_folder(base_url, headers):
         if not path:
             return None, "Failed to extract root folder path"
         return path, None
-    except Exception as e:
-        _log_api_exception("_fetch_first_root_folder", e)
+    except Exception:
+        _log_api_exception("_fetch_first_root_folder")
         return None, "Request failed"
 
 def _fetch_quality_profiles(base_url, headers):
@@ -2809,8 +2834,8 @@ def _fetch_quality_profiles(base_url, headers):
                 if pid is not None:
                     profiles.append({'id': pid, 'name': p.get('name', 'Unknown')})
         return profiles, None
-    except Exception as e:
-        _log_api_exception("_fetch_quality_profiles", e)
+    except Exception:
+        _log_api_exception("_fetch_quality_profiles")
         return None, "Request failed"
 
 @api_bp.route('/api/radarr/quality-profiles', methods=['GET'])
@@ -2939,8 +2964,8 @@ def delete_artwork():
         else:
             return _error_response("No artwork found to delete.")
 
-    except Exception as e:
-        _log_api_exception("delete_artwork", e)
+    except Exception:
+        _log_api_exception("delete_artwork")
         return _error_response("An unexpected error occurred.")
 
 
@@ -3036,7 +3061,7 @@ def get_radarr_movie_detail(movie_id):
                                 'sizeleft': item.get('sizeleft', 0)
                             }
                             break  # Found the queue item for this movie
-        except Exception as e:
+        except Exception:
             # Don't fail if queue check fails, just log it
             try:
                 write_log("warning", "Radarr", f"Failed to check queue: {e}")
@@ -3175,7 +3200,7 @@ def get_radarr_movie_detail(movie_id):
                                     break
                                 except (ValueError, TypeError):
                                     pass
-                except Exception as e:
+                except Exception:
                     write_log("warning", "Radarr", f"Failed to fetch movieFile separately: {e}")
             
             # Get custom format score - check multiple possible locations and field names
@@ -3263,7 +3288,7 @@ def get_radarr_movie_detail(movie_id):
                                 'department': c.get('department', '') if isinstance(c, dict) else '',
                                 'profile_path': c.get('profile_path', '') if isinstance(c, dict) else ''
                             } for c in crew_list[:30] if isinstance(c, dict)]
-            except Exception as e:
+            except Exception:
                 write_log("warning", "Radarr", f"Failed to fetch TMDB credits: {e}")
         
         # Alternative titles - safely handle list
@@ -3290,7 +3315,7 @@ def get_radarr_movie_detail(movie_id):
             else:
                 # Use the actual movie ID from the response
                 radarr_url = f"{base_url}/movie/{actual_movie_id}"
-        except Exception as e:
+        except Exception:
             # Fallback to using the API ID if there's any error
             write_log("warning", "Radarr", f"Error constructing URL for movie '{movie.get('title')}': {e}")
             radarr_url = f"{base_url}/movie/{actual_movie_id}"
@@ -3398,8 +3423,8 @@ def get_radarr_movie_detail(movie_id):
             result['movie']['queueSizeLeft'] = queue_info.get('sizeleft', 0)
         
         return jsonify(result)
-    except Exception as e:
-        _log_api_exception("get_radarr_movie_detail", e)
+    except Exception:
+        _log_api_exception("get_radarr_movie_detail")
         return jsonify({'status': 'error', 'message': 'Request failed'})
 
 @api_bp.route('/api/radarr/search', methods=['POST'])
@@ -3480,13 +3505,13 @@ def radarr_search():
                             elif isinstance(q, str):
                                 quality_name = q
                         current_file = {'releaseGroup': rg or '', 'quality': quality_name}
-            except Exception as e:
+            except Exception:
                 write_log("warning", "Radarr", f"Could not fetch current file for downloaded icon: {e}")
             return jsonify({'status': 'success', 'releases': releases, 'current_file': current_file})
         
         return jsonify({'status': 'error', 'message': 'Invalid search type'})
-    except Exception as e:
-        _log_api_exception("radarr_search", e)
+    except Exception:
+        _log_api_exception("radarr_search")
         return jsonify({'status': 'error', 'message': 'Request failed'})
 
 @api_bp.route('/api/radarr/refresh/<int:movie_id>', methods=['POST'])
@@ -3515,8 +3540,8 @@ def radarr_refresh_scan(movie_id):
         if resp.status_code in [200, 201]:
             return jsonify({'status': 'success', 'message': 'Refresh and scan started'})
         return jsonify({'status': 'error', 'message': 'Failed to start refresh'})
-    except Exception as e:
-        _log_api_exception("radarr_refresh_scan", e)
+    except Exception:
+        _log_api_exception("radarr_refresh_scan")
         return jsonify({'status': 'error', 'message': 'Request failed'})
 
 @api_bp.route('/api/radarr/search-scan/<int:movie_id>', methods=['POST'])
@@ -3551,8 +3576,8 @@ def radarr_search_scan(movie_id):
             requests.post(command_url, json=refresh_payload, headers=headers, timeout=10)
             return jsonify({'status': 'success', 'message': 'Search and scan started'})
         return jsonify({'status': 'error', 'message': 'Failed to start search'})
-    except Exception as e:
-        _log_api_exception("radarr_search_scan", e)
+    except Exception:
+        _log_api_exception("radarr_search_scan")
         return jsonify({'status': 'error', 'message': 'Request failed'})
 
 @api_bp.route('/api/radarr/queue-check/<int:movie_id>', methods=['GET'])
@@ -3611,8 +3636,8 @@ def radarr_queue_check(movie_id):
         except Exception:
             pass
         return jsonify({'status': 'success', 'inQueue': False, 'hasFile': has_file})
-    except Exception as e:
-        _log_api_exception("radarr_queue_check", e)
+    except Exception:
+        _log_api_exception("radarr_queue_check")
         return jsonify({'status': 'error', 'message': 'Queue check failed'})
 
 @api_bp.route('/api/sonarr/refresh/<int:series_id>', methods=['POST'])
@@ -3641,8 +3666,8 @@ def sonarr_refresh_scan(series_id):
         if resp.status_code in [200, 201]:
             return jsonify({'status': 'success', 'message': 'Refresh and scan started'})
         return jsonify({'status': 'error', 'message': 'Failed to start refresh'})
-    except Exception as e:
-        _log_api_exception("sonarr_refresh_scan", e)
+    except Exception:
+        _log_api_exception("sonarr_refresh_scan")
         return jsonify({'status': 'error', 'message': 'Request failed'})
 
 @api_bp.route('/api/sonarr/search-scan/<int:series_id>', methods=['POST'])
@@ -3677,8 +3702,8 @@ def sonarr_search_scan(series_id):
             requests.post(command_url, json=refresh_payload, headers=headers, timeout=10)
             return jsonify({'status': 'success', 'message': 'Search and scan started'})
         return jsonify({'status': 'error', 'message': 'Failed to start search'})
-    except Exception as e:
-        _log_api_exception("sonarr_search_scan", e)
+    except Exception:
+        _log_api_exception("sonarr_search_scan")
         return jsonify({'status': 'error', 'message': 'Request failed'})
 
 @api_bp.route('/api/sonarr/queue-check/<int:series_id>', methods=['GET'])
@@ -3743,8 +3768,8 @@ def sonarr_queue_check(series_id):
             'inQueue': True,
             'queueItems': queue_items
         })
-    except Exception as e:
-        _log_api_exception("sonarr_queue_check", e)
+    except Exception:
+        _log_api_exception("sonarr_queue_check")
         return jsonify({'status': 'error', 'message': 'Queue check failed'})
 
 
@@ -3774,8 +3799,8 @@ def sonarr_search_episode(episode_id):
         if resp.status_code in [200, 201]:
             return jsonify({'status': 'success', 'message': 'Search started for episode'})
         return jsonify({'status': 'error', 'message': 'Failed to start search'})
-    except Exception as e:
-        _log_api_exception("sonarr_search_episode", e)
+    except Exception:
+        _log_api_exception("sonarr_search_episode")
         return jsonify({'status': 'error', 'message': 'Request failed'})
 
     if not guid:
@@ -3953,8 +3978,8 @@ def sonarr_search_episode(episode_id):
                 error_msg = f'Failed to start download (status {resp.status_code})'
                 write_log("error", "Radarr", f"Download failed: {error_msg}")
             return jsonify({'status': 'error', 'message': error_msg})
-    except Exception as e:
-        _log_api_exception("radarr_download", e)
+    except Exception:
+        _log_api_exception("radarr_download")
         return jsonify({'status': 'error', 'message': 'Request failed'})
 
 @api_bp.route('/api/sonarr/search', methods=['POST'])
@@ -4135,16 +4160,16 @@ def sonarr_search():
                             elif isinstance(q, str):
                                 quality_name = q
                         current_file = {'releaseGroup': rg or '', 'quality': quality_name}
-            except Exception as e:
+            except Exception:
                 write_log("warning", "Sonarr", f"Could not fetch current file for downloaded icon: {e}")
             return jsonify({'status': 'success', 'releases': releases, 'episode': ep_for_response, 'current_file': current_file})
         
         return jsonify({'status': 'error', 'message': 'Invalid search type'})
-    except requests.exceptions.Timeout as e:
-        _log_api_exception("sonarr_search", e)
+    except requests.exceptions.Timeout:
+        _log_api_exception("sonarr_search")
         return jsonify({'status': 'error', 'message': 'Sonarr took too long to search indexers. Try again or check Sonarr.'})
-    except Exception as e:
-        _log_api_exception("sonarr_search", e)
+    except Exception:
+        _log_api_exception("sonarr_search")
         return jsonify({'status': 'error', 'message': 'Request failed. Check the app logs for details.'})
 
 @api_bp.route('/api/sonarr/download', methods=['POST'])
@@ -4256,8 +4281,8 @@ def sonarr_download():
                 error_msg = f'Failed to start download (status {resp.status_code})'
                 write_log("error", "Sonarr", f"Download failed: {error_msg}")
             return jsonify({'status': 'error', 'message': error_msg})
-    except Exception as e:
-        _log_api_exception("sonarr_download", e)
+    except Exception:
+        _log_api_exception("sonarr_download")
         return jsonify({'status': 'error', 'message': 'Request failed'})
 
 
@@ -4397,8 +4422,8 @@ def get_calendar_episode_detail(episode_id):
             'sonarrUrl': sonarr_url,
             'sonarrInteractiveSearchUrl': sonarr_interactive_search_url,
         })
-    except Exception as e:
-        _log_api_exception("get_calendar_episode_detail", e)
+    except Exception:
+        _log_api_exception("get_calendar_episode_detail")
         return jsonify({'status': 'error', 'message': 'Request failed'})
 
 
@@ -4445,8 +4470,8 @@ def get_calendar_episode_releases(episode_id):
                 'indexerId': rel.get('indexerId'),
             })
         return jsonify({'status': 'success', 'releases': out})
-    except Exception as e:
-        _log_api_exception("get_calendar_episode_releases", e)
+    except Exception:
+        _log_api_exception("get_calendar_episode_releases")
         return jsonify({'status': 'error', 'message': 'Request failed', 'releases': []})
 
 

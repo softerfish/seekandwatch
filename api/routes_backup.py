@@ -159,8 +159,8 @@ def upload_backup():
         os.replace(tmp_path, target)
         tmp_path = None
         return jsonify({'status': 'success', 'message': f'Backup uploaded as {filename}.'})
-    except Exception as e:
-        _log_api_exception("upload_backup", e)
+    except Exception:
+        _log_api_exception("upload_backup")
         return _error_response("Upload failed")
     finally:
         if tmp_path and os.path.exists(tmp_path):
