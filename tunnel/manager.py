@@ -58,8 +58,8 @@ class TunnelManager:
         """
         try:
             return self.binary_manager.ensure_binary()
-        except Exception as e:
-            self.app.logger.error(f"Failed to ensure cloudflared binary: {str(e)}")
+        except Exception:
+            self.app.logger.error("Failed to ensure cloudflared binary")
             return False
     
     def authenticate(self) -> bool:
@@ -88,11 +88,11 @@ class TunnelManager:
             # the calling code should handle updating the user's settings
             return encrypted_creds
             
-        except AuthenticationError as e:
-            self.app.logger.error(f"Authentication failed: {str(e)}")
+        except AuthenticationError:
+            self.app.logger.error("Authentication failed")
             return False
-        except Exception as e:
-            self.app.logger.error(f"Unexpected error during authentication: {str(e)}")
+        except Exception:
+            self.app.logger.error("Unexpected error during authentication")
             return False
     
     def get_or_authenticate(self, user_id: int) -> Optional[dict]:
@@ -146,8 +146,8 @@ class TunnelManager:
             # decrypt and return the credentials
             return self._decrypt_credentials(encrypted_creds)
             
-        except Exception as e:
-            self.app.logger.error(f"Failed to get or authenticate credentials: {str(e)}")
+        except Exception:
+            self.app.logger.error("Failed to get or authenticate credentials")
             return None
     
     def _validate_credentials(self, credentials: dict) -> bool:
@@ -285,8 +285,8 @@ class TunnelManager:
                 else:
                     raise TunnelCreationError(error_msg)
                     
-            except subprocess.SubprocessError as e:
-                error_msg = f"Failed to run cloudflared tunnel create: {str(e)} (attempt {attempt}/{max_attempts})"
+            except subprocess.SubprocessError:
+                error_msg = f"Failed to run cloudflared tunnel create (attempt {attempt}/{max_attempts})"
                 self.app.logger.warning(error_msg)
                 
                 if attempt < max_attempts:
@@ -296,9 +296,9 @@ class TunnelManager:
                 else:
                     raise TunnelCreationError(error_msg)
                     
-            except TunnelCreationError as e:
+            except TunnelCreationError:
                 # tunnel creation error (parsing, database, etc.)
-                self.app.logger.warning(f"Tunnel creation error: {str(e)} (attempt {attempt}/{max_attempts})")
+                self.app.logger.warning(f"Tunnel creation error (attempt {attempt}/{max_attempts})")
                 
                 if attempt < max_attempts:
                     delay = 2 ** (attempt - 1)
@@ -307,8 +307,8 @@ class TunnelManager:
                 else:
                     raise
                     
-            except Exception as e:
-                error_msg = f"Unexpected error during tunnel creation: {str(e)} (attempt {attempt}/{max_attempts})"
+            except Exception:
+                error_msg = f"Unexpected error during tunnel creation (attempt {attempt}/{max_attempts})"
                 self.app.logger.error(error_msg)
                 
                 if attempt < max_attempts:
@@ -382,19 +382,19 @@ class TunnelManager:
             self.app.logger.info(f"Successfully started cloudflared process (PID: {self.process.pid})")
             return True
             
-        except Exception as e:
-            self.app.logger.error(f"Failed to start tunnel: {str(e)}")
+        except Exception:
+            self.app.logger.error("Failed to start tunnel")
             
             # update database with error
             try:
                 from models import Settings
                 settings = Settings.query.filter_by(user_id=user_id).first()
                 if settings:
-                    settings.tunnel_last_error = f"Failed to start: {str(e)}"
+                    settings.tunnel_last_error = "Failed to start tunnel"
                     settings.tunnel_status = 'error'
                     self.db.session.commit()
-            except Exception as db_error:
-                self.app.logger.error(f"Failed to update database with error: {str(db_error)}")
+            except Exception:
+                self.app.logger.error("Failed to update database with error")
             
             return False
     
@@ -440,8 +440,8 @@ class TunnelManager:
             
             return success
             
-        except Exception as e:
-            self.app.logger.error(f"Failed to stop tunnel: {str(e)}")
+        except Exception:
+            self.app.logger.error("Failed to stop tunnel")
             return False
     
     def register_webhook(self, tunnel_url: str, api_key: str, cloud_base_url: str, user_id: int, webhook_secret: str = '') -> bool:
@@ -528,8 +528,8 @@ class TunnelManager:
             
             return False
             
-        except Exception as e:
-            self.app.logger.error(f"Unexpected error during webhook registration: {str(e)}")
+        except Exception:
+            self.app.logger.error("Unexpected error during webhook registration")
             
             # update database with error
             try:
@@ -537,11 +537,11 @@ class TunnelManager:
                 settings = Settings.query.filter_by(user_id=user_id).first()
                 
                 if settings:
-                    settings.tunnel_last_error = f"Registration error: {str(e)}"
+                    settings.tunnel_last_error = "Registration error"
                     settings.tunnel_status = 'error'
                     self.db.session.commit()
-            except Exception as db_error:
-                self.app.logger.error(f"Failed to update database with error: {str(db_error)}")
+            except Exception:
+                self.app.logger.error("Failed to update database with error")
             
             return False
     
@@ -582,8 +582,8 @@ class TunnelManager:
                 self.app.logger.warning(f"Webhook unregister failed: {message}")
                 return False
                 
-        except Exception as e:
-            self.app.logger.error(f"Error unregistering webhook: {str(e)}")
+        except Exception:
+            self.app.logger.error("Error unregistering webhook")
             return False
     
     def check_and_reregister_if_url_changed(self, user_id: int) -> bool:
@@ -663,8 +663,8 @@ class TunnelManager:
             # no URL change detected
             return True
             
-        except Exception as e:
-            self.app.logger.error(f"Error checking for URL changes: {str(e)}")
+        except Exception:
+            self.app.logger.error("Error checking for URL changes")
             return False
     
     def _get_current_tunnel_url(self, settings) -> Optional[str]:
@@ -717,11 +717,11 @@ class TunnelManager:
                 'enabled': settings.tunnel_enabled
             }
             
-        except Exception as e:
-            self.app.logger.error(f"Error getting tunnel status: {str(e)}")
+        except Exception:
+            self.app.logger.error("Error getting tunnel status")
             return {
                 'status': 'error',
-                'error': str(e)
+                'error': "Failed to get tunnel status"
             }
     
     def reset_configuration(self, user_id: int) -> bool:
@@ -757,8 +757,8 @@ class TunnelManager:
             self.app.logger.info(f"Reset tunnel configuration for user {user_id}")
             return True
             
-        except Exception as e:
-            self.app.logger.error(f"Failed to reset tunnel configuration: {str(e)}")
+        except Exception:
+            self.app.logger.error("Failed to reset tunnel configuration")
             return False
     
     # internal methods (stubs for future implementation)
@@ -835,12 +835,12 @@ class TunnelManager:
             
         except subprocess.TimeoutExpired:
             raise AuthenticationError("Authentication timed out after 5 minutes")
-        except subprocess.SubprocessError as e:
-            raise AuthenticationError(f"Failed to run cloudflared login: {str(e)}")
-        except OSError as e:
-            raise AuthenticationError(f"Failed to read credentials file: {str(e)}")
-        except Exception as e:
-            raise AuthenticationError(f"Unexpected error during authentication: {str(e)}")
+        except subprocess.SubprocessError:
+            raise AuthenticationError("Failed to run cloudflared login")
+        except OSError:
+            raise AuthenticationError("Failed to read credentials file")
+        except Exception:
+            raise AuthenticationError("Unexpected error during authentication")
     
     def _encrypt_credentials(self, credentials: dict) -> str:
         """
@@ -1083,8 +1083,8 @@ class TunnelManager:
             
         except ProcessManagementError:
             raise
-        except Exception as e:
-            raise ProcessManagementError(f"Failed to start cloudflared process: {str(e)}")
+        except Exception:
+            raise ProcessManagementError("Failed to start cloudflared process")
     
     def _is_process_running(self) -> bool:
         """
@@ -1124,10 +1124,10 @@ class TunnelManager:
                         return True
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     continue
-        except Exception as e:
-            self.app.logger.error(f"Error checking for cloudflared processes: {str(e)}")
+                except Exception:
+                    self.app.logger.error("Error checking for cloudflared processes")
+                    return False
         
-        return False
     
     def _log_unexpected_exit(self, exit_code: int):
         """
@@ -1150,8 +1150,9 @@ class TunnelManager:
                         # grab last 20 lines
                         last_lines = lines[-20:] if len(lines) > 20 else lines
                         stderr_output = ''.join(last_lines)
-                except Exception as e:
-                    stderr_output = f"Could not read log file: {str(e)}"
+                        except Exception:
+                            stderr_output = "Could not read log file"
+                
             else:
                 stderr_output = "Log file not found"
             
@@ -1176,8 +1177,8 @@ class TunnelManager:
             except Exception as db_error:
                 self.app.logger.error(f"Failed to update database with exit error: {str(db_error)}")
                 
-        except Exception as e:
-            self.app.logger.error(f"Error logging unexpected exit: {str(e)}")
+        except Exception:
+            self.app.logger.error("Error logging unexpected exit")
     
     def _terminate_process(self, timeout: int = 10) -> bool:
         """
@@ -1218,8 +1219,8 @@ class TunnelManager:
                         
                         self.app.logger.info(f"Sent termination signal to process {self.process.pid}")
                         killed_any = True
-                    except Exception as e:
-                        self.app.logger.warning(f"Failed to send termination signal: {str(e)}")
+                    except Exception:
+                        self.app.logger.warning("Failed to send termination signal")
                     
                     # wait up to timeout seconds for graceful exit
                     start_time = time.time()
@@ -1245,12 +1246,12 @@ class TunnelManager:
                             self.process.kill()
                             self.process.wait(timeout=5)
                             self.app.logger.info("Process force-killed successfully")
-                        except Exception as e:
-                            self.app.logger.error(f"Failed to force-kill process: {str(e)}")
+                        except Exception:
+                            self.app.logger.error("Failed to force-kill process")
                         finally:
                             self.process = None
-            except Exception as e:
-                self.app.logger.error(f"Error terminating subprocess: {str(e)}")
+            except Exception:
+                self.app.logger.error("Error terminating subprocess")
                 self.process = None
         
         # also check for any running cloudflared processes and kill them
@@ -1275,8 +1276,8 @@ class TunnelManager:
                             self.app.logger.info(f"Cloudflared process {proc.info['pid']} force-killed")
                 except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
                     continue
-        except Exception as e:
-            self.app.logger.error(f"Error killing cloudflared processes: {str(e)}")
+        except Exception:
+            self.app.logger.error("Error killing cloudflared processes")
         
         return killed_any
     
@@ -1418,11 +1419,11 @@ class TunnelManager:
                 'name': tunnel_name
             }
             
-        except requests.RequestException as e:
-            self.app.logger.error(f"API request failed: {str(e)}")
+        except requests.RequestException:
+            self.app.logger.error("API request failed")
             return None
-        except Exception as e:
-            self.app.logger.error(f"Unexpected error creating tunnel via API: {str(e)}")
+        except Exception:
+            self.app.logger.error("Unexpected error creating tunnel via API")
             return None
     
     def start_tunnel_with_token(self, user_id: int, tunnel_token: str) -> bool:
@@ -1504,8 +1505,8 @@ class TunnelManager:
             self.app.logger.info(f"Cloudflared started successfully (PID: {self.process.pid}), logging to {log_path}")
             return True
             
-        except Exception as e:
-            self.app.logger.error(f"Failed to start tunnel with token: {str(e)}")
+        except Exception:
+            self.app.logger.error("Failed to start tunnel with token")
             return False
     
     def _generate_tunnel_name(self, user_id: int) -> str:
@@ -1654,6 +1655,6 @@ class TunnelManager:
             
             return tunnel_url
             
-        except Exception as e:
-            self.app.logger.error(f"Failed to start quick tunnel: {str(e)}")
+        except Exception:
+            self.app.logger.error("Failed to start quick tunnel")
             return None

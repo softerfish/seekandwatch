@@ -110,8 +110,8 @@ class HealthMonitor:
                     time.sleep(min(1, sleep_remaining))
                     sleep_remaining -= 1
                     
-            except Exception as e:
-                self.app.logger.error(f"Error in health monitor loop: {str(e)}")
+            except Exception:
+                self.app.logger.error("Error in health monitor loop")
                 # sleep a bit before retrying to avoid tight error loop
                 time.sleep(5)
     
@@ -127,8 +127,8 @@ class HealthMonitor:
         try:
             # use TunnelManager's _is_process_running method
             return self.tunnel_manager._is_process_running()
-        except Exception as e:
-            self.app.logger.error(f"Error checking process health: {str(e)}")
+        except Exception:
+            self.app.logger.error("Error checking process health")
             return False
     
     def _attempt_restart(self) -> bool:
@@ -197,8 +197,8 @@ class HealthMonitor:
                     self.app.logger.error(f"Failed to restart tunnel for user {user_id}")
                     return False
                 
-        except Exception as e:
-            self.app.logger.error(f"Error during tunnel restart: {str(e)}")
+        except Exception:
+            self.app.logger.error("Error during tunnel restart")
             
             # update database with error
             try:
@@ -208,10 +208,10 @@ class HealthMonitor:
                     
                     if settings:
                         settings.tunnel_status = 'error'
-                        settings.tunnel_last_error = f'Restart error: {str(e)}'
+                        settings.tunnel_last_error = 'Restart error'
                         self.db.session.commit()
-            except Exception as db_error:
-                self.app.logger.error(f"Failed to update database with restart error: {str(db_error)}")
+            except Exception:
+                self.app.logger.error("Failed to update database with restart error")
             
             return False
     
@@ -252,8 +252,8 @@ class HealthMonitor:
                             f"Restart attempts exhausted for user {settings.user_id}, "
                             "manual intervention required"
                         )
-            except Exception as e:
-                self.app.logger.error(f"Failed to update status after exhausting restarts: {str(e)}")
+            except Exception:
+                self.app.logger.error("Failed to update status after exhausting restarts")
             
             return False
         
@@ -300,5 +300,5 @@ class HealthMonitor:
                 if settings_list:
                     self.db.session.commit()
                 
-        except Exception as e:
-            self.app.logger.error(f"Failed to update health check timestamp: {str(e)}")
+        except Exception:
+            self.app.logger.error("Failed to update health check timestamp")

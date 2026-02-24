@@ -48,9 +48,9 @@ class BinaryManager:
                     if not os.access(binary_path, os.X_OK):
                         # try to set executable permissions
                         self._set_executable_permissions(binary_path)
-                except BinaryDownloadError as e:
+                except BinaryDownloadError:
                     # log error but continue - might still work
-                    print(f"Warning: {str(e)}")
+                    print("Warning: Failed to set executable permissions for existing binary")
 
             return True
 
@@ -67,9 +67,9 @@ class BinaryManager:
 
             return True
 
-        except BinaryDownloadError as e:
+        except BinaryDownloadError:
             # log the error with context
-            print(f"Error downloading cloudflared binary: {str(e)}")
+            print("Error downloading cloudflared binary")
             return False
 
     
@@ -208,11 +208,11 @@ class BinaryManager:
             if os.path.exists(temp_path):
                 os.remove(temp_path)
             raise BinaryDownloadError(
-                f"Failed to download cloudflared binary: {str(e)}"
+                "Failed to download cloudflared binary"
             )
-        except OSError as e:
+        except OSError:
             raise BinaryDownloadError(
-                f"Failed to write cloudflared binary: {str(e)}"
+                "Failed to write cloudflared binary"
             )
     
     def _verify_checksum(self, binary_path: str, expected_checksum: str) -> bool:
@@ -239,9 +239,9 @@ class BinaryManager:
             # case-insensitive comparison
             return actual_checksum.lower() == expected_checksum.lower()
             
-        except OSError as e:
+        except OSError:
             raise BinaryDownloadError(
-                f"Failed to read binary for checksum verification: {str(e)}"
+                "Failed to read binary for checksum verification"
             )
     
     def _set_executable_permissions(self, binary_path: str) -> bool:
@@ -269,7 +269,7 @@ class BinaryManager:
             os.chmod(binary_path, new_permissions)
             return True
             
-        except OSError as e:
+        except OSError:
             raise BinaryDownloadError(
-                f"Failed to set executable permissions: {str(e)}"
+                "Failed to set executable permissions"
             )

@@ -62,8 +62,8 @@ class WebhookRegistrar:
             
             return True, ""
             
-        except Exception as e:
-            return False, f"Invalid URL format: {str(e)}"
+        except Exception:
+            return False, "Invalid URL format"
     
     def register(self, tunnel_url: str, webhook_secret: str = '') -> Tuple[bool, str]:
         """
@@ -120,8 +120,8 @@ class WebhookRegistrar:
             return False, "Connection timeout, will retry automatically"
         except requests.exceptions.ConnectionError:
             return False, "Cannot reach cloud app, check your internet connection"
-        except Exception as e:
-            return False, f"Registration error: {str(e)}"
+        except Exception:
+            return False, "Registration error: Request failed"
     
     def test_connection(self, timeout: int = 30) -> Tuple[bool, str]:
         """
@@ -172,8 +172,8 @@ class WebhookRegistrar:
             return False, "Connection test timed out (tunnel may be down)"
         except requests.exceptions.ConnectionError:
             return False, "Cannot reach cloud app, check your internet connection"
-        except Exception as e:
-            return False, f"Test error: {str(e)}"
+        except Exception:
+            return False, "Test error: Request failed"
     
     def unregister(self) -> Tuple[bool, str]:
         """
@@ -209,5 +209,5 @@ class WebhookRegistrar:
             return False, "Connection timeout"
         except requests.exceptions.ConnectionError:
             return False, "Cannot reach cloud app"
-        except Exception as e:
-            return False, f"Unregister error: {str(e)}"
+        except Exception:
+            return False, "Unregister error: Request failed"
