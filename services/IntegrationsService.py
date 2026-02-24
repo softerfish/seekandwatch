@@ -32,8 +32,8 @@ class IntegrationsService:
                 if item.tmdb_id and item.tmdb_id > 0:
                     tmdb_ids.add(item.tmdb_id)
             return {'titles': titles, 'tmdb_ids': tmdb_ids}
-        except Exception as e:
-            write_log("warning", "Integrations", f"get_radarr_sonarr_cache failed: {e}")
+        except Exception:
+            write_log("warning", "Integrations", "get_radarr_sonarr_cache failed")
             return {'titles': set(), 'tmdb_ids': set()}
 
     @staticmethod
@@ -315,8 +315,8 @@ class IntegrationsService:
                             db.session.commit()
                             total_items += radarr_count
                             write_log("info", "Radarr/Sonarr", f"Scanned {radarr_count} movies from Radarr.", app_obj=app_obj)
-                    except Exception as e:
-                        log.error(f"Radarr scan error: {e}")
+                    except Exception:
+                        log.error("Radarr scan error")
 
                 # Scan Sonarr
                 if has_sonarr:
@@ -368,8 +368,8 @@ class IntegrationsService:
                             db.session.commit()
                             total_items += sonarr_count
                             write_log("info", "Radarr/Sonarr", f"Scanned {sonarr_count} TV shows from Sonarr.", app_obj=app_obj)
-                    except Exception as e:
-                        log.error(f"Sonarr scan error: {e}")
+                    except Exception:
+                        log.error("Sonarr scan error")
 
                 settings.last_radarr_sonarr_scan = int(time.time())
                 db.session.commit()

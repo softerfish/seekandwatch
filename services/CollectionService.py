@@ -69,8 +69,8 @@ class CollectionService:
                             'vote_average': it.get('vote_average'),
                             'genre_ids': it.get('genre_ids')
                         })
-                except Exception as e:
-                    write_log("error", "Sync", f"TMDB list fetch failed: {e}", app_obj=app_obj)
+                except Exception:
+                    write_log("error", "Sync", "TMDB list fetch failed", app_obj=app_obj)
                     return False, "Could not load list from TMDB. Check list ID or try again later."
             else:
                 params = (preset.get('tmdb_params') or {}).copy()
@@ -133,7 +133,8 @@ class CollectionService:
             try:
                 rows = TmdbAlias.query.filter(TmdbAlias.tmdb_id > 0, TmdbAlias.media_type == want_type).with_entities(TmdbAlias.tmdb_id, TmdbAlias.plex_title).all()
                 for r in rows: id_map[r.tmdb_id] = r.plex_title
-            except Exception as e: log.warning("Load alias map for preset: %s", e)
+            except Exception:
+                log.warning("Load alias map for preset failed")
 
             potential_matches = []
             for item in tmdb_items:
@@ -156,7 +157,8 @@ class CollectionService:
                     local_candidates = CollectionService._fetch_local_candidates(target_lib, preset)
                     if local_candidates:
                         write_log("info", "Sync", f"Local scan found {len(local_candidates)} items for '{preset.get('title')}'", app_obj=app_obj)
-                except Exception as e: log.warning("Local scan failed: %s", e)
+                except Exception:
+                    log.warning("Local scan failed")
 
             found_items = []
             if potential_matches:
@@ -182,7 +184,8 @@ class CollectionService:
                         if matched and matched not in found_items:
                             matched._tmdb_rating = item.get('vote_average')
                             found_items.append(matched)
-                    except Exception as e: log.debug("Plex search match: %s", e)
+                    except Exception:
+                        log.debug("Plex search match failed")
             
             if local_candidates:
                 existing_keys = {x.ratingKey for x in found_items}
@@ -233,7 +236,8 @@ class CollectionService:
                                 col.edit(**{'thumb.locked': 0})
                                 col.uploadPoster(filepath=poster_path)
                                 col.edit(**{'thumb.locked': 1})
-                    except Exception as e: log.warning(f"Custom poster failed: {e}")
+                    except Exception:
+                        log.warning("Custom poster failed")
 
                     CollectionService.apply_collection_visibility(col, 
                         visible_home=preset.get('visibility_home', True),
@@ -367,8 +371,8 @@ class CollectionService:
             if hasattr(data, 'attrib'):
                 result = _from_elem(data)
                 if result is not None: return result
-        except Exception as e:
-            log.debug("get_collection_visibility error: %s", e)
+        except Exception:
+            log.debug("get_collection_visibility error")
         
         try:
             path2 = '/hubs/sections/%s/manage?metadataItemId=%s' % (section_id, rating_key)
@@ -382,8 +386,8 @@ class CollectionService:
                             result = _from_elem(elem)
                             if result is not None: return result
                 return result or (None, None, None)
-        except Exception as e:
-            log.debug("get_collection_visibility fallback error: %s", e)
+        except Exception:
+            log.debug("get_collection_visibility fallback error")
             
         return (None, None, None)
 

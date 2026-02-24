@@ -95,8 +95,8 @@ class CloudService:
                 timeout=CLOUD_REQUEST_TIMEOUT
             )
             return resp.status_code == 200
-        except Exception as e:
-            log.error(f"Webhook registration failed: {e}")
+        except Exception:
+            log.error("Webhook registration failed")
             return False
 
     @staticmethod
@@ -252,5 +252,5 @@ class CloudService:
                         CloudService.process_item(settings, req_db)
                         CloudService.log_cloud_import('poll_approved', title, media_type, True)
 
-            except Exception as e:
-                log.error(f"Cloud poll failed: {e}")
+            except Exception:
+                log.error("Cloud poll failed")
