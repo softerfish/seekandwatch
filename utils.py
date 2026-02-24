@@ -83,8 +83,8 @@ def _load_cache_file(path, ttl):
     try:
         with open(path, 'r', encoding='utf-8') as f:
             raw = json.loads(f.read())
-    except Exception as e:
-        log.debug("Load cache %s: %s", path, e)
+    except Exception:
+        log.debug("Load cache %s failed", path)
         return {}
     now = _now_ts()
     cleaned = {}
@@ -101,8 +101,8 @@ def _save_cache_file(path, payload):
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, 'w', encoding='utf-8') as f:
             json.dump(payload, f)
-    except Exception as e:
-        log.warning("Save cache %s: %s", path, e)
+    except Exception:
+        log.warning("Save cache %s failed", path)
 
 def load_results_cache():
     global RESULTS_CACHE
@@ -228,8 +228,8 @@ def prefetch_keywords_parallel(items, api_key):
                 cached_map[row.tmdb_id] = json.loads(row.keywords)
             except (TypeError, ValueError):
                 cached_map[row.tmdb_id] = []
-    except Exception as e:
-        print(f"DB Read Error: {e}")
+    except Exception:
+        print("DB Read Error")
 
     # find what's missing from the cache
     for item in items:
@@ -255,8 +255,8 @@ def prefetch_keywords_parallel(items, api_key):
             tags = [k['name'].lower() for k in raw_tags]
             
             return {'id': item['id'], 'type': item['media_type'], 'tags': tags}
-        except Exception as e:
-            write_log("warning", "Utils", f"TMDB keywords fetch failed ({type(e).__name__})")
+        except Exception:
+            write_log("warning", "Utils", "TMDB keywords fetch failed")
             return None
 
     new_entries = []
@@ -299,8 +299,8 @@ def prefetch_keywords_parallel(items, api_key):
                     TmdbKeywordCache.query.filter(TmdbKeywordCache.id.in_(subq)).delete(synchronize_session=False)
 
             db.session.commit()
-        except Exception as e:
-            print(f"Cache Save Error: {e}")
+        except Exception:
+            print("Cache Save Error")
             db.session.rollback()
             
 def item_matches_keywords(item, target_keywords):
@@ -319,8 +319,8 @@ def item_matches_keywords(item, target_keywords):
     try:
         entry = TmdbKeywordCache.query.filter_by(tmdb_id=item['id']).first()
         api_tags = json.loads(entry.keywords) if entry else []
-    except Exception as e:
-        write_log("warning", "Utils", f"Keyword cache lookup failed ({type(e).__name__})")
+    except Exception:
+        write_log("warning", "Utils", "Keyword cache lookup failed")
         api_tags = []
     
     if api_tags:
@@ -382,8 +382,8 @@ def prefetch_runtime_parallel(items, api_key):
         existing = TmdbRuntimeCache.query.filter(TmdbRuntimeCache.tmdb_id.in_(target_ids)).all()
         for row in existing:
             cached_runtimes[row.tmdb_id] = row.runtime
-    except Exception as e:
-        print(f"Runtime cache read error: {e}")
+    except Exception:
+        print("Runtime cache read error")
     
     # Apply cached values
     for item in movies_to_fetch:
@@ -423,8 +423,8 @@ def prefetch_runtime_parallel(items, api_key):
             return {'id': item.get('id'), 'runtime': 0}
         except (KeyError, ValueError):
             return {'id': item.get('id'), 'runtime': 0}
-        except Exception as e:
-            print(f"Unexpected error fetching runtime for {item.get('id')}: {e}")
+        except Exception:
+            print(f"Unexpected error fetching runtime for {item.get('id')}")
             return {'id': item.get('id'), 'runtime': 0}
     
     # Fetch with rate limiting (5 workers to avoid hitting TMDB limits)
@@ -469,11 +469,11 @@ def prefetch_runtime_parallel(items, api_key):
                         subq = db.session.query(TmdbRuntimeCache.id).order_by(TmdbRuntimeCache.timestamp.asc()).limit(excess).subquery()
                         db.session.query(TmdbRuntimeCache).filter(TmdbRuntimeCache.id.in_(db.session.query(subq.c.id))).delete(synchronize_session=False)
                         db.session.commit()
-            except Exception as e:
-                print(f"Error pruning runtime cache: {e}")
+            except Exception:
+                print("Error pruning runtime cache")
                 db.session.rollback()
-        except Exception as e:
-            print(f"Error saving runtime cache: {e}")
+        except Exception:
+            print("Error saving runtime cache")
             db.session.rollback()
     
     # Set default for TV shows
@@ -515,8 +515,8 @@ def write_log(level, module, message, app_obj=None):
                     _write_log_internal(level, module, message)
             except RuntimeError:
                 print(f"Logging Failed: No Flask application context available. Level: {level}, Module: {module}, Message: {message}")
-    except Exception as e:
-        print(f"Logging Failed: {e}")
+    except Exception:
+        print("Logging Failed")
 
 def _write_log_internal(level, module, message):
     # Actual logging logic. Sanitize message to avoid logging URLs/tokens.
@@ -561,14 +561,14 @@ def write_scanner_log(message):
                     bak = SCANNER_LOG_FILE + ".bak"
                     if os.path.exists(bak): os.remove(bak)
                     os.rename(SCANNER_LOG_FILE, bak)
-                except Exception as e:
-                    log.warning("Rotate scanner log: %s", e)
+                except Exception:
+                    log.warning("Rotate scanner log failed")
 
         with open(SCANNER_LOG_FILE, 'a', encoding='utf-8') as f:
             f.write(line)
             
-    except Exception as e:
-        print(f"Scanner Log Error: {e}")
+    except Exception:
+        print("Scanner Log Error")
 
 def read_scanner_log(lines=100):
     # Read last N lines.
@@ -578,8 +578,8 @@ def read_scanner_log(lines=100):
         with open(SCANNER_LOG_FILE, 'r', encoding='utf-8') as f:
             content = f.readlines()
             return "".join(content[-lines:])
-    except Exception as e:
-        log.warning("Read scanner log: %s", e)
+    except Exception:
+        log.warning("Read scanner log failed")
         return "Error reading logs."
 
 def normalize_title(title):
@@ -624,8 +624,8 @@ def get_tmdb_aliases(tmdb_id, media_type, settings):
         cached = TmdbAlias.query.filter_by(tmdb_id=tmdb_id, media_type=media_type).first()
         if cached:
             return json.loads(cached.aliases)
-    except Exception as e:
-        write_log("warning", "Utils", f"Alias cache lookup failed ({type(e).__name__})")
+    except Exception:
+        write_log("warning", "Utils", "Alias cache lookup failed")
         pass
 
     try:
@@ -639,8 +639,8 @@ def get_tmdb_aliases(tmdb_id, media_type, settings):
         # (the alias DB handles the rest)
 
         return aliases
-    except Exception as e:
-        write_log("warning", "Utils", f"get_tmdb_aliases failed ({type(e).__name__})")
+    except Exception:
+        write_log("warning", "Utils", "get_tmdb_aliases failed")
         return []
 
 def sync_remote_aliases():
@@ -659,15 +659,15 @@ def set_system_lock(status_msg="Busy"):
         with open(LOCK_FILE, 'w') as f:
             json.dump({'stage': status_msg}, f)
         return True
-    except Exception as e:
-        write_log("warning", "Utils", f"Lock status write failed ({type(e).__name__})")
+    except Exception:
+        write_log("warning", "Utils", "Lock status write failed")
         return False
 
 def remove_system_lock():
     if os.path.exists(LOCK_FILE):
         try:
             os.remove(LOCK_FILE)
-        except OSError as e:
+        except OSError:
             write_log("warning", "Utils", f"Could not remove lock file ({type(e).__name__})")
 
 def get_lock_status():
@@ -677,8 +677,8 @@ def get_lock_status():
         with open(LOCK_FILE, 'r') as f:
             data = json.load(f)
             return {'running': True, 'progress': data.get('stage', 'Busy')}
-    except Exception as e:
-        write_log("warning", "Utils", f"Lock progress read failed ({type(e).__name__})")
+    except Exception:
+        write_log("warning", "Utils", "Lock progress read failed")
         return {'running': True, 'progress': 'Unknown'}
 
 # Plex guid -> TMDB resolution (like web: TMDB guid, then IMDB, then TVDB, then title+year)
@@ -734,8 +734,8 @@ def _plex_imdb_to_tmdb(imdb_id, media_type, tmdb_key):
         if media_type in ('tv', 'show') and tr:
             return int(tr)
         return int(mr) if mr else (int(tr) if tr else None)
-    except Exception as e:
-        log.debug("IMDB->TMDB: %s", e)
+    except Exception:
+        log.debug("IMDB->TMDB resolution failed")
         return None
 
 # In-memory cache for TVDB->TMDB to avoid repeated API calls in one sync run
@@ -767,8 +767,8 @@ def _plex_tvdb_to_tmdb(tvdb_id, media_type, tmdb_key):
         out = int(mr) if (media_type == 'movie' and mr) else (int(tr) if (media_type in ('tv', 'show') and tr) else (int(mr) if mr else (int(tr) if tr else None)))
         _TVDB_TMDB_CACHE[key] = out
         return out
-    except Exception as e:
-        log.debug("TVDB->TMDB: %s", e)
+    except Exception:
+        log.debug("TVDB->TMDB resolution failed")
         _TVDB_TMDB_CACHE[key] = None
         return None
 
@@ -793,8 +793,8 @@ def _plex_title_year_to_tmdb(title, year, media_type, tmdb_key):
         if not results:
             return None
         return int(results[0]['id'])
-    except Exception as e:
-        log.debug("Title/year->TMDB: %s", e)
+    except Exception:
+        log.debug("Title/year->TMDB resolution failed")
         return None
 
 def sync_plex_library(app_obj):
@@ -828,8 +828,8 @@ def sync_plex_library(app_obj):
                     except OSError:
                         pass
                 write_log("info", "Plex", "Cleared TmdbAlias for fresh sync (first run / migration).", app_obj=app_obj)
-            except Exception as e:
-                write_log("warning", "Plex", f"Clear before sync: {e}", app_obj=app_obj)
+            except Exception:
+                write_log("warning", "Plex", "Clear before sync failed", app_obj=app_obj)
                 db.session.rollback()
 
         max_resolve_per_run = 200  # cap IMDB/TVDB/title+year API calls per sync
@@ -909,8 +909,8 @@ def sync_plex_library(app_obj):
 
                         if added % 50 == 0 and added:
                             db.session.commit()
-                    except Exception as e:
-                        log.debug("Sync item: %s", e)
+                    except Exception:
+                        log.debug("Sync item failed")
                         continue
 
             db.session.commit()
@@ -959,8 +959,8 @@ def get_owned_tmdb_ids_for_cloud():
                 movie_ids.add(mid)
             elif mid and mtype == 'tv':
                 tv_ids.add(mid)
-    except Exception as e:
-        log.debug("Get owned IDs: %s", e)
+    except Exception:
+        log.debug("Get owned IDs failed")
     return (list(movie_ids), list(tv_ids))
 
 
@@ -1020,8 +1020,8 @@ def is_owned_item(tmdb_item, media_type):
         radarr_sonarr_cache = get_radarr_sonarr_cache(media_type)
         if tmdb_id in radarr_sonarr_cache['tmdb_ids']:
             return True
-    except Exception as e:
-        write_log("warning", "Utils", f"Radarr/Sonarr cache tmdb check failed ({type(e).__name__})")
+    except Exception:
+        write_log("warning", "Utils", "Radarr/Sonarr cache tmdb check failed")
         pass
 
     # Check TmdbAlias (Plex library sync index)
@@ -1041,13 +1041,12 @@ def is_owned_item(tmdb_item, media_type):
             return True
 
     # Radarr/Sonarr cache by title
-    if tmdb_title:
         try:
             radarr_sonarr_cache = get_radarr_sonarr_cache(media_type)
             if normalize_title(tmdb_title) in radarr_sonarr_cache['titles']:
                 return True
-        except Exception as e:
-            write_log("warning", "Utils", f"Radarr/Sonarr cache title check failed ({type(e).__name__})")
+        except Exception:
+            write_log("warning", "Utils", "Radarr/Sonarr cache title check failed")
             pass
 
     return False
@@ -1094,8 +1093,8 @@ def check_for_updates(current_version, url):
                 if remote != local:
                     return remote
                     
-    except Exception as e:
-        print(f"Update Check Error: {e}")
+    except Exception:
+        print("Update Check Error")
         
     return None
 
@@ -1111,8 +1110,8 @@ def handle_lucky_mode(settings):
         
         return movies
 
-    except Exception as e:
-        write_log("warning", "Utils", f"handle_lucky_mode failed ({type(e).__name__})")
+    except Exception:
+        write_log("warning", "Utils", "handle_lucky_mode failed")
     return None
 
 # backup/restore functions
@@ -1141,7 +1140,7 @@ def list_backups():
             size_str = f"{round(sz / 1024, 2)} KB" if sz < 1024*1024 else f"{round(sz / (1024*1024), 2)} MB"
             date = datetime.datetime.fromtimestamp(os.path.getmtime(path)).strftime('%Y-%m-%d %H:%M')
             backups.append({'filename': f, 'size': size_str, 'date': date})
-        except OSError as e:
+        except OSError:
             write_log("warning", "Utils", f"list_backups stat failed ({type(e).__name__}): {f}")
     return backups
 
@@ -1243,7 +1242,7 @@ def prune_backups(days=7):
         if os.path.getmtime(path) < cutoff:
             try:
                 os.remove(path)
-            except OSError as e:
+            except OSError:
                 write_log("warning", "Utils", f"Prune backup remove failed ({type(e).__name__}): {path}")
 
 def reset_stuck_locks():
@@ -1257,8 +1256,8 @@ def reset_stuck_locks():
         try:
             os.remove(lock_file)
             print(f" [Startup] DELETED STALE LOCK FILE: {lock_file}", flush=True)
-        except Exception as e:
-            print(f" [Startup] Could not delete lock file: {e}")
+        except Exception:
+            print(" [Startup] Could not delete lock file")
             
 def validate_url(url):
     """
@@ -1278,7 +1277,7 @@ def validate_url(url):
         # resolve all IPs for this host
         try:
             addr_info = socket.getaddrinfo(hostname, None)
-        except (socket.gaierror, OSError) as e:
+        except (socket.gaierror, OSError):
             return False, f"Could not resolve hostname ({type(e).__name__})"
 
         # check all resolved IPs
@@ -1329,8 +1328,8 @@ def prefetch_tv_states_parallel(items, api_key):
             url = f"https://api.themoviedb.org/3/tv/{item['id']}?api_key={api_key}"
             data = requests.get(url, timeout=2).json()
             return {'id': item['id'], 'status': data.get('status', 'Unknown')}
-        except Exception as e:
-            write_log("warning", "Utils", f"Overseerr status fetch failed ({type(e).__name__})")
+        except Exception:
+            write_log("warning", "Utils", "Overseerr status fetch failed")
             return None
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
@@ -1374,8 +1373,8 @@ def prefetch_ratings_parallel(items, api_key):
             if not rating or rating == '': rating = "NR"
             
             return {'id': item['id'], 'rating': rating}
-        except Exception as e:
-            write_log("warning", "Utils", f"OMDB rating fetch failed ({type(e).__name__})")
+        except Exception:
+            write_log("warning", "Utils", "OMDB rating fetch failed")
             return None
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
@@ -1433,15 +1432,15 @@ def get_tautulli_trending(media_type='movie', days=30, settings=None):
                                 'tmdb_id': tmdb_id,
                                 'media_type': media_type
                             })
-                    except Exception as e:
-                        write_log("warning", "Utils", f"Tautulli history item failed ({type(e).__name__})")
+                    except Exception:
+                        write_log("warning", "Utils", "Tautulli history item failed")
                         continue
                 break
 
         return trending_items[:5]
 
-    except Exception as e:
-        print(f"Tautulli Error: {e}")
+    except Exception:
+        print("Tautulli Error")
         return []
         
 # Updater helpers
@@ -1455,8 +1454,8 @@ def is_docker():
         if os.path.isfile(path):
             with open(path, 'r') as f:
                 return any('docker' in line for line in f)
-    except Exception as e:
-        log.debug("Docker check: %s", e)
+    except Exception:
+        log.debug("Docker check failed")
     return False
 
 def is_unraid():
@@ -1690,8 +1689,8 @@ def perform_git_update():
             subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-r', req_abs], shell=False)
 
         return True, "Update Successful! Restarting..."
-    except Exception as e:
-        write_log("error", "Git Update", f"Update failed: {type(e).__name__}")
+    except Exception:
+        write_log("error", "Git Update", "Update failed")
         return False, "Git update failed. Please check the logs for details."
 
 def perform_release_update():
@@ -1756,8 +1755,8 @@ def perform_release_update():
             subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", req_abs], shell=False)
 
         return True, "Release Update Successful! Restarting..."
-    except Exception as e:
-        write_log("error", "Release Update", f"Update failed: {type(e).__name__}")
+    except Exception:
+        write_log("error", "Release Update", "Update failed")
         return False, "Release update failed. Please check the logs for details."
 
 # SeekAndWatch cloud - helpers for *arr API (root + quality, no cross-import from api)

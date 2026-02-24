@@ -102,8 +102,8 @@ def ensure_cloudflare_columns():
                     conn.execute(text('ALTER TABLE cloud_request ADD COLUMN webhook_process_after DATETIME'))
                     conn.commit()
                 print("✓ Added webhook_process_after")
-    except Exception as e:
-        print(f"Warning: Could not add early migration columns: {e}")
+    except Exception:
+        print("Warning: Could not add early migration columns")
 
 from utils import (normalize_title, is_duplicate, is_owned_item, fetch_omdb_ratings, send_overseerr_request, 
                    run_collection_logic, create_backup, list_backups, restore_backup, 
@@ -144,7 +144,7 @@ def get_persistent_key():
         with open(key_path, 'w') as f:
             f.write(new_key)
         return new_key
-    except OSError as e:
+    except OSError:
         print(f"--- WARNING: Could not persist SECRET_KEY to disk ({type(e).__name__}); using temporary key. Set SECRET_KEY env or ensure {CONFIG_DIR!r} is writable. ---", flush=True)
         return secrets.token_hex(32)
 
@@ -285,7 +285,7 @@ def _ensure_migrations():
         row = db.session.execute(text("SELECT version FROM schema_info WHERE id = 1")).fetchone()
         if row is not None and row[0] >= CURRENT_SCHEMA_VERSION:
             return
-    except OperationalError as e:
+    except OperationalError:
         msg = str(e).lower()
         if "no such column" not in msg and "no such table" not in msg:
             raise
@@ -320,7 +320,7 @@ def commit_with_retry(max_retries=3):
         try:
             db.session.commit()
             return
-        except OperationalError as e:
+        except OperationalError:
             if "locked" in str(e).lower() or "busy" in str(e).lower():
                 if attempt < max_retries - 1:
                     time.sleep(0.15 * (attempt + 1))
@@ -348,7 +348,7 @@ def _alter_add_column(conn, sql):
     """Run ALTER TABLE ADD COLUMN; ignore duplicate column (inspector can be stale)."""
     try:
         conn.execute(sqlalchemy.text(sql))
-    except OperationalError as e:
+    except OperationalError:
         if "duplicate column" not in str(e).lower():
             raise
 
@@ -357,7 +357,7 @@ def run_migrations():
     with app.app_context():
         try:
             db.create_all()
-        except Exception as e:
+        except Exception:
             print(f"--- [Migration] create_all: {type(e).__name__} ---", flush=True)
         
         # add any missing columns to existing tables
@@ -517,7 +517,7 @@ def run_migrations():
                         )
                     """))
                     
-        except Exception as e:
+        except Exception:
             print(f"--- [Migration] Schema: {type(e).__name__}: {e} ---", flush=True)
 
         # if somehow there are no admins, make the first user an admin
@@ -534,8 +534,8 @@ def run_migrations():
                         conn.execute(sqlalchemy.text("UPDATE user SET is_admin = 1 WHERE id = (SELECT MIN(id) FROM user)"))
                         conn.commit()
                         print("--- [Startup] AUTO-FIX: No admins found. Promoted the first user to Admin. ---")
-        except Exception as e:
-            print(f"--- [Migration] Admin auto-fix: {type(e).__name__}: {e} ---", flush=True)
+        except Exception:
+            print("--- [Migration] Admin auto-fix failed ---", flush=True)
 
         for model_name, model in [
             ('Blocklist', Blocklist),
@@ -549,7 +549,7 @@ def run_migrations():
         ]:
             try:
                 model.__table__.create(db.engine, checkfirst=True)
-            except Exception as e:
+            except Exception:
                 print(f"--- [Migration] Create table {model_name}: {type(e).__name__} ---", flush=True)
         # add user_id to app_request so requested media is per-user (security)
         try:
@@ -607,7 +607,7 @@ def run_migrations():
                 ))
                 conn.execute(sqlalchemy.text("INSERT OR REPLACE INTO schema_info (id, version) VALUES (1, :v)"), {"v": CURRENT_SCHEMA_VERSION})
                 conn.commit()
-        except Exception as e:
+        except Exception:
             print(f"--- [Migration] schema_info: {type(e).__name__}: {e} ---", flush=True)
 
 @login_manager.user_loader
@@ -616,16 +616,16 @@ def load_user(user_id):
     
 try:
     run_migrations()
-except Exception as e:
-    print(f"--- STARTUP ERROR: migrations failed: {e} ---", flush=True)
+except Exception:
+    print("--- STARTUP ERROR: migrations failed ---", flush=True)
     sys.exit(1)
 
 # clear any leftover lock files from crashes/restarts
 print("--- BOOT SEQUENCE: CLEARING LOCKS ---", flush=True)
 try:
     reset_stuck_locks()
-except Exception as e:
-    print(f"Error resetting locks: {e}", flush=True)
+except Exception:
+    print("Error resetting locks", flush=True)
 
 # GitHub stats cache.
 github_cache = {
@@ -651,7 +651,7 @@ def update_github_stats():
                 
             github_cache['last_updated'] = time.time()
             
-        except Exception as e:
+        except Exception:
             print(f"GitHub Update Error: {e}")
             
         time.sleep(3600)
@@ -746,7 +746,7 @@ def trigger_update_route():
 
         return Response(json.dumps({'status': 'error', 'message': 'Update failed to determine path.'}), mimetype='application/json')
 
-    except Exception as e:
+    except Exception:
         try:
             # Do not log full traceback or exception message (clear-text logging of sensitive information)
             write_log("error", "Updater", f"Update failed: {type(e).__name__}")
@@ -1194,7 +1194,7 @@ def review_history():
                             thumb = h.grandparentThumb or h.thumb
                         else:
                             thumb = h.thumb
-                    except Exception as e:
+                    except Exception:
                         write_log("warning", "App", f"Plex poster/thumb fetch failed ({type(e).__name__})")
 
                     candidates.append({
@@ -1218,9 +1218,8 @@ def review_history():
                 candidates = candidates[:limit]
                 set_history_cache(cache_key, candidates)
 
-                except Exception:
-                    write_log("error", "Review History", "Scan failed")
-    
+    except Exception:
+        write_log("error", "Review History", "Scan failed")
         flash("Scan failed. Please check your Plex connection and try again.", "error")
         return redirect(url_for('dashboard'))
 
@@ -1285,7 +1284,7 @@ def generate():
                     data = requests.get(url, timeout=10).json().get('results', [])
                     raw_candidates = [{'id': p['id'], 'title': p['title'], 'year': (p.get('release_date') or '')[:4], 'poster_path': p.get('poster_path'), 'overview': p.get('overview'), 'vote_average': p.get('vote_average'), 'media_type': 'movie'} for p in data]
                     random.shuffle(raw_candidates)
-                except Exception as e:
+                except Exception:
                     write_log("warning", "App", f"Recommend-from-trending page fetch failed ({type(e).__name__})")
                     break
             
@@ -1491,7 +1490,7 @@ def generate():
             if results:
                 set_tmdb_rec_cache(cache_key, results)
             return results
-        except Exception as e:
+        except Exception:
             write_log("warning", "Generate", f"Fetch seed {tmdb_id} failed: {type(e).__name__}: {e}")
             return []
 
@@ -1522,7 +1521,7 @@ def generate():
             if all_results:
                 raw_count = len(all_results)
                 used_last_resort = True
-        except Exception as e:
+        except Exception:
             write_log("warning", "Generate", f"Last-resort discover failed: {e}")
 
     if used_last_resort:
@@ -1869,7 +1868,7 @@ def settings():
                 s.ignored_users = ','.join(request.form.getlist('ignored_plex_users'))
             try:
                 commit_with_retry()
-            except Exception as e:
+            except Exception:
                 db.session.rollback()
                 write_log("error", "Settings", f"Save failed: {type(e).__name__}")
                 return jsonify({'status': 'error', 'message': 'Database save failed. Please try again.'}), 500
@@ -1898,7 +1897,7 @@ def settings():
                 s.ignored_libraries = ",".join(ignored_libs)
             try:
                 commit_with_retry()
-            except Exception as e:
+            except Exception:
                 db.session.rollback()
                 write_log("error", "Settings", f"Save failed: {type(e).__name__}")
                 return jsonify({'status': 'error', 'message': 'Database save failed. Please try again.'}), 500
@@ -1918,7 +1917,7 @@ def settings():
                 s.cloud_sync_owned_enabled = False
             try:
                 commit_with_retry()
-            except Exception as e:
+            except Exception:
                 db.session.rollback()
                 write_log("error", "Settings", f"Save failed: {type(e).__name__}")
                 return jsonify({'status': 'error', 'message': 'Database save failed. Please try again.'}), 500
@@ -1935,7 +1934,7 @@ def settings():
                 account = p.myPlexAccount()
                 plex_users = [u.title for u in account.users()]
                 if account.username: plex_users.insert(0, account.username)
-            except Exception as e:
+            except Exception:
                 write_log("warning", "Settings", f"Plex account users fetch failed ({type(e).__name__})")
                 # Fallback: Try to guess from connected clients/system
                 try:
@@ -2005,10 +2004,10 @@ def settings():
                         sock.connect(("8.8.8.8", 80))
                         server_host = sock.getsockname()[0]
                         sock.close()
-                    except OSError as e:
+                    except OSError:
                         write_log("warning", "Settings", f"Socket bind failed ({type(e).__name__})")
                         server_host = None
-    except Exception as e:
+    except Exception:
         write_log("warning", "Settings", f"Plex base URL detection failed ({type(e).__name__})")
         server_host = None
 
@@ -2097,7 +2096,7 @@ def scheduled_tasks():
         try:
             if datetime.datetime.now().hour == 4 and datetime.datetime.now().minute == 0:
                 prune_backups()
-        except Exception as e:
+        except Exception:
             print(f"Scheduler Error (Pruning): {e}")
             
         # grab Settings (needed for remaining tasks)
@@ -2107,7 +2106,7 @@ def scheduled_tasks():
             else:
                 s = Settings.query.first()
             if not s: return
-        except Exception as e:
+        except Exception:
             print(f"Scheduler Error (DB Access): {e}")
             return
         
@@ -2119,7 +2118,7 @@ def scheduled_tasks():
                 if not is_system_locked():
                     print("Scheduler: Starting Plex library sync...")
                     sync_plex_library(app)
-        except Exception as e:
+        except Exception:
             print(f"Scheduler Error (Plex Sync): {e}")
 
         # collection scheduling
@@ -2167,8 +2166,8 @@ def scheduled_tasks():
                         db.session.commit()
                 except Exception as task_err:
                     print(f"Scheduler Error (Collection {sch.preset_key}): {task_err}")
-        except Exception as e:
-            print(f"Scheduler Error (Collection Loop): {e}")
+        except Exception:
+            print("Scheduler Error (Collection Loop)")
 
         # Radarr/Sonarr scanner
         try:
@@ -2178,14 +2177,14 @@ def scheduled_tasks():
                     if not is_system_locked():
                         print("Scheduler: Starting Radarr/Sonarr Cache Refresh...")
                         threading.Thread(target=refresh_radarr_sonarr_cache, args=(app,)).start()
-        except Exception as e:
+        except Exception:
             print(f"Scheduler Error (Integrations): {e}")
 
         # Cloud polling
         try:
             if getattr(s, 'cloud_enabled', False) and getattr(s, 'cloud_api_key', None) and getattr(s, 'cloud_sync_owned_enabled', True):
                 CloudService.process_cloud_queue(app)
-        except Exception as e:
+        except Exception:
             print(f"Scheduler Error (Cloud Poll): {e}")
 
 scheduler.add_job(id='master_task', func=scheduled_tasks, trigger='interval', minutes=1)
@@ -2198,16 +2197,16 @@ try:
     csrf.exempt(api_bp)
     import api
     api.limiter = limiter
-except ImportError as e:
+except ImportError:
     import traceback
-    print(f"error: failed to import api module: {e}")
+    print("error: failed to import api module")
     traceback.print_exc()
     print(f"Current working directory: {os.getcwd()}")
     print(f"Files in current directory: {os.listdir('.')}")
     raise
-except Exception as e:
+except Exception:
     import traceback
-    print(f"error: api blueprint registration failed: {e}")
+    print("error: api blueprint registration failed")
     traceback.print_exc()
     raise
 
@@ -2448,9 +2447,9 @@ def deny_request(req_id):
                 if r.status_code != 200:
                     deny_cloud_ok = False
                     print(f"Warning: Cloud acknowledge (deny) returned {r.status_code}: {r.text[:200]}")
-        except Exception as e:
+        except Exception:
             deny_cloud_ok = False
-            print(f"Warning: Could not acknowledge deny to cloud: {e}")
+            print("Warning: Could not acknowledge deny to cloud")
 
     if not deny_cloud_ok:
         flash(f"Denied locally but could not update SeekAndWatch Cloud (check API key in Requests Settings). It may still show as Pending on the web.", "warning")
@@ -2498,10 +2497,10 @@ def delete_request(req_id):
                     except Exception:
                         err_msg = r.text[:80] if r.text else ''
                     cloud_delete_error_detail = f"{r.status_code}: {err_msg}" if err_msg else str(r.status_code)
-        except Exception as e:
+        except Exception:
             cloud_delete_ok = False
             cloud_delete_error_detail = "request failed (check network or API key)"
-            print(f"Warning: Could not delete from cloud: {e}")
+            print("Warning: Could not delete from cloud")
 
 
     # --- 2. RECORD DELETION SO WE DON'T RE-IMPORT FROM CLOUD ---
@@ -2525,9 +2524,9 @@ def delete_request(req_id):
                 flash(f"Deleted locally but could not remove from SeekAndWatch Cloud (check API key in Requests Settings or try again). It may still show as Pending on the web.", "warning")
         else:
             flash(f"Permanently deleted: {title}", "success")
-    except Exception as e:
+    except Exception:
         db.session.rollback()
-        flash(f"Error deleting request: {e}", "error")
+        flash("Error deleting request", "error")
         
     return redirect(url_for('requests_page'))
 from utils import CUSTOM_POSTER_DIR

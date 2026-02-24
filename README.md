@@ -106,7 +106,7 @@ Cloud is currently **in beta**. To request access: [r/SeekAndWatch](https://www.
 
 Full install and troubleshooting: [Wiki  - Install & Troubleshooting](https://github.com/softerfish/seekandwatch/wiki/Installation-and-Update-Guide).
 
-### Unraid (now available as of 1.5.4)
+### Unraid
 
 1. Open **Apps** in Unraid, search for **SeekAndWatch**, click **Install**.
 2. If you install via Unraid App Store, you must update only through the App Store (in-app one-click updater is disabled for that install).
