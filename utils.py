@@ -1292,9 +1292,9 @@ def validate_url(url):
             except ValueError:
                 continue
 
-            # block dangerous IPs
+            # allow loopback IPs for self-hosted usage
             if ip.is_loopback:
-                return False, f"Access to Loopback ({ip_str}) is denied."
+                continue
             
             if ip.is_link_local:
                 return False, f"Access to Link-Local ({ip_str}) is denied."

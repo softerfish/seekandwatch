@@ -212,15 +212,22 @@ def init_tunnel_services():
                     app.logger.info(f"Starting quick tunnel for user {settings.user_id}")
                     tunnel_url = tunnel_manager.start_quick_tunnel(settings.user_id)
                     
-                    if tunnel_url and settings.cloud_enabled and settings.cloud_api_key and settings.cloud_base_url:
+                    if tunnel_url and settings.cloud_enabled and settings.cloud_api_key:
+                        # Ensure we have a secret locally
+                        if not settings.cloud_webhook_secret:
+                            import secrets
+                            settings.cloud_webhook_secret = secrets.token_urlsafe(32)
+                            db.session.commit()
+
                         # re-register webhook with new URL
-                        app.logger.info(f"Re-registering webhook for quick tunnel: {tunnel_url}")
+                        cloud_base = get_cloud_base_url(settings)
+                        app.logger.info(f"Re-registering webhook for quick tunnel: {tunnel_url} with {cloud_base}")
                         tunnel_manager.register_webhook(
                             tunnel_url=tunnel_url,
                             api_key=settings.cloud_api_key,
-                            cloud_base_url=settings.cloud_base_url,
+                            cloud_base_url=cloud_base,
                             user_id=settings.user_id,
-                            webhook_secret=settings.cloud_webhook_secret or ''
+                            webhook_secret=settings.cloud_webhook_secret
                         )
                     continue
 
