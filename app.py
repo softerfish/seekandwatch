@@ -247,16 +247,16 @@ def init_tunnel_services():
                     # start tunnel with token (API-based approach)
                     tunnel_manager.start_tunnel_with_token(settings.user_id, credentials['tunnel_token'])
                     
-                except Exception as e:
-                    app.logger.error(f"Failed to start tunnel for user {settings.user_id}: {str(e)}")
+                except Exception:
+                    app.logger.error(f"Failed to start tunnel for user {settings.user_id}")
             
             # start health monitoring
             if enabled_users:
                 health_monitor.start()
                 app.logger.info("Tunnel health monitor started")
         
-    except Exception as e:
-        app.logger.error(f"Failed to initialize tunnel services: {str(e)}")
+    except Exception:
+        app.logger.error("Failed to initialize tunnel services")
 
 # initialize tunnel services after a short delay (let app finish starting up)
 import threading
@@ -1218,8 +1218,9 @@ def review_history():
                 candidates = candidates[:limit]
                 set_history_cache(cache_key, candidates)
 
-    except Exception as e:
-        write_log("error", "Review History", f"Scan failed: {str(e)}")
+                except Exception:
+                    write_log("error", "Review History", "Scan failed")
+    
         flash("Scan failed. Please check your Plex connection and try again.", "error")
         return redirect(url_for('dashboard'))
 
@@ -1230,14 +1231,14 @@ def review_history():
             p_url = f"https://api.themoviedb.org/3/watch/providers/{media_type}?api_key={s.tmdb_key}&watch_region={reg}"
             p_data = requests.get(p_url, timeout=10).json().get('results', [])
             providers[:] = sorted(p_data, key=lambda x: x.get('display_priority', 999))[:30]
-        except Exception as e:
-            write_log("warning", "Review History", f"Failed to fetch providers: {str(e)}")
+        except Exception:
+            write_log("warning", "Review History", "Failed to fetch providers")
     def _fetch_genres():
         try:
             g_url = f"https://api.themoviedb.org/3/genre/{media_type}/list?api_key={s.tmdb_key}"
             genres[:] = requests.get(g_url, timeout=10).json().get('genres', [])
-        except Exception as e:
-            write_log("warning", "Review History", f"Failed to fetch genres: {str(e)}")
+        except Exception:
+            write_log("warning", "Review History", "Failed to fetch genres")
     t_prov = threading.Thread(target=_fetch_providers)
     t_gen = threading.Thread(target=_fetch_genres)
     t_prov.start()
@@ -1700,8 +1701,8 @@ def generate():
 
     g_url = f"https://api.themoviedb.org/3/genre/{media_type}/list?api_key={s.tmdb_key}"
     try: genres = requests.get(g_url, timeout=10).json().get('genres', [])
-    except Exception as e:
-        write_log("warning", "Generate", f"Failed to fetch genres: {str(e)}")
+    except Exception:
+        write_log("warning", "Generate", "Failed to fetch genres")
         genres = []
 
     return render_template('results.html', 
@@ -1723,8 +1724,8 @@ def reset_alias_db():
         s.last_alias_scan = 0
         db.session.commit()
         return "<h1>Alias DB Wiped.</h1><p>The scanner will now restart from scratch. Please wait 10 minutes and check logs.</p><a href='" + url_for('dashboard') + "'>Back</a>"
-    except Exception as e:
-        write_log("error", "Wipe Database", f"Failed to wipe alias database: {str(e)}")
+    except Exception:
+        write_log("error", "Wipe Database", "Failed to wipe alias database")
         return "<h1>Error</h1><p>An error occurred while wiping the alias database.</p><a href='" + url_for('dashboard') + "'>Back</a>"
 
 def _get_plex_collection_titles(settings):
@@ -1952,12 +1953,8 @@ def settings():
         if s.plex_url and s.plex_token:
             p = PlexServer(s.plex_url, s.plex_token, timeout=3)
             plex_libraries = [sec.title for sec in p.library.sections() if sec.type in ['movie', 'show']]
-    except Exception as e:
-        err_str = str(e)
-        if "Connection refused" in err_str or "Max retries exceeded" in err_str or "plex.direct" in err_str:
-            write_log("warning", "Settings", f"Plex libraries unreachable (connection refused). Use Plex Local URL like http://YOUR_IP:32400 in Settings -> APIs if .plex.direct fails. ({err_str[:100]})")
-        else:
-            write_log("warning", "Settings", f"Failed to fetch Plex libraries: {err_str}")
+    except Exception:
+        write_log("warning", "Settings", "Failed to fetch Plex libraries. Please check your Plex URL and Token in Settings.")
     
     current_ignored_libs = (s.ignored_libraries or '').split(',')
 
@@ -2326,8 +2323,8 @@ def test_cloud_connection():
         return jsonify({'status': 'error', 'message': 'Connection timed out. Check your network.'}), 200
     except requests.exceptions.ConnectionError:
         return jsonify({'status': 'error', 'message': 'Could not reach SeekAndWatch Cloud. Check your network.'}), 200
-    except Exception as e:
-        write_log("warning", "Cloud Test", str(e))
+    except Exception:
+        write_log("warning", "Cloud Test", "Connection failed")
         return jsonify({'status': 'error', 'message': 'Connection failed. Check your network and try again.'}), 200
 
 

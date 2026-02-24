@@ -923,15 +923,9 @@ def sync_plex_library(app_obj):
             write_log("success", "Plex", msg, app_obj=app_obj)
             return True, msg
 
-        except Exception as e:
-            print(f"Plex library sync failed: {e}")
-            err_str = str(e)
-            if "Connection refused" in err_str or "Max retries exceeded" in err_str or "NewConnectionError" in err_str:
-                hint = "Plex server unreachable. Check that the server is running and the URL in Settings -> APIs (e.g. use http://YOUR_LOCAL_IP:32400 if .plex.direct fails from this host)."
-                write_log("error", "Plex", f"Sync failed: {hint} ({err_str[:120]})", app_obj=app_obj)
-            else:
-                write_log("error", "Plex", f"Sync failed: {err_str}", app_obj=app_obj)
+        except Exception:
             db.session.rollback()
+            write_log("error", "Plex", "Plex library sync failed. Please check your Plex URL and Token in Settings.")
             return False, "Sync failed. Check application logs."
         finally:
             remove_system_lock()
@@ -1236,8 +1230,8 @@ def restore_backup(filename):
         return True, "Restored"
     except zipfile.BadZipFile:
         return False, "Invalid or corrupted ZIP file"
-    except Exception as e:
-        write_log("error", "Restore Backup", f"Restore failed: {str(e)}")
+    except Exception:
+        write_log("error", "Restore Backup", "Restore failed")
         return False, "Backup restoration failed. Please check the logs for details."
 
 def prune_backups(days=7):
@@ -1319,8 +1313,8 @@ def validate_url(url):
         
         return True, "OK"
         
-    except Exception as e:
-        write_log("error", "URL Validation", f"Validation error: {str(e)}")
+    except Exception:
+        write_log("error", "URL Validation", "Validation error")
         return False, "Invalid URL format. Please check your configuration."
         
 def prefetch_tv_states_parallel(items, api_key):
@@ -1787,8 +1781,8 @@ def _arr_root_and_quality(base_url, headers):
         if quality_id is None:
             return None, None, "Could not get quality profile id."
         return root_path, quality_id, None
-    except Exception as e:
-        return None, None, str(e)
+    except Exception:
+        return None, None, "Request failed"
 
 def _arr_language_profile(base_url, headers):
     """Fetch first language profile id from Sonarr. Returns (language_id, None) or (None, error_msg)."""
@@ -1802,8 +1796,8 @@ def _arr_language_profile(base_url, headers):
         if lang_id is None:
             return None, "Could not get language profile id."
         return lang_id, None
-    except Exception as e:
-        return None, str(e)
+    except Exception:
+        return None, "Request failed"
 
 def send_to_radarr_sonarr(settings, media_type, tmdb_id):
     """Moved to services.IntegrationsService.IntegrationsService"""
