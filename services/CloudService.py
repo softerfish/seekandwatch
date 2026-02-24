@@ -108,6 +108,8 @@ class CloudService:
             handler = settings.cloud_movie_handler
         elif req_db.media_type == 'tv':
             handler = settings.cloud_tv_handler
+        
+        print(f"DEBUG: Using handler '{handler}' for {req_db.media_type}", flush=True)
 
         success = False
         try:
@@ -115,9 +117,10 @@ class CloudService:
                 success, msg = IntegrationsService.send_to_overseerr(settings, req_db.media_type, req_db.tmdb_id)
             else:
                 success, msg = IntegrationsService.send_to_radarr_sonarr(settings, req_db.media_type, req_db.tmdb_id)
-        except Exception:
-            log.error("Process item failed")
-            msg = "An error occurred during processing"
+        except Exception as e:
+            import traceback
+            log.error(f"Process item failed: {str(e)}\n{traceback.format_exc()}")
+            msg = f"An error occurred during processing: {str(e)}"
 
         if success:
             req_db.status = 'completed'
@@ -146,6 +149,8 @@ class CloudService:
                 except: pass
             db.session.commit()
             return True
+        
+        print(f"DEBUG: process_item failed: {msg}", flush=True)
         return False
 
     @staticmethod

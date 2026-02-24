@@ -40,10 +40,12 @@ class IntegrationsService:
     def send_to_overseerr(settings, media_type, tmdb_id, uid=None):
         """Sends a request to Overseerr/Jellyseerr."""
         if not settings.overseerr_url or not settings.overseerr_api_key:
+            print("DEBUG: Overseerr URL or API Key missing in settings", flush=True)
             return False, "Overseerr settings missing."
             
         headers = {'X-Api-Key': settings.overseerr_api_key, "Content-Type": "application/json"}
-        base_url = settings.overseerr_url.rstrip('/')
+        base_url = IntegrationsService._get_clean_base_url(settings.overseerr_url)
+        print(f"DEBUG: Overseerr Request - {media_type} {tmdb_id} to {base_url}", flush=True)
         
         try:
             payload = {
@@ -61,7 +63,8 @@ class IntegrationsService:
                         for s in data.get('seasons', []):
                             if s.get('seasonNumber', 0) > 0 and s.get('status', 0) != 3:
                                 seasons.append(s.get('seasonNumber'))
-                except:
+                except Exception as e:
+                    print(f"DEBUG: Overseerr TV metadata fetch failed: {str(e)}", flush=True)
                     if settings.tmdb_key:
                         try:
                             url = f"https://api.themoviedb.org/3/tv/{tmdb_id}?api_key={settings.tmdb_key}"
@@ -72,10 +75,13 @@ class IntegrationsService:
                         except: pass
 
                 if not seasons:
+                    print("DEBUG: Overseerr TV - No seasons found", flush=True)
                     return False, "No seasons available to request."
                 payload['seasons'] = seasons
 
+            print(f"DEBUG: Overseerr Payload: {payload}", flush=True)
             r = requests.post(f"{base_url}/api/v1/request", json=payload, headers=headers, timeout=10)
+            print(f"DEBUG: Overseerr Response Code: {r.status_code}", flush=True)
             if r.status_code in [200, 201]:
                 return True, "Success"
             elif r.status_code == 409:
@@ -87,13 +93,15 @@ class IntegrationsService:
             except:
                 error_msg = f"HTTP Error {r.status_code}"
 
+            print(f"DEBUG: Overseerr Error Message: {error_msg}", flush=True)
             error_lower = str(error_msg).lower()
             if "already available" in error_lower: return True, "Already available in your library."
             if "already requested" in error_lower: return True, "Already requested."
             
             return False, f"Overseerr: {error_msg}"
             
-        except Exception:
+        except Exception as e:
+            print(f"DEBUG: Overseerr Exception: {str(e)}", flush=True)
             write_log("error", "Overseerr", "Connection error")
             return False, "Connection error. Please check your Overseerr URL and API key."
 
@@ -101,7 +109,9 @@ class IntegrationsService:
     def _arr_root_and_quality(base_url, headers):
         """Fetch first root folder path and first quality profile id from *arr."""
         try:
+            print(f"DEBUG: Fetching root folders from {base_url}/api/v3/rootfolder", flush=True)
             rf_resp = requests.get(f"{base_url}/api/v3/rootfolder", headers=headers, timeout=5)
+            print(f"DEBUG: Root folder response code: {rf_resp.status_code}", flush=True)
             rf_data = rf_resp.json()
             rf_list = rf_data if isinstance(rf_data, list) else (rf_data.get('records', rf_data.get('data', [])) if isinstance(rf_data, dict) else [])
             if not rf_list or not isinstance(rf_list[0], dict):
@@ -109,7 +119,10 @@ class IntegrationsService:
             root_path = rf_list[0].get('path')
             if not root_path:
                 return None, None, "Could not get root folder path."
+            
+            print(f"DEBUG: Fetching quality profiles from {base_url}/api/v3/qualityprofile", flush=True)
             qp_resp = requests.get(f"{base_url}/api/v3/qualityprofile", headers=headers, timeout=5)
+            print(f"DEBUG: Quality profile response code: {qp_resp.status_code}", flush=True)
             qp_data = qp_resp.json()
             qp_list = qp_data if isinstance(qp_data, list) else (qp_data.get('records', qp_data.get('data', [])) if isinstance(qp_data, dict) else [])
             if not qp_list or not isinstance(qp_list[0], dict):
@@ -118,14 +131,17 @@ class IntegrationsService:
             if quality_id is None:
                 return None, None, "Could not get quality profile id."
             return root_path, quality_id, None
-        except Exception:
+        except Exception as e:
+            print(f"DEBUG: _arr_root_and_quality Exception: {str(e)}", flush=True)
             return None, None, "Request failed"
 
     @staticmethod
     def _arr_language_profile(base_url, headers):
         """Fetch first language profile id from Sonarr."""
         try:
+            print(f"DEBUG: Fetching language profiles from {base_url}/api/v3/languageprofile", flush=True)
             lp_resp = requests.get(f"{base_url}/api/v3/languageprofile", headers=headers, timeout=5)
+            print(f"DEBUG: Language profile response code: {lp_resp.status_code}", flush=True)
             lp_data = lp_resp.json()
             lp_list = lp_data if isinstance(lp_data, list) else (lp_data.get('records', lp_data.get('data', [])) if isinstance(lp_data, dict) else [])
             if not lp_list or not isinstance(lp_list[0], dict):
@@ -134,14 +150,16 @@ class IntegrationsService:
             if lang_id is None:
                 return None, "Could not get language profile id."
             return lang_id, None
-        except Exception:
+        except Exception as e:
+            print(f"DEBUG: _arr_language_profile Exception: {str(e)}", flush=True)
             return None, "Request failed"
 
     @staticmethod
     def _get_clean_base_url(url):
-        """Strip trailing slashes and /api or /api/v3 suffixes."""
+        """Strip trailing slashes and /api, /api/v1, or /api/v3 suffixes."""
         if not url: return ""
         u = url.rstrip('/')
+        if u.endswith('/api/v1'): u = u.rsplit('/api/v1', 1)[0]
         if u.endswith('/api/v3'): u = u.rsplit('/api/v3', 1)[0]
         if u.endswith('/api'): u = u.rsplit('/api', 1)[0]
         return u
@@ -149,11 +167,14 @@ class IntegrationsService:
     @staticmethod
     def send_to_radarr_sonarr(settings, media_type, tmdb_id):
         """Sends a request directly to Radarr or Sonarr."""
-        if not settings: return False, "Settings not configured."
+        if not settings:
+            print("DEBUG: Integrations settings not found in database", flush=True)
+            return False, "Settings not configured."
 
         try:
             if media_type == 'movie':
                 if not settings.radarr_url or not settings.radarr_api_key:
+                    print("DEBUG: Radarr URL or API Key missing in settings", flush=True)
                     return False, "Radarr not configured."
 
                 base_url = IntegrationsService._get_clean_base_url(settings.radarr_url)
@@ -164,12 +185,14 @@ class IntegrationsService:
 
                 # Lookup movie in Radarr first to get full metadata
                 lookup_url = f"{base_url}/api/v3/movie/lookup?term=tmdb:{tmdb_id}"
+                print(f"DEBUG: Radarr Lookup URL: {lookup_url}", flush=True)
                 lookup = requests.get(lookup_url, headers=headers, timeout=10)
                 
                 if lookup.status_code == 200:
                     results = lookup.json()
                     if results and len(results) > 0:
                         movie_data = results[0]
+                        print(f"DEBUG: Radarr found metadata for '{movie_data.get('title')}'", flush=True)
                         if movie_data.get('id'):
                             return True, "Already in Radarr"
                         
@@ -193,8 +216,10 @@ class IntegrationsService:
                                 err_data = resp.json()
                                 msg = err_data[0].get('errorMessage') if isinstance(err_data, list) else err_data.get('message')
                             except: msg = resp.text[:100]
+                            print(f"DEBUG: Radarr Add Failed: {msg}", flush=True)
                             return False, f"Radarr Error: {msg or resp.status_code}"
                 
+                print(f"DEBUG: Radarr Lookup failed with status {lookup.status_code}", flush=True)
                 return False, "Could not find movie metadata in Radarr lookup."
 
             elif media_type == 'tv':
@@ -211,12 +236,14 @@ class IntegrationsService:
                 if lang_err: return False, f"Sonarr: {lang_err}"
 
                 lookup_url = f"{base_url}/api/v3/series/lookup?term=tmdb:{tmdb_id}"
+                print(f"DEBUG: Sonarr Lookup URL: {lookup_url}", flush=True)
                 lookup = requests.get(lookup_url, headers=headers, timeout=10)
                 
                 if lookup.status_code == 200:
                     results = lookup.json()
                     if results and len(results) > 0:
                         series_data = results[0]
+                        print(f"DEBUG: Sonarr found metadata for '{series_data.get('title')}'", flush=True)
                         if series_data.get('id'):
                             return True, "Already in Sonarr"
                             
@@ -241,13 +268,17 @@ class IntegrationsService:
                                 err_data = resp.json()
                                 msg = err_data[0].get('errorMessage') if isinstance(err_data, list) else err_data.get('message')
                             except: msg = resp.text[:100]
+                            print(f"DEBUG: Sonarr Add Failed: {msg}", flush=True)
                             return False, f"Sonarr Error: {msg or resp.status_code}"
 
+                print(f"DEBUG: Sonarr Lookup failed with status {lookup.status_code}", flush=True)
                 return False, "Could not find show in Sonarr lookup."
                     
-        except Exception:
+        except Exception as e:
+            print(f"DEBUG: Integrations Exception: {str(e)}", flush=True)
             return False, "Integrations Error: Request failed"
         
+        print(f"DEBUG: Unknown Media Type: {media_type}", flush=True)
         return False, "Unknown Media Type"
 
     @staticmethod
