@@ -333,7 +333,7 @@ function copyRecoveryCodes() {
                     <label class="input-label">Plex Token {% if settings.plex_token %}<span class="key-saved-badge">Saved</span>{% endif %}</label>
                     <div style="display: flex; gap: 10px;">
                         <div class="password-wrapper">
-                            <input type="password" id="plex_token" name="plex_token" value="" placeholder="{% if settings.plex_token %}••••••••{% else %}Paste token{% endif %}" {% if settings.plex_token %}data-key-set="1"{% endif %} autocomplete="off" style="width: 100%; padding-right: 40px;">
+                            <input type="password" id="plex_token" name="plex_token" value="{{ settings.plex_token or '' }}" placeholder="{% if settings.plex_token %}••••••••{% else %}Paste token{% endif %}" {% if settings.plex_token %}data-key-set="1"{% endif %} autocomplete="off" style="width: 100%; padding-right: 40px;">
                             {% if settings.plex_token %}<input type="hidden" name="plex_token_unchanged" value="1" id="plex_token_unchanged_h">{% endif %}
                             <button type="button" class="toggle-pass" onclick="toggleVisibility('plex_token', this)">👁️</button>
                             <button type="button" class="clear-field-btn" onclick="clearPasswordField('plex_token', 'plex_token_unchanged_h')" title="Clear field (use if backspace doesn't work)">Clear</button>
@@ -399,7 +399,7 @@ function copyRecoveryCodes() {
                     </details>
                     <div class="test-row">
                         <div class="password-wrapper">
-                            <input type="password" id="tmdb_key" name="tmdb_key" value="" placeholder="{% if settings.tmdb_key %}••••••••{% else %}Paste API key{% endif %}" {% if settings.tmdb_key %}data-key-set="1"{% endif %} autocomplete="new-password">
+                            <input type="password" id="tmdb_key" name="tmdb_key" value="{{ settings.tmdb_key or '' }}" placeholder="{% if settings.tmdb_key %}••••••••{% else %}Paste API key{% endif %}" {% if settings.tmdb_key %}data-key-set="1"{% endif %} autocomplete="new-password">
                             {% if settings.tmdb_key %}<input type="hidden" name="tmdb_key_unchanged" value="1" id="tmdb_key_unchanged_h">{% endif %}
                             <button type="button" class="toggle-pass" onclick="toggleVisibility('tmdb_key', this)">👁️</button>
                             <button type="button" class="clear-field-btn" onclick="clearPasswordField('tmdb_key', 'tmdb_key_unchanged_h')" title="Clear field (use if backspace doesn't work)">Clear</button>
@@ -421,7 +421,7 @@ function copyRecoveryCodes() {
                     </details>
                     <div class="test-row">
                         <div class="password-wrapper">
-                            <input type="password" id="omdb_key" name="omdb_key" value="" placeholder="{% if settings.omdb_key %}••••••••{% else %}xxxxxx{% endif %}" {% if settings.omdb_key %}data-key-set="1"{% endif %} autocomplete="off">
+                            <input type="password" id="omdb_key" name="omdb_key" value="{{ settings.omdb_key or '' }}" placeholder="{% if settings.omdb_key %}••••••••{% else %}xxxxxx{% endif %}" {% if settings.omdb_key %}data-key-set="1"{% endif %} autocomplete="off">
                             {% if settings.omdb_key %}<input type="hidden" name="omdb_key_unchanged" value="1" id="omdb_key_unchanged_h">{% endif %}
                             <button type="button" class="toggle-pass" onclick="toggleVisibility('omdb_key', this)">👁️</button>
                             <button type="button" class="clear-field-btn" onclick="clearPasswordField('omdb_key', 'omdb_key_unchanged_h')" title="Clear field (use if backspace doesn't work)">Clear</button>
@@ -456,7 +456,7 @@ function copyRecoveryCodes() {
                         </details>
                         <div style="display: flex; gap: 10px;">
                             <div class="password-wrapper">
-                                <input type="password" id="overseerr_api_key" name="overseerr_api_key" value="" placeholder="{% if settings.overseerr_api_key %}••••••••{% else %}Paste API key{% endif %}" {% if settings.overseerr_api_key %}data-key-set="1"{% endif %} autocomplete="new-password" style="width: 100%; padding-right: 40px;">
+                                <input type="password" id="overseerr_api_key" name="overseerr_api_key" value="{{ settings.overseerr_api_key or '' }}" placeholder="{% if settings.overseerr_api_key %}••••••••{% else %}Paste API key{% endif %}" {% if settings.overseerr_api_key %}data-key-set="1"{% endif %} autocomplete="new-password" style="width: 100%; padding-right: 40px;">
                                 {% if settings.overseerr_api_key %}<input type="hidden" name="overseerr_api_key_unchanged" value="1" id="overseerr_api_key_unchanged_h">{% endif %}
                                 <button type="button" class="toggle-pass" onclick="toggleVisibility('overseerr_api_key', this)">👁️</button>
                                 <button type="button" class="clear-field-btn" onclick="clearPasswordField('overseerr_api_key', 'overseerr_api_key_unchanged_h')" title="Clear field (use if backspace doesn't work)">Clear</button>
@@ -483,7 +483,7 @@ function copyRecoveryCodes() {
                         </details>
                         <div style="display: flex; gap: 10px;">
                             <div class="password-wrapper">
-                                <input type="password" id="tautulli_api_key" name="tautulli_api_key" value="" placeholder="{% if settings.tautulli_api_key %}••••••••{% else %}Paste API key{% endif %}" {% if settings.tautulli_api_key %}data-key-set="1"{% endif %} autocomplete="off" style="width: 100%; padding-right: 40px;">
+                                <input type="password" id="tautulli_api_key" name="tautulli_api_key" value="{{ settings.tautulli_api_key or '' }}" placeholder="{% if settings.tautulli_api_key %}••••••••{% else %}Paste API key{% endif %}" {% if settings.tautulli_api_key %}data-key-set="1"{% endif %} autocomplete="off" style="width: 100%; padding-right: 40px;">
                                 {% if settings.tautulli_api_key %}<input type="hidden" name="tautulli_api_key_unchanged" value="1" id="tautulli_api_key_unchanged_h">{% endif %}
                                 <button type="button" class="toggle-pass" onclick="toggleVisibility('tautulli_api_key', this)">👁️</button>
                                 <button type="button" class="clear-field-btn" onclick="clearPasswordField('tautulli_api_key', 'tautulli_api_key_unchanged_h')" title="Clear field (use if backspace doesn't work)">Clear</button>
@@ -513,7 +513,7 @@ function copyRecoveryCodes() {
                         </details>
                         <div style="display: flex; gap: 10px;">
                             <div class="password-wrapper">
-                                <input type="password" id="radarr_api_key" name="radarr_api_key" value="" placeholder="{% if settings.radarr_api_key %}••••••••{% else %}Paste API key{% endif %}" {% if settings.radarr_api_key %}data-key-set="1"{% endif %} autocomplete="new-password" style="width: 100%; padding-right: 40px;">
+                                <input type="password" id="radarr_api_key" name="radarr_api_key" value="{{ settings.radarr_api_key or '' }}" placeholder="{% if settings.radarr_api_key %}••••••••{% else %}Paste API key{% endif %}" {% if settings.radarr_api_key %}data-key-set="1"{% endif %} autocomplete="new-password" style="width: 100%; padding-right: 40px;">
                                 {% if settings.radarr_api_key %}<input type="hidden" name="radarr_api_key_unchanged" value="1" id="radarr_api_key_unchanged_h">{% endif %}
                                 <button type="button" class="toggle-pass" onclick="toggleVisibility('radarr_api_key', this)">👁️</button>
                                 <button type="button" class="clear-field-btn" onclick="clearPasswordField('radarr_api_key', 'radarr_api_key_unchanged_h')" title="Clear field (use if backspace doesn't work)">Clear</button>
@@ -540,7 +540,7 @@ function copyRecoveryCodes() {
                         </details>
                         <div style="display: flex; gap: 10px;">
                             <div class="password-wrapper">
-                                <input type="password" id="sonarr_api_key" name="sonarr_api_key" value="" placeholder="{% if settings.sonarr_api_key %}••••••••{% else %}Paste API key{% endif %}" {% if settings.sonarr_api_key %}data-key-set="1"{% endif %} autocomplete="off" style="width: 100%; padding-right: 40px;">
+                                <input type="password" id="sonarr_api_key" name="sonarr_api_key" value="{{ settings.sonarr_api_key or '' }}" placeholder="{% if settings.sonarr_api_key %}••••••••{% else %}Paste API key{% endif %}" {% if settings.sonarr_api_key %}data-key-set="1"{% endif %} autocomplete="off" style="width: 100%; padding-right: 40px;">
                                 {% if settings.sonarr_api_key %}<input type="hidden" name="sonarr_api_key_unchanged" value="1" id="sonarr_api_key_unchanged_h">{% endif %}
                                 <button type="button" class="toggle-pass" onclick="toggleVisibility('sonarr_api_key', this)">👁️</button>
                                 <button type="button" class="clear-field-btn" onclick="clearPasswordField('sonarr_api_key', 'sonarr_api_key_unchanged_h')" title="Clear field (use if backspace doesn't work)">Clear</button>

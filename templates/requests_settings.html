@@ -214,13 +214,16 @@
                         <div class="d-flex gap-2 align-items-center flex-wrap">
                             <div class="input-group" style="max-width: 400px;">
                                 <input type="password" class="form-control form-control-sm" name="cloud_api_key" id="cloudApiKey"
-                                       value="" placeholder="{% if settings.cloud_api_key %}••••••••{% else %}Paste your key here (e.g. 8f9a...){% endif %}"
+                                       value="{{ settings.cloud_api_key or '' }}" placeholder="{% if settings.cloud_api_key %}••••••••{% else %}Paste your key here (e.g. 8f9a...){% endif %}"
                                        {% if settings.cloud_api_key %}data-key-set="1"{% endif %} autocomplete="off">
                                 <button type="button" class="btn btn-sm btn-outline-secondary" onclick="togglePasswordVisibility('cloudApiKey', this)" title="Show/hide key">
                                     <i class="fas fa-eye"></i>
                                 </button>
                             </div>
                             <button type="button" class="btn btn-sm btn-outline-info" id="cloudTestBtn" onclick="testCloudConnection()">Test key</button>
+                            {% if settings.cloud_api_key %}
+                            <button type="button" class="btn btn-sm btn-outline-danger" onclick="clearCloudKey()">Clear</button>
+                            {% endif %}
                             <span id="cloudTestResult" class="small ms-2" style="display: none;"></span>
                         </div>
                         {% if settings.cloud_api_key %}<input type="hidden" name="cloud_api_key_unchanged" value="1" id="cloudApiKey_unchanged_h">{% endif %}
@@ -390,10 +393,37 @@ function testCloudConnection() {
         });
 }
 
+function clearCloudKey() {
+    if (!confirm("Are you sure you want to clear the saved API key? This will disconnect your app from SeekAndWatch Cloud.")) return;
+    const input = document.getElementById('cloudApiKey');
+    const hidden = document.getElementById('cloudApiKey_unchanged_h');
+    const badge = document.querySelector('.key-saved-badge') || document.querySelector('.badge.bg-success');
+    
+    input.value = '';
+    input.placeholder = 'Paste your key here (e.g. 8f9a...)';
+    input.removeAttribute('data-key-set');
+    if (hidden) hidden.remove();
+    if (badge) badge.remove();
+    
+    // Auto-save the empty state
+    input.form.submit();
+}
+
 function startPairing() {
     const btn = document.getElementById('btnPairStart');
     const status = document.getElementById('pairingStatus');
     
+    // Open a blank window immediately to satisfy popup blockers
+    const popup = window.open('about:blank', 'seekandwatch_pair', 'width=600,height=700');
+    if (!popup || popup.closed || typeof popup.closed == 'undefined') {
+        status.className = 'mt-2 small text-warning';
+        status.textContent = 'Popup blocked! Please allow popups for this site and try again.';
+        btn.disabled = false;
+        return;
+    }
+    
+    popup.document.write('<html><body style="background:#1a1a2e; color:white; display:flex; align-items:center; justify-content:center; height:100vh; font-family:sans-serif;"><div><h2>Connecting...</h2><p>Please wait while we establish a secure handshake.</p></div></body></html>');
+
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Starting Tunnel...';
     status.className = 'mt-2 small text-info';
@@ -410,11 +440,11 @@ function startPairing() {
     .then(r => r.json())
     .then(data => {
         if (data.success) {
-            status.textContent = 'Connection established! Opening Cloud Link...';
+            status.innerHTML = 'Connection established! If the window didn\'t open, <a href="' + data.pair_url + '" target="_blank" class="text-white text-decoration-underline">click here to link manually</a>.';
             btn.innerHTML = '<i class="fas fa-check me-2"></i>Handshake Ready';
             
-            // Open the pair URL in a new window
-            window.open(data.pair_url, 'seekandwatch_pair', 'width=600,height=700');
+            // Update the already-open popup
+            popup.location.href = data.pair_url;
             
             // Start polling for success
             const checkPair = setInterval(() => {
@@ -433,6 +463,7 @@ function startPairing() {
                 });
             }, 3000);
         } else {
+            popup.close();
             status.className = 'mt-2 small text-danger';
             status.textContent = 'Pairing failed: ' + (data.error || 'Unknown error');
             btn.disabled = false;
@@ -440,6 +471,7 @@ function startPairing() {
         }
     })
     .catch(err => {
+        popup.close();
         status.className = 'mt-2 small text-danger';
         status.textContent = 'Request failed. Please check your logs.';
         btn.disabled = false;
