@@ -31,8 +31,22 @@ def pair_start():
         manager = current_app.tunnel_manager
         tunnel_url = settings.tunnel_url
         
-        if not manager._is_process_running() or not tunnel_url:
-            current_app.logger.info("Starting tunnel for pairing...")
+        # Validation: only accept public URLs for pairing
+        is_public = False
+        if tunnel_url:
+            # must be https and NOT a local IP pattern
+            local_ip_patterns = [r'^https?://127\.', r'^https?://192\.168\.', r'^https?://10\.', r'^https?://172\.(1[6-9]|2[0-9]|3[0-1])\.', r'^https?://localhost']
+            import re
+            is_local = any(re.match(p, tunnel_url) for p in local_ip_patterns)
+            # must contain a dot (domain) and not be local
+            is_public = '.' in tunnel_url and not is_local
+
+        if not manager._is_process_running() or not tunnel_url or not is_public:
+            current_app.logger.info("Starting tunnel for pairing (no valid public URL found)...")
+            # reset stale local URL if it was there
+            if not is_public:
+                tunnel_url = None
+                
             if hasattr(settings, 'cloudflare_api_token') and settings.cloudflare_api_token:
                 # start persistent if they have a token
                 creds = manager._decrypt_credentials(settings.tunnel_credentials_encrypted)
@@ -103,6 +117,21 @@ def pair_receive_key():
         db.session.commit()
         
         current_app.logger.info(f"Successfully paired with cloud for user {settings.user_id}")
+        
+        # Register webhook with cloud now that we have an API key
+        if settings.tunnel_url:
+            manager = current_app.tunnel_manager
+            cloud_base = settings.cloud_base_url or CLOUD_URL
+            import threading
+            def _register_bg(app_context, tunnel_url, api_key, cloud_base, user_id, secret):
+                with app_context:
+                    manager.register_webhook(tunnel_url, api_key, cloud_base, user_id, secret)
+                    
+            threading.Thread(
+                target=_register_bg,
+                args=(current_app.app_context(), settings.tunnel_url, api_key, cloud_base, settings.user_id, settings.cloud_webhook_secret or ''),
+                daemon=True
+            ).start()
         
         return jsonify({'success': True, 'message': 'Pairing successful! Local app is now connected.'})
         
