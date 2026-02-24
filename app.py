@@ -122,7 +122,7 @@ from sqlalchemy import text
 
 # basic app setup stuff
 
-VERSION = "1.6.1"
+VERSION = "1.6.2"
 
 UPDATE_CACHE = {
     'version': None,

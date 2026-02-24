@@ -100,8 +100,8 @@ if [ "$IS_APP_DIR" = "true" ]; then
         echo "   Updating app files from Docker image..."
         
         # List of files/directories to update (excludes user data like db, backups, etc.)
-        UPDATE_FILES="app.py utils.py models.py presets.py auth_decorators.py cloud_worker.py requirements.txt"
-        UPDATE_DIRS="api templates static images"
+        UPDATE_FILES="app.py config.py utils.py models.py presets.py auth_decorators.py requirements.txt"
+        UPDATE_DIRS="api services tunnel templates static images"
         
         # Backup current version (just in case)
         if [ ! -d "/config/.version_backups" ]; then
@@ -145,10 +145,16 @@ if [ "$IS_APP_DIR" = "true" ]; then
         echo "   Keeping installed version. (You may have used in-app updates)"
     fi
     
+    # FORCE-FIX: Ensure config.py has required constants for v1.6.1+
+    if [ -f "/config/config.py" ] && ! grep -q "POLL_INTERVAL_MIN" "/config/config.py"; then
+        echo "   FORCE-FIX: config.py is missing required constants. Updating from image..."
+        cp -f "/app/config.py" "/config/config.py"
+    fi
+    
     # Check if there's a nested app structure and flatten it recursively
     # IMPORTANT: Detect version mismatches to avoid mixing incompatible files
-    # api = package directory (api/ with __init__.py), not api.py
-    CRITICAL_FILES="api utils.py models.py presets.py app.py auth_decorators.py"
+    # api, services, tunnel = package directories, others are files
+    CRITICAL_FILES="api services tunnel utils.py models.py presets.py app.py config.py auth_decorators.py"
     
     # Function to extract version from app.py
     get_version_from_app() {
@@ -161,13 +167,13 @@ if [ "$IS_APP_DIR" = "true" ]; then
     }
     
     # Function to check if a directory structure is "complete" (has all critical files)
-    # api = package dir (api/ and api/__init__.py), others are files
+    # api, services, tunnel = package dirs (with __init__.py), others are files
     is_complete_structure() {
         local dir="$1"
         local missing=0
         for crit_file in $CRITICAL_FILES; do
-            if [ "$crit_file" = "api" ]; then
-                [ -d "$dir/api" ] && [ -f "$dir/api/__init__.py" ] || missing=$((missing + 1))
+            if [ "$crit_file" = "api" ] || [ "$crit_file" = "services" ] || [ "$crit_file" = "tunnel" ]; then
+                [ -d "$dir/$crit_file" ] && [ -f "$dir/$crit_file/__init__.py" ] || missing=$((missing + 1))
             elif [ ! -f "$dir/$crit_file" ]; then
                 missing=$((missing + 1))
             fi
@@ -404,7 +410,7 @@ if [ "$IS_APP_DIR" != "true" ]; then
 
         # Detect and fix nested app/app structure (recursively handles any depth)
         # IMPORTANT: Detect version mismatches to avoid mixing incompatible files
-        CRITICAL_FILES="api utils.py models.py presets.py app.py auth_decorators.py"
+        CRITICAL_FILES="api services tunnel utils.py models.py presets.py app.py config.py auth_decorators.py"
         
         # Function to extract version from app.py
         get_version_from_app() {
@@ -417,13 +423,13 @@ if [ "$IS_APP_DIR" != "true" ]; then
             fi
         }
         
-        # Function to check if a directory structure is "complete" (api = package dir)
+        # Function to check if a directory structure is "complete" (api, services, tunnel = package dirs)
         is_complete_structure() {
             local dir="$1"
             local missing=0
             for crit_file in $CRITICAL_FILES; do
-                if [ "$crit_file" = "api" ]; then
-                    [ -d "$dir/api" ] && [ -f "$dir/api/__init__.py" ] || missing=$((missing + 1))
+                if [ "$crit_file" = "api" ] || [ "$crit_file" = "services" ] || [ "$crit_file" = "tunnel" ]; then
+                    [ -d "$dir/$crit_file" ] && [ -f "$dir/$crit_file/__init__.py" ] || missing=$((missing + 1))
                 elif [ ! -f "$dir/$crit_file" ]; then
                     missing=$((missing + 1))
                 fi
@@ -617,7 +623,7 @@ if [ "$IS_APP_DIR" != "true" ]; then
 
         echo "⚠️ Legacy layout detected. Save a backup ZIP to your desktop before continuing."
         # Move old root app files into the live app folder, comparing timestamps
-        CRITICAL_FILES="api utils.py models.py presets.py app.py auth_decorators.py"
+        CRITICAL_FILES="api services tunnel utils.py models.py presets.py app.py config.py auth_decorators.py"
         if [ -d "/config/app" ]; then
             for path in api app.py utils.py models.py presets.py auth_decorators.py requirements.txt README.md docker-compose.yml Dockerfile entrypoint.sh icon.png templates static images .gitignore; do
                 if [ -e "/config/$path" ]; then
@@ -658,7 +664,7 @@ fi
 # Legacy: Move files from /config root to /config/app (only for old installations)
 # This is kept for backward compatibility but shouldn't be needed anymore
 # Skip this if /config IS the app directory (normal case now)
-CRITICAL_FILES="api utils.py models.py presets.py app.py auth_decorators.py"
+CRITICAL_FILES="api services tunnel utils.py models.py presets.py app.py config.py auth_decorators.py"
 if [ "$IS_APP_DIR" != "true" ] && [ -d "/config/app" ]; then
     for path in api app.py utils.py models.py presets.py auth_decorators.py requirements.txt README.md docker-compose.yml Dockerfile entrypoint.sh icon.png templates static images .gitignore; do
         if [ -e "/config/$path" ]; then
@@ -695,7 +701,7 @@ fi
 # BUT: Never delete critical files from CLEANUP_ROOT - they might be backups
 # Skip this if /config IS the app directory
 if [ "$IS_APP_DIR" != "true" ] && [ -n "$CLEANUP_ROOT" ] && [ -d "$CLEANUP_ROOT" ]; then
-    CRITICAL_FILES="api utils.py models.py presets.py app.py auth_decorators.py"
+    CRITICAL_FILES="api services tunnel utils.py models.py presets.py app.py config.py auth_decorators.py"
     for path in api app.py utils.py models.py presets.py auth_decorators.py requirements.txt README.md docker-compose.yml Dockerfile entrypoint.sh icon.png templates static images .gitignore; do
         if [ -e "$CLEANUP_ROOT/$path" ]; then
             # Check if this is a critical file - don't delete those
@@ -726,17 +732,17 @@ if [ -d "$APP_DIR" ]; then
     cp -an /app/. "$APP_DIR/" 2>/dev/null || true
     
     # Ensure critical files exist and are valid - ALWAYS ensure they're good
-    # api = package directory (api/ with __init__.py), others are files
+    # api, services, tunnel = package directories (with __init__.py), others are files
     # Priority: 1) Image, 2) /config root backup (if APP_DIR is not /config), 3) existing APP_DIR (if valid)
-    CRITICAL_FILES="api utils.py models.py presets.py app.py auth_decorators.py"
+    CRITICAL_FILES="api services tunnel utils.py models.py presets.py app.py config.py auth_decorators.py"
     for file in $CRITICAL_FILES; do
         file_needs_restore=false
         
-        if [ "$file" = "api" ]; then
-            # api = package directory
-            if [ ! -d "$APP_DIR/api" ] || [ ! -f "$APP_DIR/api/__init__.py" ]; then
+        if [ "$file" = "api" ] || [ "$file" = "services" ] || [ "$file" = "tunnel" ]; then
+            # Directory package
+            if [ ! -d "$APP_DIR/$file" ] || [ ! -f "$APP_DIR/$file/__init__.py" ]; then
                 file_needs_restore=true
-                echo "WARNING: api package (api/ with __init__.py) missing from $APP_DIR"
+                echo "WARNING: $file package ($file/ with __init__.py) missing from $APP_DIR"
             fi
         else
             # Regular file
@@ -757,19 +763,19 @@ if [ -d "$APP_DIR" ]; then
         
         # Restore if needed
         if [ "$file_needs_restore" = "true" ]; then
-            if [ "$file" = "api" ]; then
-                if [ -d "/app/api" ] && [ -f "/app/api/__init__.py" ]; then
-                    echo "Restoring api package from Docker image to $APP_DIR..."
-                    cp -r "/app/api" "$APP_DIR/"
-                elif [ "$APP_DIR" != "/config" ] && [ -d "/config/api" ]; then
-                    echo "Restoring api package from /config root backup to $APP_DIR..."
-                    cp -r "/config/api" "$APP_DIR/"
+            if [ "$file" = "api" ] || [ "$file" = "services" ] || [ "$file" = "tunnel" ]; then
+                if [ -d "/app/$file" ] && [ -f "/app/$file/__init__.py" ]; then
+                    echo "Restoring $file package from Docker image to $APP_DIR..."
+                    cp -r "/app/$file" "$APP_DIR/"
+                elif [ "$APP_DIR" != "/config" ] && [ -d "/config/$file" ]; then
+                    echo "Restoring $file package from /config root backup to $APP_DIR..."
+                    cp -r "/config/$file" "$APP_DIR/"
                 else
-                    echo "ERROR: api package not found in Docker image!"
-                    echo "       This package is required (api/ with __init__.py). Please ensure the api/ directory is in your source when building the Docker image."
+                    echo "ERROR: $file package not found in Docker image!"
+                    echo "       This package is required ($file/ with __init__.py). Please ensure the $file/ directory is in your source when building the Docker image."
                     echo "       Current APP_DIR: $APP_DIR"
                     echo ""
-                    echo "CRITICAL: Missing required api package. The application cannot start without it."
+                    echo "CRITICAL: Missing required $file package. The application cannot start without it."
                     exit 1
                 fi
             elif [ -f "/app/$file" ]; then
@@ -795,8 +801,8 @@ if [ -d "$APP_DIR" ]; then
     # Final verification - ensure all critical files/dirs exist before starting
     missing_critical=false
     for file in $CRITICAL_FILES; do
-        if [ "$file" = "api" ]; then
-            [ -d "$APP_DIR/api" ] && [ -f "$APP_DIR/api/__init__.py" ] || { echo "ERROR: api package still missing or invalid after restoration!"; missing_critical=true; }
+        if [ "$file" = "api" ] || [ "$file" = "services" ] || [ "$file" = "tunnel" ]; then
+            [ -d "$APP_DIR/$file" ] && [ -f "$APP_DIR/$file/__init__.py" ] || { echo "ERROR: $file package still missing or invalid after restoration!"; missing_critical=true; }
         elif [ ! -f "$APP_DIR/$file" ] || [ ! -s "$APP_DIR/$file" ]; then
             echo "ERROR: Critical file $file is still missing or empty after restoration attempts!"
             missing_critical=true
