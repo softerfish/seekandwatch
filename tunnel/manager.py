@@ -972,8 +972,8 @@ class TunnelManager:
             'ingress': [
                 {
                     'hostname': tunnel_url.replace('https://', '').replace('http://', ''),
-                    'service': 'http://localhost:5000',
-                    'path': '/webhook'
+                    'service': 'http://127.0.0.1:5000',
+                    'path': '/api/webhook'
                 },
                 {
                     'service': 'http_status:404'
@@ -1359,8 +1359,8 @@ class TunnelManager:
             self.app.logger.info(f"Tunnel created successfully: {tunnel_id}")
             
             # configure ingress rules via API (route all traffic to local app)
-            # get the local URL to route to (defaults to localhost:5000)
-            local_url = os.environ.get('TUNNEL_LOCAL_URL', 'http://localhost:5000')
+            # get the local URL to route to (defaults to 127.0.0.1:5000)
+            local_url = os.environ.get('TUNNEL_LOCAL_URL', 'http://127.0.0.1:5000')
             
             self.app.logger.info(f"Configuring tunnel ingress to route to {local_url}")
             
@@ -1542,8 +1542,8 @@ class TunnelManager:
                 return None
             
             binary_path = self.binary_manager.get_binary_path()
-            # Use 0.0.0.0 to ensure it hits the Gunicorn server on all interfaces
-            local_url = os.environ.get('TUNNEL_LOCAL_URL', 'http://0.0.0.0:5000')
+            # Use 127.0.0.1 to ensure it hits the local server reliably
+            local_url = os.environ.get('TUNNEL_LOCAL_URL', 'http://127.0.0.1:5000')
             
             self.app.logger.info(f"Starting Cloudflare Quick Tunnel for user {user_id} pointing to {local_url}")
             

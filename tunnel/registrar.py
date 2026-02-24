@@ -79,13 +79,16 @@ class WebhookRegistrar:
         try:
             # construct webhook URL
             webhook_url = self._construct_webhook_url(tunnel_url)
+            print(f"DEBUG: Registering webhook URL: {webhook_url} with cloud {self.cloud_base_url}", flush=True)
             
             # validate URL format
             is_valid, error_msg = self._validate_webhook_url(webhook_url)
             if not is_valid:
+                print(f"DEBUG: Webhook URL validation failed: {error_msg}", flush=True)
                 return False, error_msg
             
             # send registration request to cloud app
+            print(f"DEBUG: Sending registration request to {self.cloud_base_url}/api/save_webhook.php", flush=True)
             response = requests.post(
                 f"{self.cloud_base_url}/api/save_webhook.php",
                 json={
@@ -99,10 +102,13 @@ class WebhookRegistrar:
                 timeout=10
             )
             
+            print(f"DEBUG: Cloud app registration response code: {response.status_code}", flush=True)
             # handle response
             if response.status_code == 200:
+                print("DEBUG: Webhook registration successful", flush=True)
                 return True, "Webhook registered successfully"
             elif response.status_code == 401:
+                print("DEBUG: Webhook registration failed: 401 Unauthorized", flush=True)
                 return False, "Authentication failed, check your API key"
             elif response.status_code == 400:
                 try:

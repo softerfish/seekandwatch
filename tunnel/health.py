@@ -166,15 +166,23 @@ class HealthMonitor:
                     # quick tunnels need special handling because URL changes
                     success = self.tunnel_manager.start_quick_tunnel(user_id)
                     
-                    if success and settings.cloud_enabled and settings.cloud_api_key and settings.cloud_base_url:
+                    if success and settings.cloud_enabled and settings.cloud_api_key:
+                        # Ensure we have a secret locally
+                        if not settings.cloud_webhook_secret:
+                            import secrets
+                            settings.cloud_webhook_secret = secrets.token_urlsafe(32)
+                            self.db.session.commit()
+
                         # re-register webhook with new URL
-                        self.app.logger.info(f"Re-registering webhook for restarted quick tunnel: {success}")
+                        from services.CloudService import CloudService
+                        cloud_base = CloudService.get_cloud_base_url(settings)
+                        self.app.logger.info(f"Re-registering webhook for restarted quick tunnel: {success} with {cloud_base}")
                         self.tunnel_manager.register_webhook(
                             tunnel_url=success,
                             api_key=settings.cloud_api_key,
-                            cloud_base_url=settings.cloud_base_url,
+                            cloud_base_url=cloud_base,
                             user_id=user_id,
-                            webhook_secret=settings.cloud_webhook_secret or ''
+                            webhook_secret=settings.cloud_webhook_secret
                         )
                 else:
                     success = self.tunnel_manager.start_tunnel(user_id)
