@@ -59,8 +59,8 @@ def pair_start():
             'pair_url': pair_url
         })
         
-    except Exception as e:
-        current_app.logger.error(f"Pairing start failed: {str(e)}")
+    except Exception:
+        current_app.logger.error("Pairing start failed")
         return jsonify({'success': False, 'error': 'Failed to initiate pairing'}), 500
 
 @api_bp.route('/pair/receive_key', methods=['POST'])
@@ -106,6 +106,6 @@ def pair_receive_key():
         
         return jsonify({'success': True, 'message': 'Pairing successful! Local app is now connected.'})
         
-    except Exception as e:
-        current_app.logger.error(f"Pairing receive failed: {str(e)}")
+    except Exception:
+        current_app.logger.error("Pairing receive failed")
         return jsonify({'success': False, 'error': 'Internal server error'}), 500

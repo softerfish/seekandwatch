@@ -171,6 +171,6 @@ def receive_webhook():
         else:
             return jsonify({'error': f'Unknown event type: {event}'}), 400
     
-    except Exception as e:
-        print(f"Webhook error: {str(e)}", flush=True)
+    except Exception:
+        print("Webhook error: An unexpected error occurred", flush=True)
         return jsonify({'error': 'Internal server error'}), 500

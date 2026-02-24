@@ -7,12 +7,12 @@ import os
 from utils import write_log, BACKUP_DIR
 
 
-def _log_api_exception(context, exc):
+def _log_api_exception(context):
     try:
         # Use a generic error message to avoid information exposure (CodeQL)
         write_log("error", "API", f"{context} request failed")
     except Exception:
-        current_app.logger.exception("API logging failed")
+        current_app.logger.error("API logging failed")
 
 
 def _error_response(message="Request failed", **extra):

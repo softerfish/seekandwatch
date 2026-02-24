@@ -227,13 +227,13 @@ def upload_artwork():
                 else:
                     return _error_response("Failed to download image from URL")
             except Exception as e:
-                _log_api_exception("upload_artwork_download", e)
+                _log_api_exception("upload_artwork_download")
                 return _error_response("Failed to download image.")
 
         return _error_response("No file or URL provided")
 
     except Exception as e:
-        _log_api_exception("upload_artwork", e)
+        _log_api_exception("upload_artwork")
         return _error_response("An unexpected error occurred.")
 
 @api_bp.route('/load_more_recs')
@@ -454,7 +454,7 @@ def tmdb_search_proxy():
             # Return as JSON (jsonify automatically escapes for JSON safety)
             return jsonify({'results': [{'id': k['id'], 'name': str(k.get('name', ''))} for k in res]})
         except Exception as e:
-            _log_api_exception("tmdb_keyword_search", e)
+            _log_api_exception("tmdb_keyword_search")
             return jsonify({'results': []})
         
     ep = 'search/tv' if search_type == 'tv' else 'search/movie'
@@ -513,7 +513,7 @@ def get_metadata(media_type, tmdb_id):
             'providers': [{'name': p['provider_name'], 'logo': p['logo_path']} for p in prov]
         })
     except Exception as e:
-        _log_api_exception("get_metadata", e)
+        _log_api_exception("get_metadata")
         return _error_payload("Request failed")
 
 @api_bp.route('/get_trailer/<media_type>/<int:tmdb_id>')

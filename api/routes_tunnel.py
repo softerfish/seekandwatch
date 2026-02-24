@@ -104,8 +104,8 @@ def enable_tunnel():
                     'is_quick': True
                 })
                 
-            except Exception as e:
-                current_app.logger.error(f"Error starting quick tunnel: {str(e)}")
+            except Exception:
+                current_app.logger.error("Error starting quick tunnel")
                 return jsonify({
                     'success': False,
                     'error': 'Failed to start Quick Tunnel. Please check the logs.',
@@ -172,8 +172,8 @@ def enable_tunnel():
                 'status': 'connected'
             })
             
-        except Exception as e:
-            current_app.logger.error(f"Error creating tunnel: {str(e)}")
+        except Exception:
+            current_app.logger.error("Error creating tunnel")
             return jsonify({
                 'success': False,
                 'error': 'Failed to create tunnel. Please check the logs.',
@@ -207,10 +207,10 @@ def enable_tunnel():
         current_app.logger.info(f"Creating tunnel for user {user_id}")
         try:
             tunnel_url = manager.create_tunnel(user_id)
-        except TunnelCreationError as e:
+        except TunnelCreationError:
             return jsonify({
                 'success': False,
-                'error': f'Failed to create tunnel: {str(e)}',
+                'error': 'Failed to create tunnel. Please check the logs.',
                 'step': 'tunnel_creation'
             }), 500
         
@@ -252,8 +252,8 @@ def enable_tunnel():
             'status': 'connected'
         })
         
-    except Exception as e:
-        current_app.logger.error(f"Unexpected error enabling tunnel: {str(e)}")
+    except Exception:
+        current_app.logger.error("Unexpected error enabling tunnel")
         return jsonify({
             'success': False,
             'error': 'An unexpected error occurred',
@@ -306,8 +306,8 @@ def disable_tunnel():
                     cloud_base_url=settings.cloud_base_url,
                     user_id=user_id
                 )
-            except Exception as e:
-                current_app.logger.warning(f"Failed to unregister webhook: {str(e)}")
+            except Exception:
+                current_app.logger.warning("Failed to unregister webhook")
         
         # clear webhook URL from local settings (so polling goes back to normal interval)
         settings.cloud_webhook_url = None
@@ -323,8 +323,8 @@ def disable_tunnel():
             'status': 'disconnected'
         })
         
-    except Exception as e:
-        current_app.logger.error(f"Unexpected error disabling tunnel: {str(e)}")
+    except Exception:
+        current_app.logger.error("Unexpected error disabling tunnel")
         return jsonify({
             'success': False,
             'error': 'An unexpected error occurred'
@@ -448,8 +448,8 @@ def reset_tunnel():
                 'error': 'Failed to reset tunnel configuration'
             }), 500
         
-    except Exception as e:
-        current_app.logger.error(f"Error resetting tunnel configuration: {str(e)}")
+    except Exception:
+        current_app.logger.error("Error resetting tunnel configuration")
         return jsonify({
             'success': False,
             'error': 'An unexpected error occurred. Please check the logs.'
