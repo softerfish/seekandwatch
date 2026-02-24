@@ -1841,8 +1841,6 @@ def settings():
                     setattr(s, attr_name, v)
                 elif unchanged_name in request.form:
                     pass
-                elif getattr(s, attr_name, None):
-                    pass
                 else:
                     setattr(s, attr_name, None)
             if 'plex_url' in request.form:
@@ -2339,8 +2337,6 @@ def save_cloud_settings():
             if new_key:
                 settings.cloud_api_key = new_key
                 settings.cloud_enabled = True
-            elif settings.cloud_api_key:
-                pass  # safeguard: don't overwrite existing with empty
             else:
                 settings.cloud_api_key = None
                 settings.cloud_enabled = False
@@ -2365,8 +2361,6 @@ def save_cloud_settings():
             v = (request.form.get('cloud_webhook_secret') or '').strip()
             if v:
                 settings.cloud_webhook_secret = v
-            elif settings.cloud_webhook_secret:
-                pass  # safeguard: don't overwrite existing with empty
             else:
                 settings.cloud_webhook_secret = None
     settings.cloud_webhook_url = webhook_url or None
