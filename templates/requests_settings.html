@@ -487,6 +487,23 @@ document.addEventListener('DOMContentLoaded', function() {
             if (h) h.remove();
         });
     });
+
+    // Handle "Enter" to save
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            const active = document.activeElement;
+            if (active && (active.tagName === 'INPUT' || active.tagName === 'SELECT')) {
+                const type = active.getAttribute('type');
+                if (type !== 'button' && type !== 'submit' && type !== 'checkbox' && type !== 'radio') {
+                    const form = active.closest('form');
+                    if (form) {
+                        e.preventDefault();
+                        form.submit();
+                    }
+                }
+            }
+        }
+    });
     
     // check tunnel status on page load if enabled
     {% if settings.tunnel_enabled %}

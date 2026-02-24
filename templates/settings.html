@@ -999,6 +999,25 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
+    // Handle "Enter" to save in any text/password/number input
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            // Check if focus is in an input field that's NOT a button/checkbox/radio
+            const active = document.activeElement;
+            if (active && (active.tagName === 'INPUT' || active.tagName === 'SELECT' || active.tagName === 'TEXTAREA')) {
+                const type = active.getAttribute('type');
+                if (type !== 'button' && type !== 'submit' && type !== 'checkbox' && type !== 'radio') {
+                    // Only trigger save if it's part of a settings tab form
+                    const tab = active.closest('.tab-content');
+                    if (tab) {
+                        e.preventDefault();
+                        submitActiveSettingsForm();
+                    }
+                }
+            }
+        }
+    });
+
     const batchSelect = document.getElementById('scan-batch');
     const intervalSelect = document.getElementById('scan-interval');
 
@@ -1045,6 +1064,11 @@ document.addEventListener('DOMContentLoaded', function() {
     const plexPinBox = document.getElementById('plex-pin-box');
     const plexPinCode = document.getElementById('plex-pin-code');
     const plexPinMsg = document.getElementById('plex-pin-msg');
+    const plexUrlInput = document.getElementById('plex_url');
+    const plexTokenInput = document.getElementById('plex_token');
+    const plexServerSelect = document.getElementById('plex-server-select');
+    const plexSelectPersistent = document.getElementById('plex-server-select-persistent');
+
     if (btnLinkPlex && plexPinBox && plexPinCode && plexPinMsg) {
         btnLinkPlex.addEventListener('click', function() {
             if (btnLinkPlex.getAttribute('data-plex-linked') === 'true') {
@@ -1093,6 +1117,13 @@ document.addEventListener('DOMContentLoaded', function() {
                         }
                         if (d.done) {
                             clearInterval(poll);
+                            if (d.token) {
+                                if (plexTokenInput) {
+                                    plexTokenInput.value = d.token;
+                                    var h = document.getElementById('plex_token_unchanged_h');
+                                    if (h) h.remove();
+                                }
+                            }
                             var conns = d.connections || [];
                             if (conns.length > 0) {
                                 document.getElementById('plex-pin-step-code').style.display = 'none';
@@ -1103,6 +1134,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                     var opt = document.createElement('option');
                                     opt.value = c.uri;
                                     opt.textContent = c.label;
+                                    if (c.token) opt.dataset.token = c.token;
                                     sel.appendChild(opt);
                                 });
                                 stepServer.style.display = 'block';
@@ -1119,41 +1151,67 @@ document.addEventListener('DOMContentLoaded', function() {
                 plexPinMsg.style.color = 'var(--error, #e74c3c)';
             });
         });
+        
+        // Auto-populate token on dropdown change
+        [plexServerSelect, plexSelectPersistent].forEach(function(sel) {
+            if (sel) {
+                sel.addEventListener('change', function() {
+                    var opt = sel.options[sel.selectedIndex];
+                    var token = opt ? opt.dataset.token : '';
+                    if (token && plexTokenInput) {
+                        plexTokenInput.value = token;
+                        var h = document.getElementById('plex_token_unchanged_h');
+                        if (h) h.remove();
+                    }
+                });
+            }
+        });
+
         var btnUseServer = document.getElementById('btn-plex-use-server');
         var btnSkipServer = document.getElementById('btn-plex-skip-server');
-        var plexServerSelect = document.getElementById('plex-server-select');
         if (btnUseServer && btnSkipServer && plexServerSelect) {
             btnUseServer.addEventListener('click', function() {
                 var url = plexServerSelect.value;
                 if (!url) return;
+                var opt = plexServerSelect.options[plexServerSelect.selectedIndex];
+                var token = opt ? opt.dataset.token : '';
                 btnUseServer.disabled = true;
                 btnUseServer.textContent = 'Saving…';
                 var fallback = (document.querySelector('input[name="csrf_token"]') && document.querySelector('input[name="csrf_token"]').value) || '';
                 var self = this;
-                (window.getCsrfToken ? window.getCsrfToken(fallback) : Promise.resolve(SETTINGS_CSRF || fallback)).then(function(token) {
-                    return fetch(API_PLEX_SET_URL, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': token || '' }, body: JSON.stringify({ url: url }) });
+                (window.getCsrfToken ? window.getCsrfToken(fallback) : Promise.resolve(SETTINGS_CSRF || fallback)).then(function(t) {
+                    return fetch(API_PLEX_SET_URL, { 
+                        method: 'POST', 
+                        credentials: 'same-origin', 
+                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': t || '' }, 
+                        body: JSON.stringify({ url: url, token: token }) 
+                    });
                 }).then(function(r) { return r.json(); }).then(function(d) {
                     if (d.status === 'success') {
                         var pinBox = document.getElementById('plex-pin-box');
                         var dropdownRow = document.getElementById('plex-server-dropdown-row');
-                        var persistentSelect = document.getElementById('plex-server-select-persistent');
-                        var plexUrlInput = document.getElementById('plex_url');
-                        var linkStatus = document.getElementById('plex-link-status');
-                        var linkBtn = document.getElementById('btn-link-plex');
                         if (pinBox) pinBox.style.display = 'none';
                         if (dropdownRow) dropdownRow.style.display = 'block';
-                        if (persistentSelect && plexServerSelect) {
-                            persistentSelect.innerHTML = '';
+                        if (plexSelectPersistent && plexServerSelect) {
+                            plexSelectPersistent.innerHTML = '';
                             for (var i = 0; i < plexServerSelect.options.length; i++) {
                                 var o = plexServerSelect.options[i];
-                                var opt = document.createElement('option');
-                                opt.value = o.value;
-                                opt.textContent = o.textContent;
-                                persistentSelect.appendChild(opt);
-                                if (o.value === url) persistentSelect.selectedIndex = persistentSelect.options.length - 1;
+                                var optNew = document.createElement('option');
+                                optNew.value = o.value;
+                                optNew.textContent = o.textContent;
+                                if (o.dataset.token) optNew.dataset.token = o.dataset.token;
+                                plexSelectPersistent.appendChild(optNew);
+                                if (o.value === url) plexSelectPersistent.selectedIndex = plexSelectPersistent.options.length - 1;
                             }
                         }
                         if (plexUrlInput) plexUrlInput.value = url;
+                        if (plexTokenInput && token) {
+                            plexTokenInput.value = token;
+                            var h = document.getElementById('plex_token_unchanged_h');
+                            if (h) h.remove();
+                        }
+                        var linkStatus = document.getElementById('plex-link-status');
+                        var linkBtn = document.getElementById('btn-link-plex');
                         if (linkStatus) { linkStatus.textContent = '✓ Plex account connected'; linkStatus.style.background = 'rgba(0, 204, 102, 0.15)'; linkStatus.style.borderColor = 'rgba(0, 204, 102, 0.5)'; linkStatus.style.color = 'var(--accent-color)'; linkStatus.style.fontWeight = 'bold'; }
                         if (linkBtn) { linkBtn.textContent = 'Unlink Plex account'; linkBtn.setAttribute('data-plex-linked', 'true'); }
                     } else {
@@ -1166,8 +1224,6 @@ document.addEventListener('DOMContentLoaded', function() {
             btnSkipServer.addEventListener('click', function() { window.location.reload(); });
         }
         // Persistent server dropdown (Overseerr-style): load and apply
-        var plexSelectPersistent = document.getElementById('plex-server-select-persistent');
-        var plexUrlInput = document.getElementById('plex_url');
         function loadPlexConnections() {
             if (!plexSelectPersistent) return;
             plexSelectPersistent.innerHTML = '<option value="">Loading…</option>';
@@ -1179,6 +1235,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     var opt = document.createElement('option');
                     opt.value = c.uri;
                     opt.textContent = c.label;
+                    if (c.token) opt.dataset.token = c.token;
                     plexSelectPersistent.appendChild(opt);
                 });
                 var currentUrl = (plexUrlInput && plexUrlInput.value) ? plexUrlInput.value.trim().replace(/\/+$/, '') : '';
@@ -1205,14 +1262,26 @@ document.addEventListener('DOMContentLoaded', function() {
             btnApplyServer.addEventListener('click', function() {
                 var url = plexSelectPersistent.value;
                 if (!url) return;
+                var opt = plexSelectPersistent.options[plexSelectPersistent.selectedIndex];
+                var token = opt ? opt.dataset.token : '';
                 btnApplyServer.disabled = true;
                 var fallback = (document.querySelector('input[name="csrf_token"]') && document.querySelector('input[name="csrf_token"]').value) || '';
-                (window.getCsrfToken ? window.getCsrfToken(fallback) : Promise.resolve(SETTINGS_CSRF || fallback)).then(function(token) {
-                    return fetch(API_PLEX_SET_URL, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': token || '' }, body: JSON.stringify({ url: url }) });
+                (window.getCsrfToken ? window.getCsrfToken(fallback) : Promise.resolve(SETTINGS_CSRF || fallback)).then(function(t) {
+                    return fetch(API_PLEX_SET_URL, { 
+                        method: 'POST', 
+                        credentials: 'same-origin', 
+                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': t || '' }, 
+                        body: JSON.stringify({ url: url, token: token }) 
+                    });
                 }).then(function(r) { return r.json(); }).then(function(d) {
                     btnApplyServer.disabled = false;
                     if (d.status === 'success') {
                         plexUrlInput.value = url;
+                        if (plexTokenInput && token) {
+                            plexTokenInput.value = token;
+                            var h = document.getElementById('plex_token_unchanged_h');
+                            if (h) h.remove();
+                        }
                         if (typeof showToast === 'function') showToast();
                         else alert('Server URL updated.');
                     } else alert(d.error || 'Failed to save');
