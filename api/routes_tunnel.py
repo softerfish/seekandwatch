@@ -77,7 +77,13 @@ def enable_tunnel():
                 
                 # register webhook with cloud app
                 if settings.cloud_enabled and settings.cloud_api_key and settings.cloud_base_url:
-                    webhook_secret = settings.cloud_webhook_secret or ''
+                    # Ensure we have a secret locally
+                    if not settings.cloud_webhook_secret:
+                        import secrets
+                        settings.cloud_webhook_secret = secrets.token_urlsafe(32)
+                        db.session.commit()
+
+                    webhook_secret = settings.cloud_webhook_secret
                     
                     # save webhook URL to local settings
                     webhook_url = f"{tunnel_url}/api/webhook"
@@ -146,7 +152,14 @@ def enable_tunnel():
             # register webhook with cloud app
             if settings.cloud_enabled and settings.cloud_api_key and settings.cloud_base_url:
                 tunnel_url = tunnel_result['url']
-                webhook_secret = settings.cloud_webhook_secret or ''
+                
+                # Ensure we have a secret locally
+                if not settings.cloud_webhook_secret:
+                    import secrets
+                    settings.cloud_webhook_secret = secrets.token_urlsafe(32)
+                    db.session.commit()
+
+                webhook_secret = settings.cloud_webhook_secret
                 
                 # save webhook URL to local settings so polling knows to use failsafe interval
                 webhook_url = f"{tunnel_url}/api/webhook"
@@ -396,7 +409,7 @@ def test_tunnel():
         from tunnel.registrar import WebhookRegistrar
         registrar = WebhookRegistrar(settings.cloud_base_url, settings.cloud_api_key)
         
-        success, message = registrar.test_connection(settings.tunnel_url)
+        success, message = registrar.test_connection(timeout=30)
         
         if success:
             return jsonify({

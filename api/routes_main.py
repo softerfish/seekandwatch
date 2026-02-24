@@ -1395,6 +1395,13 @@ def test_connection():
     use_stored = data.get('use_stored') is True
     s = current_user.settings if use_stored else None
 
+    def _clean_url(url):
+        if not url: return ""
+        u = url.rstrip('/')
+        if u.endswith('/api/v3'): u = u.rsplit('/api/v3', 1)[0]
+        if u.endswith('/api'): u = u.rsplit('/api', 1)[0]
+        return u
+
     try:
         if service == 'plex':
             u = (s.plex_url or '').strip() if use_stored and s else (data.get('url') or '').strip()
@@ -1430,10 +1437,11 @@ def test_connection():
             k = (s.overseerr_api_key or '').strip() if use_stored and s else (data.get('api_key') or '').strip()
             if not u or not k:
                 return jsonify({'status': 'error', 'message': 'URL and API key required', 'msg': 'URL and API key required'})
+            u = _clean_url(u)
             is_safe, msg = validate_url(u)
             if not is_safe:
                 return jsonify({'status': 'error', 'message': f"Security Block: {msg}", 'msg': f"Security Block: {msg}"})
-            r = requests.get(f"{u.rstrip('/')}/api/v1/status", headers={'X-Api-Key': k}, timeout=5)
+            r = requests.get(f"{u}/api/v1/status", headers={'X-Api-Key': k}, timeout=5)
             if r.status_code == 200:
                 return jsonify({'status': 'success', 'message': 'Overseerr Connected!', 'msg': 'Overseerr Connected!'})
             return jsonify({'status': 'error', 'message': 'Connection Failed', 'msg': 'Connection Failed'})
@@ -1443,10 +1451,11 @@ def test_connection():
             k = (s.tautulli_api_key or '').strip() if use_stored and s else (data.get('api_key') or '').strip()
             if not u or not k:
                 return jsonify({'status': 'error', 'message': 'URL and API key required', 'msg': 'URL and API key required'})
+            u = _clean_url(u)
             is_safe, msg = validate_url(u)
             if not is_safe:
                 return jsonify({'status': 'error', 'message': f"Security Block: {msg}", 'msg': f"Security Block: {msg}"})
-            r = requests.get(f"{u.rstrip('/')}/api/v2?apikey={k}&cmd=get_server_info", timeout=5)
+            r = requests.get(f"{u}/api/v2?apikey={k}&cmd=get_server_info", timeout=5)
             if r.status_code == 200:
                 return jsonify({'status': 'success', 'message': 'Tautulli Connected!', 'msg': 'Tautulli Connected!'})
             return jsonify({'status': 'error', 'message': 'Connection Failed', 'msg': 'Connection Failed'})
@@ -1456,26 +1465,34 @@ def test_connection():
             k = (s.radarr_api_key or '').strip() if use_stored and s else (data.get('api_key') or '').strip()
             if not u or not k:
                 return jsonify({'status': 'error', 'message': 'URL and API key required', 'msg': 'URL and API key required'})
+            u = _clean_url(u)
             is_safe, msg = validate_url(u)
             if not is_safe:
                 return jsonify({'status': 'error', 'message': f"Security Block: {msg}", 'msg': f"Security Block: {msg}"})
-            r = requests.get(f"{u.rstrip('/')}/api/v3/system/status", headers={'X-Api-Key': k}, timeout=5)
-            if r.status_code == 200:
-                return jsonify({'status': 'success', 'message': 'Radarr Connected!', 'msg': 'Radarr Connected!'})
-            return jsonify({'status': 'error', 'message': 'Connection Failed', 'msg': 'Connection Failed'})
+            try:
+                r = requests.get(f"{u}/api/v3/system/status", headers={'X-Api-Key': k}, timeout=5)
+                if r.status_code == 200:
+                    return jsonify({'status': 'success', 'message': 'Radarr Connected!', 'msg': 'Radarr Connected!'})
+                return jsonify({'status': 'error', 'message': f'Radarr returned HTTP {r.status_code}', 'msg': f'Radarr returned HTTP {r.status_code}'})
+            except Exception as e:
+                return jsonify({'status': 'error', 'message': f'Radarr connection error: {str(e)}', 'msg': 'Connection Failed'})
 
         elif service == 'sonarr':
             u = (s.sonarr_url or '').strip() if use_stored and s else (data.get('url') or '').strip()
             k = (s.sonarr_api_key or '').strip() if use_stored and s else (data.get('api_key') or '').strip()
             if not u or not k:
                 return jsonify({'status': 'error', 'message': 'URL and API key required', 'msg': 'URL and API key required'})
+            u = _clean_url(u)
             is_safe, msg = validate_url(u)
             if not is_safe:
                 return jsonify({'status': 'error', 'message': f"Security Block: {msg}", 'msg': f"Security Block: {msg}"})
-            r = requests.get(f"{u.rstrip('/')}/api/v3/system/status", headers={'X-Api-Key': k}, timeout=5)
-            if r.status_code == 200:
-                return jsonify({'status': 'success', 'message': 'Sonarr Connected!', 'msg': 'Sonarr Connected!'})
-            return jsonify({'status': 'error', 'message': 'Connection Failed', 'msg': 'Connection Failed'})
+            try:
+                r = requests.get(f"{u}/api/v3/system/status", headers={'X-Api-Key': k}, timeout=5)
+                if r.status_code == 200:
+                    return jsonify({'status': 'success', 'message': 'Sonarr Connected!', 'msg': 'Sonarr Connected!'})
+                return jsonify({'status': 'error', 'message': f'Sonarr returned HTTP {r.status_code}', 'msg': f'Sonarr returned HTTP {r.status_code}'})
+            except Exception as e:
+                return jsonify({'status': 'error', 'message': f'Sonarr connection error: {str(e)}', 'msg': 'Connection Failed'})
 
         return jsonify({'status': 'error', 'message': 'Unknown service', 'msg': 'Unknown service'})
 
@@ -1706,13 +1723,14 @@ def _plex_get_user_and_connections(auth_token):
             if isinstance(data, list):
                 for res in data:
                     name = res.get('name') or res.get('title') or 'Plex'
+                    res_token = res.get('accessToken') or auth_token
                     for c in (res.get('connections') or []):
                         uri = (c.get('uri') or '').strip().rstrip('/')
                         if not uri or not (uri.startswith('http://') or uri.startswith('https://')):
                             continue
                         local = c.get('local') is True or c.get('local') == 1 or _plex_is_local_uri(uri)
                         label = _plex_connection_label(uri, name, local)
-                        connections.append({'uri': uri, 'local': bool(local), 'label': label})
+                        connections.append({'uri': uri, 'local': bool(local), 'label': label, 'token': res_token})
                         seen_uris.add(uri)
                         # For any .plex.direct, try to derive direct IP (from any segment like 192-168-2-10 or 142-114-62-125)
                         host = urlparse(uri).hostname or ''
@@ -1725,7 +1743,7 @@ def _plex_get_user_and_connections(auth_token):
                                     is_private = _plex_is_private_ip(p.hostname)
                                     # Only "[local IP] - recommended" for private LAN addresses; public IPs get "[direct IP]"
                                     label_suffix = "[local IP] - recommended" if is_private else "[direct IP]"
-                                    connections.append({'uri': ip_uri, 'local': is_private, 'label': f"{name} ({ip_host}) {label_suffix}"})
+                                    connections.append({'uri': ip_uri, 'local': is_private, 'label': f"{name} ({ip_host}) {label_suffix}", 'token': res_token})
                                     seen_uris.add(ip_uri)
                                 except Exception:
                                     pass
@@ -1781,7 +1799,7 @@ def plex_pin_poll():
         # Then fetch user + connections for the server dropdown (optional)
         user_info, connections = _plex_get_user_and_connections(poll['authToken'])
         username = (user_info.get('username') or 'Plex') if user_info else 'Plex'
-        return jsonify({'done': True, 'username': username, 'connections': connections or []})
+        return jsonify({'done': True, 'username': username, 'connections': connections or [], 'token': poll['authToken']})
     return jsonify({'status': 'pending', 'code': poll.get('code', '')})
 
 @api_bp.route('/api/plex/connections')
@@ -1800,6 +1818,7 @@ def plex_set_url():
     """Set Plex server URL for the current user (e.g. after choosing from connection list)."""
     data = request.get_json() or {}
     url = (data.get('url') or '').strip().rstrip('/')
+    token = (data.get('token') or '').strip()
     if not url:
         return jsonify({'error': 'URL is required'}), 400
     if not url.startswith('http://') and not url.startswith('https://'):
@@ -1810,6 +1829,8 @@ def plex_set_url():
         db.session.add(s)
         db.session.flush()
     s.plex_url = url
+    if token:
+        s.plex_token = token
     db.session.commit()
     return jsonify({'status': 'success'})
 

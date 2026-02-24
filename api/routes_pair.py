@@ -66,6 +66,9 @@ def pair_start():
         # construct web app link
         # the web app should have a pair.php that accepts these
         cloud_base = settings.cloud_base_url or CLOUD_URL
+        print(f"DEBUG: Pairing cloud_base determined: {cloud_base}", flush=True)
+        print(f"DEBUG: settings.cloud_base_url: {settings.cloud_base_url}", flush=True)
+        print(f"DEBUG: CLOUD_URL from config: {CLOUD_URL}", flush=True)
         pair_url = f"{cloud_base.rstrip('/')}/pair.php?url={tunnel_url}&token={token}"
         
         return jsonify({
@@ -105,10 +108,14 @@ def pair_receive_key():
         settings.cloud_enabled = True
         settings.cloud_sync_owned_enabled = True
         
-        # Save secret if provided
+        # Save secret if provided (restored from cloud)
         webhook_secret = data.get('webhook_secret')
         if webhook_secret:
             settings.cloud_webhook_secret = webhook_secret
+        
+        # Ensure we have a secret locally (generate if pairing didn't provide one)
+        if not settings.cloud_webhook_secret:
+            settings.cloud_webhook_secret = secrets.token_urlsafe(32)
         
         # Clear token
         settings.pairing_token = None

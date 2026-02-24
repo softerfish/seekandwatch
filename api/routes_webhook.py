@@ -50,12 +50,17 @@ def receive_webhook():
         
         # parse payload
         payload = request.get_json()
+        print(f"Webhook Payload: {payload}", flush=True)
         if not payload:
             print("Webhook Error: Received empty or invalid JSON", flush=True)
             return jsonify({'error': 'Invalid JSON'}), 400
         
         event = payload.get('event', '')
         requests_data = payload.get('requests', [])
+        # Also support singular 'request' for robustness
+        if not requests_data and 'request' in payload:
+            requests_data = [payload['request']]
+        
         print(f"Webhook Event: {event} ({len(requests_data)} items)", flush=True)
 
         if event == 'test_connection':
@@ -171,6 +176,8 @@ def receive_webhook():
         else:
             return jsonify({'error': f'Unknown event type: {event}'}), 400
     
-    except Exception:
-        print("Webhook error: An unexpected error occurred", flush=True)
-        return jsonify({'error': 'Internal server error'}), 500
+    except Exception as e:
+        import traceback
+        err_detail = traceback.format_exc()
+        print(f"Webhook error: {str(e)}\n{err_detail}", flush=True)
+        return jsonify({'error': 'Internal server error', 'detail': str(e)}), 500
