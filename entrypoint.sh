@@ -26,6 +26,42 @@ fi
 echo "Fixing permissions for /config..."
 chown -R appuser:appuser /config
 
+# --- DATA MIGRATION: Ensure user data is in /config ---
+# This fixes the "Forcing a new password" issue where data was left in subfolders
+# while config.py was updated to look in the root /config folder.
+for data_file in seekandwatch.db secret.key plex_cache.json scanner.log results_cache.json history_cache.json; do
+    # Check /config/app/ (Legacy)
+    if [ -f "/config/app/$data_file" ]; then
+        if [ ! -f "/config/$data_file" ]; then
+            echo "Moving $data_file from legacy /config/app/ to /config/..."
+            mv "/config/app/$data_file" "/config/$data_file"
+        elif [ "$data_file" = "seekandwatch.db" ]; then
+            # If root DB is tiny (empty) and legacy is larger, restore legacy
+            dest_size=$(stat -c%s "/config/$data_file" 2>/dev/null || stat -f%z "/config/$data_file" 2>/dev/null || echo "0")
+            src_size=$(stat -c%s "/config/app/$data_file" 2>/dev/null || stat -f%z "/config/app/$data_file" 2>/dev/null || echo "0")
+            if [ "$dest_size" -lt 40000 ] && [ "$src_size" -gt "$dest_size" ]; then
+                echo "Restoring original database from legacy folder (original data found)..."
+                mv "/config/$data_file" "/config/$data_file.stale"
+                mv "/config/app/$data_file" "/config/$data_file"
+            fi
+        fi
+    fi
+    # Check /config/config/ (Common mapping error)
+    if [ -f "/config/config/$data_file" ] && [ ! -f "/config/$data_file" ]; then
+        echo "Moving $data_file from nested /config/config/ to /config/..."
+        mv "/config/config/$data_file" "/config/$data_file"
+    fi
+done
+# Handle backups directory
+if [ -d "/config/app/backups" ] && [ ! -d "/config/backups" ]; then
+    echo "Moving backups directory from legacy /config/app/ to /config/..."
+    mv "/config/app/backups" "/config/backups"
+elif [ -d "/config/config/backups" ] && [ ! -d "/config/backups" ]; then
+    echo "Moving backups directory from nested /config/config/ to /config/..."
+    mv "/config/config/backups" "/config/backups"
+fi
+# -----------------------------------------------------
+
 # 4. Migrate from old /config/app structure to /config (if needed)
 # Old installations had files in /config/app, but we always use /config directly now
 if [ -d "/config/app" ] && [ -f "/config/app/app.py" ] && [ ! -f "/config/app.py" ]; then
