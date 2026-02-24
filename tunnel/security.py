@@ -52,7 +52,7 @@ def set_secure_file_permissions(file_path):
             os.chmod(file_path, stat.S_IRUSR | stat.S_IWUSR)
             return True
             
-    except Exception as e:
+        except Exception:
         # log error but don't fail completely
         print(f"Warning: Could not set secure permissions on {file_path}: {e}")
         return False

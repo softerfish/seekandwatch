@@ -202,7 +202,7 @@ class BinaryManager:
             
             return True
             
-        except requests.RequestException as e:
+        except requests.RequestException:
             # clean up temp file if it exists
             temp_path = f"{binary_path}.tmp"
             if os.path.exists(temp_path):

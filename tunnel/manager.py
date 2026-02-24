@@ -907,10 +907,9 @@ class TunnelManager:
             # deserialize JSON
             credentials = json.loads(plaintext.decode('utf-8'))
             return credentials
-            
-        except Exception as e:
+        except Exception:
             # log the error but don't expose details
-            self.app.logger.error(f"Failed to decrypt credentials: {type(e).__name__}")
+            self.app.logger.error("Failed to decrypt credentials")
             return None
     
     def _derive_encryption_key(self) -> bytes:
@@ -1124,9 +1123,10 @@ class TunnelManager:
                         return True
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     continue
-                except Exception:
-                    self.app.logger.error("Error checking for cloudflared processes")
-                    return False
+            return False
+        except Exception:
+            self.app.logger.error("Error checking for cloudflared processes")
+            return False
         
     
     def _log_unexpected_exit(self, exit_code: int):
@@ -1150,8 +1150,8 @@ class TunnelManager:
                         # grab last 20 lines
                         last_lines = lines[-20:] if len(lines) > 20 else lines
                         stderr_output = ''.join(last_lines)
-                        except Exception:
-                            stderr_output = "Could not read log file"
+                except Exception:
+                    stderr_output = "Could not read log file"
                 
             else:
                 stderr_output = "Log file not found"
@@ -1274,7 +1274,7 @@ class TunnelManager:
                             proc.kill()
                             proc.wait(timeout=5)
                             self.app.logger.info(f"Cloudflared process {proc.info['pid']} force-killed")
-                except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
                     continue
         except Exception:
             self.app.logger.error("Error killing cloudflared processes")
