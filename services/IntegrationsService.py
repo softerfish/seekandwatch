@@ -93,8 +93,8 @@ class IntegrationsService:
             
             return False, f"Overseerr: {error_msg}"
             
-        except Exception as e:
-            write_log("error", "Overseerr", f"Connection error: {str(e)}")
+        except Exception:
+            write_log("error", "Overseerr", "Connection error")
             return False, "Connection error. Please check your Overseerr URL and API key."
 
     @staticmethod
@@ -118,8 +118,8 @@ class IntegrationsService:
             if quality_id is None:
                 return None, None, "Could not get quality profile id."
             return root_path, quality_id, None
-        except Exception as e:
-            return None, None, str(e)
+        except Exception:
+            return None, None, "Request failed"
 
     @staticmethod
     def _arr_language_profile(base_url, headers):
@@ -134,8 +134,8 @@ class IntegrationsService:
             if lang_id is None:
                 return None, "Could not get language profile id."
             return lang_id, None
-        except Exception as e:
-            return None, str(e)
+        except Exception:
+            return None, "Request failed"
 
     @staticmethod
     def _get_clean_base_url(url):
@@ -245,8 +245,8 @@ class IntegrationsService:
 
                 return False, "Could not find show in Sonarr lookup."
                     
-        except Exception as e:
-            return False, f"Integrations Error: {str(e)}"
+        except Exception:
+            return False, "Integrations Error: Request failed"
         
         return False, "Unknown Media Type"
 
@@ -379,9 +379,9 @@ class IntegrationsService:
                 write_log("success", "Radarr/Sonarr", msg, app_obj=app_obj)
                 return True, msg
                 
-            except Exception as e:
-                log.error(f"Arr Cache Refresh Failed: {e}")
-                return False, str(e)
+            except Exception:
+                log.error("Arr Cache Refresh Failed")
+                return False, "Scan failed"
             finally:
                 from utils import remove_system_lock
                 remove_system_lock()

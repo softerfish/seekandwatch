@@ -268,9 +268,9 @@ class CollectionService:
             write_log("success", "Sync", msg, app_obj=app_obj)
             return True, msg
 
-        except Exception as e:
-            write_log("error", "Sync", f"Collection sync failed: {str(e)}", app_obj=app_obj)
-            return False, f"Collection sync failed: {str(e)}"
+        except Exception:
+            write_log("error", "Sync", "Collection sync failed. Please check the logs.", app_obj=app_obj)
+            return False, "Collection sync failed"
         finally:
             remove_system_lock()
 

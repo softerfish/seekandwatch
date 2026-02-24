@@ -115,9 +115,9 @@ class CloudService:
                 success, msg = IntegrationsService.send_to_overseerr(settings, req_db.media_type, req_db.tmdb_id)
             else:
                 success, msg = IntegrationsService.send_to_radarr_sonarr(settings, req_db.media_type, req_db.tmdb_id)
-        except Exception as e:
-            log.error(f"Process item failed: {e}")
-            msg = str(e)
+        except Exception:
+            log.error("Process item failed")
+            msg = "An error occurred during processing"
 
         if success:
             req_db.status = 'completed'
@@ -175,8 +175,8 @@ class CloudService:
                         CloudService.log_cloud_import('poll_manual', item.get('title'), item.get('media_type'), True)
             
             return True, f"Synced {count} requests."
-        except Exception as e:
-            return False, str(e)
+        except Exception:
+            return False, "Failed to fetch cloud requests"
 
     @staticmethod
     def sync_deletions(settings):
