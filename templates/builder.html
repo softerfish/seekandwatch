@@ -1,0 +1,287 @@
+{% extends "base.html" %}
+{% block page_title %}Collection Builder{% endblock %}
+{% block content %}
+<div class="builder-container">
+    <h2>Custom Collection Builder</h2>
+    
+    <div class="builder-card">
+        <div class="input-group">
+            <label class="input-label">Collection Title</label>
+            <input type="text" id="c_title" placeholder="e.g. 80s Alien Movies">
+        </div>
+
+        <div class="form-row">
+            <div class="input-group form-col">
+                <label class="input-label">Type</label>
+                <select id="c_type">
+                    <option value="movie">Movies 🎬</option>
+                    <option value="tv">TV Shows 📺</option>
+                </select>
+            </div>
+            <div class="input-group form-col">
+                <label class="input-label">Sort By</label>
+                <select id="c_sort">
+                    <option value="popularity.desc">Popularity</option>
+                    <option value="vote_average.desc">Rating</option>
+                    <option value="primary_release_date.desc">Newest</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="input-group form-col">
+                <label class="input-label">Genre (Broad)</label>
+                <select id="c_genre">
+                    <option value="">Any Genre</option>
+                    {% for g in genres %}<option value="{{ g.id }}">{{ g.name }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="input-group form-col">
+                <label class="input-label">Year Range</label>
+                <div class="d-flex gap-10">
+                    <input type="number" id="c_year_start" placeholder="1980">
+                    <input type="number" id="c_year_end" placeholder="1990">
+                </div>
+            </div>
+        </div>
+
+        <div class="input-group mb-20">
+            <label class="input-label">Smart Tags (Specific Themes)</label>
+            <input type="text" id="keyword-search" placeholder="Type to search tags (e.g. 'aliens', 'time travel')...">
+            
+            <div id="keyword-results" class="keyword-dropdown"></div>
+            
+            <div id="selected-keywords" class="tag-container mb-10"></div>
+            
+            <div class="text-muted small d-block mt-5">
+                <strong>💡 Pro Tip:</strong> Add multiple similar tags (e.g., "alien" and "aliens").
+            </div>
+        </div>
+
+        <div class="input-group">
+            <div class="d-flex flex-between w-100 mb-10" style="align-items: center;">
+                <label class="input-label m-0">Min TMDB Rating (0-10)</label>
+                <span id="rating-text" class="rating-badge">0</span>
+            </div>
+            
+            <input type="range" id="c_rating" min="0" max="10" step="0.5" value="0" oninput="document.getElementById('rating-text').innerText = this.value" class="w-100" style="accent-color: var(--accent-color);">
+        </div>
+
+        <div class="visibility-options">
+            <span class="visibility-label">Visible on:</span>
+            <label class="visibility-check"><input type="checkbox" id="c_visibility_home" checked> Home</label>
+            <label class="visibility-check"><input type="checkbox" id="c_visibility_library"> Library</label>
+            <label class="visibility-check"><input type="checkbox" id="c_visibility_friends"> Friends</label>
+        </div>
+
+        <button onclick="previewMatches()" class="btn btn-secondary w-100">🔍 Preview Top 10 Matches</button>
+        <button onclick="saveCollection()" class="btn btn-save">Create Collection & Schedule</button>
+    </div>
+
+    <div id="preview-area" class="preview-card d-none mt-20">
+        <div class="d-flex flex-between mb-15" style="align-items:center;">
+            <h3 class="m-0">Live Preview Results</h3>
+            <button id="request-all-btn" class="btn-request-all d-none w-auto m-0" onclick="requestAllMissing()" style="padding: 5px 15px;">📥 Request All Missing</button>
+        </div>
+        <ul id="preview-list" class="preview-list"></ul>
+    </div>
+</div>
+
+<script>
+const API_TMDB_SEARCH_PROXY = "{{ url_for('api.tmdb_search_proxy') }}";
+const API_PREVIEW_CUSTOM_COLLECTION = "{{ url_for('api.preview_custom_collection') }}";
+const API_SAVE_CUSTOM_COLLECTION = "{{ url_for('api.save_custom_collection') }}";
+const URL_PLAYLISTS = "{{ url_for('playlists') }}";
+// Keyword tag helpers
+let selectedKeywords = [];
+
+document.getElementById('keyword-search').addEventListener('input', function(e) {
+    const q = e.target.value;
+    if(q.length < 3) { document.getElementById('keyword-results').style.display = 'none'; return; }
+    fetch(API_TMDB_SEARCH_PROXY + '?type=keyword&query=' + encodeURIComponent(q)).then(res => res.json()).then(data => {
+        const div = document.getElementById('keyword-results'); div.innerHTML = "";
+        if (data.results) {
+            data.results.forEach(k => {
+                const item = document.createElement('div'); item.className = 'dropdown-item'; item.innerText = k.name;
+                item.onclick = () => addTag(k); div.appendChild(item);
+            });
+            div.style.display = 'block';
+        }
+    });
+});
+
+function addTag(k) {
+    if(selectedKeywords.some(x => x.id === k.id)) return;
+    selectedKeywords.push(k); renderTags();
+    document.getElementById('keyword-search').value = ""; document.getElementById('keyword-results').style.display = 'none';
+}
+
+function removeTag(id) { selectedKeywords = selectedKeywords.filter(k => k.id !== id); renderTags(); }
+
+function renderTags() {
+    const container = document.getElementById('selected-keywords'); container.innerHTML = "";
+    selectedKeywords.forEach(k => {
+        const tag = document.createElement('span'); tag.className = 'keyword-tag';
+        tag.innerHTML = `${escapeHtml(String(k.name || ''))} <span onclick="removeTag(${Number(k.id)})">&times;</span>`; container.appendChild(tag);
+    });
+}
+
+function previewMatches() {
+    const keywordString = selectedKeywords.map(k => k.id).join('|');
+    const type = document.getElementById('c_type').value;
+    
+    if (!document.getElementById('c_genre').value && !keywordString && !document.getElementById('c_year_start').value && !document.getElementById('c_year_end').value) {
+        alert("Please select at least a Genre, Tag, or Year Range first!"); return;
+    }
+    
+    const data = { 
+        media_type: type, 
+        sort_by: document.getElementById('c_sort').value, 
+        with_genres: document.getElementById('c_genre').value, 
+        min_rating: document.getElementById('c_rating').value, 
+        year_start: document.getElementById('c_year_start').value, 
+        year_end: document.getElementById('c_year_end').value, 
+        with_keywords: keywordString 
+    };
+    
+    const area = document.getElementById('preview-area'); 
+    const list = document.getElementById('preview-list'); 
+    const allBtn = document.getElementById('request-all-btn');
+    
+    // Show a quick loading state. Remove d-none so display:block isn't overridden by !important.
+    area.classList.remove('d-none');
+    area.style.display = 'block'; 
+    list.innerHTML = '<li class="preview-list-item preview-list-item-loading">Loading matches...</li>'; 
+    allBtn.style.display = 'none';
+    
+    fetch(API_PREVIEW_CUSTOM_COLLECTION, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) })
+    .then(res => res.json()).then(data => {
+        list.innerHTML = "";
+        if (!list) return;
+        if(data.status === 'success' && data.items && data.items.length > 0) {
+            let hasMissing = false;
+            
+            data.items.forEach(item => {
+                // Support both backend poster_path and cached poster fields.
+                const posterPath = item.poster_path || item.poster; 
+                const poster = posterPath ? `https://image.tmdb.org/t/p/w92${posterPath}` : 'https://placehold.co/45x68?text=No+Img';
+                
+                const li = document.createElement('li'); 
+                li.className = 'preview-item-row';
+                
+                let buttonHtml = '';
+                if (!item.owned) {
+                    hasMissing = true;
+                    buttonHtml = `<button class="item-request-btn" data-tmdb-id="${item.tmdb_id}" data-media-type="${item.media_type}" onclick="requestSingle(this)">Request 📥</button>`;
+                } else {
+                    buttonHtml = '<span class="owned-badge">Owned ✅</span>';
+                }
+
+                li.innerHTML = `
+                    <img src="${poster}" class="preview-tiny-poster" onerror="this.src='https://placehold.co/45x68?text=Error'">
+                    <div class="preview-details">
+                        <div class="preview-title-row">
+                            <strong>${item.text}</strong>
+                            <span class="fs-small text-muted">${item.year || ''}</span>
+                        </div>
+                        ${buttonHtml}
+                    </div>
+                `;
+                
+                list.appendChild(li);
+            });
+            
+            if(hasMissing) allBtn.style.display = 'block';
+            
+        } else { 
+            list.innerHTML = `<li class="preview-list-item preview-list-item-empty">${escapeHtml(String(data.message || "No matches found."))}</li>`; 
+        }
+    })
+    .catch(() => { if (list) list.innerHTML = '<li class="preview-list-item preview-list-item-empty">Request failed. Please try again.</li>'; });
+}
+
+function requestSingle(btn) {
+    const tmdbId = btn.dataset.tmdbId;
+    const type = btn.dataset.mediaType;
+    
+    // grab stuff from the preview list
+    const previewItem = btn.closest('.preview-item-row');
+    const titleEl = previewItem ? previewItem.querySelector('strong') : null;
+    const title = titleEl ? titleEl.textContent : '';
+    const yearEl = previewItem ? previewItem.querySelector('.fs-small') : null;
+    const year = yearEl ? yearEl.textContent.trim() : '';
+    const posterEl = previewItem ? previewItem.querySelector('.preview-tiny-poster') : null;
+    const posterUrl = posterEl ? posterEl.src.replace('/w92', '/w500') : '';
+    
+    // open the popup
+    openRequestModal(type, tmdbId, title, posterUrl, year);
+    
+    // update button when it works
+    window.onRequestSuccess = function(modalTmdbId, mediaType) {
+        if (btn && modalTmdbId == tmdbId && mediaType == type) {
+            btn.innerText = "Requested ✅";
+            btn.style.background = "#2ecc71";
+            btn.style.color = "white";
+            btn.disabled = true;
+        }
+    };
+}
+
+function requestAllMissing() {
+    const btns = document.querySelectorAll('.item-request-btn'); 
+    const items = [];
+    
+    btns.forEach(b => { 
+        if(!b.disabled) { 
+            items.push({ tmdb_id: b.dataset.tmdbId, media_type: b.dataset.mediaType }); 
+            b.innerText = "Queued..."; 
+            b.disabled = true; 
+        } 
+    });
+    
+    if(items.length === 0) return;
+    
+    fetch(API_REQUEST_MEDIA, { 
+        method: 'POST', 
+        headers: {'Content-Type': 'application/json'}, 
+        body: JSON.stringify({ items: items }) 
+    }).then(res => res.json()).then(data => { 
+        alert(`Request successful for ${data.count} items!`); 
+        previewMatches(); 
+    });
+}
+
+function saveCollection() {
+    const title = document.getElementById('c_title').value; 
+    if(!title) { alert("Please enter a Collection Title!"); return; }
+    
+    const keywordString = selectedKeywords.map(k => k.id).join('|');
+    const data = { 
+        title: title, 
+        media_type: document.getElementById('c_type').value, 
+        sort_by: document.getElementById('c_sort').value, 
+        with_genres: document.getElementById('c_genre').value, 
+        min_rating: document.getElementById('c_rating').value, 
+        year_start: document.getElementById('c_year_start').value, 
+        year_end: document.getElementById('c_year_end').value, 
+        with_keywords: keywordString,
+        visibility_home: document.getElementById('c_visibility_home').checked,
+        visibility_library: document.getElementById('c_visibility_library').checked,
+        visibility_friends: document.getElementById('c_visibility_friends').checked
+    };
+    
+    fetch(API_SAVE_CUSTOM_COLLECTION, { 
+        method: 'POST', 
+        headers: {'Content-Type': 'application/json'}, 
+        body: JSON.stringify(data) 
+    }).then(res => res.json()).then(data => { 
+        if(data.status === 'success') { 
+            window.location.href = URL_PLAYLISTS; 
+        } else { 
+            alert("Error saving: " + data.message); 
+        } 
+    })
+    .catch(() => alert('Request failed. Please try again.'));
+}
+</script>
+{% endblock %}
