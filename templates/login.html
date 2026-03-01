@@ -1,0 +1,274 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    /* Force parent containers to be transparent so background shows through */
+    body, html, .main-content, .container, .main-content-wrapper {
+        background-color: transparent !important;
+    }
+    
+    body {
+        background-color: #000 !important; /* Base color if images fail */
+    }
+
+    /* Full screen background container */
+    .auth-background-container {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        z-index: 1;
+        background-color: #000;
+        overflow: hidden;
+    }
+
+    /* Individual poster layer */
+    .auth-bg-layer {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+        transition: opacity 1.5s ease-in-out;
+        opacity: 0;
+        filter: brightness(0.4);
+        background-color: #0a0a0a;
+    }
+
+    .auth-bg-layer.active {
+        opacity: 1;
+    }
+
+    /* Dark gradient overlay */
+    .auth-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 2;
+        background: radial-gradient(circle at center, transparent 0%, rgba(0,0,0,0.85) 100%);
+        pointer-events: none;
+    }
+
+    /* Ensure login card stays above background */
+    .login-wrapper {
+        position: relative;
+        z-index: 100;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+    }
+
+    .login-card {
+        background: rgba(26, 26, 26, 0.85) !important;
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.8) !important;
+    }
+
+    /* Hide alert close buttons on login page */
+    .btn-close {
+        display: none !important;
+    }
+
+</style>
+
+<!-- Background layers for cross-fade -->
+<div class="auth-background-container">
+    <div id="bg-layer-1" class="auth-bg-layer active"></div>
+    <div id="bg-layer-2" class="auth-bg-layer"></div>
+</div>
+<div class="auth-overlay"></div>
+
+<div class="login-wrapper">
+    <div class="login-card">
+        
+        <div class="auth-toggle">
+            <button type="button" class="toggle-btn active" id="tab-login" onclick="setMode('login')">
+                Log In
+            </button>
+            <button type="button" class="toggle-btn" id="tab-register" onclick="setMode('register')">
+                Register
+            </button>
+        </div>
+        
+        <div class="auth-body">
+            <form id="auth-form" method="POST" action="{{ url_for('web_auth.login') }}" onsubmit="return validateForm()">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" name="username" id="username" required placeholder="Enter username..." autocomplete="username">
+                </div>
+                
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" name="password" id="password" required placeholder="••••••••" autocomplete="current-password">
+                </div>
+
+                <div class="form-group hidden-field" id="confirm-container">
+                    <label>Confirm Password</label>
+                    <input type="password" id="confirm_password" placeholder="••••••••" autocomplete="new-password">
+                </div>
+                
+                <button type="submit" class="login-btn" id="submit-btn">
+                    Sign In
+                </button>
+            </form>
+
+            <div id="recovery-success-msg" class="text-muted" style="margin-top:0.75rem; display:none;">
+                Password updated. You can log in with your new password.
+            </div>
+            <div id="recovery-link-wrap" class="auth-footer" style="margin-top:0.5rem;">
+                <a href="{{ url_for('web_auth.reset_password_page') }}">Forgot password? Use a recovery code</a>
+            </div>
+            <div class="auth-footer" id="auth-footer-text">
+                Welcome back to SeekAndWatch
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const CSRF_TOKEN = "{{ csrf_token() }}";
+
+    // --- Background Cycling Logic ---
+    let posterList = [];
+    let currentPosterIndex = 0;
+    let activeLayer = 1;
+
+    async function initBackground() {
+        console.log("DEBUG: Initializing background posters...");
+        try {
+            const resp = await fetch('/api/public/posters');
+            console.log(`DEBUG: API Response status: ${resp.status}`);
+            
+            if (!resp.ok) {
+                console.error(`DEBUG ERROR: API returned status ${resp.status}`);
+                return;
+            }
+            
+            const data = await resp.json();
+            console.log("DEBUG: API Response data:", data);
+            
+            if (data.posters && data.posters.length > 0) {
+                console.log(`DEBUG: Successfully loaded ${data.posters.length} posters.`);
+                posterList = data.posters;
+                // Preload and start cycling
+                cycleBackground();
+                setInterval(cycleBackground, 5000);
+            } else {
+                console.warn("DEBUG: API returned no posters.");
+            }
+        } catch (e) {
+            console.error("DEBUG ERROR: Failed to load background posters:", e);
+        }
+    }
+
+    function cycleBackground() {
+        if (posterList.length === 0) return;
+
+        const nextLayer = activeLayer === 1 ? 2 : 1;
+        const currentLayerEl = document.getElementById(`bg-layer-${activeLayer}`);
+        const nextLayerEl = document.getElementById(`bg-layer-${nextLayer}`);
+
+        // Update next layer's image
+        const posterUrl = posterList[currentPosterIndex];
+        console.log(`DEBUG: Cycling background to layer ${nextLayer} with poster: ${posterUrl}`);
+        nextLayerEl.style.backgroundImage = `url('${posterUrl}')`;
+        
+        // Force a reflow to ensure the image loads
+        void nextLayerEl.offsetHeight;
+        
+        // Cross-fade
+        setTimeout(() => {
+            nextLayerEl.classList.add('active');
+            currentLayerEl.classList.remove('active');
+        }, 50);
+
+        // Update state
+        activeLayer = nextLayer;
+        currentPosterIndex = (currentPosterIndex + 1) % posterList.length;
+    }
+
+    document.addEventListener('DOMContentLoaded', initBackground);
+
+    // --- existing UI state logic ---
+    let currentMode = 'login';
+
+    // Show recovery success message if we just reset password
+    if (window.location.search.includes('recovery=success')) {
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('recovery-success-msg').style.display = 'block';
+            history.replaceState({}, '', "{{ url_for('web_auth.login') }}");
+        });
+    }
+    // Honor server-provided state (e.g., deep link to register).
+    {% if is_register %}
+    document.addEventListener('DOMContentLoaded', () => setMode('register'));
+    {% endif %}
+
+    function setMode(mode) {
+        currentMode = mode;
+        const form = document.getElementById('auth-form');
+        const submitBtn = document.getElementById('submit-btn');
+        const confirmBox = document.getElementById('confirm-container');
+        const confirmInput = document.getElementById('confirm_password');
+        const footer = document.getElementById('auth-footer-text');
+        
+        // Tabs
+        const tabLogin = document.getElementById('tab-login');
+        const tabRegister = document.getElementById('tab-register');
+
+        if (mode === 'login') {
+            // Visual state
+            tabLogin.classList.add('active');
+            tabRegister.classList.remove('active');
+            
+            // Form behavior
+            form.action = "{{ url_for('web_auth.login') }}";
+            submitBtn.innerText = "Sign In";
+            footer.innerText = "Welcome back to SeekAndWatch";
+            
+            // Hide confirm password
+            confirmBox.classList.remove('visible-field');
+            confirmBox.classList.add('hidden-field');
+            confirmInput.required = false;
+            
+        } else {
+            // Visual state
+            tabRegister.classList.add('active');
+            tabLogin.classList.remove('active');
+            
+            // Form behavior
+            form.action = "{{ url_for('web_auth.register') }}";
+            submitBtn.innerText = "Create Account";
+            footer.innerText = "Your watch history, reimagined.";
+            
+            // Show confirm password
+            confirmBox.classList.remove('hidden-field');
+            confirmBox.classList.add('visible-field');
+            confirmInput.required = true;
+        }
+    }
+
+    function validateForm() {
+        if (currentMode === 'register') {
+            const p1 = document.getElementById('password').value;
+            const p2 = document.getElementById('confirm_password').value;
+            
+            if (p1 !== p2) {
+                alert("⚠️ Passwords do not match!");
+                return false; // Stop submission.
+            }
+        }
+        return true; // Allow submission.
+    }
+</script>
+{% endblock %}

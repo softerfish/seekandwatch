@@ -1,0 +1,412 @@
+{% extends "base.html" %}
+
+{% block page_title %}Smart Discovery{% endblock %}
+
+{% block content %}
+
+
+<div id="nuclear-loader" style="display: none;">
+    <div class="nuclear-spinner"></div>
+    <h2 class="loader-title">Running Scan...</h2>
+    <p class="loader-sub">Analyzing your library history.</p>
+</div>
+
+<div class="text-center" style="padding-top: 8px;">
+
+<div id="system-health-bar" class="system-health-bar">
+    <div class="health-item" id="health-plex">
+        <i class="fab fa-plex health-icon"></i>
+        <span class="health-dot status-unknown"></span>
+        <span class="health-label">Plex:</span>
+        <span class="health-status">Checking...</span>
+    </div>
+    <div class="health-item" id="health-radarr">
+        <i class="fas fa-film health-icon"></i>
+        <span class="health-dot status-unknown"></span>
+        <span class="health-label">Radarr:</span>
+        <span class="health-status">Checking...</span>
+    </div>
+    <div class="health-item" id="health-sonarr">
+        <i class="fas fa-tv health-icon"></i>
+        <span class="health-dot status-unknown"></span>
+        <span class="health-label">Sonarr:</span>
+        <span class="health-status">Checking...</span>
+    </div>
+    <div class="health-item" id="health-cloud">
+        <i class="fas fa-cloud health-icon"></i>
+        <span class="health-dot status-unknown"></span>
+        <span class="health-label">Cloud:</span>
+        <span class="health-status">Checking...</span>
+    </div>
+</div>
+
+{% if not (settings.tautulli_url and settings.tautulli_api_key) %}
+        <div id="tautulli-connect-wrap" class="tautulli-connect-wrap">
+            <button type="button" class="tautulli-connect-turnoff" id="tautulli-connect-turnoff" title="Don't show this again" aria-label="Turn off Tautulli notice">Turn off</button>
+            <div class="section-title mt-30">
+                <i class="fas fa-fire"></i> Tautulli - Trending on Server
+            </div>
+            <div class="tautulli-banner">
+                <div>
+                    <strong class="text-error fs-large d-block mb-5">📊 Connect Tautulli</strong>
+                    <span class="text-light fs-normal" style="line-height: 1.4;">
+                        Link your Tautulli API in Settings to see what's popular on your server and generate recommendations based on what your friends are watching!
+                    </span>
+                </div>
+                <a href="{{ url_for('web_settings.settings') }}" class="btn-secondary fs-small white-space-nowrap" style="padding: 8px 15px;">Go to Settings ↗</a>
+            </div>
+        </div>
+        <script>
+        (function() {
+            var key = 'seekandwatch_tautulli_banner_dismissed';
+            var wrap = document.getElementById('tautulli-connect-wrap');
+            var btn = document.getElementById('tautulli-connect-turnoff');
+            if (!wrap) return;
+            try {
+                if (localStorage.getItem(key) === '1') { wrap.style.display = 'none'; return; }
+            } catch (e) {}
+            if (btn) {
+                btn.addEventListener('click', function() {
+                    try { localStorage.setItem(key, '1'); } catch (e) {}
+                    wrap.style.display = 'none';
+                });
+            }
+        })();
+        </script>
+        {% else %}
+            <details class="tautulli-top5-dropdown" id="tautulli-top5-dropdown" style="margin-top: 24px;" data-dropdown-storage-key="seekandwatch_tautulli_top5_open">
+                <summary class="tautulli-top5-trigger">
+                    <i class="fas fa-fire"></i> Tautulli - Trending on Server
+                </summary>
+                <div class="card mb-20 max-w-700 mx-auto">
+                    <div class="trending-header">
+                        <div class="d-flex gap-15" style="align-items:center;">
+                            <h3 class="m-0 fs-xlarge">Top 5</h3>
+                            <div class="trending-tabs">
+                                <button class="t-tab active" onclick="loadTrending('movie')" id="tab-movie">Movies</button>
+                                <button class="t-tab" onclick="loadTrending('tv')" id="tab-tv">TV Shows</button>
+                            </div>
+                            <div class="d-flex gap-10 ml-auto" style="align-items:center;">
+                                <label class="text-muted fs-small white-space-nowrap">Last</label>
+                                <input type="number" id="trending-days" value="30" min="1" max="365" class="trending-days-input" onchange="loadTrending(document.querySelector('.t-tab.active')?.id === 'tab-tv' ? 'tv' : 'movie')">
+                                <label class="text-muted fs-small white-space-nowrap">days</label>
+                            </div>
+                        </div>
+                        <button class="btn-find-similar" onclick="findSimilarToTrending()" title="Get recommendations based on these items">
+                            <span>Find Similar</span>
+                        </button>
+                    </div>
+                    
+                    <div id="trending-grid" class="trending-grid">
+                        <div class="grid-col-full text-center text-muted" style="padding:50px;">
+                            Loading stats from Tautulli...
+                        </div>
+                    </div>
+                </div>
+            </details>
+            <script>
+            (function() {
+                var key = 'seekandwatch_tautulli_top5_open';
+                try {
+                    var el = document.getElementById('tautulli-top5-dropdown');
+                    if (el) {
+                        var saved = localStorage.getItem(key);
+                        if (saved === 'true') el.setAttribute('open', '');
+                        el.addEventListener('toggle', function() { localStorage.setItem(key, el.open ? 'true' : 'false'); });
+                    }
+                } catch (e) {}
+            })();
+            </script>
+        {% endif %}
+
+    <div class="card discovery-card">
+        <h3 class="mt-0 text-accent text-center">Smart Discovery</h3>
+        
+        <div class="info-box">
+            <strong class="text-white d-block mb-2">How it works:</strong>
+            <ul class="m-0" style="padding-left: 20px;">
+                <li>Scans your last <b>5000 Plex history entries</b> and finds similar recommendations.</li>
+                <li>Set how many titles to pull from history (lower = faster).</li>
+                <li><strong>Future Releases:</strong> Only shows movies/shows not yet released.</li>
+                <li><strong>International & Obscure:</strong> Includes foreign films and lesser-known titles.</li>
+                <li>Results shuffle each time for fresh recommendations.</li>
+                <li><strong>Lucky Mode:</strong> Instantly finds a top-rated match from a random favorite.</li>
+            </ul>
+        </div>
+
+        <form id="mainScanForm" action="{{ url_for('web_generate.review_history') }}" method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <input type="hidden" id="mediaTypeInput" name="media_type" value="movie">
+
+            <div class="mb-20 text-center">
+                <label class="text-muted fs-normal">Number of titles to pull from history:</label>
+                <div class="d-flex flex-center mb-2" style="margin-top: 4px;">
+                    <input type="number" name="history_limit" value="20" min="1" max="100" class="history-limit-input">
+                </div>
+                <div class="history-tip-wrap">
+                    <p class="fs-small text-error mt-0 mb-0">
+                        ⚠️ <b>Tip:</b> Keep this under 30 for fast results. High numbers (50+) will significantly slow down the scan.
+                    </p>
+                </div>
+            </div>
+
+            <div class="discovery-exclude-row mb-20">
+                <div class="discovery-options-section">
+                    <details class="discovery-options-dropdown">
+                        <summary class="discovery-options-trigger">🔧 Discovery options</summary>
+                        <div class="discovery-options-panel">
+                            {% if has_omdb %}
+                            <label class="discovery-option discovery-option-critic" id="critic-label">
+                                <input type="checkbox" name="critic_filter" id="critic-filter" onchange="toggleCritic()">
+                                <span class="white-space-nowrap">🍅 Certified Fresh</span>
+                                <input type="number" name="critic_threshold" id="critic-input" value="70" min="0" max="100" onclick="event.stopPropagation();" class="critic-input" style="width: 55px; font-size: 0.9em; display: none; padding: 2px 4px;">
+                                <span id="critic-percent" class="d-none" style="font-size: 0.9em; margin-left: 2px;">%</span>
+                            </label>
+                            {% endif %}
+                            <label class="discovery-option discovery-option-future">
+                                <input type="checkbox" name="future_mode" value="true">
+                                <span class="white-space-nowrap">Future Releases Only</span>
+                            </label>
+                            <label class="discovery-option discovery-option-obscure">
+                                <input type="checkbox" name="include_obscure" value="true">
+                                <span class="white-space-nowrap">International & Obscure</span>
+                            </label>
+                        </div>
+                    </details>
+                    <script>
+                    function toggleCritic() {
+                        const isChecked = document.getElementById('critic-filter').checked;
+                        document.getElementById('critic-input').style.display = isChecked ? 'inline-block' : 'none';
+                        document.getElementById('critic-percent').style.display = isChecked ? 'inline' : 'none';
+                    }
+                    </script>
+                </div>
+                {% if plex_libraries %}
+                <div class="exclude-libraries-section">
+                    <details class="exclude-libs-dropdown">
+                        <summary class="exclude-libs-trigger">🚫 Exclude Libraries</summary>
+                        <div class="exclude-libs-panel">
+                            {% for lib in plex_libraries %}
+                            <label class="exclude-libs-option">
+                                <input type="checkbox" id="dash-lib-{{ loop.index }}" name="ignored_libraries" value="{{ lib }}">
+                                <span>{{ lib }}</span>
+                            </label>
+                            {% endfor %}
+                        </div>
+                    </details>
+                </div>
+                {% endif %}
+            </div>
+            <script>
+            (function() {
+                document.addEventListener('click', function(e) {
+                    ['discovery-options-dropdown', 'exclude-libs-dropdown'].forEach(function(className) {
+                        var el = document.querySelector('.' + className);
+                        if (el && el.open && !el.contains(e.target)) el.removeAttribute('open');
+                    });
+                });
+            })();
+            </script>
+        </form>
+            <div class="scan-btn-group">
+                <a href="javascript:void(0)" class="btn btn-primary btn-scan movie text-center" onclick="nuclearSubmit('movie')" style="text-decoration: none;">
+                    Movies
+                </a>
+                <a href="javascript:void(0)" class="btn btn-primary btn-scan tv text-center" onclick="nuclearSubmit('tv')" style="text-decoration: none;">
+                    TV Shows
+                </a>
+                <form id="luckyForm" action="{{ url_for('web_generate.generate') }}" method="POST" class="scan-btn-group-lucky">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <input type="hidden" name="lucky_mode" value="true">
+                    <a href="javascript:void(0)" class="btn btn-primary btn-lucky text-center" onclick="nuclearLucky()" style="text-decoration: none;">
+                        I'm Feeling Lucky
+                    </a>
+                </form>
+            </div>
+    </div>
+
+    <div class="mt-20 mb-10 text-muted">or search by title</div>
+    <div class="max-w-600 mx-auto position-relative">
+        <input type="text" id="main-search" placeholder="Type a title (e.g. Inception)..." class="main-search">
+        <div id="search-results"></div>
+    </div>
+</div>
+
+<script>
+    const API_TMDB_SEARCH_PROXY = "{{ url_for('api.tmdb_search_proxy') }}";
+    const API_GET_LOCAL_TRENDING = "{{ url_for('web_generate.get_local_trending') }}";
+    const API_RECOMMEND_FROM_TRENDING = "{{ url_for('web_generate.recommend_from_trending') }}";
+    const API_HEALTH_STATUS = "{{ url_for('api.health_status_api') }}";
+
+    function fetchSystemHealth() {
+        fetch(API_HEALTH_STATUS)
+            .then(r => r.json())
+            .then(data => {
+                Object.keys(data).forEach(service => {
+                    const el = document.getElementById(`health-${service}`);
+                    if (!el) return;
+                    
+                    const dot = el.querySelector('.health-dot');
+                    const status = el.querySelector('.health-status');
+                    
+                    const info = data[service];
+                    
+                    // Reset classes
+                    dot.className = 'health-dot';
+                    dot.classList.add(`status-${info.status}`);
+                    status.innerText = info.message;
+                });
+            })
+            .catch(err => console.error("Health check failed:", err));
+    }
+
+    document.addEventListener("DOMContentLoaded", function() {
+        // Move the loader to <body> so it doesn't get clipped.
+        const loader = document.getElementById('nuclear-loader');
+        if (loader && document.body) {
+            document.body.appendChild(loader);
+            // Make sure loader is hidden on page load
+            loader.style.display = 'none';
+        }
+        
+        fetchSystemHealth();
+        setInterval(fetchSystemHealth, 60000); // Update every minute
+    });
+
+    function nuclearSubmit(type) {
+        document.getElementById('nuclear-loader').style.display = 'flex';
+        const input = document.getElementById('mediaTypeInput');
+        if (input) input.value = type;
+        setTimeout(function() {
+            document.getElementById('mainScanForm').submit();
+        }, 50);
+    }
+
+    function nuclearLucky() {
+        document.getElementById('nuclear-loader').style.display = 'flex';
+        setTimeout(function() {
+            document.getElementById('luckyForm').submit();
+        }, 50);
+    }
+
+    // Search wiring.
+    const searchInput = document.getElementById('main-search');
+    const resultsDiv = document.getElementById('search-results');
+    let debounceTimer;
+
+    searchInput.addEventListener('input', function() {
+        clearTimeout(debounceTimer);
+        const query = this.value.trim();
+        if (query.length < 2) { resultsDiv.style.display = 'none'; return; }
+        debounceTimer = setTimeout(() => {
+            fetch(API_TMDB_SEARCH_PROXY + '?query=' + encodeURIComponent(query) + '&type=movie')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.results && data.results.length > 0) {
+                        let html = '';
+                        data.results.forEach(item => {
+                            const safeTitleAttr = String(item.title || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                            const posterSrc = item.poster && String(item.poster).startsWith('/') ? 'https://image.tmdb.org/t/p/w92' + item.poster : '';
+                            html += `<div class="search-result-item" onclick="selectItem('${safeTitleAttr}')">
+                                <img src="${posterSrc || 'https://via.placeholder.com/92x138?text=No+Poster'}" class="search-poster-thumb" onerror="this.style.display='none'" alt="">
+                                <div><div class="fw-bold">${escapeHtml(String(item.title || ''))}</div><div class="fs-small text-muted">${escapeHtml(String(item.year || ''))}</div></div></div>`;
+                        });
+                        resultsDiv.innerHTML = html; resultsDiv.style.display = 'block';
+                    } else { resultsDiv.style.display = 'none'; }
+                })
+                .catch(() => { resultsDiv.style.display = 'none'; });
+        }, 300);
+    });
+
+    function selectItem(title) {
+        document.getElementById('nuclear-loader').style.display = 'flex';
+        
+        const form = document.createElement('form'); 
+        form.method = 'POST'; 
+        form.action = "{{ url_for('web_generate.review_history') }}";
+        const csrfInput = document.createElement('input');
+        csrfInput.type = 'hidden';
+        csrfInput.name = 'csrf_token';
+        csrfInput.value = "{{ csrf_token() }}";
+        form.appendChild(csrfInput);
+        
+        const input = document.createElement('input'); 
+        input.type = 'hidden'; input.name = 'manual_query'; input.value = title;
+        
+        const typeInput = document.createElement('input'); 
+        typeInput.type = 'hidden'; typeInput.name = 'media_type'; typeInput.value = 'movie';
+        
+        form.appendChild(input); 
+        form.appendChild(typeInput); 
+        document.body.appendChild(form); 
+        
+        setTimeout(() => form.submit(), 50);
+    }
+    
+    document.addEventListener('click', function(e) { 
+        if (!searchInput.contains(e.target) && !resultsDiv.contains(e.target)) { 
+            resultsDiv.style.display = 'none'; 
+        } 
+    });
+
+let currentTrendingType = 'movie';
+
+    function loadTrending(type) {
+        currentTrendingType = type;
+        
+        // Update the tab UI.
+        const tabs = document.querySelectorAll('.t-tab');
+        if(tabs.length > 0) {
+            tabs.forEach(b => b.classList.remove('active'));
+            const activeTab = document.getElementById('tab-' + type);
+            if(activeTab) activeTab.classList.add('active');
+        }
+        
+        // If the widget isn't present, bail (API not configured).
+        const grid = document.getElementById('trending-grid');
+        if(!grid) return; 
+
+        grid.innerHTML = '<div class="grid-col-full text-center text-muted" style="padding:50px;">Loading Tautulli stats...</div>';
+        
+        const daysInput = document.getElementById('trending-days');
+        const days = daysInput ? parseInt(daysInput.value) || 30 : 30;
+        
+        const trendController = new AbortController();
+        const trendTimeout = setTimeout(() => trendController.abort(), 15000);
+        fetch(API_GET_LOCAL_TRENDING + '?type=' + encodeURIComponent(type) + '&days=' + days, { signal: trendController.signal })
+        .then(r => r.json())
+        .then(data => {
+            clearTimeout(trendTimeout);
+            if(data.status === 'success' && data.items.length > 0) {
+                let html = '';
+                data.items.forEach((item, idx) => {
+                    const poster = item.poster_path && String(item.poster_path).startsWith('/') ? 'https://image.tmdb.org/t/p/w200' + item.poster_path : 'https://via.placeholder.com/200x300?text=No+Poster';
+                    const safeTitle = escapeHtml(String(item.title || ''));
+                    const safeTitleAttr = String(item.title || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                    html += `
+                    <div class="t-card" title="${safeTitleAttr}" onclick="selectItem('${safeTitleAttr}')">
+                        <div class="t-rank">#${idx + 1}</div>
+                        <img src="${poster}" class="t-poster" alt="">
+                        <div class="t-info">${safeTitle}</div>
+                    </div>`;
+                });
+                grid.innerHTML = html;
+            } else {
+                grid.innerHTML = '<div class="grid-col-full text-center text-muted" style="padding:50px;">No trending data found.</div>';
+            }
+        })
+        .catch(err => { clearTimeout(trendTimeout); console.error(err); if (grid) grid.innerHTML = '<div class="grid-col-full text-center text-muted" style="padding:50px; color:#e74c3c;">Failed to load stats. Please try again.</div>'; });
+    }
+
+    function findSimilarToTrending() {
+        window.location.href = API_RECOMMEND_FROM_TRENDING + '?type=' + encodeURIComponent(currentTrendingType);
+    }
+
+    // Only initialize if the grid exists.
+    document.addEventListener('DOMContentLoaded', () => {
+        if(document.getElementById('trending-grid')) {
+            loadTrending('movie');
+        }
+    });
+</script>
+{% endblock %}

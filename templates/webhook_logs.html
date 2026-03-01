@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block page_title %}Webhook Logs{% endblock %}
+{% block content %}
+
+<div class="playlist-header logs-page-header">
+    <div class="logs-header-row">
+        <h2>Webhook Logs</h2>
+        <div class="logs-actions">
+            <button onclick="toggleQuietMode()" class="btn-secondary" style="padding: 8px 15px; font-size:0.9em;" id="quiet-mode-btn">
+                {% if quiet_mode %}Quiet Mode ON 🔇{% else %}Quiet Mode OFF 🔊{% endif %}
+            </button>
+            <button onclick="clearWebhookLogs()" class="btn-delete" style="padding: 8px 15px; font-size:0.9em;">Clear Logs 🗑️</button>
+            <button onclick="location.reload()" class="btn-preview" style="padding: 8px 15px; font-size:0.9em;">Refresh 🔄</button>
+        </div>
+    </div>
+    <p class="media-sub">Debug incoming webhook traffic from SeekAndWatch Cloud.</p>
+    {% if quiet_mode %}
+    <div style="margin-top: 10px; padding: 10px; background: rgba(255, 165, 0, 0.1); border-left: 3px solid orange; border-radius: 4px;">
+        <strong style="color: orange;">Quiet Mode Enabled:</strong> Only errors and filtered events are logged. Successful webhooks are not shown.
+    </div>
+    {% endif %}
+</div>
+
+<div class="card logs-table-container">
+    <table class="logs-table">
+        <thead>
+            <tr>
+                <th style="width: 180px;">Timestamp (UTC)</th>
+                <th style="width: 120px;">Event</th>
+                <th style="width: 100px;">Status</th>
+                <th>Details</th>
+                <th style="width: 80px;">Payload</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for log in logs %}
+            <tr class="log-row">
+                <td style="color: #888;">{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                <td><code style="color: #00bcd4;">{{ log.event }}</code></td>
+                <td>
+                    {% if log.status == 'success' %}
+                        <span class="log-badge success">success</span>
+                    {% elif log.status == 'error' %}
+                        <span class="log-badge error">error</span>
+                    {% else %}
+                        <span class="log-badge warning">{{ log.status }}</span>
+                    {% endif %}
+                </td>
+                <td style="line-height: 1.4;">{{ log.message or '—' }}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-info py-0 px-2" onclick="viewPayload({{ loop.index0 }})" style="font-size: 0.75rem;">View</button>
+                    <div id="payload-{{ loop.index0 }}" style="display: none;">{{ log.payload }}</div>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="5" class="text-center" style="padding: 30px; color: #666;">No webhook logs found.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Modal for Payload -->
+<div id="payloadModal" class="custom-modal-overlay">
+    <div class="custom-modal-box" style="max-width: 800px; width: 90%;">
+        <div class="modal-icon">📦</div>
+        <h3 class="modal-title">Webhook Payload</h3>
+        <pre id="payloadContent" style="background: #111; color: #00bcd4; padding: 15px; border-radius: 8px; text-align: left; overflow-x: auto; font-size: 0.85rem; max-height: 400px;"></pre>
+        <button onclick="document.getElementById('payloadModal').style.display='none'" class="modal-btn">Close</button>
+    </div>
+</div>
+
+<script>
+function toggleQuietMode() {
+    const btn = document.getElementById('quiet-mode-btn');
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Updating...';
+    
+    fetch("{{ url_for('api.toggle_webhook_quiet_mode') }}", {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': "{{ csrf_token() }}"
+        }
+    })
+    .then(r => r.json())
+    .then(d => {
+        if(d.status === 'success') {
+            location.reload();
+        } else {
+            alert("Error: " + d.message);
+            btn.disabled = false;
+            btn.textContent = originalText;
+        }
+    })
+    .catch(() => {
+        alert("Request failed. Please try again.");
+        btn.disabled = false;
+        btn.textContent = originalText;
+    });
+}
+
+function viewPayload(index) {
+    const raw = document.getElementById('payload-' + index).textContent;
+    try {
+        const obj = JSON.parse(raw);
+        document.getElementById('payloadContent').textContent = JSON.stringify(obj, null, 4);
+    } catch(e) {
+        document.getElementById('payloadContent').textContent = raw;
+    }
+    document.getElementById('payloadModal').style.display = 'flex';
+}
+
+function clearWebhookLogs() {
+    if(!confirm("Are you sure you want to clear the webhook history?")) return;
+    
+    fetch("{{ url_for('api.clear_webhook_logs') }}", {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': "{{ csrf_token() }}"
+        }
+    })
+    .then(r => r.json())
+    .then(d => {
+        if(d.status === 'success') location.reload();
+        else alert("Error: " + d.message);
+    })
+    .catch(() => alert("Request failed. Please try again."));
+}
+</script>
+
+{% endblock %}

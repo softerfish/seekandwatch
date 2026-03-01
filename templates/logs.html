@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% block page_title %}Logs{% endblock %}
+{% block content %}
+
+<div class="playlist-header logs-page-header">
+    <div class="logs-header-row">
+        <h2>System Logs</h2>
+        
+        <div class="logs-actions">
+            
+            <label class="switch-container">
+                <input type="checkbox" id="log-toggle" {% if settings.logging_enabled %}checked{% endif %} onchange="toggleLogging()">
+                <span class="switch-label">
+                    {% if settings.logging_enabled %}Recording ON 🟢{% else %}Recording OFF 🔴{% endif %}
+                </span>
+            </label>
+
+            <label class="switch-container">
+                <input type="checkbox" id="hide-errors-toggle" onchange="filterLogs()">
+                <span class="switch-label" id="hide-errors-label">Hide Errors 👁️</span>
+            </label>
+            <label class="switch-container">
+                <input type="checkbox" id="show-only-errors-toggle" onchange="filterLogs()">
+                <span class="switch-label" id="errors-only-label">Errors Only ⚠️</span>
+            </label>
+
+            <button onclick="clearLogs()" class="btn-delete" style="padding: 8px 15px; font-size:0.9em;">Clear Logs 🗑️</button>
+            <button onclick="location.reload()" class="btn-preview" style="padding: 8px 15px; font-size:0.9em;">Refresh 🔄</button>
+        </div>
+    </div>
+    <p class="media-sub">Track collection syncs, cache updates, and system errors.</p>
+</div>
+
+{% if error_count > 0 or recent_error_count > 0 %}
+<div class="card" style="margin-bottom: 20px; border-left: 4px solid #e74c3c;">
+    <div class="d-flex flex-between mb-10" style="align-items:center;">
+        <div>
+            <h3 class="m-0 text-error">⚠️ Error Summary</h3>
+            <p class="text-muted fs-small mb-0 mt-5">
+                Total Errors: <strong class="text-error">{{ error_count }}</strong> | 
+                Last 7 Days: <strong class="text-error">{{ recent_error_count }}</strong>
+            </p>
+        </div>
+        <button onclick="document.getElementById('show-only-errors-toggle').checked = true; filterLogs();" class="btn-secondary fs-small">
+            View All Errors
+        </button>
+    </div>
+</div>
+{% endif %}
+
+<div class="card logs-table-container">
+    <table class="logs-table">
+        <thead>
+            <tr>
+                <th style="width: 180px;">Timestamp</th>
+                <th style="width: 100px;">Module</th>
+                <th style="width: 100px;">Level</th>
+                <th>Message</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for log in logs %}
+            <tr class="log-row" data-level="{{ log.level }}">
+                <td style="color: #888;">{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                <td><code>{{ log.category }}</code></td>
+                <td>
+                    {% if log.level|lower == 'info' %}
+                        <span class="log-badge info">info</span>
+                    {% elif log.level|lower == 'success' %}
+                        <span class="log-badge success">success</span>
+                    {% elif log.level|lower == 'warning' or log.level|lower == 'warn' %}
+                        <span class="log-badge warning">warning</span>
+                    {% elif log.level|lower == 'error' %}
+                        <span class="log-badge error">error</span>
+                    {% else %}
+                        <span class="log-badge default">{{ log.level }}</span>
+                    {% endif %}
+                </td>
+                <td style="line-height: 1.4;">{{ log.message }}</td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="4" class="text-center" style="padding: 30px; color: #666;">
+                    {% if settings.logging_enabled %}
+                        No logs found.
+                    {% else %}
+                        Recording is turned off.
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+
+
+<script>
+const CSRF_TOKEN = "{{ csrf_token() }}";
+const API_TOGGLE_LOGGING = "{{ url_for('api.toggle_logging') }}";
+const API_CLEAR_LOGS = "{{ url_for('api.clear_logs') }}";
+function toggleLogging() {
+    const enabled = document.getElementById('log-toggle').checked;
+    fetch(API_TOGGLE_LOGGING, {
+        method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN},
+        body: JSON.stringify({enabled: enabled})
+    })
+    .then(r => r.json())
+    .then(d => {
+        if(d.status === 'success') location.reload();
+        else alert("Error: " + d.message);
+    })
+    .catch(() => alert("Request failed. Please try again."));
+}
+
+function clearLogs() {
+    if(!confirm("Are you sure you want to delete all history?")) return;
+    fetch(API_CLEAR_LOGS, {method: 'POST', headers: {'X-CSRFToken': CSRF_TOKEN}})
+    .then(r => r.json())
+    .then(d => {
+        if(d.status === 'success') location.reload();
+        else alert("Error: " + d.message);
+    })
+    .catch(() => alert("Request failed. Please try again."));
+}
+
+function filterLogs() {
+    const hideErrors = document.getElementById('hide-errors-toggle').checked;
+    const showOnlyErrors = document.getElementById('show-only-errors-toggle').checked;
+    const rows = document.querySelectorAll('.log-row');
+    
+    // Update labels to show current state
+    const hideErrorsLabel = document.getElementById('hide-errors-label');
+    const errorsOnlyLabel = document.getElementById('errors-only-label');
+    
+    if (hideErrors) {
+        hideErrorsLabel.textContent = 'Hide Errors ✅ (ON)';
+        hideErrorsLabel.style.color = '#2ecc71';
+    } else {
+        hideErrorsLabel.textContent = 'Hide Errors 👁️';
+        hideErrorsLabel.style.color = '';
+    }
+    
+    if (showOnlyErrors) {
+        errorsOnlyLabel.textContent = 'Errors Only ✅ (ON)';
+        errorsOnlyLabel.style.color = '#e74c3c';
+    } else {
+        errorsOnlyLabel.textContent = 'Errors Only ⚠️';
+        errorsOnlyLabel.style.color = '';
+    }
+    
+    rows.forEach(row => {
+        const level = row.getAttribute('data-level');
+        
+        if (showOnlyErrors) {
+            row.style.display = (level && level.toLowerCase() === 'error') ? '' : 'none';
+        } else if (hideErrors) {
+            row.style.display = (level && level.toLowerCase() === 'error') ? 'none' : '';
+        } else {
+            // Show all
+            row.style.display = '';
+        }
+    });
+}
+
+// Apply initial filter when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    filterLogs();
+});
+</script>
+
+{% endblock %}

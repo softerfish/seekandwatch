@@ -1,0 +1,983 @@
+{% extends "base.html" %}
+{% block page_title %}Settings{% endblock %}
+{% block content %}
+
+<div class="settings-container">
+    <div class="settings-header">
+        <h2>Configuration</h2>
+        <p class="text-muted">Manage your connections, automation engines, and system preferences.</p>
+    </div>
+
+    <div id="save-toast">
+        <i class="fas fa-check-circle"></i> Saved
+    </div>
+
+    <div class="settings-tabs">
+        <button type="button" class="tab-link active" onclick="openTab(event, 'tab-apis')">APIs & Connections</button>
+        <button type="button" class="tab-link" onclick="openTab(event, 'tab-scanners')">Scanners & memory</button>
+        <button type="button" class="tab-link" onclick="openTab(event, 'tab-system')">System & Maintenance</button>
+
+        {% if current_user.is_admin %}
+        <button type="button" class="tab-link" onclick="openTab(event, 'tab-users'); loadUsers();">User
+            Management</button>
+        {% endif %}
+    </div>
+
+    {% if current_user.is_admin %}
+    <div id="tab-users" class="tab-content" data-settings-section="users">
+        <div class="card setting-card border-accent">
+            <h3>Manage Users</h3>
+            <p class="text-muted">Grant admin privileges or remove users from the system.</p>
+
+            <div id="user-list-container" class="logs-table-container" style="border:none; max-height:none;">
+                <div class="text-center" style="padding:20px;">Loading users...</div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="settings-save-bar" style="margin-bottom: 20px; padding: 12px 0; border-bottom: 1px solid #333;">
+        <button type="button" class="btn-save" id="main-save-btn" data-save-label="Save"
+            onclick="submitActiveSettingsForm()">Save</button>
+    </div>
+
+    <section aria-label="APIs and connections" style="margin-bottom: 0;">
+        <div id="tab-apis" class="tab-content active" data-settings-section="apis">
+            {% if server_host %}
+            <div id="auto-fill-banner" class="card"
+                style="margin-bottom: 20px; border-left: 4px solid var(--accent-color); background: rgba(0, 204, 102, 0.1); display: none;">
+                <div class="d-flex flex-between" style="align-items: flex-start;">
+                    <div style="flex: 1;">
+                        <h4 style="margin: 0 0 8px 0; color: var(--accent-color);">Auto-Fill Available</h4>
+                        <p style="margin: 0; color: #ccc; font-size: 0.9em; line-height: 1.5;">
+                            We detected your server IP (<code
+                                style="background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 3px;">{{ server_host }}</code>)
+                            and can auto-fill API URLs with default ports.
+                            This is based on the URL you're accessing SeekAndWatch from. Only empty fields will be
+                            filled.
+                        </p>
+                    </div>
+                    <div style="display: flex; gap: 10px; margin-left: 15px; flex-shrink: 0;">
+                        <button type="button" onclick="acceptAutoFill()" class="btn-primary"
+                            style="padding: 8px 16px; font-size: 0.9em;">Accept ✓</button>
+                        <button type="button" onclick="dismissAutoFill()" class="btn-secondary"
+                            style="padding: 8px 16px; font-size: 0.9em;">Dismiss ✕</button>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <form class="card setting-card border-accent" onsubmit="return false;" autocomplete="off">
+                <input type="text" name="username" autocomplete="username" tabindex="-1" aria-hidden="true"
+                    style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0;">
+                <h3>Plex Integration</h3>
+                <p class="text-muted small" style="margin-top: 0; margin-bottom: 12px;">Link your Plex account to get a
+                    token via API. Use <b>Sync library now</b> below to import your Plex movie/TV library into the app.
+                </p>
+
+                {% if settings.plex_url and settings.plex_token %}
+                <p id="plex-link-status"
+                    style="margin: 0 0 16px 0; padding: 10px 14px; background: rgba(0, 204, 102, 0.15); border: 1px solid rgba(0, 204, 102, 0.5); border-radius: 8px; color: var(--accent-color); font-weight: bold;">
+                    ✓ Plex account connected
+                </p>
+                {% else %}
+                <p id="plex-link-status"
+                    style="margin: 0 0 16px 0; padding: 10px 14px; background: rgba(128,128,128,0.15); border: 1px solid rgba(128,128,128,0.4); border-radius: 8px; color: #999; font-size: 0.95em;">
+                    Plex not connected - link below or enter URL &amp; token
+                </p>
+                {% endif %}
+
+                <div id="plex-pin-box"
+                    style="display: none; margin-bottom: 16px; padding: 14px; background: rgba(0,0,0,0.3); border-radius: 8px; border: 1px solid rgba(255,165,0,0.4);">
+                    <div id="plex-pin-step-code">
+                        <div style="font-weight: bold; margin-bottom: 6px; color: #e0e0e0;">Enter this code at <a
+                                href="https://plex.tv/link" target="_blank" rel="noopener"
+                                style="color: var(--accent-color);">plex.tv/link</a>:</div>
+                        <div id="plex-pin-code"
+                            style="font-size: 1.8em; letter-spacing: 0.35em; margin-bottom: 8px; font-weight: bold; color: #fff; background: rgba(0, 204, 102, 0.25); padding: 12px 16px; border-radius: 6px; display: inline-block; min-width: 120px; text-align: center;">
+                        </div>
+                        <div id="plex-pin-msg" style="color: #aaa; font-size: 0.9em;">Waiting for you to authorize…
+                        </div>
+                    </div>
+                    <div id="plex-pin-step-server" style="display: none;">
+                        <div style="font-weight: bold; margin-bottom: 8px; color: #e0e0e0;">Select your Plex server
+                            (local suggested)</div>
+                        <select id="plex-server-select"
+                            style="width: 100%; max-width: 480px; padding: 10px; background: #111; color: #fff; border: 1px solid #444; border-radius: 6px; margin-bottom: 10px;"></select>
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                            <button type="button" id="btn-plex-use-server" class="btn-primary"
+                                style="padding: 8px 16px;">Use this server</button>
+                            <button type="button" id="btn-plex-skip-server" class="btn-secondary"
+                                style="padding: 8px 16px;">Skip - enter URL below</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 16px;">
+                    <button type="button" id="btn-link-plex" class="btn-primary" style="padding: 8px 16px;"
+                        data-plex-linked="{{ 'true' if (settings.plex_url and settings.plex_token) else 'false' }}">{%
+                        if settings.plex_url and settings.plex_token %}Unlink Plex account{% else %}Link Plex account{%
+                        endif %}</button>
+                </div>
+
+                <div class="input-group" id="plex-server-dropdown-row"
+                    style="{% if not settings.plex_token %}display: none;{% endif %} margin-top: 16px;">
+                    <label class="input-label">Server</label>
+                    <p class="text-muted small" style="margin: 4px 0 8px 0;">Choose a connection. Use <strong>[local IP]
+                            - recommended</strong> when on the same network as Plex.</p>
+                    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                        <select id="plex-server-select-persistent"
+                            style="flex: 1; min-width: 280px; padding: 10px; background: #111; color: #fff; border: 1px solid #444; border-radius: 6px;">
+                            <option value="">{% if settings.plex_token %}Loading…{% else %}-{% endif %}</option>
+                        </select>
+                        <button type="button" id="btn-plex-refresh-servers" class="btn-secondary"
+                            style="padding: 8px 14px;">Refresh</button>
+                        <button type="button" id="btn-plex-apply-server" class="btn-primary"
+                            style="padding: 8px 14px;">Use selected</button>
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label class="input-label">Plex Local URL <span
+                            style="color: var(--error);">*Required</span></label>
+                    <input type="text" id="plex_url" name="plex_url" value="{{ settings.plex_url or '' }}"
+                        placeholder="http://192.168.1.50:32400">
+                </div>
+
+                <div class="input-group">
+                    <label class="input-label" id="label-plex-token">Plex Token {% if settings.plex_token %}<span
+                            class="key-saved-badge">Saved</span>{% endif %}</label>
+                    <div style="display: flex; gap: 10px;">
+                        <div class="password-wrapper">
+                            <input type="password" id="plex_token" name="plex_token" autocomplete="off"
+                                value="{{ settings.plex_token or '' }}"
+                                placeholder="{% if settings.plex_token %}••••••••{% else %}Paste token{% endif %}" {% if
+                                settings.plex_token %}data-key-set="1" {% endif %} autocomplete="off"
+                                style="width: 100%; padding-right: 40px;">
+                            {% if settings.plex_token %}<input type="hidden" name="plex_token_unchanged" value="1"
+                                id="plex_token_unchanged_h">{% endif %}
+                            <button type="button" class="toggle-pass"
+                                onclick="toggleVisibility('plex_token', this)">👁️</button>
+                            <button type="button" class="clear-field-btn"
+                                onclick="clearPasswordField('plex_token', 'plex_token_unchanged_h')">Clear</button>
+                        </div>
+                        <button type="button" onclick="testService('plex')" class="btn-secondary">Test</button>
+                    </div>
+                </div>
+
+                <div class="input-group" style="margin-top: 12px;">
+                    <label class="input-label">Import library</label>
+                    <div class="plex-sync-stats">
+                        <div style="font-size: 0.9em; color: #888;">Last synced: <span id="last-updated"
+                                style="color: var(--text-color); font-weight: bold;">{{ cache_age }}</span></div>
+                        <div style="font-size: 0.9em; color: #888;">Items found: <span
+                                style="color: var(--text-color); font-weight: bold;">{{ alias_count|default(0) }}</span>
+                        </div>
+                    </div>
+                    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 12px;">
+                        <button type="button" id="btn-force" onclick="syncPlexLibrary()" class="btn-secondary">Sync
+                            library now</button>
+                        <span id="plex-sync-library-msg" style="font-size: 0.9em; color: #888;"></span>
+                    </div>
+                </div>
+
+                <div id="plex-ignore-panel" class="info-panel"
+                    style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 8px; display: none;">
+                    <label class="ignore-label">🛡️ Ignore History From:</label>
+                    <div id="plex-users-grid" class="ignore-grid">
+                        <span class="text-muted small">Loading users...</span>
+                    </div>
+                </div>
+            </form>
+
+            <form class="card setting-card border-accent" onsubmit="return false;" autocomplete="off">
+                <input type="text" name="username" autocomplete="username" tabindex="-1" aria-hidden="true"
+                    style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0;">
+                <h3>Metadata APIs</h3>
+                <div class="input-group">
+                    <label class="input-label">TMDB API Key (v3) {% if settings.tmdb_key %}<span
+                            class="key-saved-badge">Saved</span>{% endif %} <span
+                            style="color: var(--error);">*Required</span></label>
+                    <div class="test-row">
+                        <div class="password-wrapper">
+                            <input type="password" id="tmdb_key" name="tmdb_key" autocomplete="off" value="{{ settings.tmdb_key or '' }}"
+                                placeholder="{% if settings.tmdb_key %}••••••••{% else %}Paste API key{% endif %}" {% if
+                                settings.tmdb_key %}data-key-set="1" {% endif %}>
+                            {% if settings.tmdb_key %}<input type="hidden" name="tmdb_key_unchanged" value="1"
+                                id="tmdb_key_unchanged_h">{% endif %}
+                            <button type="button" class="toggle-pass"
+                                onclick="toggleVisibility('tmdb_key', this)">👁️</button>
+                            <button type="button" class="clear-field-btn"
+                                onclick="clearPasswordField('tmdb_key', 'tmdb_key_unchanged_h')">Clear</button>
+                        </div>
+                        <button type="button" onclick="testService('tmdb')" class="btn-secondary">Test</button>
+                    </div>
+                </div>
+                <div class="input-group">
+                    <label class="input-label">OMDB API Key {% if settings.omdb_key %}<span
+                            class="key-saved-badge">Saved</span>{% endif %}</label>
+                    <div class="test-row">
+                        <div class="password-wrapper">
+                            <input type="password" id="omdb_key" name="omdb_key" autocomplete="off" value="{{ settings.omdb_key or '' }}"
+                                placeholder="{% if settings.omdb_key %}••••••••{% else %}xxxxxx{% endif %}" {% if
+                                settings.omdb_key %}data-key-set="1" {% endif %}>
+                            {% if settings.omdb_key %}<input type="hidden" name="omdb_key_unchanged" value="1"
+                                id="omdb_key_unchanged_h">{% endif %}
+                            <button type="button" class="toggle-pass"
+                                onclick="toggleVisibility('omdb_key', this)">👁️</button>
+                            <button type="button" class="clear-field-btn"
+                                onclick="clearPasswordField('omdb_key', 'omdb_key_unchanged_h')">Clear</button>
+                        </div>
+                        <button type="button" onclick="testService('omdb')" class="btn-secondary">Test</button>
+                    </div>
+                </div>
+            </form>
+
+            <form class="card setting-card border-accent" onsubmit="return false;" autocomplete="off">
+                <input type="text" name="username" autocomplete="username" tabindex="-1" aria-hidden="true"
+                    style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0;">
+                <h3>Tautulli Connection</h3>
+                <div class="input-group">
+                    <label class="input-label">Tautulli URL</label>
+                    <input type="text" id="tautulli_url" name="tautulli_url" value="{{ settings.tautulli_url or '' }}"
+                        placeholder="http://192.168.1.50:8181">
+                </div>
+                <div class="input-group">
+                    <label class="input-label">Tautulli API Key {% if settings.tautulli_api_key %}<span
+                            class="key-saved-badge">Saved</span>{% endif %}</label>
+                    <div style="display: flex; gap: 10px;">
+                        <div class="password-wrapper">
+                            <input type="password" id="tautulli_api_key" name="tautulli_api_key" autocomplete="off"
+                                value="{{ settings.tautulli_api_key or '' }}"
+                                placeholder="{% if settings.tautulli_api_key %}••••••••{% else %}Paste API key{% endif %}"
+                                {% if settings.tautulli_api_key %}data-key-set="1" {% endif %}>
+                            {% if settings.tautulli_api_key %}<input type="hidden" name="tautulli_api_key_unchanged"
+                                value="1" id="tautulli_api_key_unchanged_h">{% endif %}
+                            <button type="button" class="toggle-pass"
+                                onclick="toggleVisibility('tautulli_api_key', this)">👁️</button>
+                            <button type="button" class="clear-field-btn"
+                                onclick="clearPasswordField('tautulli_api_key', 'tautulli_api_key_unchanged_h')">Clear</button>
+                        </div>
+                        <button type="button" onclick="testService('tautulli')" class="btn-secondary">Test</button>
+                    </div>
+                </div>
+            </form>
+
+            <div class="card setting-card border-accent">
+                <h3>Radarr & Sonarr</h3>
+                <form onsubmit="return false;" autocomplete="off" style="margin-bottom: 24px;">
+                    <div class="input-group">
+                        <label class="input-label">Radarr URL</label>
+                        <input type="text" id="radarr_url" name="radarr_url" value="{{ settings.radarr_url or '' }}"
+                            placeholder="http://192.168.1.50:7878">
+                    </div>
+                    <div class="input-group">
+                        <label class="input-label">Radarr API Key {% if settings.radarr_api_key %}<span
+                                class="key-saved-badge">Saved</span>{% endif %}</label>
+                        <div style="display: flex; gap: 10px;">
+                            <div class="password-wrapper">
+                                <input type="password" id="radarr_api_key" name="radarr_api_key" autocomplete="off"
+                                    value="{{ settings.radarr_api_key or '' }}"
+                                    placeholder="{% if settings.radarr_api_key %}••••••••{% else %}Paste API key{% endif %}"
+                                    {% if settings.radarr_api_key %}data-key-set="1" {% endif %}>
+                                {% if settings.radarr_api_key %}<input type="hidden" name="radarr_api_key_unchanged"
+                                    value="1" id="radarr_api_key_unchanged_h">{% endif %}
+                                <button type="button" class="toggle-pass"
+                                    onclick="toggleVisibility('radarr_api_key', this)">👁️</button>
+                                <button type="button" class="clear-field-btn"
+                                    onclick="clearPasswordField('radarr_api_key', 'radarr_api_key_unchanged_h')">Clear</button>
+                            </div>
+                            <button type="button" onclick="testService('radarr')" class="btn-secondary">Test</button>
+                        </div>
+                    </div>
+                </form>
+                <form onsubmit="return false;" autocomplete="off">
+                    <div class="input-group">
+                        <label class="input-label">Sonarr URL</label>
+                        <input type="text" id="sonarr_url" name="sonarr_url" value="{{ settings.sonarr_url or '' }}"
+                            placeholder="http://192.168.1.50:8989">
+                    </div>
+                    <div class="input-group">
+                        <label class="input-label">Sonarr API Key {% if settings.sonarr_api_key %}<span
+                                class="key-saved-badge">Saved</span>{% endif %}</label>
+                        <div style="display: flex; gap: 10px;">
+                            <div class="password-wrapper">
+                                <input type="password" id="sonarr_api_key" name="sonarr_api_key" autocomplete="off"
+                                    value="{{ settings.sonarr_api_key or '' }}"
+                                    placeholder="{% if settings.sonarr_api_key %}••••••••{% else %}Paste API key{% endif %}"
+                                    {% if settings.sonarr_api_key %}data-key-set="1" {% endif %}>
+                                {% if settings.sonarr_api_key %}<input type="hidden" name="sonarr_api_key_unchanged"
+                                    value="1" id="sonarr_api_key_unchanged_h">{% endif %}
+                                <button type="button" class="toggle-pass"
+                                    onclick="toggleVisibility('sonarr_api_key', this)">👁️</button>
+                                <button type="button" class="clear-field-btn"
+                                    onclick="clearPasswordField('sonarr_api_key', 'sonarr_api_key_unchanged_h')">Clear</button>
+                            </div>
+                            <button type="button" onclick="testService('sonarr')" class="btn-secondary">Test</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </section>
+
+    <section aria-label="Scanners and memory" style="margin-bottom: 0;">
+        <div id="tab-scanners" class="tab-content" data-settings-section="scanners">
+            <div class="card setting-card border-accent">
+                <h3>Library Index</h3>
+                <p class="text-muted small">Manual controls for the TMDB index of your Plex library.</p>
+                <div style="display: flex; gap: 10px; align-items: center; margin-top: 12px;">
+                    <button type="button" class="btn-danger" onclick="resetScannerIndex()">Reset Index</button>
+                    <span class="settings-count-badge" id="db-count-badge">Loading...</span>
+                </div>
+            </div>
+
+            <div class="card setting-card border-accent" style="margin-top: 30px;">
+                <h3>Radarr & Sonarr Scanner</h3>
+                <p class="text-muted small">Scan your Radarr and Sonarr libraries to exclude items from recommendations.
+                </p>
+                <div
+                    style="margin-bottom: 15px; padding: 10px; background: rgba(124, 93, 250, 0.1); border-radius: 6px;">
+                    <strong style="color: var(--accent-color);">Last Scan:</strong> <span
+                        id="radarr-sonarr-last-scan">Never</span>
+                    <button type="button" class="btn-secondary" style="margin-left:10px; padding:4px 10px;"
+                        onclick="forceRadarrSonarrCacheRefresh()">Refresh Now</button>
+                </div>
+                <div class="scanner-row">
+                    <label><input type="checkbox" id="radarr-sonarr-toggle"> Enable Auto-Scan</label>
+                    <select id="radarr-sonarr-interval" class="filter-input">
+                        <option value="6">6 Hours</option>
+                        <option value="12">12 Hours</option>
+                        <option value="24" selected>24 Hours</option>
+                    </select>
+                    <button type="button" class="btn-primary" onclick="saveRadarrSonarrScannerSettings()">Save</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section aria-label="System and maintenance" style="margin-bottom: 0;">
+        <div id="tab-system" class="tab-content" data-settings-section="system">
+            <div class="card setting-card border-accent">
+                <h3>Webhook Logs</h3>
+                <p class="text-muted small">Control how many webhook events to keep in history.</p>
+                <div class="input-group" style="max-width: 300px;">
+                    <label class="input-label">Max logs to keep</label>
+                    <input type="number" name="max_webhook_logs" value="{{ settings.max_webhook_logs or 100 }}" min="10" max="1000" step="10">
+                    <p class="text-muted small" style="margin-top: 4px;">Older logs are automatically deleted (10-1000)</p>
+                </div>
+            </div>
+
+            <div class="card setting-card border-accent">
+                <h3>System Maintenance</h3>
+                <div style="display:flex; gap:20px; margin-bottom:20px;">
+                    <div class="input-group" style="flex:1;">
+                        <label class="input-label">Backup Interval (Days)</label>
+                        <input type="number" name="backup_interval" value="{{ settings.backup_interval or 2 }}">
+                    </div>
+                    <div class="input-group" style="flex:1;">
+                        <label class="input-label">Retention (Days)</label>
+                        <input type="number" name="backup_retention" value="{{ settings.backup_retention or 7 }}">
+                    </div>
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <button type="button" onclick="createBackup()" class="btn-primary">+ Backup Now</button>
+                    <button type="button" onclick="triggerBackupUpload()" class="btn-secondary">Upload Backup</button>
+                </div>
+                <div id="backup-list" style="margin-top:20px;"></div>
+                <input type="file" id="backup-upload-input" accept=".zip" style="display:none;"
+                    onchange="handleBackupUpload(this.files)">
+            </div>
+
+            <div class="card danger-zone">
+                <h3 style="color: var(--error);">Danger Zone</h3>
+                <button type="button" onclick="document.getElementById('delete-account-form').submit();"
+                    class="btn-danger" style="width:100%;">Delete My Account</button>
+            </div>
+        </div>
+    </section>
+</div>
+
+<script>
+    const SETTINGS_CSRF = "{{ csrf_token() }}";
+    const SETTINGS_SAVE_URL = "{{ url_for('web_settings.settings') }}";
+    const API_TEST_CONNECTION = "{{ url_for('api.test_connection') }}";
+    const API_PLEX_PIN_CREATE = "{{ url_for('api.plex_pin_create') }}";
+    const API_PLEX_PIN_POLL = "{{ url_for('api.plex_pin_poll') }}";
+    const API_PLEX_SET_URL = "{{ url_for('api.plex_set_url') }}";
+    const API_PLEX_CONNECTIONS = "{{ url_for('api.plex_connections') }}";
+    const API_SCANNER_STATUS = "{{ url_for('api.scanner_status') }}";
+    const API_SCANNER_RESET = "{{ url_for('api.reset_scanner') }}";
+    const API_PLEX_LIBRARY_SYNC = "{{ url_for('api.plex_library_sync') }}";
+    const API_GET_CACHE_STATUS = "{{ url_for('api.get_cache_status_route') }}";
+    const API_GET_RADARR_SONARR_CACHE_STATUS = "{{ url_for('api.get_radarr_sonarr_cache_status_route') }}";
+    const API_FORCE_RADARR_SONARR_CACHE_REFRESH = "{{ url_for('api.force_radarr_sonarr_cache_refresh_route') }}";
+    const API_RADARR_SONARR_SCANNER_SAVE = "{{ url_for('api.save_scanner_settings') }}";
+    const API_BACKUPS = "{{ url_for('api.get_backups_api') }}";
+    const API_BACKUP_CREATE = "{{ url_for('api.trigger_backup') }}";
+    const API_BACKUP_DELETE_BASE = "{{ url_for('api.delete_backup_api', filename='') }}";
+    const API_BACKUP_RESTORE_BASE = "{{ url_for('api.run_restore', filename='') }}";
+    const API_BACKUP_UPLOAD = "{{ url_for('api.upload_backup') }}";
+    const BACKUP_DOWNLOAD_URL_PREFIX = "{{ url_for('api.download_backup', filename='') }}";
+
+    function openTab(evt, tabName) {
+        let i, tabcontent, tablinks;
+        tabcontent = document.getElementsByClassName("tab-content");
+        for (i = 0; i < tabcontent.length; i++) {
+            tabcontent[i].style.display = "none";
+            tabcontent[i].classList.remove("active");
+        }
+        tablinks = document.getElementsByClassName("tab-link");
+        for (i = 0; i < tablinks.length; i++) {
+            tablinks[i].className = tablinks[i].className.replace(" active", "");
+        }
+        document.getElementById(tabName).style.display = "block";
+        document.getElementById(tabName).classList.add("active");
+        evt.currentTarget.className += " active";
+    }
+
+    function toggleVisibility(id, btn) {
+        const el = document.getElementById(id);
+        if (el.type === "password") { el.type = "text"; btn.innerText = "🔒"; }
+        else { el.type = "password"; btn.innerText = "👁️"; }
+    }
+
+    function clearPasswordField(inputId, unchangedId) {
+        const el = document.getElementById(inputId);
+        if (el) { el.value = ""; el.focus(); el.removeAttribute("data-key-set"); }
+        const h = document.getElementById(unchangedId);
+        if (h) h.remove();
+    }
+
+    function showToast() {
+        const toast = document.getElementById('save-toast');
+        toast.style.opacity = '1';
+        setTimeout(() => { toast.style.opacity = '0'; }, 2000);
+    }
+
+    function showModal(icon, title, message, isSuccess) {
+        const modal = document.getElementById('settingsModal');
+        document.getElementById('modalIcon').innerText = icon;
+        document.getElementById('modalTitle').innerText = title;
+        document.getElementById('modalMessage').innerText = message;
+        const btn = document.getElementById('modalBtn');
+        btn.onclick = function () { modal.style.display = 'none'; if (isSuccess) location.reload(); };
+        modal.style.display = 'flex';
+    }
+
+    function testService(service) {
+        const keyIds = { plex: ['plex_token'], tmdb: ['tmdb_key'], omdb: ['omdb_key'], tautulli: ['tautulli_api_key'], radarr: ['radarr_api_key'], sonarr: ['sonarr_api_key'] };
+        let useStored = false;
+        if (keyIds[service]) {
+            keyIds[service].forEach(id => {
+                const el = document.getElementById(id);
+                if (el && el.hasAttribute('data-key-set') && !el.value.trim()) useStored = true;
+            });
+        }
+        let payload = { service: service, use_stored: useStored };
+        if (service === 'plex') { payload.url = document.getElementById('plex_url').value; payload.token = document.getElementById('plex_token').value; }
+        else if (service === 'tmdb') { payload.api_key = document.getElementById('tmdb_key').value; }
+        else if (service === 'omdb') { payload.api_key = document.getElementById('omdb_key').value; }
+        else if (service === 'tautulli') { payload.url = document.getElementById('tautulli_url').value; payload.api_key = document.getElementById('tautulli_api_key').value; }
+        else if (service === 'radarr') { payload.url = document.getElementById('radarr_url').value; payload.api_key = document.getElementById('radarr_api_key').value; }
+        else if (service === 'sonarr') { payload.url = document.getElementById('sonarr_url').value; payload.api_key = document.getElementById('sonarr_api_key').value; }
+
+        fetch(API_TEST_CONNECTION, {
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': SETTINGS_CSRF }, body: JSON.stringify(payload)
+        }).then(r => r.json()).then(d => {
+            showModal(d.status === 'success' ? '✅' : '❌', d.status === 'success' ? 'Connected!' : 'Failed', d.message, false);
+        });
+    }
+
+    function submitActiveSettingsForm() {
+        const activeTab = document.querySelector('.tab-content.active');
+        const section = activeTab.getAttribute('data-settings-section');
+        const formData = new FormData();
+        formData.append('csrf_token', SETTINGS_CSRF);
+        formData.append('form_section', section);
+
+        activeTab.querySelectorAll('input[name], select[name], textarea[name]').forEach(el => {
+            if (el.type === 'checkbox') formData.append(el.name, el.checked ? 'on' : '');
+            else formData.append(el.name, el.value);
+        });
+
+        fetch(SETTINGS_SAVE_URL, { method: 'POST', headers: {'X-CSRFToken': SETTINGS_CSRF}, body: formData })
+            .then(r => r.json())
+            .then(d => {
+                if (d.status === 'success') showToast();
+                else alert(d.message);
+            });
+    }
+
+    function acceptAutoFill() {
+        const serverHost = "{{ server_host }}";
+        const defaults = { 'plex_url': `http://${serverHost}:32400`, 'radarr_url': `http://${serverHost}:7878`, 'sonarr_url': `http://${serverHost}:8989`, 'tautulli_url': `http://${serverHost}:8181` };
+        Object.keys(defaults).forEach(id => {
+            const el = document.getElementById(id);
+            if (el && !el.value.trim()) el.value = defaults[id];
+        });
+        dismissAutoFill();
+        showToast();
+    }
+
+    function dismissAutoFill() {
+        const b = document.getElementById('auto-fill-banner');
+        if (b) b.style.display = 'none';
+    }
+
+    function syncPlexLibrary() {
+        fetch(API_PLEX_LIBRARY_SYNC, { method: 'POST', headers: { 'X-CSRFToken': SETTINGS_CSRF } })
+            .then(r => r.json()).then(d => {
+                document.getElementById('plex-sync-library-msg').innerText = d.status === 'success' ? 'Sync started.' : d.message;
+            });
+    }
+
+    function loadBackups() {
+        fetch(API_BACKUPS).then(r => r.json()).then(data => {
+            const div = document.getElementById('backup-list');
+            if (!data.length) { div.innerHTML = '<p class="text-muted text-center">No backups found.</p>'; return; }
+            let h = '<table class="logs-table"><tbody>';
+            data.forEach(b => {
+                h += `<tr><td>${b.date}</td><td>${b.size}</td><td class="text-right">
+                <a href="${BACKUP_DOWNLOAD_URL_PREFIX}${b.filename}">⬇️</a>
+                <span onclick="restoreBackup('${b.filename}')" style="cursor:pointer; margin-left:10px;">♻️</span>
+                <span onclick="deleteBackup('${b.filename}')" style="cursor:pointer; margin-left:10px; color:var(--error);">🗑️</span>
+            </td></tr>`;
+            });
+            div.innerHTML = h + '</tbody></table>';
+        });
+    }
+
+    function createBackup() {
+        fetch(API_BACKUP_CREATE, { method: 'POST', headers: { 'X-CSRFToken': SETTINGS_CSRF } }).then(() => loadBackups());
+    }
+
+    function deleteBackup(f) {
+        if (confirm("Delete?")) fetch(API_BACKUP_DELETE_BASE + f, { method: 'DELETE', headers: { 'X-CSRFToken': SETTINGS_CSRF } }).then(() => loadBackups());
+    }
+
+    function restoreBackup(f) {
+        if (confirm("Restore?")) fetch(API_BACKUP_RESTORE_BASE + f, { method: 'POST', headers: { 'X-CSRFToken': SETTINGS_CSRF } }).then(() => location.reload());
+    }
+
+    function triggerBackupUpload() {
+        document.getElementById('backup-upload-input').click();
+    }
+
+    function handleBackupUpload(files) {
+        if (!files || files.length === 0) return;
+        
+        const file = files[0];
+        if (!file.name.endsWith('.zip')) {
+            alert('Please select a .zip backup file');
+            return;
+        }
+        
+        const formData = new FormData();
+        formData.append('backup', file);
+        
+        fetch("{{ url_for('api.upload_backup') }}", {
+            method: 'POST',
+            headers: { 'X-CSRFToken': SETTINGS_CSRF },
+            body: formData
+        }).then(r => r.json()).then(d => {
+            if (d.status === 'success') {
+                alert('Backup uploaded successfully');
+                loadBackups();
+            } else {
+                alert(d.message || 'Upload failed');
+            }
+        }).catch(() => alert('Upload failed'));
+    }
+
+    function resetScannerIndex() {
+        if (!confirm('Reset the entire TMDB index? This will clear all indexed items and restart from scratch.')) return;
+        
+        fetch(API_SCANNER_RESET, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': SETTINGS_CSRF }
+        }).then(r => r.json()).then(d => {
+            alert(d.message || 'Index reset');
+            location.reload();
+        });
+    }
+
+    // Plex account linking via PIN flow
+    let plexPinPoller = null;
+    let plexCurrentPinId = null;
+
+    document.addEventListener('DOMContentLoaded', () => {
+        // Enable Enter key to save on all input fields
+        document.querySelectorAll('#tab-apis input, #tab-apis select, #tab-scanners input, #tab-scanners select, #tab-system input, #tab-system select').forEach(field => {
+            field.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    submitActiveSettingsForm();
+                }
+            });
+        });
+        
+        loadBackups();
+        loadRadarrSonarrStatus();
+        
+        fetch(API_SCANNER_STATUS).then(r => r.json()).then(d => {
+            document.getElementById('db-count-badge').innerText = d.total_indexed + " items";
+        });
+        
+        // Check if we should auto-enable Radarr/Sonarr scanner
+        checkAndAutoEnableScanner();
+        // Check auto-fill
+        {% if server_host %}
+        const urlFields = ['plex_url', 'radarr_url', 'sonarr_url', 'tautulli_url'];
+        const empty = urlFields.some(id => { const el = document.getElementById(id); return el && !el.value.trim(); });
+        if (empty) document.getElementById('auto-fill-banner').style.display = 'block';
+        {% endif %}
+
+        // wire up the Link Plex Account button
+        const linkBtn = document.getElementById('btn-link-plex');
+        if (linkBtn) {
+            linkBtn.addEventListener('click', function () {
+                if (this.dataset.plexLinked === 'true') {
+                    unlinkPlexAccount();
+                } else {
+                    startPlexPinFlow();
+                }
+            });
+        }
+
+        // wire up server-picker buttons inside the PIN box
+        const useServerBtn = document.getElementById('btn-plex-use-server');
+        if (useServerBtn) {
+            useServerBtn.addEventListener('click', function () {
+                const sel = document.getElementById('plex-server-select');
+                const uri = sel.value;
+                if (!uri) return;
+                fetch(API_PLEX_SET_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': SETTINGS_CSRF },
+                    body: JSON.stringify({ url: uri })   // existing route uses 'url'
+                }).then(r => r.json()).then(d => {
+                    if (d.status === 'success') location.reload();
+                    else alert(d.message || 'Could not save Plex URL');
+                });
+            });
+        }
+        const skipServerBtn = document.getElementById('btn-plex-skip-server');
+        if (skipServerBtn) {
+            skipServerBtn.addEventListener('click', function () {
+                document.getElementById('plex-pin-box').style.display = 'none';
+                stopPlexPoller();
+                location.reload();
+            });
+        }
+
+        // persistent server dropdown - refresh and apply buttons
+        const refreshBtn = document.getElementById('btn-plex-refresh-servers');
+        if (refreshBtn) refreshBtn.addEventListener('click', loadPlexServersPersistent);
+
+        const applyBtn = document.getElementById('btn-plex-apply-server');
+        if (applyBtn) {
+            applyBtn.addEventListener('click', function () {
+                const sel = document.getElementById('plex-server-select-persistent');
+                const uri = sel.value;
+                if (!uri) return;
+                fetch(API_PLEX_SET_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': SETTINGS_CSRF },
+                    body: JSON.stringify({ url: uri })   // existing route uses 'url'
+                }).then(r => r.json()).then(d => {
+                    if (d.status === 'success') {
+                        document.getElementById('plex_url').value = uri;
+                        showToast();
+                    } else {
+                        alert(d.message || 'Could not save Plex URL');
+                    }
+                });
+            });
+        }
+
+        // auto-load server list if we already have a token
+        {% if settings.plex_token %}
+        loadPlexServersPersistent();
+        {% endif %}
+    });
+
+    function startPlexPinFlow() {
+        const pinBox = document.getElementById('plex-pin-box');
+        const codeEl = document.getElementById('plex-pin-code');
+        const msgEl = document.getElementById('plex-pin-msg');
+        const stepCode = document.getElementById('plex-pin-step-code');
+        const stepServer = document.getElementById('plex-pin-step-server');
+
+        pinBox.style.display = 'block';
+        stepCode.style.display = '';
+        stepServer.style.display = 'none';
+        codeEl.textContent = '...';
+        msgEl.textContent = 'Connecting to plex.tv...';
+
+        fetch(API_PLEX_PIN_CREATE, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': SETTINGS_CSRF }
+        }).then(r => r.json()).then(d => {
+            if (d.error) { msgEl.textContent = d.error || 'Failed to start PIN flow'; return; }
+            plexCurrentPinId = d.pin_id;
+            codeEl.textContent = d.code;
+            msgEl.textContent = 'Waiting for you to authorize at ' + (d.link || 'plex.tv/link');
+            startPlexPoller();
+        }).catch(() => {
+            msgEl.textContent = 'Could not reach plex.tv - check your internet connection';
+        });
+    }
+
+    function startPlexPoller() {
+        stopPlexPoller();
+        plexPinPoller = setInterval(() => {
+            // polls via GET - pin_id is stored server-side in session
+            fetch(API_PLEX_PIN_POLL)
+                .then(r => r.json()).then(d => {
+                    if (d.done) {
+                        stopPlexPoller();
+                        document.getElementById('plex-pin-msg').textContent = 'Authorized! Pick your server below.';
+                        document.getElementById('plex-pin-step-code').style.display = 'none';
+                        document.getElementById('plex-pin-step-server').style.display = '';
+                        const conns = d.connections || [];
+                        const best = d.best_server;
+                        const sel = document.getElementById('plex-server-select');
+                        if (best && best.uri) {
+                            sel.innerHTML = `<option value="${escapeHtml(best.uri)}" selected>${escapeHtml(best.label || best.uri)}</option>`;
+                            conns.filter(c => c.uri !== best.uri).forEach(c => {
+                                sel.innerHTML += `<option value="${escapeHtml(c.uri)}">${escapeHtml(c.label || c.uri)}</option>`;
+                            });
+                        } else if (conns.length) {
+                            sel.innerHTML = conns.map(c => `<option value="${escapeHtml(c.uri)}">${escapeHtml(c.label || c.uri)}</option>`).join('');
+                        } else {
+                            loadPlexServersForPinBox();
+                        }
+                    } else if (d.error) {
+                        stopPlexPoller();
+                        document.getElementById('plex-pin-msg').textContent = d.error;
+                    }
+                });
+        }, 3000);
+    }
+
+    function stopPlexPoller() {
+        if (plexPinPoller) { clearInterval(plexPinPoller); plexPinPoller = null; }
+    }
+
+    function loadPlexServersForPinBox() {
+        const sel = document.getElementById('plex-server-select');
+        sel.innerHTML = '<option value="">Loading servers...</option>';
+        fetch(API_PLEX_CONNECTIONS).then(r => r.json()).then(d => {
+            const conns = d.connections || [];
+            if (!conns.length) { sel.innerHTML = '<option value="">No servers found</option>'; return; }
+            sel.innerHTML = conns.map(c => `<option value="${escapeHtml(c.uri)}">${escapeHtml(c.label || c.uri)}</option>`).join('');
+        });
+    }
+
+    function loadPlexServersPersistent() {
+        const sel = document.getElementById('plex-server-select-persistent');
+        sel.innerHTML = '<option value="">Loading...</option>';
+        fetch(API_PLEX_CONNECTIONS).then(r => r.json()).then(d => {
+            const conns = d.connections || [];
+            if (!conns.length) { sel.innerHTML = '<option value="">No servers found</option>'; return; }
+            const current = document.getElementById('plex_url').value.trim().replace(/\/$/, '');
+            sel.innerHTML = conns.map(c => {
+                const uri = (c.uri || '').replace(/\/$/, '');
+                return `<option value="${escapeHtml(c.uri)}" ${uri === current ? 'selected' : ''}>${escapeHtml(c.label || c.uri)}</option>`;
+            }).join('');
+        }).catch(() => {
+            sel.innerHTML = '<option value="">Could not load servers</option>';
+        });
+    }
+
+    function unlinkPlexAccount() {
+        if (!confirm('Unlink your Plex account? The saved token will be cleared.')) return;
+        const formData = new FormData();
+        formData.append('csrf_token', SETTINGS_CSRF);
+        formData.append('form_section', 'apis');
+        formData.append('plex_token', '');
+        formData.append('plex_url', document.getElementById('plex_url').value);
+        fetch(SETTINGS_SAVE_URL, { method: 'POST', headers: {'X-CSRFToken': SETTINGS_CSRF}, body: formData })
+            .then(r => r.json())
+            .then(d => {
+                if (d.status === 'success') location.reload();
+                else alert(d.message || 'Could not unlink Plex account');
+            });
+    }
+
+    // simple html escape for values we put into option elements
+    function escapeHtml(s) {
+        return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    // Radarr/Sonarr Scanner Functions
+    function saveRadarrSonarrScannerSettings() {
+        const enabled = document.getElementById('radarr-sonarr-toggle').checked;
+        const interval = parseInt(document.getElementById('radarr-sonarr-interval').value);
+        
+        fetch("{{ url_for('api.save_radarr_sonarr_scanner_settings') }}", {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'X-CSRFToken': SETTINGS_CSRF
+            },
+            body: JSON.stringify({ enabled, interval })
+        }).then(r => r.json()).then(d => {
+            if (d.status === 'success') {
+                showToast();
+                loadRadarrSonarrStatus();
+            } else {
+                alert(d.message || 'Failed to save scanner settings');
+            }
+        });
+    }
+
+    function forceRadarrSonarrCacheRefresh() {
+        if (!confirm('Force refresh Radarr/Sonarr cache now? This may take a few minutes.')) return;
+        
+        fetch("{{ url_for('api.force_radarr_sonarr_cache_refresh_route') }}", {
+            method: 'POST',
+            headers: { 'X-CSRFToken': SETTINGS_CSRF }
+        }).then(r => r.json()).then(d => {
+            alert(d.message || 'Refresh started');
+            setTimeout(loadRadarrSonarrStatus, 2000);
+        });
+    }
+
+    function loadRadarrSonarrStatus() {
+        fetch("{{ url_for('api.get_radarr_sonarr_cache_status_route') }}").then(r => r.json()).then(d => {
+            const lastScan = d.last_scan || 'Never';
+            document.getElementById('radarr-sonarr-last-scan').textContent = lastScan;
+            document.getElementById('radarr-sonarr-toggle').checked = d.enabled || false;
+            document.getElementById('radarr-sonarr-interval').value = d.interval || 24;
+        });
+    }
+
+    // Auto-enable Radarr/Sonarr scanner when API keys are present
+    function checkAndAutoEnableScanner() {
+        const radarrKey = document.getElementById('radarr_api_key')?.value;
+        const sonarrKey = document.getElementById('sonarr_api_key')?.value;
+        const toggle = document.getElementById('radarr-sonarr-toggle');
+        
+        // If either key is set and scanner is not enabled, auto-enable it
+        if ((radarrKey || sonarrKey) && toggle && !toggle.checked) {
+            toggle.checked = true;
+            // Auto-save the setting
+            saveRadarrSonarrScannerSettings();
+        }
+    }
+
+    // Load users for admin user management
+    function loadUsers() {
+        const container = document.getElementById('user-list-container');
+        if (!container) return;
+        
+        container.innerHTML = '<div class="text-center" style="padding:20px;">Loading users...</div>';
+        
+        fetch("{{ url_for('api.get_all_users') }}", {
+            headers: { 'X-CSRFToken': SETTINGS_CSRF }
+        })
+        .then(r => r.json())
+        .then(users => {
+            if (!users || users.length === 0) {
+                container.innerHTML = '<div class="text-center" style="padding:20px; color:#999;">No users found.</div>';
+                return;
+            }
+            
+            let html = '<table class="logs-table" style="width:100%;"><thead><tr><th>Username</th><th>Role</th><th>Actions</th></tr></thead><tbody>';
+            
+            users.forEach(user => {
+                const roleText = user.is_admin ? 'Admin' : 'User';
+                const isCurrent = user.is_current;
+                const disabledAttr = isCurrent ? 'disabled' : '';
+                const disabledStyle = isCurrent ? 'opacity:0.5; cursor:not-allowed;' : '';
+                
+                html += `<tr>
+                    <td>${escapeHtml(user.username)}${isCurrent ? ' <span style="color:var(--accent-color);">(You)</span>' : ''}</td>
+                    <td>${roleText}</td>
+                    <td>
+                        <button onclick="toggleUserRole(${user.id}, '${escapeHtml(user.username)}')" 
+                                ${disabledAttr}
+                                style="margin-right:8px; ${disabledStyle}"
+                                class="btn-secondary">
+                            ${user.is_admin ? 'Demote to User' : 'Promote to Admin'}
+                        </button>
+                        <button onclick="deleteUser(${user.id}, '${escapeHtml(user.username)}')" 
+                                ${disabledAttr}
+                                style="${disabledStyle}"
+                                class="btn-delete">
+                            Delete
+                        </button>
+                    </td>
+                </tr>`;
+            });
+            
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        })
+        .catch(err => {
+            console.error('Failed to load users:', err);
+            container.innerHTML = '<div class="text-center" style="padding:20px; color:#e74c3c;">Failed to load users. Please try again.</div>';
+        });
+    }
+
+    function toggleUserRole(userId, username) {
+        if (!confirm(`Change role for user "${username}"?`)) return;
+        
+        fetch("{{ url_for('api.toggle_user_role') }}", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': SETTINGS_CSRF
+            },
+            body: JSON.stringify({ user_id: userId })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'success') {
+                loadUsers(); // Reload the list
+            } else {
+                alert(data.message || 'Failed to change user role');
+            }
+        })
+        .catch(err => {
+            console.error('Failed to toggle role:', err);
+            alert('Failed to change user role');
+        });
+    }
+
+    function deleteUser(userId, username) {
+        if (!confirm(`Are you sure you want to delete user "${username}"? This cannot be undone.`)) return;
+        
+        fetch("{{ url_for('api.admin_delete_user') }}", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': SETTINGS_CSRF
+            },
+            body: JSON.stringify({ user_id: userId })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'success') {
+                loadUsers(); // Reload the list
+            } else {
+                alert(data.message || 'Failed to delete user');
+            }
+        })
+        .catch(err => {
+            console.error('Failed to delete user:', err);
+            alert('Failed to delete user');
+        });
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+</script>
+
+{% endblock %}

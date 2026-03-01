@@ -1,0 +1,320 @@
+{% extends "base.html" %}
+{% block page_title %}Review History{% endblock %}
+{% block content %}
+<script>
+    // Hide loader when review page loads (in case of redirect)
+    document.addEventListener("DOMContentLoaded", function() {
+        const loader = document.getElementById('nuclear-loader');
+        if (loader) {
+            loader.style.display = 'none';
+        }
+    });
+</script>
+
+<form id="generateForm" action="{{ url_for('web_generate.generate') }}" method="POST" onsubmit="return prepareKeywords();">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+    <input type="hidden" name="media_type" value="{{ media_type }}">
+    <input type="hidden" name="critic_filter" value="{{ session.get('critic_filter', '') }}">
+    <input type="hidden" name="future_mode" value="{{ 'true' if future_mode else 'false' }}">
+    <input type="hidden" name="include_obscure" value="{{ 'true' if include_obscure else 'false' }}">
+    <input type="hidden" name="keywords" id="final-keywords">
+    
+    <div class="step-header">
+        <h2 class="fw-800">Curate & filter</h2>
+    </div>
+
+    <div class="card">
+        
+        <div class="top-filters-grid">
+            
+            <div class="filter-col">
+                <label class="input-label" title="Filters based on TheMovieDB User Score">
+                    Min. TMDB Rating: <span id="rating-val" class="text-accent">0</span>/10
+                </label>
+                <input type="range" name="min_rating" min="0" max="9" step="0.5" value="0" 
+                       class="w-100 mt-10" style="accent-color:var(--accent-color);" 
+                       oninput="document.getElementById('rating-val').innerText=this.value">
+            </div>
+
+            <div class="filter-col">
+                <label class="input-label">Released After (Year)</label>
+                <input type="number" name="min_year" placeholder="e.g. 1990" class="px-10 w-100">
+            </div>
+
+            <div class="filter-col" style="position:relative;">
+                <label class="input-label" title="Search specific TMDB tags.">
+                    TMDB Keywords <span style="font-size: 0.8em; color: #888; font-weight: normal;">(Not Genres)</span>
+                </label>
+                <input type="text" id="keyword-search" placeholder="Type tags (e.g. 'aliens')..." autocomplete="off" style="padding:10px; width:100%;">
+                <div id="keyword-results" class="keyword-dropdown"></div>
+                <div id="selected-keywords" class="tag-container"></div>
+            </div>
+
+        </div>
+        <div class="filter-col">
+            <label class="input-label">Content Rating (US)</label>
+            <div class="rating-grid">
+                {% set all_ratings = ['G', 'PG', 'PG-13', 'R', 'NC-17', 'TV-Y', 'TV-Y7', 'TV-G', 'TV-PG', 'TV-14', 'TV-MA', 'NR'] %}
+                {% set defaults = ['G', 'PG', 'PG-13', 'R', 'TV-Y', 'TV-Y7', 'TV-G', 'TV-PG', 'TV-14', 'NR'] %}
+                
+                {% for r in all_ratings %}
+                    {# Skip ratings that don't apply to this media type. #}
+                    {% set is_tv_rating = 'TV-' in r %}
+                    {% set show_box = (media_type == 'tv' and is_tv_rating) or (media_type == 'movie' and not is_tv_rating) or r == 'NR' %}
+                    
+                    {% if show_box %}
+                    <label class="rating-check {% if r in defaults %}checked{% endif %}">
+                        <input type="checkbox" name="rating_filter" value="{{ r }}" {% if r in defaults %}checked{% endif %} onchange="this.parentElement.classList.toggle('checked')">
+                        <span>{{ r }}</span>
+                    </label>
+                    {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+        <div class="filter-col mb-25">
+            <label class="input-label" title="Restricts recommendations to specific genres">
+                Genre Filter ℹ️
+            </label>
+            
+            <div class="genre-selector">
+                <div class="genre-header">
+                    <strong>Select Genres:</strong>
+                    <a href="javascript:void(0)" onclick="toggleAllGenres(this)" id="btn-toggle-genres" class="text-muted" style="text-decoration:underline;">Deselect All</a>
+                </div>
+                
+                <div class="genre-grid" id="genre-grid">
+                    {% for g in genres %}
+                    <div class="genre-check {% if loop.index > 12 %}hidden-genre{% endif %}">
+                        <input type="checkbox" name="genre_filter" value="{{ g.id }}" id="g-{{ g.id }}" checked>
+                        <label for="g-{{ g.id }}">{{ g.name }}</label>
+                    </div>
+                    {% endfor %}
+                </div>
+                
+                {% if genres|length > 12 %}
+                <div class="genre-expand expanded" onclick="toggleGenreView(this)" id="genre-expand-btn">
+                    <span id="genre-arrow">▲</span> Show Less
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="border-top pt-20">
+            <label class="input-label">📡 Available on Streaming</label>
+            {% if providers %}
+            <div class="provider-grid">
+                {% for p in providers %}
+                <div class="provider-check">
+                    <input type="checkbox" name="provider_filter" value="{{ p.provider_id }}" id="prov-{{ p.provider_id }}">
+                    <label for="prov-{{ p.provider_id }}" title="{{ p.provider_name }}">
+                        <img src="https://image.tmdb.org/t/p/original{{ p.logo_path }}">
+                    </label>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="text-muted">No streaming providers found for your region. Check Settings > Streaming Regions.</div>
+            {% endif %}
+        </div>
+    </div>
+
+    <p class="text-muted my-25 mb-15">Select titles to influence recommendations:</p>
+    
+    <div class="selection-grid">
+        {% for movie in movies %}
+        <div class="selection-card" onclick="toggleSelection(this)">
+            <div class="selection-poster">
+                {% if movie.thumb %}
+                    <img src="{{ movie.thumb }}">
+                {% elif movie.poster_path %}
+                    <img src="https://image.tmdb.org/t/p/w300{{ movie.poster_path }}">
+                {% else %}
+                    <div class="no-poster"><span>🎬</span><span>No Poster</span></div>
+                {% endif %}
+                
+                <div class="selection-overlay">
+                    <input type="checkbox" name="selected_movies" value="{{ movie.title }}" checked class="custom-check" onclick="event.stopPropagation();">
+                </div>
+
+                <button type="button" class="btn-block-floating" onclick="blockItem(event, '{{ movie.title|replace("'", "\\'") }}', '{{ media_type }}', this)" title="Block this title">🚫</button>
+            </div>
+            <div class="selection-info">
+                <div class="selection-title">{{ movie.title }}</div>
+                <div class="fs-small text-muted">{{ movie.year or '' }}</div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <button type="submit" class="btn btn-primary" style="display: block; width: auto; min-width: 250px; margin: 25px auto 0 auto; padding: 12px 30px; border-radius: 50px; font-size: 1.1em;">Generate Recommendations</button>
+</form>
+
+<div id="loadingOverlay">
+    <div class="spinner"></div>
+    <h2 class="text-white mt-25">Analysing your taste...</h2>
+    <p id="loadingOverlayHint" class="text-white mt-10" style="opacity:0.9; font-size:1rem;"></p>
+</div>
+
+<script>
+const RESULTS_CSRF = "{{ csrf_token() }}";
+const API_BLOCK_MOVIE = "{{ url_for('api.block_movie') }}";
+
+// Genre expand/collapse (default open: expanded state on load is set below)
+function toggleGenreView(btn) {
+    const hidden = document.querySelectorAll('.hidden-genre');
+    const isExpanded = btn.classList.contains('expanded');
+    
+    hidden.forEach(el => {
+        el.style.display = isExpanded ? 'none' : 'flex';
+    });
+    
+    if (isExpanded) {
+        btn.innerHTML = '<span id="genre-arrow">▼</span> Show All ({{ genres|length }})';
+        btn.classList.remove('expanded');
+    } else {
+        btn.innerHTML = '<span id="genre-arrow">▲</span> Show Less';
+        btn.classList.add('expanded');
+    }
+}
+
+function updateGenreToggleLabel(link) {
+    if (!link) return;
+    const boxes = document.querySelectorAll('input[name="genre_filter"]');
+    const checked = Array.from(boxes).filter(cb => cb.checked).length;
+    link.innerText = checked === boxes.length ? "Deselect All" : "Select All";
+}
+window.updateGenreToggleLabel = updateGenreToggleLabel;
+
+document.addEventListener('DOMContentLoaded', function() {
+    var expandBtn = document.getElementById('genre-expand-btn');
+    if (expandBtn) {
+        document.querySelectorAll('.hidden-genre').forEach(function(el) { el.style.display = 'flex'; });
+    }
+    var genreToggle = document.getElementById('btn-toggle-genres');
+    if (genreToggle && typeof updateGenreToggleLabel === 'function') {
+        updateGenreToggleLabel(genreToggle);
+        document.getElementById('genre-grid')?.addEventListener('change', function() { updateGenreToggleLabel(genreToggle); });
+    }
+});
+
+function toggleAllGenres(link) {
+    const boxes = document.querySelectorAll('input[name="genre_filter"]');
+    const isSelecting = link.innerText === "Select All";
+    
+    boxes.forEach(cb => cb.checked = isSelecting);
+    link.innerText = isSelecting ? "Deselect All" : "Select All";
+}
+
+// Keyword tag picker
+let selectedKeywords = [];
+
+const API_TMDB_SEARCH_PROXY = "{{ url_for('api.tmdb_search_proxy') }}";
+document.getElementById('keyword-search').addEventListener('input', function(e) {
+    const q = e.target.value;
+    if(q.length < 3) { 
+        document.getElementById('keyword-results').style.display = 'none'; 
+        return; 
+    }
+    
+    fetch(API_TMDB_SEARCH_PROXY + '?type=keyword&query=' + encodeURIComponent(q))
+    .then(res => res.json())
+    .then(data => {
+        const div = document.getElementById('keyword-results'); 
+        div.innerHTML = "";
+        
+        if(data.results && data.results.length > 0) {
+            data.results.forEach(k => {
+                const item = document.createElement('div'); 
+                item.className = 'dropdown-item'; 
+                item.innerText = k.name;
+                item.onclick = () => addTag(k); 
+                div.appendChild(item);
+            });
+            div.style.display = 'block';
+        } else {
+            div.style.display = 'none';
+        }
+    })
+    .catch(() => {
+        const div = document.getElementById('keyword-results');
+        if (div) div.style.display = 'none';
+    });
+});
+
+function addTag(k) {
+    if(selectedKeywords.some(x => x.id === k.id)) return;
+    selectedKeywords.push(k); 
+    renderTags();
+    document.getElementById('keyword-search').value = ""; 
+    document.getElementById('keyword-results').style.display = 'none';
+}
+
+function removeTag(id) { 
+    selectedKeywords = selectedKeywords.filter(k => k.id !== id); 
+    renderTags(); 
+}
+
+function renderTags() {
+    const container = document.getElementById('selected-keywords'); 
+    container.innerHTML = "";
+    selectedKeywords.forEach(k => {
+        const tag = document.createElement('span'); 
+        tag.className = 'keyword-tag';
+        tag.innerHTML = `${escapeHtml(String(k.name || ''))} <span onclick="removeTag(${Number(k.id)})">&times;</span>`; 
+        container.appendChild(tag);
+    });
+}
+
+function prepareKeywords() {
+    // Backend expects a pipe-delimited string.
+    const keywordString = selectedKeywords.map(k => k.name).join('|');
+    document.getElementById('final-keywords').value = keywordString;
+    // Show loading overlay and hide nuclear-loader if it exists
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    const hintEl = document.getElementById('loadingOverlayHint');
+    if (loadingOverlay) {
+        loadingOverlay.style.display = 'flex';
+    }
+    if (hintEl) hintEl.textContent = '';
+    window._loadingHintTimer = setTimeout(function() {
+        if (hintEl) hintEl.textContent = 'Still working… This can take a minute with many seeds.';
+    }, 20000);
+    const nuclearLoader = document.getElementById('nuclear-loader');
+    if (nuclearLoader) {
+        nuclearLoader.style.display = 'none';
+    }
+    // Prevent form from submitting multiple times
+    const form = document.getElementById('generateForm');
+    if (form) {
+        const submitBtn = form.querySelector('button[type="submit"]');
+        if (submitBtn) {
+            submitBtn.disabled = true;
+        }
+    }
+    return true; // Allow form submission
+}
+
+// Selection UI helpers
+function toggleSelection(card) {
+    const cb = card.querySelector('input[type="checkbox"]');
+    cb.checked = !cb.checked;
+    card.style.opacity = cb.checked ? "1" : "0.5";
+    card.style.transform = cb.checked ? "scale(1)" : "scale(0.95)";
+}
+function blockItem(e, title, type, btn) {
+    e.stopPropagation();
+    if(!confirm(`Permanently block "${title}" from future recommendations?`)) return;
+    fetch(API_BLOCK_MOVIE, {
+        method:'POST', headers:{'Content-Type':'application/json', 'X-CSRFToken': RESULTS_CSRF},
+        body:JSON.stringify({title:title, media_type:type})
+    }).then(r=>{
+        if(r.ok) {
+            const card = btn.closest('.selection-card');
+            card.style.opacity='0'; setTimeout(()=>card.remove(),300);
+        } else {
+            alert('Request failed. Please try again.');
+        }
+    }).catch(() => alert('Request failed. Please try again.'));
+}
+</script>
+{% endblock %}

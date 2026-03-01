@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% block page_title %}Test Runner{% endblock %}
+{% block content %}
+
+<div class="container" style="max-width: 1200px; padding: 20px;">
+    <h2>Test Runner</h2>
+    <p style="color: #aaa; margin-bottom: 20px;">Run automated tests to verify application functionality.</p>
+    
+    <div style="margin-bottom: 30px;">
+        <a href="{{ url_for('web_pages.scripts_runner') }}" class="btn btn-secondary" style="margin-right: 10px;">Scripts Runner</a>
+        <span style="color: #666;">|</span>
+        <span style="margin-left: 10px; color: #aaa;">Direct URL: <code style="background: #2a2a2a; padding: 2px 6px; border-radius: 3px;">/tests</code></span>
+    </div>
+
+    <div style="margin-bottom: 30px;">
+        <button onclick="runAllTests()" class="btn btn-primary" id="run-all-btn">
+            Run All Tests
+        </button>
+        <span id="all-tests-status" style="margin-left: 15px; font-weight: bold;"></span>
+    </div>
+
+    <div id="all-tests-output" style="display: none; background: #1a1a1a; padding: 20px; border-radius: 8px; margin-bottom: 30px; font-family: monospace; white-space: pre-wrap; max-height: 400px; overflow-y: auto;"></div>
+
+    <h3 style="margin-top: 40px; margin-bottom: 20px;">Individual Tests</h3>
+
+    <div class="test-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 20px;">
+        {% for test in test_files %}
+        <div class="test-card" style="background: #2a2a2a; padding: 20px; border-radius: 8px; border: 1px solid #444;">
+            <h4 style="margin: 0 0 10px 0; color: #fff;">{{ test.name }}</h4>
+            <p style="color: #aaa; font-size: 13px; margin-bottom: 15px;">{{ test.description }}</p>
+            
+            <button onclick="runTest('{{ test.name }}')" class="btn btn-sm btn-secondary test-btn" data-test="{{ test.name }}">
+                Run Test
+            </button>
+            <span class="test-status" data-test="{{ test.name }}" style="margin-left: 10px; font-weight: bold;"></span>
+            
+            <div class="test-output" data-test="{{ test.name }}" style="display: none; margin-top: 15px; background: #1a1a1a; padding: 15px; border-radius: 4px; font-family: monospace; font-size: 12px; white-space: pre-wrap; max-height: 300px; overflow-y: auto;"></div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<style>
+.test-btn {
+    background: #4a4a4a;
+    border: none;
+    color: #fff;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.test-btn:hover {
+    background: #5a5a5a;
+}
+
+.test-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.test-status {
+    font-size: 14px;
+}
+
+.test-status.running {
+    color: #ffa500;
+}
+
+.test-status.passed {
+    color: #2ecc71;
+}
+
+.test-status.failed {
+    color: #e74c3c;
+}
+</style>
+
+<script>
+const CSRF_TOKEN = "{{ csrf_token() }}";
+
+function runTest(testName) {
+    const btn = document.querySelector(`.test-btn[data-test="${testName}"]`);
+    const status = document.querySelector(`.test-status[data-test="${testName}"]`);
+    const output = document.querySelector(`.test-output[data-test="${testName}"]`);
+    
+    btn.disabled = true;
+    btn.textContent = 'Running...';
+    status.textContent = 'Running...';
+    status.className = 'test-status running';
+    output.style.display = 'none';
+    
+    fetch('/api/run_test', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': CSRF_TOKEN
+        },
+        body: JSON.stringify({ test_name: testName })
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.textContent = 'Run Test';
+        
+        if (data.passed) {
+            status.textContent = 'PASSED';
+            status.className = 'test-status passed';
+        } else {
+            status.textContent = 'FAILED';
+            status.className = 'test-status failed';
+        }
+        
+        const outputText = data.stdout + (data.stderr ? '\n\nErrors:\n' + data.stderr : '');
+        output.textContent = outputText;
+        output.style.display = 'block';
+    })
+    .catch(err => {
+        btn.disabled = false;
+        btn.textContent = 'Run Test';
+        status.textContent = 'ERROR';
+        status.className = 'test-status failed';
+        output.textContent = 'Error: ' + err.message;
+        output.style.display = 'block';
+    });
+}
+
+function runAllTests() {
+    const btn = document.getElementById('run-all-btn');
+    const status = document.getElementById('all-tests-status');
+    const output = document.getElementById('all-tests-output');
+    
+    btn.disabled = true;
+    btn.textContent = 'Running All Tests...';
+    status.textContent = 'Running...';
+    status.style.color = '#ffa500';
+    output.style.display = 'none';
+    
+    fetch('/api/run_all_tests', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': CSRF_TOKEN
+        }
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.textContent = 'Run All Tests';
+        
+        if (data.passed) {
+            status.textContent = 'ALL TESTS PASSED';
+            status.style.color = '#2ecc71';
+        } else {
+            status.textContent = 'SOME TESTS FAILED';
+            status.style.color = '#e74c3c';
+        }
+        
+        const outputText = data.stdout + (data.stderr ? '\n\nErrors:\n' + data.stderr : '');
+        output.textContent = outputText;
+        output.style.display = 'block';
+    })
+    .catch(err => {
+        btn.disabled = false;
+        btn.textContent = 'Run All Tests';
+        status.textContent = 'ERROR';
+        status.style.color = '#e74c3c';
+        output.textContent = 'Error: ' + err.message;
+        output.style.display = 'block';
+    });
+}
+</script>
+
+{% endblock %}

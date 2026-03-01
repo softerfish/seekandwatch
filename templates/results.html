@@ -1,0 +1,764 @@
+{% extends "base.html" %}
+{% block page_title %}Recommendations{% endblock %}
+{% block content %}
+<script>
+    // Hide all loaders when results page loads
+    document.addEventListener("DOMContentLoaded", function() {
+        const nuclearLoader = document.getElementById('nuclear-loader');
+        if (nuclearLoader) {
+            nuclearLoader.style.display = 'none';
+        }
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        if (loadingOverlay) {
+            loadingOverlay.style.display = 'none';
+        }
+    });
+</script>
+
+<div class="results-header">
+    <a href="{{ url_for('web_pages.dashboard') }}" class="back-link">← Back to Dashboard</a>
+    <h2 class="m-0">Top Picks For You</h2>
+    <div class="d-flex gap-10" style="align-items: center;">
+        <button class="btn btn-primary" onclick="spinWheel()">Spin Wheel</button>
+    </div>
+</div>
+
+<div class="results-container">
+        
+    {% if not is_lucky %}
+    <div class="card filter-card">
+        
+        <div class="top-filters-grid mb-20">
+            
+            <div>
+                <label class="input-label">Released After (Year)</label>
+                <input type="number" id="filter-year" placeholder="e.g. 1990" 
+                       value="{{ min_year if min_year > 0 else '' }}" 
+                       onkeyup="filterVisibleCards()">
+            </div>
+
+            <div>
+                <label class="input-label">
+                    Min. Rating: <span id="rating-val" class="text-accent">{{ min_rating }}</span>/10
+                </label>
+                <input type="range" id="filter-rating" min="0" max="10" step="0.5" 
+                       value="{{ min_rating }}" class="w-100 mt-10" style="accent-color:var(--accent-color);" 
+                       oninput="document.getElementById('rating-val').innerText=this.value; filterVisibleCards();">
+            </div>
+
+            <div>
+                <label class="input-label">Max Runtime (minutes)</label>
+                <input type="number" id="filter-runtime" placeholder="e.g. 90" min="0" 
+                       onkeyup="filterVisibleCards()">
+            </div>
+
+            <div class="position-relative">
+                <label class="input-label" title="Search specific TMDB tags.">
+                    TMDB Keywords <span class="text-muted fs-small" style="font-weight: normal;">(Not Genres)</span>
+                </label>
+                <input type="text" id="keyword-search" placeholder="Filter tags..." autocomplete="off">
+                <div id="keyword-results" class="keyword-dropdown"></div>
+                <div id="selected-keywords" class="tag-container mt-5"></div>
+            </div>
+
+        </div>
+        <div class="mb-20 border-bottom pb-20">
+            <label class="input-label mb-10">Content Rating</label>
+            <div class="rating-grid" style="grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));">
+                {% set saved_ratings = session.get('rating_filter') %}
+                {% set all_ratings = ['G', 'PG', 'PG-13', 'R', 'NC-17', 'TV-Y', 'TV-Y7', 'TV-G', 'TV-PG', 'TV-14', 'TV-MA', 'NR'] %}
+                {% set defaults = ['G', 'PG', 'PG-13', 'R', 'TV-Y', 'TV-Y7', 'TV-G', 'TV-PG', 'TV-14', 'NR'] %}
+                {% set m_type = session.get('media_type', 'movie') %}
+                
+                {% for r in all_ratings %}
+                    {# Skip ratings that don't match the current media type. #}
+                    {% set is_tv = 'TV-' in r %}
+                    {% set show_box = (m_type == 'tv' and is_tv) or (m_type == 'movie' and not is_tv) or r == 'NR' %}
+                    
+                    {% if show_box %}
+                        {% set is_checked = r in saved_ratings if saved_ratings else r in defaults %}
+                        <label class="rating-check {% if is_checked %}checked{% endif %}">
+                            <input type="checkbox" class="rating-filter-box" value="{{ r }}" {% if is_checked %}checked{% endif %} onchange="this.parentElement.classList.toggle('checked'); filterVisibleCards();">
+                            <span>{{ r }}</span>
+                        </label>
+                    {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+        <div class="genre-selector">
+            <div class="genre-header">
+                <strong>Genres</strong>
+                <a href="javascript:void(0)" onclick="toggleResultsGenres(this)" id="btn-toggle-results-genres" class="fs-small text-muted" style="text-decoration:underline;">Deselect All</a>
+            </div>
+            
+            <div class="genre-grid" id="results-genre-grid">
+                {% for g in genres %}
+                <div class="genre-check {% if loop.index > 12 %}hidden-genre{% endif %}">
+                    <input type="checkbox" class="genre-checkbox" value="{{ g.id }}" 
+                           id="sb-g-{{ g.id }}" 
+                           {% if not current_genre or g.id|string in current_genre %}checked{% endif %}>
+                    <label for="sb-g-{{ g.id }}">{{ g.name }}</label>
+                </div>
+                {% endfor %}
+            </div>
+
+            {% if genres|length > 12 %}
+            <div class="genre-expand expanded" onclick="toggleGenreView(this)" id="genre-expand-btn">
+                <span id="genre-arrow">▲</span> Show Less
+            </div>
+            {% endif %}
+        </div>
+
+        <button class="btn btn-primary w-100 fw-bold fs-large" onclick="updateFilters()">
+            Update Results
+        </button>
+    </div>
+    {% endif %}
+        <div class="results-main">
+
+        <div id="loading" class="loading-container">
+            <div class="loader"></div>
+            <h2>Crunching the numbers...</h2>
+        </div>
+
+        <div id="results-grid" class="results-grid d-none"></div>
+        
+        {% if not is_lucky %}
+        <div class="load-more-wrapper">
+            <button id="load-more-btn" onclick="loadMore(this)" class="load-more-btn fw-bold">Load More Results</button>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<button type="button" id="back-to-top-btn" class="back-to-top-btn" onclick="scrollToTop()" aria-label="Back to top" title="Back to top">↑</button>
+
+<div id="detail-modal" class="k-modal">
+    <div class="k-modal-content">
+        <span class="k-close-modal" onclick="closeDetailModal()">&times;</span>
+        <div id="modal-body" class="modal-body"></div>
+    </div>
+</div>
+
+<div id="trailer-modal" class="k-modal" style="z-index: 1100;">
+    <div class="k-modal-content">
+        <span class="k-close-modal text-white" onclick="closeTrailer()" style="z-index:20;">&times;</span>
+        <div id="trailer-body" style="flex:1; width:100%; height:100%;"></div>
+    </div>
+</div>
+<div id="server-data" class="d-none">{{ movies|tojson if movies else '[]' }}</div>
+
+<script>
+    const API_TMDB_SEARCH_PROXY = "{{ url_for('api.tmdb_search_proxy') }}";
+    const API_UPDATE_FILTERS = "{{ url_for('api.update_filters') }}";
+    const API_LOAD_MORE_RECS = "{{ url_for('api.load_more_recs') }}";
+    const API_BLOCK_MOVIE = "{{ url_for('api.block_movie') }}";
+    const API_GET_METADATA_MOVIE_BASE = "{{ url_for('api.get_metadata', media_type='movie', tmdb_id=0) }}";
+    const API_GET_METADATA_TV_BASE = "{{ url_for('api.get_metadata', media_type='tv', tmdb_id=0) }}";
+    const RESULTS_CSRF = "{{ csrf_token() }}";
+    let page = 1;
+    const useCriticFilter = "{{ use_critic_filter|lower }}"; 
+    let serverMovies = [];
+    try {
+        const el = document.getElementById('server-data');
+        if (el && el.textContent) serverMovies = JSON.parse(el.textContent);
+        if (!Array.isArray(serverMovies)) serverMovies = [];
+    } catch (e) { serverMovies = []; }
+
+    // Genre expand/collapse (default open: expanded state on load is set below)
+    function toggleGenreView(btn) {
+        const hidden = document.querySelectorAll('.hidden-genre');
+        const isExpanded = btn.classList.contains('expanded');
+        
+        hidden.forEach(el => {
+            el.style.display = isExpanded ? 'none' : 'flex';
+        });
+        
+        if (isExpanded) {
+            btn.innerHTML = '<span id="genre-arrow">▼</span> Show All ({{ genres|length }})';
+            btn.classList.remove('expanded');
+        } else {
+            btn.innerHTML = '<span id="genre-arrow">▲</span> Show Less';
+            btn.classList.add('expanded');
+        }
+    }
+
+    function updateResultsGenreToggleLabel(link) {
+        if (!link) return;
+        const boxes = document.querySelectorAll('.genre-checkbox');
+        const checked = Array.from(boxes).filter(cb => cb.checked).length;
+        link.innerText = checked === boxes.length ? "Deselect All" : "Select All";
+    }
+    window.updateResultsGenreToggleLabel = updateResultsGenreToggleLabel;
+
+    document.addEventListener('DOMContentLoaded', function() {
+        var expandBtn = document.getElementById('genre-expand-btn');
+        if (expandBtn) {
+            document.querySelectorAll('.hidden-genre').forEach(function(el) { el.style.display = 'flex'; });
+        }
+        var genreToggle = document.getElementById('btn-toggle-results-genres');
+        if (genreToggle && typeof updateResultsGenreToggleLabel === 'function') {
+            updateResultsGenreToggleLabel(genreToggle);
+            document.getElementById('results-genre-grid')?.addEventListener('change', function() { updateResultsGenreToggleLabel(genreToggle); });
+        }
+    });
+
+    function toggleResultsGenres(link) {
+        const boxes = document.querySelectorAll('.genre-checkbox');
+        const isSelecting = link.innerText === "Select All";
+        boxes.forEach(cb => cb.checked = isSelecting);
+        link.innerText = isSelecting ? "Deselect All" : "Select All";
+    }
+
+    // Keyword tag picker
+    let selectedKeywords = [];
+    const initialTags = "{{ session.get('keywords', '') }}";
+    if (initialTags) {
+        const parts = initialTags.split('|');
+        parts.forEach(p => { if(p && p.trim() !== '') selectedKeywords.push({ id: p, name: p }); });
+    }
+
+    // Lucky mode doesn't show keyword UI.
+    const keywordInput = document.getElementById('keyword-search');
+    if (keywordInput) {
+        keywordInput.addEventListener('input', function(e) {
+            const q = e.target.value;
+            if(q.length < 3) { document.getElementById('keyword-results').style.display = 'none'; return; }
+            
+            fetch(API_TMDB_SEARCH_PROXY + '?type=keyword&query=' + encodeURIComponent(q))
+                .then(res => res.json())
+                .then(data => {
+                    const div = document.getElementById('keyword-results'); 
+                    div.innerHTML = "";
+                    if(data.results && data.results.length > 0) {
+                        data.results.forEach(k => {
+                            const item = document.createElement('div'); 
+                            item.className = 'dropdown-item'; 
+                            item.innerText = k.name;
+                            item.onclick = () => addTag(k); 
+                            div.appendChild(item);
+                        });
+                        div.style.display = 'block';
+                    } else { 
+                        div.style.display = 'none'; 
+                    }
+                });
+        });
+    }
+
+    function addTag(k) {
+        if(selectedKeywords.some(x => x.id === k.id || x.name === k.name)) return;
+        selectedKeywords.push(k); renderTags();
+        if(keywordInput) {
+            keywordInput.value = ""; 
+            document.getElementById('keyword-results').style.display = 'none';
+        }
+    }
+    
+    function removeTag(name) { 
+        selectedKeywords = selectedKeywords.filter(k => k.name !== name); 
+        renderTags(); 
+    }
+    
+    function renderTags() {
+        const container = document.getElementById('selected-keywords'); 
+        if (!container) return; 
+        container.innerHTML = "";
+        selectedKeywords.forEach(k => {
+            const tag = document.createElement('span'); tag.className = 'keyword-tag';
+            // display: escapeHtml for XSS; onclick: escape only ' and \ so attribute doesn't break, pass raw name to removeTag
+            const safeNameAttr = String(k.name || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+            tag.innerHTML = `${escapeHtml(k.name)} <span onclick="removeTag('${safeNameAttr}')">&times;</span>`; 
+            container.appendChild(tag);
+        });
+    }
+    
+    function getKeywordString() { return selectedKeywords.map(k => k.name).join('|'); }
+
+    // Kick things off once the page is ready.
+    function init() {
+        if (selectedKeywords.length > 0) renderTags();
+
+        const validMovies = (serverMovies || []).filter(m => {
+            const title = m.title || m.name;
+            return title && title !== "Unknown" && (m.id || m.tmdb_id);
+        });
+
+        if (validMovies.length > 0) {
+            document.getElementById('loading').style.display = 'none';
+            const grid = document.getElementById('results-grid');
+            grid.classList.remove('d-none');
+            grid.style.display = 'grid';
+            grid.innerHTML = '';
+
+            validMovies.forEach(item => {
+                try {
+                    const card = createCard(item);
+                    if (card) grid.appendChild(card);
+                } catch (e) {
+                    console.error('createCard error', e, item);
+                }
+            });
+
+            if (document.getElementById('filter-year')) {
+                filterVisibleCards();
+            }
+        } else {
+            document.getElementById('loading').style.display = 'none';
+            const grid = document.getElementById('results-grid');
+            grid.classList.remove('d-none');
+            grid.style.display = 'block';
+            if (document.getElementById('filter-year')) {
+                grid.innerHTML = `<div class="empty-state"><h3>Recommendations didn't load</h3><p class="empty-state-text">The request may have timed out. Try again with <strong>fewer seed titles</strong> (e.g. 3-5) or use <strong>I'm Feeling Lucky</strong>.</p><a href="{{ url_for('web_pages.dashboard') }}" class="btn btn-primary">Back to Dashboard</a></div>`;
+            } else {
+                grid.innerHTML = '<div class="empty-state">No results found.</div>';
+            }
+            // Try to load first batch from API in case server-data was empty but cache has candidates
+            const btn = document.getElementById('load-more-btn');
+            if (btn) setTimeout(function() { loadMore(btn); }, 300);
+        }
+    }
+
+    function filterVisibleCards() {
+        const yearInput = document.getElementById('filter-year');
+        const ratingInput = document.getElementById('filter-rating');
+        const runtimeInput = document.getElementById('filter-runtime');
+        
+        const minYear = yearInput ? (parseInt(yearInput.value) || 0) : 0;
+        const minRating = ratingInput ? (parseFloat(ratingInput.value) || 0) : 0;
+        const maxRuntime = runtimeInput ? (parseInt(runtimeInput.value) || 9999) : 9999;
+        const activeTags = selectedKeywords.map(k => k.name.toLowerCase());
+        const ratingBoxes = document.querySelectorAll('.rating-filter-box:checked');
+        const checkedRatings = Array.from(ratingBoxes).map(cb => cb.value);
+        
+        const cards = document.querySelectorAll('.result-card');
+        // batch reads first to avoid forced reflow (read innerText for all, then do all display writes)
+        const visibility = Array.from(cards).map(card => {
+            const year = parseInt(card.dataset.year) || 0;
+            const rating = parseFloat(card.dataset.rating) || 0;
+            const runtime = parseInt(card.dataset.runtime) || 9999;
+            const text = card.innerText.toLowerCase();
+            const cardRating = card.dataset.contentRating || 'NR';
+            let visible = year >= minYear && rating >= minRating && runtime <= maxRuntime;
+            if (activeTags.length > 0) visible = visible && activeTags.every(tag => text.includes(tag));
+            if (checkedRatings.length > 0) visible = visible && checkedRatings.includes(cardRating);
+            return visible;
+        });
+        visibility.forEach((visible, i) => {
+            cards[i].style.display = visible ? 'block' : 'none';
+        });
+    }
+
+    // Filter + fetch flow
+    function updateFilters() {
+        const checkedBoxes = document.querySelectorAll('.genre-checkbox:checked');
+        const genreList = Array.from(checkedBoxes).map(cb => cb.value);
+        const year = document.getElementById('filter-year') ? document.getElementById('filter-year').value : 0;
+        const rating = document.getElementById('filter-rating') ? document.getElementById('filter-rating').value : 0;
+        const runtime = document.getElementById('filter-runtime') ? document.getElementById('filter-runtime').value : 9999;
+        const tags = getKeywordString();
+        const ratingBoxes = document.querySelectorAll('.rating-filter-box:checked');
+        const ratingList = Array.from(ratingBoxes).map(cb => cb.value);
+
+        document.getElementById('results-grid').innerHTML = '';
+        document.getElementById('loading').style.display = 'block';
+        page = 1;
+
+        const btn = document.getElementById('load-more-btn');
+        if (btn) {
+            btn.disabled = false;
+            btn.innerText = "Load More Results";
+            btn.style.opacity = "1";
+            btn.style.cursor = "pointer";
+            btn.style.display = 'inline-block';
+        }
+
+        fetch(API_UPDATE_FILTERS, {
+            method: 'POST', 
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': RESULTS_CSRF},
+            body: JSON.stringify({ 
+                genre_filter: genreList, 
+                min_year: year, 
+                min_rating: rating,
+                max_runtime: runtime,
+                keywords: tags,
+                rating_filter: ratingList 
+            })
+        }).then(r => { 
+            if (r && r.ok) loadMore(null);
+            else {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('loading').innerHTML = '<h3 style="color:red">Server error updating filters. Try refreshing the page.</h3>';
+            }
+        }).catch(err => {
+            console.error(err);
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('loading').innerHTML = '<h3 style="color:red">Server Error.</h3>';
+        });
+    }
+
+    function loadMore(passedBtn) {
+        const btn = passedBtn || document.getElementById('load-more-btn');
+        if(btn) { 
+            btn.disabled = true; 
+            btn.innerText = "Scanning Deep..."; 
+            btn.style.opacity = "0.7";
+        }
+        
+        document.getElementById('loading').style.display = 'block';
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 60000); 
+
+        fetch(API_LOAD_MORE_RECS + '?page=' + page + '&critic_filter=' + encodeURIComponent(useCriticFilter), { signal: controller.signal })
+            .then(r => {
+                clearTimeout(timeoutId);
+                return r.ok ? r.json() : Promise.reject(r.status);
+            })
+            .then(data => {
+                document.getElementById('loading').style.display = 'none';
+                const grid = document.getElementById('results-grid'); 
+                grid.style.display = 'grid';
+                
+                if (!data || data.length === 0) {
+                    if (page === 1 && grid.children.length === 0) {
+                        grid.innerHTML = '<div class="empty-state">No matches found for these filters.</div>';
+                        if(btn) btn.style.display = 'none';
+                    } else {
+                        if(btn) {
+                            btn.style.display = 'inline-block';
+                            btn.innerText = "End of current batch";
+                            btn.disabled = true;
+                            btn.style.opacity = "0.5";
+                            btn.style.cursor = "not-allowed";
+                        }
+                    }
+                    return; 
+                }
+                
+                data.forEach(item => { 
+                    try { grid.appendChild(createCard(item)); } catch(e){ console.error(e); } 
+                });
+                
+                page++; 
+                filterVisibleCards();
+                
+                if(btn) { 
+                    btn.style.display = 'inline-block';
+                    btn.disabled = false; 
+                    btn.innerText = "Load More Results"; 
+                    btn.style.opacity = "1";
+                    btn.style.cursor = "pointer";
+                }
+            })
+            .catch(err => {
+                clearTimeout(timeoutId);
+                document.getElementById('loading').style.display = 'none';
+                if (page === 1) {
+                    const grid = document.getElementById('results-grid');
+                    grid.innerHTML = `<div class="empty-state-small"><h3>⚠️ Scan Timeout</h3><p class="empty-state-text">The deep scan is taking longer than expected.</p><button onclick="loadMore()" class="btn btn-primary">Try Again</button></div>`;
+                } else {
+                    if(btn) {
+                        btn.innerText = "Timeout - Try Again";
+                        btn.disabled = false;
+                        btn.style.opacity = "1";
+                    }
+                }
+            });
+    }
+
+    function blockItem(e, title, type) {
+        e.stopPropagation();
+        if(!confirm(`Permanently block "${title}" from future recommendations?`)) return;
+        const card = e.target.closest('.result-card');
+        if(card) card.style.opacity = '0.3';
+
+        fetch(API_BLOCK_MOVIE, {
+            method:'POST', 
+            headers:{'Content-Type':'application/json', 'X-CSRFToken': RESULTS_CSRF},
+            body:JSON.stringify({title:title, media_type:type})
+        }).then(r=>{
+            if(r.ok) {
+                if(card) card.remove();
+            } else {
+                alert("Error blocking item.");
+                if(card) card.style.opacity = '1';
+            }
+        });
+    }
+
+    // Card rendering
+    function createCard(item) {
+        const id = item.tmdb_id || item.id;
+        const title = item.title || item.name || "Unknown";
+        const rawDate = item.date || item.year || item.first_air_date || item.release_date || "";
+        const dateStr = String(rawDate);
+        const displayDate = dateStr.length >= 4 ? dateStr.substring(0, 4) : 'N/A';
+        
+        // Ratings data
+        const rating = item.rating || item.vote_average || 0;
+        const rtScore = item.rt_score || 0; 
+        const imdbRating = item.imdb_rating || item.imdbRating || 0; 
+        const mediaType = item.media_type || 'movie'; 
+        
+        const card = document.createElement('div');
+        card.className = 'result-card';
+        card.dataset.year = parseInt(displayDate) || 0;
+        card.dataset.rating = rating;
+        card.dataset.contentRating = item.content_rating || 'NR';
+        card.dataset.runtime = item.runtime || 9999;
+        card.dataset.tmdbId = id;
+        
+        const posterUrl = item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : 'https://placehold.co/500x750/222/888?text=No+Poster';
+        
+        // Safe string handling for UI + onclick.
+        const safeTitle = escapeHtml(title);
+        const jsTitle = safeTitle.replace(/'/g, "\\'");
+        
+        const searchableText = `<span style="display:none;">${safeTitle} ${escapeHtml(item.overview || '')}</span>`;
+
+        let ratingsHtml = `<span class="meta-year">${displayDate}</span>`;
+        let scoresHtml = '';
+
+        if (rating > 0) {
+            scoresHtml += `<span class="meta-rating tmdb-score" title="TMDB">★ ${parseFloat(rating).toFixed(1)}</span>`;
+        }
+
+        if (rtScore > 0) {
+            const rtIcon = rtScore >= 60 ? '🍅' : '🤢';
+            const rtClass = rtScore >= 60 ? 'rt-fresh' : 'rt-rotten';
+            if (scoresHtml) scoresHtml += `<span class="meta-sep">|</span>`;
+            scoresHtml += `<span class="meta-rating ${rtClass}" title="Rotten Tomatoes">${rtIcon} ${rtScore}%</span>`;
+        } else if (imdbRating && imdbRating !== 'N/A') {
+            if (scoresHtml) scoresHtml += `<span class="meta-sep">|</span>`;
+            scoresHtml += `<span class="meta-rating imdb-score" title="IMDb">IMDb ${imdbRating}</span>`;
+        }
+
+        if (scoresHtml) {
+            ratingsHtml += `<div class="meta-right">${scoresHtml}</div>`;
+        }
+
+        let statusHtml = '';
+        if (mediaType === 'tv' && item.status) {
+            const slug = item.status.toLowerCase().replace(/ /g, '-');
+            statusHtml = `<div class="status-overlay ${slug}">${item.status}</div>`;
+        }
+        
+        card.innerHTML = `
+            <div class="poster-wrapper">
+                <img src="${posterUrl}" loading="lazy" alt="${safeTitle}">
+                ${statusHtml}
+                
+                <div class="card-icon-overlay">
+                    <div class="overlay-top-actions">
+                        <div class="icon-btn icon-btn-danger" title="Block this item" onclick="blockItem(event, '${jsTitle}', '${mediaType}')">🚫</div>
+                    </div>
+                    <div class="overlay-bottom-row">
+                        <div class="icon-btn btn-request" title="Request" onclick="requestMedia('${mediaType}', ${id}, this); event.stopPropagation();">📥</div>
+                        <div class="icon-group-right">
+                            <div class="icon-btn" title="View Details" onclick="event.preventDefault(); event.stopPropagation(); openModal(${id}, '${mediaType}');">👁️</div>
+                            <a href="https://www.themoviedb.org/${mediaType}/${id}" target="_blank" class="icon-btn icon-btn-small" title="TMDB Page" onclick="event.stopPropagation();">TMDB</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card-info">
+                <div class="movie-title" title="${safeTitle}">${safeTitle}</div>
+                <div class="movie-meta-row">
+                    ${ratingsHtml}
+                    <span class="content-rating-badge">
+                        ${item.content_rating || 'NR'}
+                    </span>
+                </div>
+                ${searchableText}
+            </div>
+        `;
+        return card;
+    }
+
+    function requestMedia(type, id, btn) {
+        // grab stuff from the card
+        const card = btn.closest('.result-card');
+        const posterUrl = card ? card.querySelector('img')?.src : '';
+        const title = card ? card.querySelector('.movie-title')?.textContent : '';
+        const year = card ? card.dataset.year : '';
+        
+        // open the popup
+        openRequestModal(type, id, title, posterUrl, year);
+        
+        // update button when it works
+        window.onRequestSuccess = function(tmdbId, mediaType) {
+            if (btn && tmdbId == id && mediaType == type) {
+                btn.innerHTML = "✅";
+                btn.style.background = "var(--accent-color)";
+            }
+        };
+    }
+
+
+    function playTrailer(id, type) {
+        const modal = document.getElementById('trailer-modal');
+        const body = document.getElementById('trailer-body');
+        modal.style.display = 'flex'; 
+        modal.style.justifyContent = 'center';
+        modal.style.alignItems = 'center';
+        body.innerHTML = '<div class="modal-loading">Loading Trailer... <div class="loader-small"></div></div>';
+
+        fetch((type === 'movie' ? API_GET_METADATA_MOVIE_BASE : API_GET_METADATA_TV_BASE).replace(/\/0$/, '/' + id))
+            .then(r => r.json())
+            .then(data => {
+                if(data.trailer_key) {
+                    body.innerHTML = `<iframe width="100%" height="100%" src="https://www.youtube.com/embed/${data.trailer_key}?autoplay=1" frameborder="0" allowfullscreen></iframe>`;
+                } else {
+                    body.innerHTML = `<div class="modal-loading-light"><h3>No Trailer Found 😕</h3></div>`;
+                }
+            });
+    }
+
+    function closeTrailer() {
+        document.getElementById('trailer-modal').style.display = 'none';
+        document.getElementById('trailer-body').innerHTML = ''; 
+    }
+
+    function openModal(id, type) {
+        const modal = document.getElementById('detail-modal');
+        modal.style.display = "flex"; 
+        document.body.classList.add('modal-open');
+        const body = document.getElementById('modal-body');
+        body.innerHTML = '<div class="modal-loading-light"><div class="loader-small"></div> Loading...</div>';
+        
+        const mediaType = type || 'movie';
+
+        fetch((mediaType === 'movie' ? API_GET_METADATA_MOVIE_BASE : API_GET_METADATA_TV_BASE).replace(/\/0$/, '/' + id))
+            .then(r => {
+                if (!r.ok) throw new Error("Network response was not ok");
+                return r.json();
+            })
+            .then(data => {
+                if(data.error) { body.innerHTML = `<div class="modal-error">Error: ${escapeHtml(String(data.error || ''))}</div>`; return; }
+                
+                const poster = data.poster_path ? `https://image.tmdb.org/t/p/w500${data.poster_path}` : 'https://placehold.co/300x450/333/888?text=No+Poster';
+                const trailerBtn = `<button onclick="playTrailer(${id}, '${mediaType}')" class="btn-secondary modal-trailer-btn">▶ Watch Trailer</button>`;
+                const tmdbLink = `https://www.themoviedb.org/${mediaType}/${id}`;
+                
+                const providersHtml = data.providers && data.providers.length > 0 
+                    ? `<div class="mt-15"><strong>Streaming on:</strong><br>${data.providers.map(p => `<img src="https://image.tmdb.org/t/p/original${p.logo}" title="${p.name}" class="provider-logo">`).join('')}</div>`
+                    : '<div class="mt-15 text-muted">Not streaming in your region.</div>';
+
+                body.innerHTML = `
+                    <div class="modal-poster"><img src="${poster}" onerror="this.style.display='none'"></div>
+                    <div class="modal-info">
+                        <h2>${data.title} <span style="font-weight:normal; color:#888; font-size:0.6em;">(${data.year})</span></h2>
+                        <p class="modal-overview">${data.overview || 'No description available.'}</p>
+                        <p style="color:#aaa; font-size:0.9em;"><strong>Cast:</strong> ${data.cast ? data.cast.join(', ') : 'N/A'}</p>
+                        ${providersHtml}
+                        <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:20px;">
+                            <button onclick="openRequestModal('${mediaType}', ${id}, '${data.title}', '${poster}', '${data.year}')" class="btn-primary" style="flex:1; min-width:140px;">Request</button>
+                            <button onclick="playTrailer(${id}, '${mediaType}')" class="btn-secondary" style="flex:1; min-width:140px;">Watch Trailer</button>
+                            <a href="${tmdbLink}" target="_blank" class="btn-secondary" style="flex:1; min-width:140px; text-decoration:none; display:flex; align-items:center; justify-content:center;">TMDB</a>
+                        </div>
+                    </div>`;
+            })
+            .catch(err => {
+                body.innerHTML = `<div class="modal-error text-center"><h3>Error</h3><p>${escapeHtml(String(err.message || ''))}</p></div>`;
+            });
+    }
+    
+    // comprehensive modal close function with logging
+    function closeDetailModal() {
+        const modal = document.getElementById('detail-modal');
+        if (modal) {
+            modal.style.display = "none";
+            document.body.classList.remove('modal-open');
+        }
+    }
+
+    // attach close button click handler on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        const closeBtn = document.querySelector('#detail-modal .k-close-modal');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                closeDetailModal();
+            }, true);
+            
+            closeBtn.addEventListener('mouseup', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                closeDetailModal();
+            });
+            
+            closeBtn.addEventListener('touchend', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                closeDetailModal();
+            });
+        }
+        
+        // ESC key to close modal
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' || e.keyCode === 27) {
+                const modal = document.getElementById('detail-modal');
+                const trailerModal = document.getElementById('trailer-modal');
+                if (modal && (modal.style.display === 'block' || modal.style.display === 'flex')) {
+                    closeDetailModal();
+                }
+                if (trailerModal && (trailerModal.style.display === 'block' || trailerModal.style.display === 'flex')) {
+                    closeTrailer();
+                }
+            }
+        });
+    });
+
+    // Close on outside click
+    window.onclick = function(event) {
+        const modal = document.getElementById('detail-modal');
+        if (event.target == modal) {
+            closeDetailModal();
+        }
+        // Also close the trailer modal if it's open
+        const trailerModal = document.getElementById('trailer-modal');
+        if (event.target == trailerModal) {
+            closeTrailer();
+        }
+    }
+
+    function spinWheel() {
+        const cards = Array.from(document.querySelectorAll('.result-card')).filter(c => c.style.display !== 'none');
+        if(cards.length === 0) return;
+        let spins = 0, max = 30, idx = 0;
+        function step() {
+            cards.forEach(c => c.style.border = "1px solid #333");
+            idx = (idx + 1) % cards.length;
+            cards[idx].style.border = "3px solid var(--accent-color)";
+            cards[idx].scrollIntoView({behavior: "smooth", block: "center"});
+            spins++;
+            if(spins < max) setTimeout(step, 50 + (spins*5));
+            else {
+                setTimeout(() => {
+                    cards[idx].style.border = "3px solid var(--accent-color)";
+                }, 500);
+            }
+        }
+        step();
+    }
+
+    function scrollToTop() {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    function toggleBackToTop() {
+        const btn = document.getElementById('back-to-top-btn');
+        if (!btn) return;
+        if (window.scrollY > 400) btn.classList.add('back-to-top-visible');
+        else btn.classList.remove('back-to-top-visible');
+    }
+    window.addEventListener('scroll', toggleBackToTop, { passive: true });
+    document.addEventListener('DOMContentLoaded', function() {
+        init();
+        toggleBackToTop();
+    });
+
+</script>
+{% endblock %}

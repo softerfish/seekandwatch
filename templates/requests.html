@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    /* 1. Fix Key Icon Alignment and Color */
+    .input-group-text {
+        background-color: #2a2a2a; /* Dark background */
+        border-color: #444;       /* Dark border */
+        color: #fff;              /* White Icon */
+        display: flex;
+        align-items: center;      /* Vertically align icon */
+    }
+
+    /* 2. Fix Input Field to match dark theme */
+    #cloudApiKey {
+        background-color: #1e1e1e;
+        border-color: #444;
+        color: #fff;
+    }
+    
+    /* 3. Ensure Warning Badge text is readable (Black on Yellow) */
+    .badge-warning {
+        color: #212529 !important; 
+    }
+
+    /* Pending Queue: Type badge text black for readability */
+    .pending-queue-type { color: #000 !important; }
+    /* Push action buttons 30% to the right within the column */
+    .pending-queue-actions { margin-left: 30%; }
+
+    /* Requests info message: ensure readable text on any theme */
+    .requests-info-message {
+        font-size: 1rem;
+        line-height: 1.5;
+        color: #212529;
+        background-color: #f8f9fa;
+        padding: 1rem 1.25rem;
+        border-radius: 0.25rem;
+        border-left: 4px solid #0d6efd;
+    }
+
+    /* Promo dropdown */
+    #seekandwatch-promo .card-header {
+        cursor: pointer;
+        user-select: none;
+    }
+    #seekandwatch-promo .card-header .btn-close-promo {
+        cursor: pointer;
+        opacity: 0.8;
+    }
+    #seekandwatch-promo .card-header .btn-close-promo:hover {
+        opacity: 1;
+    }
+</style>
+
+<div class="container mt-4">
+    <!-- Promotional overview: default open, once closed stays closed (localStorage) -->
+    <div id="seekandwatch-promo" class="card mb-4 border-info" style="display: none;">
+        <div class="card-header bg-info text-dark d-flex justify-content-between align-items-center py-2">
+            <span class="font-weight-bold"><i class="fas fa-info-circle mr-1"></i> What is SeekAndWatch?</span>
+            <button type="button" class="btn btn-sm btn-outline-dark btn-close-promo" id="promo-dismiss" title="Close and don't show again" aria-label="Close">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="card-body bg-dark text-white">
+            <p class="mb-2"><strong>SeekAndWatch</strong> (<a href="https://seekandwatch.com" target="_blank" rel="noopener" class="text-info">seekandwatch.com</a>) lets your friends and family <strong>request movies and TV shows</strong> from your Plex server without needing access to Plex or Radarr/Sonarr. You approve or deny requests on the SeekAndWatch web app; approved items are added to Radarr/Sonarr here automatically.</p>
+            <p class="mb-2"><strong>How it works:</strong> Users request titles on SeekAndWatch. You approve or deny on the web app. Approved items sync to this app and are sent to your chosen handler (Radarr or Sonarr). Use <strong>Refresh</strong> below to sync now.</p>
+            <p class="mb-2"><strong>Why it's safe:</strong> Your Plex URL and tokens stay on your machine. The cloud service only relays requests and connection keys; it does not store your media or control your server. You can revoke keys and turn off automation at any time.</p>
+            <p class="mb-2"><strong>Why use it:</strong> Give requesters a simple, familiar way to ask for content without exposing Radarr/Sonarr or teaching them Plex requests. One place to manage all incoming requests and automation.</p>
+            <p class="mb-0">
+                <span class="badge badge-warning text-dark">Beta</span> SeekAndWatch is currently in <strong>beta</strong>. To request access, go to <a href="https://www.reddit.com/r/SeekAndWatch/" target="_blank" rel="noopener" class="text-info font-weight-bold">r/SeekAndWatch</a> and either <strong>post for access</strong> or <strong>send a mod a PM</strong>.
+            </p>
+        </div>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2>Cloud Requests Management</h2>
+        <div class="d-flex gap-2">
+            <a href="{{ url_for('web_requests.requests_page') }}" class="btn btn-outline-primary" title="Fetch latest from cloud"><i class="fas fa-sync-alt"></i> Refresh</a>
+            <a href="{{ url_for('web_requests.requests_settings_page') }}" class="btn btn-secondary"><i class="fas fa-cog"></i> Requests Settings</a>
+        </div>
+    </div>
+
+</div>
+
+<script>
+(function() {
+    var STORAGE_KEY = 'seekandwatch_promo_dismissed';
+    var promo = document.getElementById('seekandwatch-promo');
+    var dismissBtn = document.getElementById('promo-dismiss');
+
+    function isDismissed() {
+        try {
+            return localStorage.getItem(STORAGE_KEY) === 'true';
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function setDismissed() {
+        try {
+            localStorage.setItem(STORAGE_KEY, 'true');
+        } catch (e) {}
+        if (promo) promo.style.display = 'none';
+    }
+
+    if (promo) {
+        if (isDismissed()) {
+            promo.style.display = 'none';
+        } else {
+            promo.style.display = 'block';
+        }
+    }
+
+    if (dismissBtn) {
+        dismissBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            setDismissed();
+        });
+    }
+})();
+</script>
+{% endblock %}

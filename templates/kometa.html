@@ -1,0 +1,2685 @@
+{% extends "base.html" %}
+{% block page_title %}Kometa{% endblock %}
+{% block content %}
+
+<div class="intro-box">
+    <h3>Kometa Config Builder</h3>
+    <p>
+        This tool generates a <strong>foundational</strong> configuration. For help using this builder, see the 
+        <a href="https://github.com/meisnate12/Plex-Meta-Manager/wiki" target="_blank">Kometa Wiki ↗</a>. 
+        For a full list of available collections, customization options, and advanced features, please consult the official 
+        <a href="https://kometa.wiki/en/latest/defaults/collections/" target="_blank">Kometa Defaults (collections) ↗</a> and 
+        <a href="https://kometa.wiki/en/latest/defaults/overlays/" target="_blank">Kometa Overlay Defaults ↗</a>.
+    </p>
+    
+    <div class="intro-tip-box">
+        <h4>How to use this tool:</h4>
+        <ol>
+            <li><strong>Connect:</strong> Enter your Plex & TMDb details in Tab 1 to enable scanning.</li>
+            <li><strong>Select:</strong> Toggle the collections you want in Tab 3.</li>
+            <li><strong>Customize:</strong> Click the gear button next to any item to refine it.</li>
+        </ol>
+        
+        <p>
+            <strong>Power Tip:</strong> Use the gear button to filter huge lists.<br>
+            <em>Example:</em> Enable <strong>Streaming Services</strong>, click the gear, and add <code>Netflix, Disney+</code> to the <strong>Include</strong> field. Instead of generating 100+ collections for every service under the sun, Kometa will now only create two! <br><br>
+            <strong>Remember</strong> to click Save Progress often
+        </p>
+    </div>
+
+</div>
+
+<div class="header-row">
+    <div>
+        <h2>Kometa Config Builder</h2>
+        <p class="text-muted">Generate a clean <code>config.yml</code> file.</p>
+    </div>
+    <div class="header-actions">
+        <a href="https://kometa.wiki" target="_blank" class="btn-secondary btn-header">Help</a>
+        <button onclick="showImportModal()" class="btn-secondary btn-header">Import Config</button>
+        <button onclick="showTemplatesModal()" class="btn-secondary btn-header">Templates</button>
+        <button onclick="showComparison()" class="btn-secondary btn-header">Compare</button>
+        <button onclick="undoAction()" class="btn-secondary btn-header" id="btn-undo" disabled>Undo</button>
+        <button onclick="redoAction()" class="btn-secondary btn-header" id="btn-redo" disabled>Redo</button>
+        <button onclick="saveProgress()" class="btn-primary btn-header-save">Save Progress</button>
+    </div>
+</div>
+
+<div id="performance-indicator">
+    <div class="perf-content">
+        <div>
+            <strong class="kometa-performance-text">📊 Performance Estimate: <span class="info-icon" title="Calculation: (Collections × 3s) + (Overlays × 1.5s). Multipliers: Genre=20, Actor=50, Director=30, Streaming=20, Studio=25, Year=30, Decade=10, Franchise=15, Universe=10, Rating=6. Estimates vary by library content.">ℹ️</span></strong>
+            <span id="perf-collections" class="perf-text"></span>
+            <span id="perf-runtime" class="perf-text"></span>
+        </div>
+        <button onclick="document.getElementById('performance-indicator').style.display='none'" class="perf-close-btn">×</button>
+    </div>
+</div>
+
+<div class="k-container">
+    
+    <div class="k-panel">
+        
+        <div class="k-tabs">
+            <button class="k-tab active" onclick="switchTab('config')">1. Core Config</button>
+            <button class="k-tab" onclick="switchTab('global')">2. Global Settings</button>
+            <button class="k-tab" onclick="switchTab('libraries')">3. Libraries</button>
+        </div>
+
+        <div id="tab-config" class="k-section active">
+            <form class="k-group" style="border-left: 4px solid var(--accent-color);" onsubmit="return false;" aria-label="Required connections">
+                <h4 class="mb-10" style="border-bottom:none;">Required Connections</h4>
+                <div class="mb-15 fs-small text-muted border-bottom pb-10">These are mandatory for Kometa to function.</div>
+                
+                <div class="k-input-row">
+                    <label>Plex URL <span class="info-icon" title="Local IP of your Plex Server">ℹ️</span></label>
+                    <input type="text" id="plex_url" value="{{ settings.plex_url or '' }}" placeholder="http://192.168.1.X:32400" oninput="gen()">
+                </div>
+                <div class="info-text">Example: http://192.168.1.50:32400</div>
+
+                <div class="k-input-row">
+                    <label>Plex Token <span class="info-icon" title="Find this in the XML of any media item in Plex">ℹ️</span></label>
+                    <input type="password" id="plex_token" value="{{ settings.plex_token or '' }}" placeholder="X-Plex-Token" oninput="gen()" autocomplete="off">
+                </div>
+                <div class="info-text">The X-Plex-Token used to authenticate.</div>
+
+                <div class="k-input-row">
+                    <label>TMDB Key <span class="info-icon" title="API Key from themoviedb.org">ℹ️</span></label>
+                    <input type="password" id="tmdb_key" value="{{ settings.tmdb_key or '' }}" placeholder="API Key" oninput="gen()" autocomplete="off">
+                </div>
+                <div class="info-text">Required to look up metadata and posters.</div>
+            </form>
+        </div>
+
+        <div id="tab-global" class="k-section">
+            <div class="k-group">
+                <h4 class="border-none">System & Caching</h4>
+                
+                <div class="k-input-row">
+                    <label>Cache Enabled <span class="info-icon" title="Speeds up runs by saving TMDB/Plex data locally.">ℹ️</span></label>
+                    <select id="s_cache" onchange="gen()">
+                        <option value="true" selected>True (Recommended)</option>
+                        <option value="false">False</option>
+                    </select>
+                </div>
+                <div class="info-text">Speeds up runs by saving TMDB/Plex data locally.</div>
+
+                <div class="k-input-row">
+                    <label>Cache Expiry (Days) <span class="info-icon" title="Days before each cache mapping expires and must be re-cached.">ℹ️</span></label>
+                    <input type="number" id="s_cache_expiration" value="60" oninput="gen()">
+                </div>
+                <div class="info-text">How long to keep metadata before refreshing it from TMDB.</div>
+
+                <div class="k-input-row">
+                    <label>Run Order <span class="info-icon" title="The order Kometa performs tasks. Default is Operations > Metadata > Collections > Overlays.">ℹ️</span></label>
+                    <select id="s_run_order" onchange="gen()">
+                        <option value="default" selected>Default (Ops > Meta > Coll > Overlays)</option>
+                        <option value="collections_first">Collections First</option>
+                    </select>
+                </div>
+                <div class="info-text">The order Kometa performs tasks. Default is usually best.</div>
+            </div>
+
+            <div class="k-group">
+                <h4 class="border-none">Assets & Folders</h4>
+                
+                <div class="k-input-row">
+                    <label>Asset Folders <span class="info-icon" title="Expects one folder per item in your assets directory (e.g. Assets/Star Wars/poster.jpg).">ℹ️</span></label>
+                    <select id="s_asset_folders" onchange="gen()">
+                        <option value="true" selected>True</option>
+                        <option value="false">False</option>
+                    </select>
+                </div>
+                <div class="info-text">Expects one folder per item in your assets directory?</div>
+
+                <div class="k-input-row">
+                    <label>Show Missing Assets <span class="info-icon" title="Logs a warning if an item is missing a custom poster in your assets folder.">ℹ️</span></label>
+                    <select id="s_show_missing" onchange="gen()">
+                        <option value="true" selected>True</option>
+                        <option value="false">False</option>
+                    </select>
+                </div>
+                <div class="info-text">Logs a warning if an item is missing a custom poster.</div>
+            </div>
+
+            <div class="k-group">
+                <h4 class="border-none">Collection Management</h4>
+
+                <div class="k-input-row">
+                    <label>Sync Mode <span class="info-icon" title="'Sync' removes items from collections if they no longer match the rules. 'Append' only adds new items.">ℹ️</span></label>
+                    <select id="s_sync_mode" onchange="gen()">
+                        <option value="append" selected>Append (Add only)</option>
+                        <option value="sync">Sync (Add & Remove)</option>
+                    </select>
+                </div>
+                <div class="info-text">'Sync' will remove items from collections if they no longer match the rules.</div>
+
+                <div class="k-input-row">
+                    <label>Delete Below Min <span class="info-icon" title="Delete the entire collection if it has fewer than the minimum number of items.">ℹ️</span></label>
+                    <select id="s_delete_below_min" onchange="gen()">
+                        <option value="false" selected>False</option>
+                        <option value="true">True</option>
+                    </select>
+                </div>
+                <div class="info-text">Delete the collection if it has fewer than the minimum items?</div>
+                
+                <div class="k-input-row">
+                    <label>Minimum Items <span class="info-icon" title="Minimum items that must be found to create a collection.">ℹ️</span></label>
+                    <input type="number" id="s_minimum_items" value="1" oninput="gen()">
+                </div>
+            </div>
+
+            <div class="k-group">
+                <h4 class="border-none">Overlay Quality</h4>
+                
+                <div class="k-input-row">
+                    <label>Artwork Quality (0-100) <span class="info-icon" title="Compression level for generated posters. Higher = Larger files.">ℹ️</span></label>
+                    <input type="number" id="s_artwork_quality" value="90" oninput="gen()">
+                </div>
+                <div class="info-text">Compression level for generated posters. Higher = Larger files.</div>
+            </div>
+        </div>
+
+        <div id="tab-libraries" class="k-section">
+             <div class="k-group">
+                <h4 class="border-none mb-5">Add a Library</h4>
+                <p class="text-muted fs-normal mb-20 border-bottom pb-10">Configure one or more Plex libraries.</p>
+
+                <div class="k-input-row">
+                    <label>Library <button class="btn-refresh" onclick="fetchLibs()" title="Refresh Libraries">🔄</button></label>
+                    <select id="temp_lib_name" onchange="autoSelectType(); toggleOptions();">
+                        <option value="" disabled selected>Loading libraries...</option>
+                    </select>
+                </div>
+                
+                <div class="k-input-row">
+                    <label>Type</label>
+                    <select id="temp_lib_type" onchange="filterOpts(); gen();">
+                        <option value="movie">Movies 🎬</option>
+                        <option value="tv">TV Shows 📺</option>
+                        <option value="anime">Anime 🏯</option>
+                    </select>
+                </div>
+
+                <div id="options-lock-wrapper" class="locked-section">
+                    
+                    <div class="k-sub-header">Popular Charts (Safe)</div>
+                    <div class="k-check-grid" id="opt-container">
+                        <div class="k-check-item type-all"><label title="Generates collections based on TMDb popularity (Trending, Popular, etc)."><input type="checkbox" class="t-opt" value="tmdb" onchange="gen()"> TMDB Popular</label><button class="btn-gear" onclick="editVars('tmdb', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Generates the IMDb Top 250 Movies/Shows chart."><input type="checkbox" class="t-opt" value="imdb" onchange="gen()"> IMDb Top 250</label><button class="btn-gear" onclick="editVars('imdb', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Generates collections for New Releases, Released Today, and Recently Added items."><input type="checkbox" class="t-opt" value="basic" onchange="gen()"> New Releases</label><button class="btn-gear" onclick="editVars('basic', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Top rated and popular anime from AniList."><input type="checkbox" class="t-opt" value="anilist" onchange="gen()"> AniList Charts</label><button class="btn-gear" onclick="editVars('anilist', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Popular lists and charts from Letterboxd."><input type="checkbox" class="t-opt" value="letterboxd" onchange="gen()"> Letterboxd Charts</label><button class="btn-gear" onclick="editVars('letterboxd', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Top anime lists from MyAnimeList."><input type="checkbox" class="t-opt" value="myanimelist" onchange="gen()"> MyAnimeList Charts</label><button class="btn-gear" onclick="editVars('myanimelist', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Various other chart providers and trending lists."><input type="checkbox" class="t-opt" value="other_chart" onchange="gen()"> Other Charts</label><button class="btn-gear" onclick="editVars('other_chart', event)">⚙️</button></div>
+                    </div>
+
+                    <div class="k-sub-header">Content</div>
+                    <div class="k-check-grid">
+                        <div class="k-check-item type-all"><label title="Generates collections for every Genre (Action, Comedy, etc.) found in your library."><input type="checkbox" class="t-opt" value="genre" onchange="gen()"> Genres</label><button class="btn-gear" onclick="editVars('genre', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Generates collections for franchises (Star Wars, James Bond, Fast & Furious, etc.)."><input type="checkbox" class="t-opt" value="franchise" onchange="gen()"> Franchises</label><button class="btn-gear" onclick="editVars('franchise', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Generates collections for shared universes (MCU, DCEU, Star Trek, etc.)."><input type="checkbox" class="t-opt" value="universe" onchange="gen()"> Universes</label><button class="btn-gear" onclick="editVars('universe', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Collections based on source material (Based on Book, Based on Comic, etc.)."><input type="checkbox" class="t-opt" value="based" onchange="gen()"> Based On...</label><button class="btn-gear" onclick="editVars('based', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Finds items that are not part of any other collection."><input type="checkbox" class="t-opt" value="collectionless" onchange="gen()"> Collectionless</label><button class="btn-gear" onclick="editVars('collectionless', event)">⚙️</button></div>
+                    </div>
+
+                    <div class="k-sub-header">People</div>
+                    <div class="k-check-grid">
+                        <div class="k-check-item type-all"><label title="Collections for popular Actors."><input type="checkbox" class="t-opt" value="actor" onchange="gen()"> Actors</label><button class="btn-gear" onclick="editVars('actor', event)">⚙️</button></div>
+                        <div class="k-check-item type-tv hidden"><label title="Collections for popular Directors."><input type="checkbox" class="t-opt" value="director" onchange="gen()"> Directors</label><button class="btn-gear" onclick="editVars('director', event)">⚙️</button></div>
+                        <div class="k-check-item type-tv hidden"><label title="Collections for popular Producers."><input type="checkbox" class="t-opt" value="producer" onchange="gen()"> Producers</label><button class="btn-gear" onclick="editVars('producer', event)">⚙️</button></div>
+                        <div class="k-check-item type-tv hidden"><label title="Collections for popular Writers."><input type="checkbox" class="t-opt" value="writer" onchange="gen()"> Writers</label><button class="btn-gear" onclick="editVars('writer', event)">⚙️</button></div>
+                    </div>
+
+                    <div class="k-sub-header">🏭 Production</div>
+                    <div class="k-check-grid">
+                        <div class="k-check-item type-tv hidden"><label title="Generates collections for TV Networks (HBO, AMC, NBC, etc.)."><input type="checkbox" class="t-opt" value="network" onchange="gen()"> Networks</label><button class="btn-gear" onclick="editVars('network', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Generates collections for Streaming Services (Netflix, Disney+, Hulu, etc.)."><input type="checkbox" class="t-opt" value="streaming" onchange="gen()"> Streaming Services</label><button class="btn-gear" onclick="editVars('streaming', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Generates collections for major studios (Pixar, A24, Warner Bros, etc.)."><input type="checkbox" class="t-opt" value="studio" onchange="gen()"> Studios</label><button class="btn-gear" onclick="editVars('studio', event)">⚙️</button></div>
+                    </div>
+
+                    <div class="k-sub-header">Time</div>
+                    <div class="k-check-grid">
+                        <div class="k-check-item type-movie"><label title="Generates seasonal collections (Christmas, Halloween) that appear only during specific times of year."><input type="checkbox" class="t-opt" value="seasonal" onchange="gen()"> Seasonal (Holidays)</label><button class="btn-gear" onclick="editVars('seasonal', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Generates collections for specific release years."><input type="checkbox" class="t-opt" value="year" onchange="gen()"> Release Year</label><button class="btn-gear" onclick="editVars('year', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Generates collections for decades (1980s, 1990s, 2000s, etc.)."><input type="checkbox" class="t-opt" value="decade" onchange="gen()"> Decades</label><button class="btn-gear" onclick="editVars('decade', event)">⚙️</button></div>
+                        <div class="k-check-item type-tv hidden"><label title="Generates collections for 'Ended', 'Returning', or 'Canceled' shows."><input type="checkbox" class="t-opt" value="status" onchange="gen()"> Status (Ended/Running)</label><button class="btn-gear" onclick="editVars('status', event)">⚙️</button></div>
+                    </div>
+
+                    <div class="k-sub-header">Content Ratings</div>
+                    <div class="k-check-grid">
+                        <div class="k-check-item type-all"><label title="US Ratings (G, PG, PG-13, R / TV-MA, etc)."><input type="checkbox" class="t-opt" value="content_rating_us" onchange="gen()"> US Ratings</label><button class="btn-gear" onclick="editVars('content_rating_us', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="UK Ratings (U, 12, 15, 18)."><input type="checkbox" class="t-opt" value="content_rating_uk" onchange="gen()"> UK Ratings</label><button class="btn-gear" onclick="editVars('content_rating_uk', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="German FSK Ratings."><input type="checkbox" class="t-opt" value="content_rating_de" onchange="gen()"> DE Ratings</label><button class="btn-gear" onclick="editVars('content_rating_de', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Australian Ratings."><input type="checkbox" class="t-opt" value="content_rating_au" onchange="gen()"> AU Ratings</label><button class="btn-gear" onclick="editVars('content_rating_au', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="New Zealand Ratings."><input type="checkbox" class="t-opt" value="content_rating_nz" onchange="gen()"> NZ Ratings</label><button class="btn-gear" onclick="editVars('content_rating_nz', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="MyAnimeList Content Ratings."><input type="checkbox" class="t-opt" value="content_rating_mal" onchange="gen()"> MAL Ratings</label><button class="btn-gear" onclick="editVars('content_rating_mal', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Common Sense Media Age Ratings."><input type="checkbox" class="t-opt" value="content_rating_cs" onchange="gen()"> Common Sense</label><button class="btn-gear" onclick="editVars('content_rating_cs', event)">⚙️</button></div>
+                    </div>
+
+                    <div class="k-sub-header">Media Attributes</div>
+                    <div class="k-check-grid">
+                        <div class="k-check-item type-all"><label title="Group by Aspect Ratio (e.g. 2.35:1, 16:9)."><input type="checkbox" class="t-opt" value="aspect" onchange="gen()"> Aspect Ratios</label><button class="btn-gear" onclick="editVars('aspect', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Group by Resolution (4K, 1080p, SD)."><input type="checkbox" class="t-opt" value="resolution" onchange="gen()"> Resolutions</label><button class="btn-gear" onclick="editVars('resolution', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Group by Audio Language tracks."><input type="checkbox" class="t-opt" value="audio_language" onchange="gen()"> Audio Languages</label><button class="btn-gear" onclick="editVars('audio_language', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Group by Subtitle Language tracks."><input type="checkbox" class="t-opt" value="subtitle_language" onchange="gen()"> Subtitle Languages</label><button class="btn-gear" onclick="editVars('subtitle_language', event)">⚙️</button></div>
+                    </div>
+
+                    <div class="k-sub-header">Awards</div>
+                    <div class="k-check-grid">
+                        <div class="k-check-item type-movie"><label title="Academy Award 'Best Picture' winners."><input type="checkbox" class="t-opt" value="oscars" onchange="gen()"> Oscars (Academy)</label><button class="btn-gear" onclick="editVars('oscars', event)">⚙️</button></div>
+                        <div class="k-check-item type-movie"><label title="Golden Berlin Bear winners."><input type="checkbox" class="t-opt" value="berlinale" onchange="gen()"> Berlin (Berlinale)</label><button class="btn-gear" onclick="editVars('berlinale', event)">⚙️</button></div>
+                        <div class="k-check-item type-movie"><label title="BAFTA Award winners."><input type="checkbox" class="t-opt" value="bafta" onchange="gen()"> BAFTA</label><button class="btn-gear" onclick="editVars('bafta', event)">⚙️</button></div>
+                        <div class="k-check-item type-movie"><label title="Palme d'Or winners."><input type="checkbox" class="t-opt" value="cannes" onchange="gen()"> Cannes Film Festival</label><button class="btn-gear" onclick="editVars('cannes', event)">⚙️</button></div>
+                        <div class="k-check-item type-movie"><label title="César Award winners."><input type="checkbox" class="t-opt" value="cesar" onchange="gen()"> César Awards</label><button class="btn-gear" onclick="editVars('cesar', event)">⚙️</button></div>
+                        <div class="k-check-item type-movie"><label title="Independent Spirit Award winners."><input type="checkbox" class="t-opt" value="spirit" onchange="gen()"> Independent Spirit</label><button class="btn-gear" onclick="editVars('spirit', event)">⚙️</button></div>
+                        <div class="k-check-item type-movie"><label title="National Film Registry inductees."><input type="checkbox" class="t-opt" value="nfr" onchange="gen()"> National Film Registry</label><button class="btn-gear" onclick="editVars('nfr', event)">⚙️</button></div>
+                        <div class="k-check-item type-movie"><label title="Golden Raspberry Award (Razzie) winners."><input type="checkbox" class="t-opt" value="razzie" onchange="gen()"> Razzie Awards</label><button class="btn-gear" onclick="editVars('razzie', event)">⚙️</button></div>
+                        <div class="k-check-item type-movie"><label title="Sundance Film Festival winners."><input type="checkbox" class="t-opt" value="sundance" onchange="gen()"> Sundance</label><button class="btn-gear" onclick="editVars('sundance', event)">⚙️</button></div>
+                        <div class="k-check-item type-movie"><label title="Toronto International Film Festival People's Choice winners."><input type="checkbox" class="t-opt" value="tiff" onchange="gen()"> TIFF (Toronto)</label><button class="btn-gear" onclick="editVars('tiff', event)">⚙️</button></div>
+                        <div class="k-check-item type-movie"><label title="Golden Lion winners."><input type="checkbox" class="t-opt" value="venice" onchange="gen()"> Venice Film Festival</label><button class="btn-gear" onclick="editVars('venice', event)">⚙️</button></div>
+
+                        <div class="k-check-item type-all"><label title="Emmy Award winners."><input type="checkbox" class="t-opt" value="emmy" onchange="gen()"> Emmys</label><button class="btn-gear" onclick="editVars('emmy', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Screen Actors Guild Award winners."><input type="checkbox" class="t-opt" value="sag" onchange="gen()"> SAG Awards</label><button class="btn-gear" onclick="editVars('sag', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="People's Choice Award winners."><input type="checkbox" class="t-opt" value="pca" onchange="gen()"> People's Choice</label><button class="btn-gear" onclick="editVars('pca', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Golden Globe winners."><input type="checkbox" class="t-opt" value="golden" onchange="gen()"> Golden Globes</label><button class="btn-gear" onclick="editVars('golden', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Critics' Choice Award winners."><input type="checkbox" class="t-opt" value="choice" onchange="gen()"> Critics' Choice</label><button class="btn-gear" onclick="editVars('choice', event)">⚙️</button></div>
+                    </div>
+
+                    <div class="k-sub-header">Awards/Charts (Overlay)</div>
+                    <div class="k-check-grid">
+                        <div class="k-check-item type-all"><label title="Adds ribbons for IMDb Top 250, Rotten Tomatoes Fresh, Oscars, etc."><input type="checkbox" class="t-opt ovl" value="ribbon" onchange="gen()"> Ribbon</label><button class="btn-gear" onclick="editVars('ribbon', event)">⚙️</button></div>
+                    </div>
+
+                    <div class="k-sub-header">Content (Overlay)</div>
+                    <div class="k-check-grid">
+                        <div class="k-check-item type-tv hidden"><label title="Overlays season/episode counts on TV posters."><input type="checkbox" class="t-opt ovl" value="episode_info" onchange="gen()"> Episode Info</label><button class="btn-gear" onclick="editVars('episode_info', event)">⚙️</button></div>
+                        <div class="k-check-item type-movie"><label title="Overlays a badge if the movie has a post-credit scene."><input type="checkbox" class="t-opt ovl" value="mediastinger" onchange="gen()"> Mediastinger</label><button class="btn-gear" onclick="editVars('mediastinger', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay IMDb/TMDb/Rotten Tomatoes ratings on posters."><input type="checkbox" class="t-opt ovl" value="ratings" onchange="gen()"> Ratings</label><button class="btn-gear" onclick="editVars('ratings', event)">⚙️</button></div>
+                        <div class="k-check-item type-tv hidden"><label title="Overlays 'Airing', 'Ended', or 'Canceled' status on show posters."><input type="checkbox" class="t-opt ovl" value="status" onchange="gen()"> Status</label><button class="btn-gear" onclick="editVars('status', event)">⚙️</button></div>
+                    </div>
+
+                    <div class="k-sub-header">Content Ratings (Overlay)</div>
+                    <div class="k-check-grid">
+                        <div class="k-check-item type-all"><label title="Overlay Australian classification ratings (G, PG, M, etc.)."><input type="checkbox" class="t-opt ovl" value="content_rating_au" onchange="gen()"> AU Content Ratings</label><button class="btn-gear" onclick="editVars('content_rating_au', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay Common Sense Media age-appropriate ratings."><input type="checkbox" class="t-opt ovl" value="commonsense" onchange="gen()"> Common Sense Age Rating</label><button class="btn-gear" onclick="editVars('commonsense', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay German FSK classification ratings."><input type="checkbox" class="t-opt ovl" value="content_rating_de" onchange="gen()"> DE Content Ratings</label><button class="btn-gear" onclick="editVars('content_rating_de', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay New Zealand classification ratings."><input type="checkbox" class="t-opt ovl" value="content_rating_nz" onchange="gen()"> NZ Content Ratings</label><button class="btn-gear" onclick="editVars('content_rating_nz', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay UK BBFC classification ratings."><input type="checkbox" class="t-opt ovl" value="content_rating_uk" onchange="gen()"> UK Content Ratings</label><button class="btn-gear" onclick="editVars('content_rating_uk', event)">⚙️</button></div>
+                        <div class="k-check-item type-movie"><label title="Overlay US MPAA film ratings (G, PG, R, etc.)."><input type="checkbox" class="t-opt ovl" value="content_rating_us_movie" onchange="gen()"> US Content Ratings (Movie)</label><button class="btn-gear" onclick="editVars('content_rating_us_movie', event)">⚙️</button></div>
+                        <div class="k-check-item type-tv hidden"><label title="Overlay US TV Parental Guidelines (TV-14, TV-MA, etc.)."><input type="checkbox" class="t-opt ovl" value="content_rating_us_show" onchange="gen()"> US Content Ratings (Show)</label><button class="btn-gear" onclick="editVars('content_rating_us_show', event)">⚙️</button></div>
+                    </div>
+
+                    <div class="k-sub-header">Media (Overlay)</div>
+                    <div class="k-check-grid">
+                        <div class="k-check-item type-all"><label title="Overlay the video aspect ratio (e.g., 2.35:1)."><input type="checkbox" class="t-opt ovl" value="aspect" onchange="gen()"> Aspect Ratio</label><button class="btn-gear" onclick="editVars('aspect', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay badges for audio codecs (Atmos, DTS-X, etc.)."><input type="checkbox" class="t-opt ovl" value="audio_codec" onchange="gen()"> Audio Codec</label><button class="btn-gear" onclick="editVars('audio_codec', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay the number of audio/subtitle languages available."><input type="checkbox" class="t-opt ovl" value="language_count" onchange="gen()"> Audio/Subtitle Language Count</label><button class="btn-gear" onclick="editVars('language_count', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay flags indicating available audio/subtitle languages."><input type="checkbox" class="t-opt ovl" value="languages" onchange="gen()"> Audio/Subtitle Language Flags</label><button class="btn-gear" onclick="editVars('languages', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay resolution (4K, 1080p) and edition info."><input type="checkbox" class="t-opt ovl" value="resolution" onchange="gen()"> Resolution/Editions</label><button class="btn-gear" onclick="editVars('resolution', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay the content duration on the poster."><input type="checkbox" class="t-opt ovl" value="runtimes" onchange="gen()"> Runtimes</label><button class="btn-gear" onclick="editVars('runtimes', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay a badge if multiple versions of the item exist."><input type="checkbox" class="t-opt ovl" value="versions" onchange="gen()"> Versions</label><button class="btn-gear" onclick="editVars('versions', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay source format (REMUX, HDTV, Blu-Ray, DVD, etc.)."><input type="checkbox" class="t-opt ovl" value="video_format" onchange="gen()"> Video Format</label><button class="btn-gear" onclick="editVars('video_format', event)">⚙️</button></div>
+                    </div>
+
+                    <div class="k-sub-header">Production (Overlay)</div>
+                    <div class="k-check-grid">
+                        <div class="k-check-item type-tv hidden"><label title="Overlay the television network logo."><input type="checkbox" class="t-opt ovl" value="network" onchange="gen()"> Network</label><button class="btn-gear" onclick="editVars('network', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay the streaming service logo."><input type="checkbox" class="t-opt ovl" value="streaming" onchange="gen()"> Streaming</label><button class="btn-gear" onclick="editVars('streaming', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay the production studio logo."><input type="checkbox" class="t-opt ovl" value="studio" onchange="gen()"> Studio</label><button class="btn-gear" onclick="editVars('studio', event)">⚙️</button></div>
+                    </div>
+
+                    <div class="k-sub-header">Utility (Overlay)</div>
+                    <div class="k-check-grid">
+                        <div class="k-check-item type-all"><label title="Overlay a badge indicating if the item can Direct Play."><input type="checkbox" class="t-opt ovl" value="direct_play" onchange="gen()"> Direct Play</label><button class="btn-gear" onclick="editVars('direct_play', event)">⚙️</button></div>
+                    </div>
+
+                    <button class="btn-add" onclick="addLibrary()" id="btn-action" disabled>Add/Update Library</button>
+                
+                </div> </div>
+
+            <h4 class="mt-30 mb-10">Added Libraries:</h4>
+            <div id="added-libs-container" class="kometa-container-empty">
+                <div class="kometa-empty-state">No libraries added yet.</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="k-panel" style="position: sticky; top: 20px; min-width:400px;">
+        <h3 class="mt-0 mb-15 text-white">config.yml Output</h3>
+        <div class="yaml-box" id="output">
+<span class="y-cmnt"># Fill in the form on the left to generate config...</span>
+        </div>
+        <button id="copy-yaml-btn" onclick="copyYaml()" class="btn btn-primary w-100 mt-15 px-15 py-15 fw-bold cursor-pointer" style="border:none; border-radius:6px;">Copy to Clipboard</button>
+
+        <div id="overlay-preview-section" class="overlay-preview-section mt-20">
+            <h4 id="overlay-preview-title" class="text-white mb-10 fs-small">Sample overlay preview</h4>
+            <p class="text-muted fs-small mb-10">Shows how your selected overlays will look on a poster. Change overlays in Tab 3 to update.</p>
+            <div id="overlay-preview-posters" class="overlay-preview-posters">
+                <div id="overlay-preview-wrap-single" class="overlay-preview-wrap">
+                    <div id="overlay-preview-poster" class="overlay-preview-poster">
+                        <div class="overlay-preview-placeholder"></div>
+                        <div id="overlay-preview-badges"></div>
+                        <div id="overlay-preview-empty" class="overlay-preview-empty">Select overlays in Tab 3 to see preview</div>
+                    </div>
+                </div>
+                <div id="overlay-preview-wrap-tv" class="overlay-preview-wrap-tv" style="display: none;">
+                    <div class="overlay-preview-tv-column">
+                        <div class="overlay-preview-poster-label">Season</div>
+                        <div class="overlay-preview-poster">
+                            <div class="overlay-preview-placeholder"></div>
+                            <div id="overlay-preview-badges-season" class="overlay-preview-badges"></div>
+                            <div id="overlay-preview-empty-season" class="overlay-preview-empty">Season</div>
+                        </div>
+                    </div>
+                    <div class="overlay-preview-tv-column">
+                        <div class="overlay-preview-poster-label">Episode</div>
+                        <div class="overlay-preview-poster">
+                            <div class="overlay-preview-placeholder"></div>
+                            <div id="overlay-preview-badges-episode" class="overlay-preview-badges"></div>
+                            <div id="overlay-preview-empty-episode" class="overlay-preview-empty">Episode</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.overlay-preview-section { padding: 12px 0; border-top: 1px solid var(--border-color); }
+.overlay-preview-poster {
+    position: relative;
+    width: 100%;
+    max-width: 200px;
+    aspect-ratio: 2/3;
+    border-radius: 8px;
+    overflow: hidden;
+    background: linear-gradient(145deg, #1a1a2e 0%, #16213e 100%);
+    margin: 0 auto;
+}
+.overlay-preview-placeholder {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(145deg, #1a1a2e 0%, #16213e 100%);
+}
+.overlay-preview-badges { position: absolute; inset: 0; pointer-events: none; }
+.overlay-preview-empty {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 12px;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+.overlay-preview-badges:not(:empty) ~ .overlay-preview-empty { display: none; }
+.overlay-preview-badge {
+    position: absolute;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 2px 5px;
+    border-radius: 3px;
+    white-space: nowrap;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.5);
+    line-height: 1.2;
+}
+.overlay-preview-badge.pos-tl { top: 6px; left: 6px; }
+.overlay-preview-badge.pos-tr { top: 6px; right: 6px; }
+.overlay-preview-badge.pos-bl { bottom: 6px; left: 6px; }
+.overlay-preview-badge.pos-br { bottom: 6px; right: 6px; }
+.overlay-preview-badge.pos-bc { bottom: 6px; left: 50%; transform: translateX(-50%); }
+.overlay-preview-badge.pos-tc { top: 6px; left: 50%; transform: translateX(-50%); }
+.overlay-preview-badge.rating { background: #333; color: #fff; border: 1px solid #555; }
+.overlay-preview-badge.media { background: #0a0a0a; color: var(--accent-color); border: 1px solid var(--accent-color); }
+.overlay-preview-badge.ribbon { background: linear-gradient(135deg, #e74c3c, #c0392b); color: #fff; }
+.overlay-preview-badge.misc { background: rgba(0,0,0,0.8); color: #fff; }
+.overlay-preview-badge.season-sample { background: rgba(0,0,0,0.85); color: #fff; font-size: 9px; }
+.overlay-preview-badge.episode-sample { background: rgba(0,0,0,0.85); color: var(--accent-color); font-size: 9px; margin-left: 2px; }
+.overlay-preview-season-episode-group { display: flex; flex-wrap: wrap; gap: 2px; position: absolute; bottom: 6px; left: 6px; }
+.overlay-preview-posters { min-height: 120px; }
+.overlay-preview-wrap-tv { display: flex; gap: 16px; align-items: flex-start; justify-content: center; flex-wrap: wrap; }
+.overlay-preview-wrap-tv .overlay-preview-poster { width: 200px; min-width: 200px; }
+.overlay-preview-wrap-tv .overlay-preview-poster-label { width: 100%; max-width: 200px; font-size: 11px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; text-align: center; }
+.overlay-preview-tv-column { display: flex; flex-direction: column; align-items: center; flex: 0 0 auto; }
+</style>
+
+<div id="var-modal" class="modal-overlay">
+    <div class="modal-box">
+        <button type="button" class="modal-close-btn" onclick="closeModal()" aria-label="Close">×</button>
+        <h3 class="mt-0">Customize: <span id="modal-title" class="modal-title-accent"></span></h3>
+        <p class="fs-small text-light mb-15 border-bottom pb-10">
+            See available variables at <a href="https://kometa.wiki/en/latest/defaults/collections/" target="_blank" class="link-accent">Kometa Wiki ↗</a>.<br>
+            <span class="warning-text-red">⚠️ Note: Not all variables work with every collection type. Check the wiki!</span>
+        </p>
+
+        <div class="k-sub-header border-bottom-none mt-5" id="qs-header">⚡ Quick Settings</div>
+        <div class="quick-settings" id="qs-container">
+            <div class="qs-col" id="wrapper-qs-limit">
+                <label>Limit (Items) <span class="info-icon" title="Maximum number of items to keep in this collection.">ℹ️</span></label>
+                <input type="number" id="qs-limit" placeholder="Unlimited">
+            </div>
+            <div class="qs-col" id="wrapper-qs-sort">
+                <label>Sort By <span class="info-icon" title="How the collection items are ordered in Plex.">ℹ️</span></label>
+                <select id="qs-sort">
+                    <option value=""></option>
+                    <option value="release">Release Date (Newest)</option>
+                    <option value="popularity">Popularity</option>
+                    <option value="critic_rating">Critic Rating</option>
+                    <option value="audience_rating">Audience Rating</option>
+                    <option value="random">Random</option>
+                </select>
+            </div>
+            <div class="qs-col" id="wrapper-qs-coll-mode">
+                <label>Collection Mode <span class="info-icon" title="How the collection appears in the library (e.g. Hide items from main library).">ℹ️</span></label>
+                <select id="qs-coll-mode">
+                    <option value=""></option>
+                    <option value="hide">Hide Collection</option>
+                    <option value="hide_items">Hide Items</option>
+                    <option value="show_items">Show Items</option>
+                </select>
+            </div>
+            <div class="qs-col" id="wrapper-qs-sync-mode">
+                <label>Sync Mode <span class="info-icon" title="Sync (remove missing items) or Append (only add new items).">ℹ️</span></label>
+                <select id="qs-sync-mode">
+                    <option value="">Inherit Global Setting</option>
+                    <option value="sync">Sync (Add & Remove)</option>
+                    <option value="append">Append (Add Only)</option>
+                </select>
+            </div>
+            <div class="qs-col" id="wrapper-qs-include">
+                <label>Include (Items) <span class="info-icon" title="Enter items separated by commas. We will format them as a YAML list automatically.">ℹ️</span></label>
+                <input type="text" id="qs-include" placeholder="e.g. Star Wars, Matrix">
+            </div>
+            <div class="qs-col" id="wrapper-qs-exclude">
+                <label>Exclude (Items) <span class="info-icon" title="Enter items separated by commas. We will format them as a YAML list automatically.">ℹ️</span></label>
+                <input type="text" id="qs-exclude" placeholder="e.g. The Room, Cats">
+            </div>
+
+            <div class="qs-col" id="wrapper-qs-builder-level" style="display:none;">
+                <label>Builder Level</label>
+                <select id="qs-builder-level">
+                    <option value=""></option>
+                    <option value="season">Season</option>
+                    <option value="episode">Episode</option>
+                </select>
+            </div>
+            <div class="qs-col" id="wrapper-qs-style" style="display:none;">
+                <label>Style</label>
+                <select id="qs-style">
+                    <option value=""></option>
+                    <option value="compact">Compact</option>
+                    <option value="standard">Standard</option>
+                </select>
+            </div>
+            <div class="qs-col" id="wrapper-qs-minimum" style="display:none;">
+                <label>Minimum</label>
+                <input type="number" id="qs-minimum">
+            </div>
+            <div class="qs-col" id="wrapper-qs-use-subtitles" style="display:none;">
+                <label>Use Subtitles</label>
+                <select id="qs-use-subtitles">
+                    <option value=""></option>
+                    <option value="true">True</option>
+                </select>
+            </div>
+            <div class="qs-col" id="wrapper-qs-addon-position" style="display:none;">
+                <label>Addon Position</label>
+                <select id="qs-addon-position">
+                    <option value=""></option>
+                    <option value="left">Left</option>
+                    <option value="right">Right</option>
+                    <option value="top">Top</option>
+                    <option value="bottom">Bottom</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="k-sub-header border-bottom-none">Advanced Custom Variables</div>
+        <div id="var-container">
+            </div>
+
+        <button class="btn-secondary w-100 mb-20" onclick="addVarRow()" style="border:1px dashed #444;">+ Add Variable</button>
+
+        <div class="d-flex gap-10" style="justify-content:flex-end;">
+            <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+            <button class="btn-primary" onclick="saveModal()">Save Variables</button>
+        </div>
+    </div>
+</div>
+
+<!-- Import Config Modal -->
+<div id="import-modal" class="modal-overlay">
+    <div class="modal-box import-modal">
+        <button type="button" class="modal-close-btn" onclick="closeImportModal()" aria-label="Close">×</button>
+        <h3>Import Config</h3>
+        <p>
+            Import a Kometa config from a URL or paste YAML directly.
+        </p>
+        
+        <!-- Tabs for URL vs Paste -->
+        <div class="import-tab-container">
+            <button id="import-tab-url" class="import-tab-btn active" onclick="switchImportTab('url')">From URL</button>
+            <button id="import-tab-paste" class="import-tab-btn" onclick="switchImportTab('paste')">Paste YAML</button>
+        </div>
+        
+        <!-- URL Import -->
+        <div id="import-url-section" class="import-section active">
+            <div class="k-input-row">
+                <label>Config URL</label>
+                <input type="text" id="import-url" placeholder="https://raw.githubusercontent.com/user/repo/config.yml">
+            </div>
+            <div class="info-text">For GitHub files, use the raw URL. On GitHub, open the file and click the "Raw" button (top right), then copy that URL. Many community configs only contain templates and collections, which will be merged with your existing settings.</div>
+        </div>
+        
+        <!-- Paste Import -->
+        <div id="import-paste-section" class="import-section">
+            <div class="k-input-row">
+                <label>Paste YAML Config</label>
+                <textarea id="import-paste" placeholder="Paste your YAML config here..."></textarea>
+            </div>
+        </div>
+        
+        <div class="modal-actions">
+            <button class="btn-secondary" onclick="closeImportModal()">Cancel</button>
+            <button class="btn-primary" onclick="importConfig()">Import</button>
+        </div>
+    </div>
+</div>
+
+<!-- Library Templates Modal -->
+<div id="templates-modal" class="modal-overlay" style="display: none;">
+    <div class="modal-box" style="max-width: 700px;">
+        <h3 style="margin-top:0;">📚 Library Templates</h3>
+        <p style="font-size:0.85em; color:#aaa; margin-bottom:15px;">
+            Save library configurations as reusable templates. Apply them to other libraries with one click.
+        </p>
+        
+        <div style="margin-bottom: 20px;">
+            <h4 style="margin-bottom: 10px;">Save Current Library as Template</h4>
+            <div class="k-input-row">
+                <label>Template Name</label>
+                <input type="text" id="template-name" placeholder="e.g. Movies - Full Setup" style="width: 100%;">
+            </div>
+            <button class="btn-primary" onclick="saveAsTemplate()" style="width: 100%; margin-top: 10px;">💾 Save Template</button>
+        </div>
+        
+        <div style="border-top: 1px solid #333; padding-top: 20px;">
+            <h4 style="margin-bottom: 10px;">Saved Templates</h4>
+            <div id="templates-list" style="max-height: 300px; overflow-y: auto;">
+                <div style="text-align: center; color: #555; padding: 20px;">No templates saved yet.</div>
+            </div>
+        </div>
+        
+        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
+            <button class="btn-secondary" onclick="document.getElementById('templates-modal').style.display='none'">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- Comparison Modal -->
+<div id="comparison-modal" class="modal-overlay">
+    <div class="modal-box comparison-modal">
+        <button type="button" class="modal-close-btn" onclick="closeComparisonModal()" aria-label="Close">×</button>
+        <h3>🔍 Config Comparison</h3>
+        <p class="comparison-desc">
+            Compare your current configuration with the saved version.
+        </p>
+        <div class="comparison-grid">
+            <div>
+                <h4 class="comparison-header-current">Current config.yml Output</h4>
+                <div class="yaml-box comparison-box" id="comparison-current"></div>
+            </div>
+            <div>
+                <h4 class="comparison-header-saved">Saved Config</h4>
+                <div class="yaml-box comparison-box" id="comparison-saved"></div>
+            </div>
+        </div>
+        <div class="modal-actions">
+            <button class="btn-secondary" onclick="closeComparisonModal()">Close</button>
+        </div>
+    </div>
+</div>
+
+<script>
+const CSRF_TOKEN = "{{ csrf_token() }}";
+const API_SAVE_KOMETA_CONFIG = "{{ url_for('api.save_kometa_config') }}";
+const API_GET_PLEX_LIBRARIES = "{{ url_for('api.get_plex_libraries') }}";
+const API_KOMETA_TEMPLATES = "{{ url_for('api.get_kometa_templates') }}";
+const API_KOMETA_TEMPLATES_SAVE = "{{ url_for('api.save_kometa_template') }}";
+const API_KOMETA_TEMPLATES_DELETE_BASE = "{{ url_for('api.delete_kometa_template', template_id=0) }}";
+// load saved config (handles the legacy array format too). Updated in-memory on save so Compare shows latest.
+let savedConfig = JSON.parse({{ settings.kometa_config|tojson if settings.kometa_config else 'null' }});
+let libraries = [];
+let globalSettings = {};
+let templateVars = {}; // stores variables: { 'genre': { limit: 10 }, 'tmdb': { ... } }
+let libraryTemplateVars = {}; // stores per-library vars: { 'Movies': { use_separator: true } }
+let inlineComments = {};
+if (savedConfig && !Array.isArray(savedConfig) && savedConfig.inlineComments) {
+    inlineComments = savedConfig.inlineComments;
+} else {
+    inlineComments = {
+        plex: {},
+        tmdb: {},
+        settings: {},
+        templateVars: {},
+        libraryTemplateVars: {},
+        libraryDefaults: {}
+    };
+}
+
+if (Array.isArray(savedConfig)) {
+    // legacy format
+    libraries = savedConfig;
+} else if (savedConfig) {
+    // current format
+    libraries = savedConfig.libraries || [];
+    globalSettings = savedConfig.settings || {};
+    if (savedConfig.templateVars) {
+        templateVars = savedConfig.templateVars;
+    }
+    if (savedConfig.libraryTemplateVars) {
+        libraryTemplateVars = savedConfig.libraryTemplateVars;
+    }
+}
+
+// undo/redo system
+let historyStack = [];
+let historyIndex = -1;
+const MAX_HISTORY = 50;
+
+// library templates (stored in database)
+let libraryTemplates = [];
+
+// save state to history
+function saveToHistory() {
+    const state = {
+        libraries: JSON.parse(JSON.stringify(libraries)),
+        globalSettings: JSON.parse(JSON.stringify(globalSettings)),
+        templateVars: JSON.parse(JSON.stringify(templateVars))
+    };
+    
+    // remove any future history if we're not at the end
+    if (historyIndex < historyStack.length - 1) {
+        historyStack = historyStack.slice(0, historyIndex + 1);
+    }
+    
+    historyStack.push(state);
+    if (historyStack.length > MAX_HISTORY) {
+        historyStack.shift();
+    } else {
+        historyIndex++;
+    }
+    
+    updateUndoRedoButtons();
+}
+
+// restore state from history
+function restoreFromHistory(index) {
+    if (index < 0 || index >= historyStack.length) return;
+    
+    const state = historyStack[index];
+    libraries = JSON.parse(JSON.stringify(state.libraries));
+    globalSettings = JSON.parse(JSON.stringify(state.globalSettings));
+    templateVars = JSON.parse(JSON.stringify(state.templateVars));
+    
+    // reload ui
+    renderLibs();
+    gen();
+    updateUndoRedoButtons();
+}
+
+function undoAction() {
+    if (historyIndex > 0) {
+        historyIndex--;
+        restoreFromHistory(historyIndex);
+    }
+}
+
+function redoAction() {
+    if (historyIndex < historyStack.length - 1) {
+        historyIndex++;
+        restoreFromHistory(historyIndex);
+    }
+}
+
+function updateUndoRedoButtons() {
+    document.getElementById('btn-undo').disabled = historyIndex <= 0;
+    document.getElementById('btn-redo').disabled = historyIndex >= historyStack.length - 1;
+}
+
+// initialize history with current state
+saveToHistory();
+
+// map overlay keys to quick settings fields (per https://kometa.wiki/en/latest/defaults/overlays/)
+// Builder Level (Season/Episode) is only shown when library type is TV/Anime, not Movie
+const overlaySettingsMap = {
+    'content_rating_au': ['builder_level', 'addon_position'],
+    'commonsense': ['builder_level', 'addon_position'],
+    'content_rating_de': ['builder_level', 'addon_position'],
+    'content_rating_nz': ['builder_level', 'addon_position'],
+    'content_rating_uk': ['builder_level', 'addon_position'],
+    'content_rating_us_movie': ['addon_position'],
+    'content_rating_us_show': ['builder_level', 'addon_position'],
+    'aspect': [],
+    'audio_codec': ['builder_level', 'style'],
+    'language_count': ['builder_level', 'minimum', 'style'],
+    'languages': ['builder_level'],
+    'resolution': ['builder_level'],
+    'runtimes': ['builder_level'],
+    'versions': ['builder_level'],
+    'network': ['builder_level'],
+    'studio': ['builder_level'],
+    'direct_play': ['builder_level'],
+    'ratings': ['builder_level'],
+    'video_format': ['builder_level']
+};
+
+// Overlay preview: every position/offset from Kometa wiki "Default Template Variable Values" (ref 1000×1500).
+// bottomPct = (vertical_offset/1500)*100; topPct for top-aligned. Same corner+offset = overlap.
+// https://kometa.wiki/en/latest/defaults/overlays/
+const overlayPreviewSamples = {
+    ribbon: { position: 'br', label: 'TOP 250', class: 'ribbon', bottomPct: 0 },
+    episode_info: { position: 'bl', seasonEpisode: true },
+    mediastinger: { position: 'tr', label: 'Post-Credit', class: 'misc', topPct: 14.33 },
+    status: { position: 'tl', label: 'Ended', class: 'misc', topPct: 22 },
+    content_rating_au: { position: 'bl', label: 'M', class: 'rating', bottomPct: 18 },
+    commonsense: { position: 'bl', label: '8+', class: 'rating', bottomPct: 18 },
+    content_rating_de: { position: 'bl', label: 'FSK 16', class: 'rating', bottomPct: 18 },
+    content_rating_nz: { position: 'bl', label: 'M', class: 'rating', bottomPct: 18 },
+    content_rating_uk: { position: 'bl', label: '15', class: 'rating', bottomPct: 18 },
+    content_rating_us_movie: { position: 'bl', label: 'PG-13', class: 'rating', bottomPct: 18 },
+    content_rating_us_show: { position: 'bl', label: 'TV-MA', class: 'rating', bottomPct: 18 },
+    aspect: { position: 'bc', label: '2.35:1', class: 'media', bottomPct: 0 },
+    audio_codec: { position: 'tc', label: 'Atmos', class: 'media', topPct: 1 },
+    language_count: { position: 'bc', label: 'Dual', class: 'misc', bottomPct: 2 },
+    languages: { position: 'tl', label: 'EN', class: 'misc', topPct: 1 },
+    resolution: { position: 'tl', label: '4K', class: 'media', topPct: 1 },
+    runtimes: { position: 'br', label: '2h 15m', class: 'misc', bottomPct: 2 },
+    versions: { position: 'br', label: '2', class: 'misc', bottomPct: 22 },
+    network: { position: 'bl', label: 'HBO', class: 'misc', bottomPct: 34 },
+    streaming: { position: 'bl', label: 'Netflix', class: 'misc', bottomPct: 26 },
+    studio: { position: 'bl', label: 'Pixar', class: 'misc', bottomPct: 10 },
+    direct_play: { position: 'bc', label: 'Direct Play Only', class: 'media', bottomPct: 10 },
+    ratings: { position: 'tl', label: '8.5', class: 'misc', topPct: 50 },
+    video_format: { position: 'bl', label: 'REMUX', class: 'media', bottomPct: 2 }
+};
+
+function getActiveOverlaysForPreview() {
+    const overlays = [];
+    document.querySelectorAll('.t-opt.ovl:checked').forEach(cb => {
+        const item = cb.closest('.k-check-item');
+        if (item && !item.classList.contains('hidden')) overlays.push(cb.value);
+    });
+    return overlays;
+}
+
+function renderOverlayBadgesInto(container, active, options) {
+    if (!container) return;
+    const { showSeasonBadgeOnly = false, showSeasonEpisodeGroup = false } = options || {};
+    container.innerHTML = '';
+    const hasSeasonEpisode = active.some(key => overlayPreviewSamples[key] && overlayPreviewSamples[key].seasonEpisode);
+    const blOffset = (hasSeasonEpisode && (showSeasonBadgeOnly || showSeasonEpisodeGroup)) ? 22 : 0;
+    if (hasSeasonEpisode && showSeasonBadgeOnly) {
+        const sBadge = document.createElement('span');
+        sBadge.className = 'overlay-preview-badge season-sample pos-bl';
+        sBadge.textContent = 'S3';
+        sBadge.title = 'Season overlay sample';
+        sBadge.style.bottom = '6px';
+        sBadge.style.left = '6px';
+        container.appendChild(sBadge);
+    }
+    if (hasSeasonEpisode && showSeasonEpisodeGroup) {
+        const group = document.createElement('div');
+        group.className = 'overlay-preview-season-episode-group';
+        const sBadge = document.createElement('span');
+        sBadge.className = 'overlay-preview-badge season-sample';
+        sBadge.textContent = 'S3';
+        sBadge.title = 'Season overlay sample';
+        const eBadge = document.createElement('span');
+        eBadge.className = 'overlay-preview-badge episode-sample';
+        eBadge.textContent = 'E10';
+        eBadge.title = 'Episode overlay sample';
+        group.appendChild(sBadge);
+        group.appendChild(eBadge);
+        container.appendChild(group);
+    }
+    const positions = { tl: [], tr: [], bl: [], br: [], bc: [], tc: [] };
+    active.forEach(key => {
+        const sample = overlayPreviewSamples[key] || { position: 'br', label: key.replace(/_/g, ' '), class: 'misc' };
+        if (sample.seasonEpisode) return;
+        const pos = sample.position || 'br';
+        if (!positions[pos]) positions[pos] = [];
+        const customLabel = templateVars[key] && templateVars[key].style;
+        const label = (typeof customLabel === 'string' && customLabel.trim()) ? customLabel.trim() : (sample.label || key);
+        positions[pos].push({ key, label: String(label), class: sample.class || 'misc', bottomPct: sample.bottomPct, topPct: sample.topPct });
+    });
+    Object.keys(positions).forEach(pos => {
+        positions[pos].forEach((item) => {
+            const span = document.createElement('span');
+            span.className = `overlay-preview-badge pos-${pos} ${item.class}`;
+            span.textContent = item.label;
+            if (pos === 'tl' || pos === 'tr' || pos === 'tc') {
+                span.style.top = (item.topPct != null ? item.topPct : 1) + '%';
+            } else if (pos === 'bl' || pos === 'br' || pos === 'bc') {
+                const pct = (item.bottomPct != null ? item.bottomPct : 2);
+                span.style.bottom = blOffset ? `calc(${pct}% + ${blOffset}px)` : (pct + '%');
+            }
+            container.appendChild(span);
+        });
+    });
+}
+
+function updateOverlayPreview() {
+    const container = document.getElementById('overlay-preview-badges');
+    const emptyEl = document.getElementById('overlay-preview-empty');
+    const titleEl = document.getElementById('overlay-preview-title');
+    const wrapSingle = document.getElementById('overlay-preview-wrap-single');
+    const wrapTv = document.getElementById('overlay-preview-wrap-tv');
+    const emptySeason = document.getElementById('overlay-preview-empty-season');
+    const emptyEpisode = document.getElementById('overlay-preview-empty-episode');
+    if (!container) return;
+    const rawLibType = document.getElementById('temp_lib_type')?.value || '';
+    const libType = (rawLibType === 'show') ? 'tv' : rawLibType;
+    if (titleEl) {
+        if (libType === 'movie') titleEl.textContent = 'Sample overlay preview (Movie)';
+        else if (libType === 'tv') titleEl.textContent = 'Sample overlay preview (TV)';
+        else if (libType === 'anime') titleEl.textContent = 'Sample overlay preview (Anime)';
+        else titleEl.textContent = 'Sample overlay preview';
+    }
+    const active = getActiveOverlaysForPreview();
+    // Season/Episode preview only for TV/Anime (Plex may return type "show" for TV libraries)
+    const isTvOrAnime = (libType === 'tv' || libType === 'anime' || libType === 'show');
+
+    if (isTvOrAnime) {
+        if (wrapSingle) wrapSingle.style.display = 'none';
+        if (wrapTv) wrapTv.style.display = 'flex';
+        const seasonContainer = document.getElementById('overlay-preview-badges-season');
+        const episodeContainer = document.getElementById('overlay-preview-badges-episode');
+        if (active.length === 0) {
+            if (emptySeason) emptySeason.style.display = 'flex';
+            if (emptyEpisode) emptyEpisode.style.display = 'flex';
+            return;
+        }
+        if (emptySeason) emptySeason.style.display = 'none';
+        if (emptyEpisode) emptyEpisode.style.display = 'none';
+        renderOverlayBadgesInto(seasonContainer, active, { showSeasonBadgeOnly: true });
+        renderOverlayBadgesInto(episodeContainer, active, { showSeasonEpisodeGroup: true });
+    } else {
+        if (wrapSingle) wrapSingle.style.display = 'block';
+        if (wrapTv) wrapTv.style.display = 'none';
+        container.innerHTML = '';
+        if (active.length === 0) {
+            if (emptyEl) emptyEl.style.display = 'flex';
+            return;
+        }
+        if (emptyEl) emptyEl.style.display = 'none';
+        renderOverlayBadgesInto(container, active, { showSeasonEpisodeGroup: true });
+    }
+}
+
+// tab switching
+function switchTab(t) {
+    document.querySelectorAll('.k-section').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.k-tab').forEach(el => el.classList.remove('active'));
+    document.getElementById('tab-' + t).classList.add('active');
+    event.target.classList.add('active');
+}
+
+// lock options until a library is selected
+function toggleOptions() {
+    const libName = document.getElementById('temp_lib_name').value;
+    const wrapper = document.getElementById('options-lock-wrapper');
+    const btn = document.getElementById('btn-action');
+
+    if (!libName || libName === "") {
+        wrapper.classList.add('locked-section');
+        btn.disabled = true;
+    } else {
+        wrapper.classList.remove('locked-section');
+        btn.disabled = false;
+    }
+}
+
+// variable modal
+let currentEditKey = null;
+
+function editVars(key, e) {
+    if(e) e.stopPropagation(); 
+    
+    // prefer the checkbox next to the clicked gear icon to avoid duplicates
+    let checkbox = null;
+    if (e && e.target) {
+        const parent = e.target.closest('.k-check-item');
+        if (parent) checkbox = parent.querySelector('input[type="checkbox"]');
+    }
+
+    // fall back to a selector if we lose event context
+    if (!checkbox) {
+        checkbox = document.querySelector(`.t-opt[value="${key}"]`);
+    }
+
+    // auto-check the box if it wasn't already selected
+    if(checkbox && !checkbox.checked) {
+        checkbox.checked = true;
+        gen();
+    }
+
+    currentEditKey = key;
+    document.getElementById('modal-title').innerText = key;
+    document.getElementById('var-modal').style.display = 'flex';
+    lockBodyScroll();
+    lockBodyScroll();
+    
+    // detect overlay vs collection
+    const isOverlay = checkbox && checkbox.classList.contains('ovl');
+    
+    const qsHeader = document.getElementById('qs-header');
+    const qsContainer = document.getElementById('qs-container');
+
+    // reset quick settings visibility
+    document.querySelectorAll('.qs-col').forEach(el => el.style.display = 'none');
+    qsHeader.style.display = 'block';
+    qsContainer.style.display = 'grid';
+
+    if (isOverlay) {
+        // overlays only show the allowed quick settings (per https://kometa.wiki/en/latest/defaults/overlays/)
+        const libType = document.getElementById('temp_lib_type')?.value || '';
+        const isMovie = (libType === 'movie');
+        const allowedFields = overlaySettingsMap[key];
+        
+        if (allowedFields && allowedFields.length > 0) {
+            allowedFields.forEach(field => {
+                // Builder Level (Season/Episode) only applies to TV/Anime libraries, not Movie
+                if (field === 'builder_level' && isMovie) return;
+                const id = 'wrapper-qs-' + field.replace(/_/g, '-');
+                const el = document.getElementById(id);
+                if(el) el.style.display = 'block';
+            });
+        } else {
+            // no fields for this overlay, hide quick settings
+            qsHeader.style.display = 'none';
+            qsContainer.style.display = 'none';
+        }
+    } else {
+        // collections show the standard quick settings
+        ['limit', 'sort', 'coll-mode', 'sync-mode', 'include', 'exclude'].forEach(f => {
+             const el = document.getElementById('wrapper-qs-' + f);
+             if(el) el.style.display = 'block';
+        });
+    }
+    
+    // load existing vars (or empty)
+    const vars = templateVars[key] || {};
+    
+    // populate values
+    const setVal = (id, val) => { if(document.getElementById(id)) document.getElementById(id).value = val || ''; };
+    setVal('qs-limit', vars.limit);
+    setVal('qs-sort', vars.sort_by);
+    setVal('qs-coll-mode', vars.collection_mode);
+    setVal('qs-sync-mode', vars.sync_mode);
+    const includeVal = Array.isArray(vars.include) ? vars.include.join(', ') : vars.include;
+    const excludeVal = Array.isArray(vars.exclude) ? vars.exclude.join(', ') : vars.exclude;
+    setVal('qs-include', includeVal);
+    setVal('qs-exclude', excludeVal);
+    setVal('qs-builder-level', vars.builder_level);
+    setVal('qs-addon-position', vars.addon_position);
+    setVal('qs-style', vars.style);
+    setVal('qs-minimum', vars.minimum);
+    setVal('qs-use-subtitles', vars.use_subtitles);
+
+    // populate custom vars
+    const container = document.getElementById('var-container');
+    container.innerHTML = '';
+    
+    const excludedKeys = [
+        'limit', 'sort_by', 'collection_mode', 'sync_mode', 'include', 'exclude', 
+        'builder_level', 'addon_position', 'style', 'minimum', 'use_subtitles'
+    ];
+    
+    const customEntries = Object.entries(vars).filter(([k, v]) => !excludedKeys.includes(k));
+
+    if (customEntries.length === 0) {
+        addVarRow(); 
+    } else {
+        customEntries.forEach(([k, v]) => addVarRow(k, v));
+    }
+}
+
+function addVarRow(k = '', v = '') {
+    const div = document.createElement('div');
+    div.className = 'var-row';
+    div.innerHTML = `
+        <input type="text" class="var-input key" placeholder="Variable (e.g. use_year)" value="${escapeHtml(String(k))}">
+        <input type="text" class="var-input val" placeholder="Value (e.g. true)" value="${escapeHtml(String(v))}">
+        <button class="btn-remove" onclick="this.parentElement.remove()" style="padding:0 10px;">&times;</button>
+    `;
+    document.getElementById('var-container').appendChild(div);
+}
+
+function saveModal() {
+    let data = {};
+
+    // capture quick settings (only when visible)
+    const captureIfVisible = (id, key, isNum=false) => {
+        const el = document.getElementById(id);
+        // only save visible fields with values
+        if(el && el.parentElement.style.display !== 'none' && el.value) {
+            data[key] = isNum ? Number(el.value) : el.value;
+        }
+    };
+
+    captureIfVisible('qs-limit', 'limit', true);
+    captureIfVisible('qs-sort', 'sort_by');
+    captureIfVisible('qs-coll-mode', 'collection_mode');
+    captureIfVisible('qs-sync-mode', 'sync_mode');
+    captureIfVisible('qs-include', 'include');
+    captureIfVisible('qs-exclude', 'exclude');
+    captureIfVisible('qs-builder-level', 'builder_level');
+    captureIfVisible('qs-addon-position', 'addon_position');
+    captureIfVisible('qs-style', 'style');
+    captureIfVisible('qs-minimum', 'minimum', true);
+    captureIfVisible('qs-use-subtitles', 'use_subtitles');
+
+    // capture custom rows
+    const rows = document.querySelectorAll('.var-row');
+    rows.forEach(r => {
+        const k = r.querySelector('.key').value.trim();
+        const v = r.querySelector('.val').value.trim();
+        if(k) data[k] = isNaN(v) || v === "" ? v : Number(v); // auto-convert numbers
+    });
+
+    if(Object.keys(data).length > 0) {
+        templateVars[currentEditKey] = data;
+    } else {
+        delete templateVars[currentEditKey];
+    }
+
+    closeModal();
+    saveToHistory();
+        gen(); // regenerate yaml
+    updatePerformanceIndicator();
+}
+
+function closeModal() {
+    document.getElementById('var-modal').style.display = 'none';
+    currentEditKey = null;
+    unlockBodyScroll();
+}
+
+// yaml generation
+function gen() {
+    updatePerformanceIndicator();
+    let y = "";
+
+    // core settings
+    y += `plex:\n`;
+    y += `  url: ${esc(document.getElementById('plex_url').value)}${formatInlineComment(inlineComments.plex?.url)}\n`;
+    y += `  token: ${esc(document.getElementById('plex_token').value)}${formatInlineComment(inlineComments.plex?.token)}\n`;
+    y += `  timeout: 60\n  clean_bundles: false\n  empty_trash: false\n  optimize: false\n\n`;
+
+    y += `tmdb:\n`;
+    y += `  apikey: ${esc(document.getElementById('tmdb_key').value)}${formatInlineComment(inlineComments.tmdb?.apikey)}\n`;
+    y += `  language: en\n  cache_expiration: 60\n  region: US\n\n`;
+
+    // global settings
+    y += `settings:\n`;
+    y += `  cache: ${val('s_cache')}${formatInlineComment(inlineComments.settings?.cache)}\n`;
+    y += `  cache_expiration: ${val('s_cache_expiration')}${formatInlineComment(inlineComments.settings?.cache_expiration)}\n`;
+    y += `  asset_folders: ${val('s_asset_folders')}${formatInlineComment(inlineComments.settings?.asset_folders)}\n`;
+    y += `  show_missing_assets: ${val('s_show_missing')}${formatInlineComment(inlineComments.settings?.show_missing_assets || inlineComments.settings?.show_missing)}\n`;
+    y += `  sync_mode: ${val('s_sync_mode')}${formatInlineComment(inlineComments.settings?.sync_mode)}\n`;
+    y += `  minimum_items: ${val('s_minimum_items')}${formatInlineComment(inlineComments.settings?.minimum_items)}\n`;
+    y += `  delete_below_minimum: ${val('s_delete_below_min')}${formatInlineComment(inlineComments.settings?.delete_below_minimum || inlineComments.settings?.delete_below_min)}\n`;
+    y += `  overlay_artwork_quality: ${val('s_artwork_quality')}${formatInlineComment(inlineComments.settings?.overlay_artwork_quality || inlineComments.settings?.artwork_quality)}\n`;
+    
+    // defaults that kometa expects
+    y += `  asset_directory: config/assets\n  run_order:\n`;
+    if(val('s_run_order') === 'collections_first') {
+        y += `  - collections\n  - overlays\n  - metadata\n  - operations\n\n`;
+    } else {
+        y += `  - operations\n  - metadata\n  - collections\n  - overlays\n\n`;
+    }
+
+    // libraries
+    y += `libraries:\n`;
+    
+    // merge saved libs with current preview
+    let allLibs = JSON.parse(JSON.stringify(libraries)); 
+    const currentName = document.getElementById('temp_lib_name')?.value;
+
+    if (currentName) {
+        let currentCols = [];
+        let currentOvls = [];
+        document.querySelectorAll('.t-opt:checked').forEach(cb => {
+            if (!cb.parentElement.parentElement.classList.contains('hidden')) {
+                if(cb.classList.contains('ovl')) currentOvls.push(cb.value);
+                else currentCols.push(cb.value);
+            }
+        });
+
+            const idx = allLibs.findIndex(l => l.name === currentName);
+        const existing = idx > -1 ? allLibs[idx] : null;
+        const mergedCols = mergeUnknownOptions(currentCols, existing ? existing.cols : []);
+        const mergedOvls = mergeUnknownOptions(currentOvls, existing ? existing.ovls : []);
+
+        if (mergedCols.length > 0 || mergedOvls.length > 0) {
+            const newObj = { name: currentName, cols: mergedCols, ovls: mergedOvls };
+            if (idx > -1) allLibs[idx] = newObj;
+            else allLibs.push(newObj);
+        }
+    }
+
+    if (allLibs.length === 0) {
+        y += `  # Add a library in Tab 3 to see config...`;
+    } else {
+        allLibs.forEach(l => {
+            y += `  ${l.name}:\n`;
+            const libVars = libraryTemplateVars[l.name];
+            if (libVars && Object.keys(libVars).length > 0) {
+                y += `    template_variables:\n`;
+                y += writeTemplateVars(libVars, 6, inlineComments.libraryTemplateVars?.[l.name]);
+            }
+            if (l.cols.length > 0) {
+                y += `    collection_files:\n`;
+                l.cols.forEach(c => {
+                    const colComment = inlineComments.libraryDefaults?.[l.name]?.collections?.[c];
+                    if (templateVars[c] && Object.keys(templateVars[c]).length > 0) {
+                        y += `    - default: ${c}${formatInlineComment(colComment)}\n`;
+                        y += `      template_variables:\n`;
+                        y += writeTemplateVars(templateVars[c], 8, inlineComments.templateVars?.[c]);
+                            } else {
+                        y += `    - default: ${c}${formatInlineComment(colComment)}\n`;
+                    }
+                });
+            }
+            if (l.ovls.length > 0) {
+                y += `    overlay_files:\n`;
+                l.ovls.forEach(o => {
+                    const ovlComment = inlineComments.libraryDefaults?.[l.name]?.overlays?.[o];
+                    if (templateVars[o] && Object.keys(templateVars[o]).length > 0) {
+                        y += `    - default: ${o}${formatInlineComment(ovlComment)}\n`;
+                        y += `      template_variables:\n`;
+                        y += writeTemplateVars(templateVars[o], 8, inlineComments.templateVars?.[o]);
+                            } else {
+                        y += `    - default: ${o}${formatInlineComment(ovlComment)}\n`;
+                    }
+                });
+            }
+        });
+    }
+
+    document.getElementById('output').innerHTML = y;
+    updateOverlayPreview();
+}
+
+// small helpers
+function esc(str) { return str ? str : "INSERT_HERE"; }
+function val(id) { 
+    const el = document.getElementById(id);
+    return el ? el.value : ''; 
+}
+
+function hasOption(value) {
+    return !!document.querySelector(`.t-opt[value="${value}"]`);
+}
+
+function mergeUnknownOptions(selected, existing) {
+    const extras = (existing || []).filter(v => !hasOption(v));
+    return [...new Set([...(selected || []), ...extras])];
+}
+
+function writeTemplateVars(vars, indent, commentMap = {}) {
+    if (!vars || Object.keys(vars).length === 0) return '';
+    const pad = ' '.repeat(indent);
+    const listPad = ' '.repeat(indent + 2);
+    let out = '';
+    Object.entries(vars).forEach(([k, v]) => {
+        if (v === undefined || v === null || v === '') return;
+        const comment = commentMap && commentMap[k] ? formatInlineComment(commentMap[k]) : '';
+        if (Array.isArray(v)) {
+            out += `${pad}${k}:${comment}\n`;
+            v.forEach(item => {
+                const val = String(item).trim();
+                if (val) out += `${listPad}- ${val}\n`;
+            });
+        } else if ((k === 'include' || k === 'exclude') && typeof v === 'string' && v.includes(',')) {
+            out += `${pad}${k}:${comment}\n`;
+            v.split(',').forEach(item => {
+                const val = item.trim();
+                if (val) out += `${listPad}- ${val}\n`;
+            });
+        } else {
+            out += `${pad}${k}: ${v}${comment}\n`;
+        }
+    });
+    return out;
+}
+
+// save progress (defer heavy work so click handler returns quickly and we avoid "handler took Xms" violation)
+function saveProgress() {
+    const btn = document.querySelector('button[onclick="saveProgress()"]');
+    const oldText = btn.innerText;
+    btn.innerText = "Saving...";
+    btn.disabled = true;
+
+    setTimeout(function doSave() {
+        const currentSettings = {
+            cache: val('s_cache'),
+            cache_expiration: val('s_cache_expiration'),
+            asset_folders: val('s_asset_folders'),
+            show_missing: val('s_show_missing'),
+            sync_mode: val('s_sync_mode'),
+            delete_below_min: val('s_delete_below_min'),
+            minimum_items: val('s_minimum_items'),
+            artwork_quality: val('s_artwork_quality'),
+            run_order: val('s_run_order')
+        };
+
+        const payload = {
+            libraries: libraries,
+            settings: currentSettings,
+            templateVars: templateVars,
+            libraryTemplateVars: libraryTemplateVars,
+            inlineComments: inlineComments,
+            plex_url: document.getElementById('plex_url').value,
+            plex_token: document.getElementById('plex_token').value,
+            tmdb_key: document.getElementById('tmdb_key').value
+        };
+
+        fetch(API_SAVE_KOMETA_CONFIG, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
+            body: JSON.stringify(payload)
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data && data.status === 'success') {
+                savedConfig = {
+                    libraries: payload.libraries,
+                    settings: payload.settings,
+                    templateVars: payload.templateVars,
+                    libraryTemplateVars: payload.libraryTemplateVars,
+                    inlineComments: payload.inlineComments,
+                    plex_url: payload.plex_url,
+                    plex_token: payload.plex_token,
+                    tmdb_key: payload.tmdb_key
+                };
+            }
+            btn.innerText = "Saved ✅";
+            setTimeout(() => { btn.innerText = oldText; btn.disabled = false; }, 2000);
+        })
+        .catch(e => {
+            alert("Connection Error");
+            btn.innerText = oldText;
+            btn.disabled = false;
+        });
+    }, 0);
+}
+
+// fetch libraries
+function fetchLibs() {
+    const select = document.getElementById('temp_lib_name');
+    select.innerHTML = '<option disabled selected>Loading...</option>';
+    
+    fetch(API_GET_PLEX_LIBRARIES)
+        .then(r => r.json())
+        .then(data => {
+            if(data.status === 'success') {
+                let html = '<option value="" disabled selected>Select a Library...</option>';
+                data.libraries.forEach(l => {
+                    html += `<option value="${l.name}" data-type="${l.type}">${l.name} (${l.type})</option>`;
+                });
+                select.innerHTML = html;
+            } else {
+                select.innerHTML = '<option disabled>Error: ' + escapeHtml(String(data.message || '')) + '</option>';
+            }
+            toggleOptions(); 
+        })
+        .catch(e => {
+            select.innerHTML = '<option disabled>Connection Failed</option>';
+            toggleOptions();
+        });
+}
+
+function autoSelectType() {
+    const select = document.getElementById('temp_lib_name');
+    const selectedOption = select.options[select.selectedIndex];
+    const type = selectedOption.getAttribute('data-type');
+    if (type) {
+        document.getElementById('temp_lib_type').value = type;
+        filterOpts(); 
+        gen();
+    }
+}
+
+function filterOpts() {
+    const type = document.getElementById('temp_lib_type').value;
+    document.querySelectorAll('.k-check-item').forEach(el => {
+        if (el.classList.contains('type-all')) { el.classList.remove('hidden'); return; }
+        if (type === 'movie' && el.classList.contains('type-movie')) el.classList.remove('hidden');
+        else if ((type === 'tv' || type === 'anime') && el.classList.contains('type-tv')) el.classList.remove('hidden');
+        else el.classList.add('hidden');
+    });
+}
+
+function addLibrary() {
+    const name = document.getElementById('temp_lib_name').value || "Library";
+    const type = document.getElementById('temp_lib_type').value;
+    
+    let cols = [];
+    let ovls = [];
+    document.querySelectorAll('.t-opt:checked').forEach(cb => {
+        if (cb.parentElement.parentElement.classList.contains('hidden')) return;
+        if(cb.classList.contains('ovl')) ovls.push(cb.value);
+        else cols.push(cb.value);
+    });
+
+    const existingIdx = libraries.findIndex(l => l.name === name);
+    const existing = existingIdx > -1 ? libraries[existingIdx] : null;
+    const mergedCols = mergeUnknownOptions(cols, existing ? existing.cols : []);
+    const mergedOvls = mergeUnknownOptions(ovls, existing ? existing.ovls : []);
+    if (existingIdx > -1) {
+        libraries[existingIdx] = { name, type, cols: mergedCols, ovls: mergedOvls };
+    } else {
+        libraries.push({ name, type, cols: mergedCols, ovls: mergedOvls });
+    }
+
+    saveToHistory();
+    renderLibs();
+    gen();
+    updatePerformanceIndicator();
+    
+    document.getElementById('temp_lib_name').value = "";
+    document.querySelectorAll('.t-opt').forEach(cb => cb.checked = false);
+    toggleOptions();
+}
+
+function editLib(idx) {
+    const lib = libraries[idx];
+    const select = document.getElementById('temp_lib_name');
+    
+    select.value = lib.name;
+    if(select.selectedIndex === -1) {
+       const opt = document.createElement('option');
+       opt.value = lib.name;
+       opt.text = lib.name + " (Saved)";
+       opt.setAttribute('data-type', lib.type);
+       select.add(opt);
+       select.value = lib.name;
+    }
+    
+    document.getElementById('temp_lib_type').value = (lib.type === 'show') ? 'tv' : lib.type;
+    toggleOptions(); 
+    filterOpts();
+
+    document.querySelectorAll('.t-opt').forEach(cb => cb.checked = false);
+    [...lib.cols, ...lib.ovls].forEach(val => {
+        const cb = document.querySelector(`.t-opt[value="${val}"]`);
+        if (cb) cb.checked = true;
+    });
+
+    document.getElementById('tab-libraries').scrollIntoView({behavior: 'smooth'});
+    document.getElementById('btn-action').innerText = "💾 Update Library";
+}
+
+function removeLib(idx) {
+    if(confirm("Remove this library?")) {
+        libraries.splice(idx, 1);
+        saveToHistory();
+        renderLibs();
+        gen();
+        updatePerformanceIndicator();
+    }
+}
+
+function renderLibs() {
+    const div = document.getElementById('added-libs-container');
+    if (libraries.length === 0) {
+        div.innerHTML = '<div style="text-align:center; color:#555; font-size:0.9em; padding:10px;">No libraries added yet.</div>';
+        return;
+    }
+    let html = '';
+    libraries.forEach((l, idx) => {
+        html += `<div class="lib-item">
+            <div><span>${l.name}</span> <small>(${l.type})</small></div>
+            <div class="btn-group">
+                <button class="btn-edit" onclick="editLib(${idx})">Edit</button>
+                <button class="btn-remove" onclick="removeLib(${idx})">Remove</button>
+            </div>
+        </div>`;
+    });
+    div.innerHTML = html;
+}
+
+function copyYaml() {
+    const outputEl = document.getElementById('output');
+    const btn = document.getElementById('copy-yaml-btn');
+    if (!outputEl || !btn) return;
+    const text = (outputEl.textContent || outputEl.innerText || '').trim();
+    const originalText = btn.innerText;
+
+    const showSuccess = () => {
+        btn.innerText = "Copied! ✅";
+        btn.style.backgroundColor = "var(--accent-color)";
+        setTimeout(() => {
+            btn.innerText = originalText;
+            btn.style.backgroundColor = "";
+        }, 2000);
+    };
+
+    const showFailed = (msg) => {
+        btn.innerText = "Failed ❌";
+        setTimeout(() => { btn.innerText = originalText; }, 2000);
+        if (msg) alert(msg);
+    };
+
+    const showManualHint = (msg) => {
+        btn.innerText = "Use Ctrl+C";
+        setTimeout(() => { btn.innerText = originalText; }, 2500);
+        if (msg) alert(msg);
+    };
+
+    function fallbackCopy() {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        ta.style.top = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        ta.setSelectionRange(0, text.length);
+        let ok = false;
+        try { ok = document.execCommand('copy'); } catch (e) {}
+        document.body.removeChild(ta);
+        return ok;
+    }
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text)
+            .then(showSuccess)
+            .catch(() => {
+                if (fallbackCopy()) showSuccess();
+                else showFailed("Copy failed. Select the YAML output above and press Ctrl+C (or Cmd+C) to copy.");
+            });
+    } else {
+        if (fallbackCopy()) showSuccess();
+        else {
+            try { outputEl.focus(); if (window.getSelection && document.createRange) { const r = document.createRange(); r.selectNodeContents(outputEl); window.getSelection().removeAllRanges(); window.getSelection().addRange(r); } } catch (e) {}
+            showManualHint("Clipboard not available in this context. The YAML above is selected - press Ctrl+C (or Cmd+C) to copy.");
+        }
+    }
+}
+
+// library templates
+function showTemplatesModal() {
+    document.getElementById('templates-modal').style.display = 'flex';
+    loadTemplates();
+}
+
+function saveAsTemplate() {
+    const name = document.getElementById('template-name').value.trim();
+    if (!name) {
+        alert('Please enter a template name');
+        return;
+    }
+    
+    const currentName = document.getElementById('temp_lib_name')?.value;
+    if (!currentName) {
+        alert('Please select a library first');
+        return;
+    }
+    
+    let cols = [];
+    let ovls = [];
+    document.querySelectorAll('.t-opt:checked').forEach(cb => {
+        if (!cb.parentElement.parentElement.classList.contains('hidden')) {
+            if(cb.classList.contains('ovl')) ovls.push(cb.value);
+            else cols.push(cb.value);
+        }
+    });
+    
+    // get template vars for this library's collections/overlays
+    const libTemplateVars = {};
+    [...cols, ...ovls].forEach(key => {
+        if (templateVars[key]) {
+            libTemplateVars[key] = templateVars[key];
+        }
+    });
+    
+    const templateData = {
+        name: name,
+        type: document.getElementById('temp_lib_type').value,
+        cols: cols,
+        ovls: ovls,
+        templateVars: libTemplateVars
+    };
+    
+    fetch(API_KOMETA_TEMPLATES_SAVE, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
+        body: JSON.stringify(templateData)
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.status === 'success') {
+            document.getElementById('template-name').value = '';
+            loadTemplates();
+            alert('Template saved!');
+        } else {
+            alert('Failed to save template: ' + (data.message || 'Unknown error'));
+        }
+    })
+    .catch(e => {
+        alert('Error saving template: ' + e.message);
+    });
+}
+
+function loadTemplates() {
+    fetch(API_KOMETA_TEMPLATES)
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'success') {
+                libraryTemplates = data.templates;
+                renderTemplatesList();
+            }
+        })
+        .catch(e => {
+            console.error('Failed to load templates:', e);
+            libraryTemplates = [];
+            renderTemplatesList();
+        });
+}
+
+function renderTemplatesList() {
+    const container = document.getElementById('templates-list');
+    if (libraryTemplates.length === 0) {
+        container.innerHTML = '<div style="text-align: center; color: #555; padding: 20px;">No templates saved yet.</div>';
+        return;
+    }
+    
+    let html = '';
+    libraryTemplates.forEach((t, idx) => {
+        html += `<div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; background: rgba(255,255,255,0.05); border: 1px solid #333; border-radius: 4px; margin-bottom: 8px;">
+            <div>
+                <strong>${t.name}</strong>
+                <small style="color: #888; display: block;">${t.type} • ${t.cols.length} collections • ${t.ovls.length} overlays</small>
+            </div>
+            <div style="display: flex; gap: 5px;">
+                <button class="btn-secondary" onclick="applyTemplate(${idx})" style="padding: 5px 10px; font-size: 0.85em;">Apply</button>
+                <button class="btn-remove" onclick="deleteTemplate(${t.id})" style="padding: 5px 10px; font-size: 0.85em;">Delete</button>
+            </div>
+        </div>`;
+    });
+    container.innerHTML = html;
+}
+
+function applyTemplate(idx) {
+    const template = libraryTemplates[idx];
+    document.getElementById('temp_lib_type').value = (template.type === 'show') ? 'tv' : template.type;
+    filterOpts();
+    
+    // uncheck all first
+    document.querySelectorAll('.t-opt').forEach(cb => cb.checked = false);
+    
+    // check template's collections and overlays
+    [...template.cols, ...template.ovls].forEach(val => {
+        const cb = document.querySelector(`.t-opt[value="${val}"]`);
+        if (cb) cb.checked = true;
+    });
+    
+    // apply template vars
+    Object.keys(template.templateVars || {}).forEach(key => {
+        templateVars[key] = template.templateVars[key];
+    });
+    
+    saveToHistory();
+    gen();
+    updatePerformanceIndicator();
+    document.getElementById('templates-modal').style.display = 'none';
+}
+
+function deleteTemplate(templateId) {
+    if (!confirm('Delete this template?')) return;
+    
+    fetch(API_KOMETA_TEMPLATES_DELETE_BASE.replace(/\/0$/, '/' + templateId), {
+        method: 'DELETE'
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.status === 'success') {
+            loadTemplates();
+        } else {
+            alert('Failed to delete template: ' + (data.message || 'Unknown error'));
+        }
+    })
+    .catch(e => {
+        alert('Error deleting template: ' + e.message);
+    });
+}
+
+// import config (url or paste)
+function showImportModal() {
+    resetImportModal();
+    const modal = document.getElementById('import-modal');
+    modal.classList.add('is-open');
+    modal.style.display = 'flex';
+    modal.style.visibility = 'visible';
+    modal.style.pointerEvents = 'auto';
+    const box = modal.querySelector('.modal-box');
+    if (box) {
+        box.style.display = 'block';
+        box.style.opacity = '1';
+        box.style.visibility = 'visible';
+    }
+    lockBodyScroll();
+}
+
+function switchImportTab(tab) {
+    // update button active states
+    document.getElementById('import-tab-url').classList.toggle('active', tab === 'url');
+    document.getElementById('import-tab-paste').classList.toggle('active', tab === 'paste');
+    
+    // show/hide sections
+    document.getElementById('import-url-section').classList.toggle('active', tab === 'url');
+    document.getElementById('import-paste-section').classList.toggle('active', tab === 'paste');
+}
+
+function resetImportModal() {
+    document.getElementById('import-url').value = '';
+    document.getElementById('import-paste').value = '';
+    switchImportTab('url');
+}
+
+function closeImportModal() {
+    const modal = document.getElementById('import-modal');
+    modal.classList.remove('is-open');
+    modal.style.display = 'none';
+    modal.style.visibility = 'hidden';
+    modal.style.pointerEvents = 'none';
+    const box = modal.querySelector('.modal-box');
+    if (box) {
+        box.style.display = 'none';
+        box.style.opacity = '0';
+        box.style.visibility = 'hidden';
+    }
+    resetImportModal();
+    unlockBodyScroll();
+}
+
+function lockBodyScroll() {
+    document.body.classList.add('modal-open');
+}
+
+function unlockBodyScroll() {
+    const hasOpenOverlay = document.querySelector('.modal-overlay.is-open');
+    const varModal = document.getElementById('var-modal');
+    if (hasOpenOverlay) return;
+    if (varModal && varModal.style.display === 'flex') return;
+    document.body.classList.remove('modal-open');
+}
+
+function formatInlineComment(comment) {
+    return comment ? ` ${comment}` : '';
+}
+
+function splitInlineComment(text) {
+    if (!text) return { value: '', comment: '' };
+    let inSingle = false;
+    let inDouble = false;
+    for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        if (ch === "'" && !inDouble) inSingle = !inSingle;
+        if (ch === '"' && !inSingle) inDouble = !inDouble;
+        if (ch === '#' && !inSingle && !inDouble) {
+            return {
+                value: text.slice(0, i).trimEnd(),
+                comment: text.slice(i).trim()
+            };
+        }
+    }
+    return { value: text.trimEnd(), comment: '' };
+}
+
+function ensureLibraryCommentBucket(libName) {
+    if (!inlineComments.libraryDefaults[libName]) {
+        inlineComments.libraryDefaults[libName] = { collections: {}, overlays: {} };
+    }
+    if (!inlineComments.libraryTemplateVars[libName]) {
+        inlineComments.libraryTemplateVars[libName] = {};
+    }
+}
+
+function validateYamlSecurity(yamlText) {
+    // security validation to prevent malicious content
+    const maxSize = 500 * 1024; // 500KB max
+    if (yamlText.length > maxSize) {
+        throw new Error('Config file is too large (max 500KB)');
+    }
+    
+    // block dangerous command execution patterns (but allow yaml structure)
+    const dangerousPatterns = [
+        // command execution attempts (in actual values, not yaml structure)
+        /\beval\s*\(/i,
+        /\bexec\s*\(/i,
+        /\bsystem\s*\(/i,
+        /\bsubprocess\s*\./i,
+        /\bos\.system/i,
+        /\bshell_exec\s*\(/i,
+        /\bpassthru\s*\(/i,
+        /\bproc_open\s*\(/i,
+        /\bpopen\s*\(/i,
+        /\bexec\s*\(/i,
+        
+        // sql injection patterns (in string values)
+        /['"]\s*(union|select|insert|update|delete|drop|create|alter|exec|execute)\s+.*from/i,
+        /;\s*(drop|delete|truncate)\s*['"]/i,
+        
+        // file system manipulation commands
+        /\brm\s+-rf/i,
+        /\bdel\s+\/s/i,
+        /\bformat\s+[a-z]:/i,
+        /\brmdir\s+\/s/i,
+        
+        // path traversal attempts (but allow normal paths)
+        /\.\.\/\.\.\/\.\.\/\.\.\//,  // multiple parent directory traversals
+        /\.\.\\\.\.\\\.\.\\/,  // windows path traversal
+        
+        // script injection
+        /<script[^>]*>/i,
+        /javascript\s*:/i,
+        /on\w+\s*=\s*["']/i,  // event handlers in strings
+        
+        // database operations (in string values)
+        /['"]\s*db\.(drop|delete|remove)/i,
+        /['"]\s*database\.(drop|delete)/i,
+        
+        // shell command injection
+        /\$\s*\(/,
+        /`[^`]*\$\{/,
+        /`[^`]*\$\(/,
+    ];
+    
+    // check for dangerous patterns in content (not in yaml structure)
+    const lines = yamlText.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const trimmed = line.trim();
+        
+        if (!trimmed) continue;
+        const { value: safeLine } = splitInlineComment(trimmed);
+        if (!safeLine) continue;
+        
+        // extract the value part (after the colon for key-value pairs)
+        let valuePart = safeLine;
+        const colonIndex = safeLine.indexOf(':');
+        if (colonIndex > 0) {
+            valuePart = safeLine.substring(colonIndex + 1).trim();
+        }
+        
+        // check for dangerous patterns in the value part
+        for (const pattern of dangerousPatterns) {
+            if (pattern.test(valuePart)) {
+                throw new Error(`Security validation failed: Potentially dangerous content detected at line ${i + 1}`);
+            }
+        }
+    }
+    
+    // validate it looks like yaml (must have at least one key-value pair or list)
+    if (!yamlText.match(/^\s*\w+:/m) && !yamlText.match(/^\s*-\s+/m)) {
+        throw new Error('Invalid YAML format: File does not appear to be valid YAML');
+    }
+    
+    // block if it contains executable code patterns (at start of lines, indicating code files)
+    const codePatterns = [
+        /^import\s+\w+/m,
+        /^from\s+\w+\s+import/m,
+        /^require\s*\(['"]/m,
+        /^const\s+\w+\s*=\s*require\s*\(/m,
+        /^function\s+\w+\s*\(/m,
+        /^def\s+\w+\s*\(/m,
+        /^class\s+\w+/m,
+        /^#!\s*\/bin\//m,  // shebang
+    ];
+    
+    for (const pattern of codePatterns) {
+        if (pattern.test(yamlText)) {
+            throw new Error('Security validation failed: Code execution patterns detected');
+        }
+    }
+    
+    // block if it contains suspicious file operations
+    const fileOps = [
+        /\bfs\.(unlink|rmdir|rm)/i,
+        /\bfile_put_contents\s*\(/i,
+        /\bfwrite\s*\(/i,
+        /\bfopen\s*\([^)]*['"]w/i,
+    ];
+    
+    for (const pattern of fileOps) {
+        if (pattern.test(yamlText)) {
+            throw new Error('Security validation failed: Suspicious file operations detected');
+        }
+    }
+    
+    return true;
+}
+
+function validateUrl(url) {
+    // basic url validation to prevent malicious urls
+    try {
+        const urlObj = new URL(url);
+        
+        // only allow http and https
+        if (!['http:', 'https:'].includes(urlObj.protocol)) {
+            throw new Error('Only HTTP and HTTPS URLs are allowed');
+        }
+        
+        // block localhost and private IPs (basic check)
+        const hostname = urlObj.hostname.toLowerCase();
+        if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '0.0.0.0') {
+            throw new Error('Local URLs are not allowed for security');
+        }
+        
+        // block private IP ranges (basic regex check)
+        if (/^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)/.test(hostname)) {
+            throw new Error('Private IP addresses are not allowed');
+        }
+        
+        // block file:// and other dangerous protocols
+        if (urlObj.protocol === 'file:' || urlObj.protocol === 'javascript:') {
+            throw new Error('Dangerous URL protocol detected');
+        }
+        
+        return true;
+    } catch (e) {
+        if (e instanceof TypeError) {
+            throw new Error('Invalid URL format');
+        }
+        throw e;
+    }
+}
+
+async function importConfig() {
+    const urlSection = document.getElementById('import-url-section');
+    const isUrlMode = urlSection.classList.contains('active');
+    
+    let yamlText = '';
+    
+    if (isUrlMode) {
+        const url = document.getElementById('import-url').value.trim();
+        if (!url) {
+            alert('Please enter a URL');
+            return;
+        }
+        
+        // validate url format and security
+        try {
+            validateUrl(url);
+        } catch (error) {
+            alert('URL validation failed: ' + error.message);
+            return;
+        }
+        
+        // fetch through backend proxy to avoid CORS issues
+        try {
+            const response = await fetch('/api/import_kometa_config', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': CSRF_TOKEN
+                },
+                body: JSON.stringify({ url: url })
+            });
+            
+            const result = await response.json();
+            
+            if (!response.ok || result.status === 'error') {
+                throw new Error(result.message || `HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            yamlText = result.yaml;
+            
+            if (!yamlText || yamlText.length === 0) {
+                throw new Error('Empty response from server');
+            }
+        } catch (error) {
+            alert('Failed to import from URL: ' + error.message);
+            return;
+        }
+    } else {
+        yamlText = document.getElementById('import-paste').value.trim();
+        if (!yamlText) {
+            alert('Please paste YAML content');
+            return;
+        }
+    }
+    
+    // security validation
+    try {
+        validateYamlSecurity(yamlText);
+    } catch (error) {
+        alert('Security validation failed: ' + error.message);
+        return;
+    }
+    
+    // parse and import
+    try {
+        const result = parseYamlConfig(yamlText);
+        closeImportModal();
+        
+        // Show helpful message based on what was imported
+        if (result.isPartial) {
+            let msg = 'Partial config imported! ';
+            if (result.standaloneCollectionsCount > 0) {
+                msg += `Found ${result.standaloneCollectionsCount} collection(s) and created an "Imported Collections" library. `;
+            }
+            msg += 'Your existing Plex/TMDB settings were preserved. Check Tab 3 to see the imported collections.';
+            alert(msg);
+        } else if (result.sectionsFound.length > 0) {
+            alert('Config imported! Found sections: ' + result.sectionsFound.join(', ') + '. Review and customize as needed.');
+        } else {
+            alert('Config imported but no recognized sections found. This builder supports: plex, tmdb, settings, libraries, templates, collections.');
+        }
+    } catch (error) {
+        console.error('Parse error:', error);
+        alert('Failed to parse config: ' + error.message);
+    }
+}
+
+function parseYamlConfig(yamlText) {
+    // parse yaml and map the bits this builder supports
+    const lines = yamlText.split('\n');
+    
+    // Track what we find for better user feedback
+    const sectionsFound = [];
+    let hasConnectionSettings = false;
+    let standaloneCollections = [];  // Collections found outside libraries section
+    let standaloneTemplates = {};     // Templates found at root level
+    
+    libraries = [];
+    templateVars = {};
+    libraryTemplateVars = {};
+    inlineComments = {
+        plex: {},
+        tmdb: {},
+        settings: {},
+        templateVars: {},
+        libraryTemplateVars: {},
+        libraryDefaults: {}
+    };
+    
+    const parsedPlex = {};
+    const parsedTmdb = {};
+    const parsedSettings = {};
+    let parsedRunOrder = [];
+    
+    let section = null;
+    let currentLib = null;
+    let currentCollection = null;
+    let inTemplateVars = false;
+    let templateVarIndent = 0;
+    let inLibraryTemplateVars = false;
+    let libraryTemplateIndent = 0;
+    let currentTemplateListVar = null;
+    let currentLibraryListVar = null;
+    let currentSettingsListVar = null;
+    let collectionIndent = null;
+    let overlayIndent = null;
+    let currentListSection = null;
+    
+    const parseValue = (raw) => {
+        if (raw === undefined || raw === null) return '';
+        let val = raw.trim();
+        if (val === '') return '';
+        const isQuoted = (val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"));
+        if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+            val = val.slice(1, -1);
+        }
+        if (val === 'true') return true;
+        if (val === 'false') return false;
+        if (!isNaN(val) && val !== '') return Number(val);
+        return val;
+    };
+    
+    const setField = (id, value) => {
+        const el = document.getElementById(id);
+        if (el && value !== undefined && value !== null && value !== '') {
+            el.value = String(value);
+        }
+    };
+    
+    lines.forEach((line) => {
+        const trimmed = line.trim();
+        if (!trimmed) return;
+        const { value: cleaned, comment: lineComment } = splitInlineComment(trimmed);
+        if (!cleaned) return;
+        
+        const indent = line.length - line.trimStart().length;
+        
+        if (indent === 0 && cleaned.endsWith(':')) {
+            section = cleaned.replace(':', '');
+            sectionsFound.push(section);
+            
+            // Track if we have connection settings
+            if (section === 'plex' || section === 'tmdb') {
+                hasConnectionSettings = true;
+            }
+            
+            if (section !== 'libraries') {
+                currentLib = null;
+                currentCollection = null;
+                inTemplateVars = false;
+                inLibraryTemplateVars = false;
+                collectionIndent = null;
+                overlayIndent = null;
+                currentListSection = null;
+            }
+            return;
+        }
+        
+        if (section === 'plex' && indent === 2) {
+            const [k, ...rest] = cleaned.split(':');
+            const rawVal = rest.join(':');
+            parsedPlex[k] = parseValue(rawVal);
+            if (lineComment) inlineComments.plex[k] = lineComment;
+            return;
+        }
+        
+        if (section === 'tmdb' && indent === 2) {
+            const [k, ...rest] = cleaned.split(':');
+            const rawVal = rest.join(':');
+            parsedTmdb[k] = parseValue(rawVal);
+            if (lineComment) inlineComments.tmdb[k] = lineComment;
+            return;
+        }
+        
+        if (section === 'settings') {
+            if (indent === 2 && cleaned.endsWith(':')) {
+                const key = cleaned.replace(':', '');
+                if (key === 'run_order') {
+                    parsedRunOrder = [];
+                    parsedSettings.run_order = parsedRunOrder;
+                    currentSettingsListVar = 'run_order';
+                } else {
+                    parsedSettings[key] = '';
+                }
+                return;
+            }
+            
+            if (indent === 2 && cleaned.includes(':')) {
+                const [k, ...rest] = cleaned.split(':');
+                const rawVal = rest.join(':');
+                parsedSettings[k] = parseValue(rawVal);
+                if (lineComment) inlineComments.settings[k] = lineComment;
+                currentSettingsListVar = null;
+                return;
+            }
+            
+            if (currentSettingsListVar === 'run_order' && cleaned.startsWith('- ') && indent >= 2) {
+                parsedRunOrder.push(cleaned.substring(2).trim());
+                return;
+            }
+        }
+        
+        // Handle standalone collections section (not inside libraries)
+        if (section === 'collections' && indent >= 2) {
+            const colMatch = cleaned.match(/^(.+):\s*$/);
+            if (colMatch && indent === 2) {
+                const colName = colMatch[1];
+                standaloneCollections.push({ name: colName, props: {} });
+                return;
+            }
+        }
+        
+        // Handle standalone templates section
+        if (section === 'templates' && indent >= 2) {
+            const templateMatch = cleaned.match(/^(.+):\s*$/);
+            if (templateMatch && indent === 2) {
+                const templateName = templateMatch[1];
+                standaloneTemplates[templateName] = {};
+                return;
+            }
+        }
+        
+        if (section === 'libraries') {
+            const libMatch = cleaned.match(/^(.+):\s*$/);
+            if (libMatch && indent === 2) {
+                if (currentLib) {
+                    libraries.push(currentLib);
+                }
+                currentLib = { name: libMatch[1], type: 'movie', cols: [], ovls: [] };
+                currentCollection = null;
+                inTemplateVars = false;
+                inLibraryTemplateVars = false;
+                collectionIndent = null;
+                overlayIndent = null;
+                return;
+            }
+            
+            if (!currentLib) return;
+            
+            if (cleaned === 'template_variables:' && indent === 4) {
+                inLibraryTemplateVars = true;
+                libraryTemplateIndent = indent;
+                if (!libraryTemplateVars[currentLib.name]) {
+                    libraryTemplateVars[currentLib.name] = {};
+                }
+                currentLibraryListVar = null;
+                return;
+            }
+            
+            if (inLibraryTemplateVars && indent > libraryTemplateIndent) {
+                if (cleaned.startsWith('- ') && currentLibraryListVar) {
+                    const listItem = cleaned.substring(2).trim().replace(/^["']|["']$/g, '');
+                    if (!Array.isArray(libraryTemplateVars[currentLib.name][currentLibraryListVar])) {
+                        libraryTemplateVars[currentLib.name][currentLibraryListVar] = [];
+                    }
+                    libraryTemplateVars[currentLib.name][currentLibraryListVar].push(listItem);
+                    return;
+                }
+                
+                if (cleaned.includes(':')) {
+                    const [k, ...rest] = cleaned.split(':');
+                    const rawVal = rest.join(':');
+                    if (rawVal.trim() === '') {
+                        currentLibraryListVar = k.trim();
+                        libraryTemplateVars[currentLib.name][currentLibraryListVar] = [];
+                        if (lineComment) {
+                            ensureLibraryCommentBucket(currentLib.name);
+                            inlineComments.libraryTemplateVars[currentLib.name][k.trim()] = lineComment;
+                        }
+                    } else {
+                        currentLibraryListVar = null;
+                        libraryTemplateVars[currentLib.name][k.trim()] = parseValue(rawVal);
+                        if (lineComment) {
+                            ensureLibraryCommentBucket(currentLib.name);
+                            inlineComments.libraryTemplateVars[currentLib.name][k.trim()] = lineComment;
+                        }
+                    }
+                    return;
+                }
+            }
+            
+            if (inLibraryTemplateVars && indent <= libraryTemplateIndent) {
+                inLibraryTemplateVars = false;
+                currentLibraryListVar = null;
+            }
+            
+            if (cleaned.includes('collection_files:') && indent === 4) {
+                collectionIndent = indent;
+                overlayIndent = null;
+                currentListSection = 'collections';
+                currentCollection = null;
+                inTemplateVars = false;
+                return;
+            }
+            
+            if (cleaned.includes('overlay_files:') && indent === 4) {
+                overlayIndent = indent;
+                collectionIndent = null;
+                currentListSection = 'overlays';
+                currentCollection = null;
+                inTemplateVars = false;
+                return;
+            }
+            
+            const defaultMatch = cleaned.match(/^- default:\s*(.+)$/);
+            if (defaultMatch && (indent === 4 || indent === 6)) {
+                const val = defaultMatch[1].trim().replace(/^["']|["']$/g, '');
+                currentCollection = val;
+                inTemplateVars = false;
+                
+                if (currentListSection === 'overlays' || Object.keys(overlaySettingsMap).includes(val)) {
+                    if (!currentLib.ovls.includes(val)) {
+                        currentLib.ovls.push(val);
+                    }
+                    if (lineComment) {
+                        ensureLibraryCommentBucket(currentLib.name);
+                        inlineComments.libraryDefaults[currentLib.name].overlays[val] = lineComment;
+                    }
+                } else {
+                    if (!currentLib.cols.includes(val)) {
+                        currentLib.cols.push(val);
+                    }
+                    if (lineComment) {
+                        ensureLibraryCommentBucket(currentLib.name);
+                        inlineComments.libraryDefaults[currentLib.name].collections[val] = lineComment;
+                    }
+                }
+                return;
+            }
+            
+            if (cleaned === 'template_variables:' && indent >= 6) {
+                inTemplateVars = true;
+                templateVarIndent = indent;
+                if (currentCollection && !templateVars[currentCollection]) {
+                    templateVars[currentCollection] = {};
+                }
+                currentTemplateListVar = null;
+                return;
+            }
+            
+            if (inTemplateVars && currentCollection && indent > templateVarIndent) {
+                if (cleaned.startsWith('- ') && indent >= templateVarIndent + 2 && currentTemplateListVar) {
+                    const listItem = cleaned.substring(2).trim();
+                    const cleanItem = listItem.replace(/^["']|["']$/g, '');
+                    if (!Array.isArray(templateVars[currentCollection][currentTemplateListVar])) {
+                        templateVars[currentCollection][currentTemplateListVar] = [];
+                    }
+                    templateVars[currentCollection][currentTemplateListVar].push(cleanItem);
+                    return;
+                }
+                
+                const varMatch = cleaned.match(/^([^\s:]+):\s*(.*)$/);
+                if (varMatch) {
+                    const varName = varMatch[1];
+                    let varValue = varMatch[2];
+                    
+                    if (varName === 'include' || varName === 'exclude') {
+                        templateVars[currentCollection][varName] = [];
+                        currentTemplateListVar = varName;
+                        if (varValue) {
+                            varValue.split(',').forEach(item => {
+                                const cleaned = item.trim().replace(/^["']|["']$/g, '');
+                                if (cleaned) templateVars[currentCollection][varName].push(cleaned);
+                            });
+                        }
+                    } else if (varValue.trim() === '') {
+                        currentTemplateListVar = varName;
+                        templateVars[currentCollection][varName] = [];
+                    } else {
+                        currentTemplateListVar = null;
+                        templateVars[currentCollection][varName] = parseValue(varValue);
+                    }
+                    if (lineComment) {
+                        if (!inlineComments.templateVars[currentCollection]) {
+                            inlineComments.templateVars[currentCollection] = {};
+                        }
+                        inlineComments.templateVars[currentCollection][varName] = lineComment;
+                    }
+                    return;
+                }
+            }
+            
+            if (inTemplateVars && indent <= templateVarIndent) {
+                inTemplateVars = false;
+                currentTemplateListVar = null;
+            }
+        }
+    });
+    
+    if (currentLib) {
+        libraries.push(currentLib);
+    }
+    
+    // If we found standalone collections (not in a library), create an "Imported" library for them
+    if (standaloneCollections.length > 0) {
+        const importedLib = {
+            name: 'Imported Collections',
+            type: 'movie',
+            cols: standaloneCollections.map(col => col.name),
+            ovls: []
+        };
+        libraries.push(importedLib);
+        
+        // Add template vars for these collections if any exist
+        standaloneCollections.forEach(col => {
+            if (col.props && Object.keys(col.props).length > 0) {
+                templateVars[col.name] = col.props;
+            }
+        });
+    }
+    
+    Object.keys(templateVars).forEach(key => {
+        Object.keys(templateVars[key]).forEach(varKey => {
+            if ((varKey === 'include' || varKey === 'exclude') && Array.isArray(templateVars[key][varKey])) {
+                templateVars[key][varKey] = templateVars[key][varKey].join(', ');
+            }
+        });
+    });
+    
+    if (parsedPlex.url) setField('plex_url', parsedPlex.url);
+    if (parsedPlex.token) setField('plex_token', parsedPlex.token);
+    if (parsedTmdb.apikey) setField('tmdb_key', parsedTmdb.apikey);
+    
+    if (parsedSettings.cache !== undefined) setField('s_cache', parsedSettings.cache);
+    if (parsedSettings.cache_expiration !== undefined) setField('s_cache_expiration', parsedSettings.cache_expiration);
+    if (parsedSettings.asset_folders !== undefined) setField('s_asset_folders', parsedSettings.asset_folders);
+    if (parsedSettings.show_missing_assets !== undefined) setField('s_show_missing', parsedSettings.show_missing_assets);
+    if (parsedSettings.show_missing !== undefined) setField('s_show_missing', parsedSettings.show_missing);
+    if (parsedSettings.sync_mode !== undefined) setField('s_sync_mode', parsedSettings.sync_mode);
+    if (parsedSettings.minimum_items !== undefined) setField('s_minimum_items', parsedSettings.minimum_items);
+    if (parsedSettings.delete_below_minimum !== undefined) setField('s_delete_below_min', parsedSettings.delete_below_minimum);
+    if (parsedSettings.overlay_artwork_quality !== undefined) setField('s_artwork_quality', parsedSettings.overlay_artwork_quality);
+    
+    if (parsedRunOrder.length > 0) {
+        const first = parsedRunOrder[0];
+        setField('s_run_order', first === 'collections' ? 'collections_first' : 'operations_first');
+    }
+    
+    saveToHistory();
+    renderLibs();
+    
+    if (libraries.length > 0) {
+        const firstLib = libraries[0];
+        const select = document.getElementById('temp_lib_name');
+        let optionExists = false;
+        for (let i = 0; i < select.options.length; i++) {
+            if (select.options[i].value === firstLib.name) {
+                optionExists = true;
+                break;
+            }
+        }
+        if (!optionExists) {
+            const opt = document.createElement('option');
+            opt.value = firstLib.name;
+            opt.text = firstLib.name + " (Imported)";
+            opt.setAttribute('data-type', firstLib.type);
+            select.add(opt);
+        }
+        editLib(0);
+    }
+    
+    gen();
+    updatePerformanceIndicator();
+    
+    // Return info about what was imported
+    return {
+        sectionsFound: sectionsFound,
+        isPartial: !hasConnectionSettings && sectionsFound.length > 0,
+        hasConnectionSettings: hasConnectionSettings,
+        standaloneCollectionsCount: standaloneCollections.length,
+        librariesCount: libraries.length
+    };
+}
+
+// comparison mode
+function showComparison() {
+    // regenerate current output to ensure it's up to date
+    gen();
+    
+    // get the current yaml from the output box (what's shown right now)
+    const currentYaml = document.getElementById('output').innerText;
+    const savedYaml = generateYamlFromSaved();
+    
+    // build aligned diffs (so lines stay together unless they diverge)
+    const diff = buildComparisonDiff(currentYaml, savedYaml);
+    
+    document.getElementById('comparison-current').innerHTML = diff.leftHtml;
+    document.getElementById('comparison-saved').innerHTML = diff.rightHtml;
+    document.getElementById('comparison-modal').classList.add('is-open');
+    lockBodyScroll();
+}
+
+function closeComparisonModal() {
+    const modal = document.getElementById('comparison-modal');
+    modal.classList.remove('is-open');
+    unlockBodyScroll();
+}
+
+
+function buildComparisonDiff(leftText, rightText) {
+    const leftLines = leftText.split('\n');
+    const rightLines = rightText.split('\n');
+    const ops = diffLines(leftLines, rightLines);
+    
+    const leftRows = [];
+    const rightRows = [];
+    
+    ops.forEach(op => {
+        if (op.type === 'equal') {
+            leftRows.push({ line: leftLines[op.a], className: 'diff-unchanged' });
+            rightRows.push({ line: rightLines[op.b], className: 'diff-unchanged' });
+        } else if (op.type === 'delete') {
+            leftRows.push({ line: leftLines[op.a], className: 'diff-added' });
+            rightRows.push({ line: '', className: 'diff-blank' });
+        } else if (op.type === 'add') {
+            leftRows.push({ line: '', className: 'diff-blank' });
+            rightRows.push({ line: rightLines[op.b], className: 'diff-removed' });
+        }
+    });
+    
+    return {
+        leftHtml: renderDiffLines(leftRows),
+        rightHtml: renderDiffLines(rightRows)
+    };
+}
+
+function diffLines(leftLines, rightLines) {
+    const n = leftLines.length;
+    const m = rightLines.length;
+    const dp = Array.from({ length: n + 1 }, () => Array(m + 1).fill(0));
+    
+    for (let i = n - 1; i >= 0; i--) {
+        for (let j = m - 1; j >= 0; j--) {
+            if (leftLines[i] === rightLines[j]) {
+                dp[i][j] = dp[i + 1][j + 1] + 1;
+            } else {
+                dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);
+            }
+        }
+    }
+    
+    const ops = [];
+    let i = 0;
+    let j = 0;
+    
+    while (i < n && j < m) {
+        if (leftLines[i] === rightLines[j]) {
+            ops.push({ type: 'equal', a: i, b: j });
+            i++;
+            j++;
+        } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+            ops.push({ type: 'delete', a: i });
+            i++;
+        } else {
+            ops.push({ type: 'add', b: j });
+            j++;
+        }
+    }
+    
+    while (i < n) {
+        ops.push({ type: 'delete', a: i });
+        i++;
+    }
+    
+    while (j < m) {
+        ops.push({ type: 'add', b: j });
+        j++;
+    }
+    
+    return ops;
+}
+
+function renderDiffLines(rows) {
+    return rows.map(row => {
+        const text = row.line === '' ? '&nbsp;' : escapeHtml(row.line);
+        const cls = row.className ? `diff-line ${row.className}` : 'diff-line';
+        return `<span class="${cls}">${text}</span>`;
+    }).join('');
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function generateYamlFromSaved() {
+    // generate yaml from saved config (similar to gen() but using saved data)
+    if (!savedConfig || Array.isArray(savedConfig)) return '# No saved config';
+    
+    const savedSettings = savedConfig.settings || {};
+    const savedTemplateVars = savedConfig.templateVars || {};
+    const savedLibraryTemplateVars = savedConfig.libraryTemplateVars || {};
+    const savedComments = savedConfig.inlineComments || {};
+    
+    let y = "";
+    y += `plex:\n`;
+    y += `  url: ${savedConfig.plex_url || 'INSERT_HERE'}${formatInlineComment(savedComments.plex?.url)}\n`;
+    y += `  token: ${savedConfig.plex_token || 'INSERT_HERE'}${formatInlineComment(savedComments.plex?.token)}\n`;
+    y += `  timeout: 60\n  clean_bundles: false\n  empty_trash: false\n  optimize: false\n\n`;
+    
+    y += `tmdb:\n`;
+    y += `  apikey: ${savedConfig.tmdb_key || 'INSERT_HERE'}${formatInlineComment(savedComments.tmdb?.apikey)}\n`;
+    y += `  language: en\n  cache_expiration: 60\n  region: US\n\n`;
+    
+    y += `settings:\n`;
+    y += `  cache: ${savedSettings.cache ?? true}${formatInlineComment(savedComments.settings?.cache)}\n`;
+    y += `  cache_expiration: ${savedSettings.cache_expiration ?? 60}${formatInlineComment(savedComments.settings?.cache_expiration)}\n`;
+    y += `  asset_folders: ${savedSettings.asset_folders ?? true}${formatInlineComment(savedComments.settings?.asset_folders)}\n`;
+    y += `  show_missing_assets: ${savedSettings.show_missing_assets ?? savedSettings.show_missing ?? true}${formatInlineComment(savedComments.settings?.show_missing_assets || savedComments.settings?.show_missing)}\n`;
+    y += `  sync_mode: ${savedSettings.sync_mode ?? 'append'}${formatInlineComment(savedComments.settings?.sync_mode)}\n`;
+    y += `  minimum_items: ${savedSettings.minimum_items ?? 1}${formatInlineComment(savedComments.settings?.minimum_items)}\n`;
+    y += `  delete_below_minimum: ${savedSettings.delete_below_min ?? false}${formatInlineComment(savedComments.settings?.delete_below_minimum || savedComments.settings?.delete_below_min)}\n`;
+    y += `  overlay_artwork_quality: ${savedSettings.artwork_quality ?? 90}${formatInlineComment(savedComments.settings?.overlay_artwork_quality || savedComments.settings?.artwork_quality)}\n`;
+    
+    y += `  asset_directory: config/assets\n  run_order:\n`;
+    if ((savedSettings.run_order ?? '') === 'collections_first') {
+        y += `  - collections\n  - overlays\n  - metadata\n  - operations\n\n`;
+    } else {
+        y += `  - operations\n  - metadata\n  - collections\n  - overlays\n\n`;
+    }
+    
+    const savedLibs = savedConfig.libraries || [];
+    y += `libraries:\n`;
+    if (savedLibs.length === 0) {
+        y += `  # Add a library in Tab 3 to see config...`;
+    } else {
+        savedLibs.forEach(l => {
+            y += `  ${l.name}:\n`;
+            const libVars = savedLibraryTemplateVars[l.name];
+            if (libVars && Object.keys(libVars).length > 0) {
+                y += `    template_variables:\n`;
+                y += writeTemplateVars(libVars, 6, savedComments.libraryTemplateVars?.[l.name]);
+            }
+            if (l.cols && l.cols.length > 0) {
+                y += `    collection_files:\n`;
+                l.cols.forEach(c => {
+                    const colComment = savedComments.libraryDefaults?.[l.name]?.collections?.[c];
+                    if (savedTemplateVars[c] && Object.keys(savedTemplateVars[c]).length > 0) {
+                        y += `    - default: ${c}${formatInlineComment(colComment)}\n`;
+                        y += `      template_variables:\n`;
+                        y += writeTemplateVars(savedTemplateVars[c], 8, savedComments.templateVars?.[c]);
+                    } else {
+                        y += `    - default: ${c}${formatInlineComment(colComment)}\n`;
+                    }
+                });
+            }
+            if (l.ovls && l.ovls.length > 0) {
+                y += `    overlay_files:\n`;
+                l.ovls.forEach(o => {
+                    const ovlComment = savedComments.libraryDefaults?.[l.name]?.overlays?.[o];
+                    if (savedTemplateVars[o] && Object.keys(savedTemplateVars[o]).length > 0) {
+                        y += `    - default: ${o}${formatInlineComment(ovlComment)}\n`;
+                        y += `      template_variables:\n`;
+                        y += writeTemplateVars(savedTemplateVars[o], 8, savedComments.templateVars?.[o]);
+                    } else {
+                        y += `    - default: ${o}${formatInlineComment(ovlComment)}\n`;
+                    }
+                });
+            }
+        });
+    }
+    
+    return y;
+}
+
+// performance indicators
+function updatePerformanceIndicator() {
+    let totalCollections = 0;
+    let totalOverlays = 0;
+    
+    libraries.forEach(lib => {
+        totalCollections += lib.cols ? lib.cols.length : 0;
+        totalOverlays += lib.ovls ? lib.ovls.length : 0;
+    });
+    
+    // estimate collections (some options create multiple collections)
+    const collectionMultipliers = {
+        'genre': 20, 'franchise': 15, 'universe': 10, 'actor': 50, 'director': 30,
+        'streaming': 20, 'studio': 25, 'year': 30, 'decade': 10, 'content_rating_us': 6
+    };
+    
+    let estimatedCollections = 0;
+    libraries.forEach(lib => {
+        lib.cols.forEach(col => {
+            estimatedCollections += collectionMultipliers[col] || 1;
+        });
+    });
+    
+    // estimate runtime (rough: 1 collection = ~2-5 seconds, 1 overlay = ~1-2 seconds)
+    const estimatedSeconds = (estimatedCollections * 3) + (totalOverlays * 1.5);
+    const minutes = Math.floor(estimatedSeconds / 60);
+    const seconds = Math.floor(estimatedSeconds % 60);
+    
+    const indicator = document.getElementById('performance-indicator');
+    document.getElementById('perf-collections').innerHTML = 
+        `<strong>Estimated Collections:</strong> ${estimatedCollections.toLocaleString()} (${totalCollections} types selected)`;
+    document.getElementById('perf-runtime').innerHTML = 
+        `<strong>Est. Runtime:</strong> ${minutes}m ${seconds}s`;
+    
+    if (totalCollections > 0 || totalOverlays > 0) {
+        indicator.style.display = 'block';
+    }
+}
+
+// bootstrapping
+document.addEventListener('DOMContentLoaded', () => { 
+    // populate settings from saved state
+    if (globalSettings) {
+        const setVal = (id, v) => { if(document.getElementById(id) && v !== undefined) document.getElementById(id).value = v; };
+        
+        setVal('s_cache', globalSettings.cache);
+        setVal('s_cache_expiration', globalSettings.cache_expiration);
+        setVal('s_asset_folders', globalSettings.asset_folders);
+        setVal('s_show_missing', globalSettings.show_missing);
+        setVal('s_sync_mode', globalSettings.sync_mode);
+        setVal('s_delete_below_min', globalSettings.delete_below_min);
+        setVal('s_minimum_items', globalSettings.minimum_items);
+        setVal('s_artwork_quality', globalSettings.artwork_quality);
+        setVal('s_run_order', globalSettings.run_order);
+    }
+
+    fetchLibs(); 
+    renderLibs();
+    gen();
+    toggleOptions();
+    updatePerformanceIndicator();
+    loadTemplates(); // load templates from database
+    
+    // watch for changes to update performance indicator
+    document.querySelectorAll('.t-opt, #temp_lib_type').forEach(el => {
+        el.addEventListener('change', () => {
+            setTimeout(updatePerformanceIndicator, 100);
+        });
+    });
+
+    const bindOverlayClose = (id, closeFn) => {
+        const modal = document.getElementById(id);
+        if (!modal) return;
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeFn();
+        });
+    };
+
+    bindOverlayClose('import-modal', closeImportModal);
+    bindOverlayClose('var-modal', closeModal);
+    bindOverlayClose('comparison-modal', closeComparisonModal);
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        const importModal = document.getElementById('import-modal');
+        const varModal = document.getElementById('var-modal');
+        const comparisonModal = document.getElementById('comparison-modal');
+        if (importModal && importModal.classList.contains('is-open')) closeImportModal();
+        if (varModal && varModal.style.display === 'flex') closeModal();
+        if (comparisonModal && comparisonModal.classList.contains('is-open')) closeComparisonModal();
+    });
+});
+</script>
+{% endblock %}

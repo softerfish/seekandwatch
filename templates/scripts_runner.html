@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block page_title %}Scripts Runner{% endblock %}
+{% block content %}
+
+<div class="container" style="max-width: 1200px; padding: 20px;">
+    <h2>Scripts Runner</h2>
+    <p style="color: #aaa; margin-bottom: 20px;">Maintenance scripts and utilities for developers.</p>
+    
+    <div style="margin-bottom: 30px;">
+        <a href="{{ url_for('web_pages.test_runner') }}" class="btn btn-secondary" style="margin-right: 10px;">Test Runner</a>
+        <span style="color: #666;">|</span>
+        <span style="margin-left: 10px; color: #aaa;">Direct URL: <code style="background: #2a2a2a; padding: 2px 6px; border-radius: 3px;">/scripts</code></span>
+    </div>
+
+    <div class="alert" style="background: #2a2a2a; border-left: 4px solid #ffa500; padding: 15px; margin-bottom: 30px; border-radius: 4px;">
+        <strong>⚠️ Warning:</strong> These tools can modify your application. Use with caution and ensure you have backups.
+    </div>
+
+    <h3 style="margin-bottom: 20px;">Available Scripts</h3>
+
+    <div class="script-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 20px;">
+        {% for script in scripts %}
+        <div class="script-card" style="background: #2a2a2a; padding: 20px; border-radius: 8px; border: 1px solid #444;">
+            <h4 style="margin: 0 0 10px 0; color: #fff;">{{ script.name }}</h4>
+            <p style="color: #aaa; font-size: 13px; margin-bottom: 15px;">{{ script.description }}</p>
+            
+            <button onclick="runScript('{{ script.name }}')" class="btn btn-sm btn-warning script-btn" data-script="{{ script.name }}">
+                Run Script
+            </button>
+            <span class="script-status" data-script="{{ script.name }}" style="margin-left: 10px; font-weight: bold;"></span>
+            
+            <div class="script-output" data-script="{{ script.name }}" style="display: none; margin-top: 15px; background: #1a1a1a; padding: 15px; border-radius: 4px; font-family: monospace; font-size: 12px; white-space: pre-wrap; max-height: 400px; overflow-y: auto;"></div>
+        </div>
+        {% endfor %}
+    </div>
+
+    {% if not scripts %}
+    <div style="text-align: center; padding: 40px; color: #666;">
+        <p>No scripts found in /scripts directory</p>
+    </div>
+    {% endif %}
+
+    <div style="margin-top: 40px; padding: 20px; background: #2a2a2a; border-radius: 8px;">
+        <h3 style="margin-top: 0;">Quick Links</h3>
+        <ul style="list-style: none; padding: 0;">
+            <li style="margin-bottom: 10px;">
+                <a href="{{ url_for('web_pages.test_runner') }}" style="color: #7c5dfa;">→ Test Runner</a> - Run automated tests
+            </li>
+            <li style="margin-bottom: 10px;">
+                <a href="{{ url_for('web_settings.settings') }}" style="color: #7c5dfa;">→ Settings</a> - Application settings
+            </li>
+            <li style="margin-bottom: 10px;">
+                <a href="{{ url_for('web_settings.logs_page') }}" style="color: #7c5dfa;">→ Logs</a> - View system logs
+            </li>
+        </ul>
+    </div>
+</div>
+
+<style>
+.script-btn {
+    background: #ffa500;
+    border: none;
+    color: #000;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.script-btn:hover {
+    background: #ff8c00;
+}
+
+.script-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.script-status {
+    font-size: 14px;
+}
+
+.script-status.running {
+    color: #ffa500;
+}
+
+.script-status.success {
+    color: #2ecc71;
+}
+
+.script-status.error {
+    color: #e74c3c;
+}
+
+.alert {
+    animation: fadeIn 0.3s;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+</style>
+
+<script>
+const CSRF_TOKEN = "{{ csrf_token() }}";
+
+function runScript(scriptName) {
+    const btn = document.querySelector(`.script-btn[data-script="${scriptName}"]`);
+    const status = document.querySelector(`.script-status[data-script="${scriptName}"]`);
+    const output = document.querySelector(`.script-output[data-script="${scriptName}"]`);
+    
+    if (!confirm(`Run ${scriptName}?\n\nThis script may modify your application. Make sure you have backups.`)) {
+        return;
+    }
+    
+    btn.disabled = true;
+    btn.textContent = 'Running...';
+    status.textContent = 'Running...';
+    status.className = 'script-status running';
+    output.style.display = 'none';
+    
+    fetch('/api/run_script', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': CSRF_TOKEN
+        },
+        body: JSON.stringify({ script_name: scriptName })
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.textContent = 'Run Script';
+        
+        if (data.passed) {
+            status.textContent = 'SUCCESS';
+            status.className = 'script-status success';
+        } else {
+            status.textContent = 'COMPLETED';
+            status.className = 'script-status success';
+        }
+        
+        const outputText = data.stdout + (data.stderr ? '\n\nErrors:\n' + data.stderr : '');
+        output.textContent = outputText;
+        output.style.display = 'block';
+    })
+    .catch(err => {
+        btn.disabled = false;
+        btn.textContent = 'Run Script';
+        status.textContent = 'ERROR';
+        status.className = 'script-status error';
+        output.textContent = 'Error: ' + err.message;
+        output.style.display = 'block';
+    });
+}
+</script>
+
+{% endblock %}

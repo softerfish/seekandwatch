@@ -1,0 +1,41 @@
+name: Pairing System Validation
+
+on:
+  pull_request:
+    paths:
+      - 'api/routes_pair.py'
+      - 'api/routes_main.py'
+      - 'api/routes_tunnel.py'
+      - 'api/__init__.py'
+      - 'templates/requests_settings.html'
+  push:
+    branches:
+      - main
+      - staging
+    paths:
+      - 'api/routes_pair.py'
+      - 'api/routes_main.py'
+      - 'api/routes_tunnel.py'
+      - 'api/__init__.py'
+      - 'templates/requests_settings.html'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Run pairing system validation
+      run: |
+        python scripts/validate_pairing_system.py
+    
+    - name: Run pairing tests
+      run: |
+        pip install -r requirements.txt
+        pytest tests/test_pairing_flow.py -v

@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+{% block page_title %}Blocklist{% endblock %}
+{% block content %}
+
+<div class="settings-container">
+    <div class="settings-header">
+        <h2>Manage Blocklist</h2>
+        <p class="text-muted">Preemptively block titles to prevent them from appearing in recommendations.</p>
+    </div>
+
+    <div class="tab-container">
+        <button onclick="showTab('movie')" class="tab-btn active" id="btn-movie">Movies</button>
+        <button onclick="showTab('tv')" class="tab-btn" id="btn-tv">TV Shows</button>
+    </div>
+
+    <div class="card setting-card border-accent" style="overflow: visible;"> 
+        <h3>Add to Blocklist</h3>
+        <p class="text-muted">Search for a title to ban it permanently.</p>
+        
+        <div class="search-container-block">
+            <input type="text" id="searchInput" class="main-search" placeholder="Start typing a title..." autocomplete="off" style="font-size: 1em; padding: 12px; margin-top: 0;">
+            <div id="suggestions"></div>
+        </div>
+    </div>
+
+    <div id="list-movie" class="block-list-container">
+        <h3 class="text-center mb-20" style="border-bottom: 1px solid #333; padding-bottom: 10px;">Blocked Movies</h3>
+        
+        {% for block in blocks if block.media_type == 'movie' %}
+        <div class="block-item-row" id="block-{{ block.id }}">
+            <span>{{ block.title }}</span>
+            <button onclick="unblock({{ block.id }})" class="btn-delete" title="Unblock Title">
+                Unblock
+            </button>
+        </div>
+        {% else %}
+        <div class="text-center text-muted" style="padding: 30px; border: 1px dashed #333; border-radius: 8px;">
+            No movies currently blocked.
+        </div>
+        {% endfor %}
+    </div>
+
+    <div id="list-tv" class="block-list-container" style="display: none;">
+        <h3 class="text-center mb-20" style="border-bottom: 1px solid #333; padding-bottom: 10px;">Blocked TV Shows</h3>
+        
+        {% for block in blocks if block.media_type == 'tv' %}
+        <div class="block-item-row" id="block-{{ block.id }}">
+            <span>{{ block.title }}</span>
+            <button onclick="unblock({{ block.id }})" class="btn-delete" title="Unblock Title">
+                Unblock
+            </button>
+        </div>
+        {% else %}
+        <div class="text-center text-muted" style="padding: 30px; border: 1px dashed #333; border-radius: 8px;">
+            No TV shows currently blocked.
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<script>
+const API_TMDB_SEARCH_PROXY = "{{ url_for('api.tmdb_search_proxy') }}";
+const API_BLOCK_MOVIE = "{{ url_for('api.block_movie') }}";
+const API_UNBLOCK_MOVIE_BASE = "{{ url_for('api.unblock_movie', id=0) }}";
+const CSRF_TOKEN = "{{ csrf_token() }}";
+// UI state
+let currentTab = 'movie';
+
+// Tab switching
+function showTab(tab) {
+    currentTab = tab;
+    // Hide all lists.
+    document.querySelectorAll('.block-list-container').forEach(el => el.style.display = 'none');
+    // Show selected list.
+    document.getElementById('list-' + tab).style.display = 'block';
+    
+    // Update buttons.
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    document.getElementById('btn-' + tab).classList.add('active');
+    
+    // Clear the search box to avoid confusion.
+    document.getElementById('searchInput').value = '';
+    document.getElementById('suggestions').style.display = 'none';
+}
+
+// Search + add
+const searchInput = document.getElementById('searchInput');
+const suggestionsBox = document.getElementById('suggestions');
+
+searchInput.addEventListener('input', function(e) {
+    const query = e.target.value;
+    if (query.length < 3) {
+        suggestionsBox.style.display = 'none';
+        return;
+    }
+
+    // Determine type based on active tab.
+    const searchType = currentTab; 
+
+    fetch(API_TMDB_SEARCH_PROXY + '?query=' + encodeURIComponent(query) + '&type=' + encodeURIComponent(searchType))
+        .then(res => res.json())
+        .then(data => {
+            suggestionsBox.innerHTML = '';
+            if (data.results && data.results.length > 0) {
+                data.results.forEach(item => {
+                    const div = document.createElement('div');
+                    div.className = 'suggestion-item';
+                    
+                    const rawDate = item.release_date || item.first_air_date || item.date || item.year || '';
+                    const year = rawDate ? String(rawDate).split('-')[0] : 'Unknown';
+                    const title = item.title || item.name;
+                    const poster = item.poster ? item.poster : 'https://placehold.co/50x75?text=No+Img';
+                    const mediaType = item.media_type ? escapeHtml(item.media_type).toUpperCase() : searchType.toUpperCase();
+                    
+                    div.innerHTML = `
+                    <div style="display:flex; align-items:center; gap:10px; width:100%;">
+                        <img src="${poster}" style="width:40px; height:60px; object-fit:cover; border-radius:4px;">
+                        <div>
+                            <div style="font-weight:bold; color:#fff;">${escapeHtml(title)}</div>
+                            <div style="font-size:0.85em; color:#888;">${year} • ${mediaType}</div>
+                        </div>
+                    </div>
+                    `;
+                    
+                    div.onclick = () => addBlock(title, searchType);
+                    suggestionsBox.appendChild(div);
+                });
+                suggestionsBox.style.display = 'block';
+            } else {
+                suggestionsBox.style.display = 'none';
+            }
+        })
+        .catch(err => console.error("Search error:", err));
+});
+
+// Hide suggestions when clicking outside.
+document.addEventListener('click', function(e) {
+    if (e.target !== searchInput && e.target !== suggestionsBox) {
+        suggestionsBox.style.display = 'none';
+    }
+});
+
+function addBlock(title, type) {
+    if(!confirm(`Block "${title}" from future recommendations?`)) return;
+
+    fetch(API_BLOCK_MOVIE, {
+        method: 'POST',
+        headers: { 
+            'Content-Type': 'application/json',
+            'X-CSRFToken': CSRF_TOKEN
+        },
+        body: JSON.stringify({ 
+            title: title, 
+            media_type: type
+        })
+    }).then(res => {
+        if (res.ok) {
+            location.reload(); // Reload to show new block.
+        } else {
+            alert("Failed to block content.");
+        }
+    });
+}
+
+// Unblock
+function unblock(id) {
+    if(!confirm("Unblock this title?")) return;
+    
+    fetch(API_UNBLOCK_MOVIE_BASE.replace(/\/0$/, '/' + id), { method: 'POST' })
+        .then(res => {
+            if (res.ok) {
+                const row = document.getElementById('block-' + id);
+                if (row) {
+                    row.style.opacity = '0';
+                    setTimeout(() => row.remove(), 300);
+                }
+            } else {
+                alert("Error unblocking.");
+            }
+        })
+        .catch(() => alert("Request failed. Please try again."));
+}
+</script>
+{% endblock %}
