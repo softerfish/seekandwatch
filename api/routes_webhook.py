@@ -10,12 +10,11 @@ from services.CloudService import CloudService
 from services.Router import Router
 from config import SCHEDULER_USER_ID
 from utils import write_log
-from utils.webhook_security import WebhookSigner, WebhookRateLimiter
 
 @api_bp.route(Router.LOCAL_WEBHOOK_PATH.replace('/api', ''), methods=['POST'])
-@rate_limit_decorator("10 per minute")  # reduced from 30
+@rate_limit_decorator("10 per minute")
 def receive_webhook():
-    """receive webhook from cloud app with request signing validation"""
+    """receive webhook from cloud app"""
     # csrf exempt (webhooks come from external source)
     try:
         from app import csrf
@@ -24,15 +23,7 @@ def receive_webhook():
     except: pass
     
     ip_address = request.remote_addr
-    user_agent = request.headers.get('User-Agent', '')
-    
     write_log("info", "Webhook", f"webhook request from {ip_address}")
-    
-    # check ip lockout
-    locked, lock_message = WebhookRateLimiter.is_ip_locked_out(ip_address)
-    if locked:
-        write_log("error", "Webhook", f"locked out ip: {ip_address}")
-        return jsonify({'error': lock_message}), 429
     
     try:
         # grab webhook secret from settings
@@ -42,40 +33,22 @@ def receive_webhook():
             settings = Settings.query.first()
         
         if not settings:
-            WebhookRateLimiter.log_attempt(ip_address, False, user_agent, 'no_settings')
             return jsonify({'error': 'configuration error'}), 500
         
         webhook_secret = getattr(settings, 'cloud_webhook_secret', None) or ''
         
         if not webhook_secret:
-            WebhookRateLimiter.log_attempt(ip_address, False, user_agent, 'no_secret')
             return jsonify({'error': 'webhook not configured'}), 401
         
         # verify secret (basic auth)
         provided_secret = request.headers.get('X-Webhook-Secret', '')
         if not hmac.compare_digest(provided_secret, webhook_secret):
-            WebhookRateLimiter.log_attempt(ip_address, False, user_agent, 'invalid_secret')
             write_log("error", "Webhook", f"invalid secret from {ip_address}")
             return jsonify({'error': 'invalid secret'}), 401
-        
-        # verify request signing (advanced auth)
-        timestamp = request.headers.get('X-Webhook-Timestamp', '')
-        signature = request.headers.get('X-Webhook-Signature', '')
-        
-        if timestamp and signature:
-            # if headers present, verify signature
-            body = request.get_data()
-            valid, message = WebhookSigner.verify_request(webhook_secret, timestamp, body, signature)
-            
-            if not valid:
-                WebhookRateLimiter.log_attempt(ip_address, False, user_agent, 'invalid_signature')
-                write_log("error", "Webhook", f"signature validation failed: {message}")
-                return jsonify({'error': message}), 401
         
         # parse payload
         payload = request.get_json()
         if not payload:
-            WebhookRateLimiter.log_attempt(ip_address, False, user_agent, 'invalid_json')
             return jsonify({'error': 'invalid json'}), 400
         
         event = payload.get('event', '')
@@ -86,10 +59,6 @@ def receive_webhook():
             requests_data = [payload['request']]
         
         write_log("info", "Webhook", f"event: {event} ({len(requests_data)} items)")
-        
-        # success - log and clear failed attempts
-        WebhookRateLimiter.log_attempt(ip_address, True, user_agent)
-        WebhookRateLimiter.clear_attempts(ip_address)
 
         if event == 'test_connection':
             CloudService.log_webhook(event, payload, 'success', 'handshake test received')
