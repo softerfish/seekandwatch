@@ -22,6 +22,7 @@ import re
 import tempfile
 import logging
 import requests
+import concurrent.futures
 from plexapi.server import PlexServer
 
 # Import from other utils modules
