@@ -66,6 +66,13 @@ const CSRF_TOKEN = "{{ csrf_token() }}";
 // UI state
 let currentTab = 'movie';
 
+// Helper to escape HTML
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
 // Tab switching
 function showTab(tab) {
     currentTab = tab;
@@ -109,7 +116,8 @@ searchInput.addEventListener('input', function(e) {
                     const rawDate = item.release_date || item.first_air_date || item.date || item.year || '';
                     const year = rawDate ? String(rawDate).split('-')[0] : 'Unknown';
                     const title = item.title || item.name;
-                    const poster = item.poster ? item.poster : 'https://placehold.co/50x75?text=No+Img';
+                    const posterPath = item.poster || '';
+                    const poster = posterPath ? `https://image.tmdb.org/t/p/w92${posterPath}` : 'https://placehold.co/50x75?text=No+Img';
                     const mediaType = item.media_type ? escapeHtml(item.media_type).toUpperCase() : searchType.toUpperCase();
                     
                     div.innerHTML = `
