@@ -14,6 +14,31 @@ NOTE: This file is being phased out. Most functions have been migrated to:
 This file contains only functions that are still being migrated.
 """
 
+import os
+import sys
+import time
+import json
+import re
+import tempfile
+import logging
+import requests
+from plexapi.server import PlexServer
+
+# Import from other utils modules
+from utils.helpers import write_log, normalize_title, get_cache_file
+from utils.system import is_system_locked, set_system_lock, remove_system_lock, get_app_root
+from utils.cache import get_radarr_sonarr_cache
+from utils.validators import _validate_path
+
+# Import models and database
+from models import db, Settings, TmdbAlias, KeywordCache, AliasCache
+from config import CONFIG_DIR
+
+# Cache file path (for Plex sync)
+CACHE_FILE = get_cache_file()
+
+log = logging.getLogger(__name__)
+
 
 
 def _arr_language_profile(base_url, headers):
