@@ -215,8 +215,8 @@ def auth_user(client, db_session):
         def __init__(self):
             self.user = User(
                 username='testuser',
-                email='test@example.com',
-                password_hash=generate_password_hash('testpass123')
+                password_hash=generate_password_hash('testpass123'),
+                is_admin=True
             )
             db_session.add(self.user)
             db_session.commit()

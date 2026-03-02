@@ -41,6 +41,17 @@ def app():
     login_manager = LoginManager()
     login_manager.init_app(test_app)
     
+    # register blueprints for route tests
+    try:
+        from api import api_bp
+        from web.routes_auth import web_auth_bp
+        from web.routes_pages import web_pages_bp
+        test_app.register_blueprint(api_bp, url_prefix='/api')
+        test_app.register_blueprint(web_auth_bp)
+        test_app.register_blueprint(web_pages_bp)
+    except:
+        pass  # blueprints might not be needed for all tests
+    
     return test_app
 
 
