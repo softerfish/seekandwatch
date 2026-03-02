@@ -701,9 +701,9 @@ if [ "$IS_APP_DIR" != "true" ]; then
 
         echo "⚠️ Legacy layout detected. Save a backup ZIP to your desktop before continuing."
         # Move old root app files into the live app folder, comparing timestamps
-        CRITICAL_FILES="api services tunnel utils.py models.py presets.py app.py config.py auth_decorators.py"
+        CRITICAL_FILES="api services tunnel utils models.py presets.py app.py config.py auth_decorators.py"
         if [ -d "/config/app" ]; then
-            for path in api app.py utils.py models.py presets.py auth_decorators.py requirements.txt README.md docker-compose.yml Dockerfile entrypoint.sh icon.png templates static images .gitignore; do
+            for path in api app.py utils models.py presets.py auth_decorators.py requirements.txt README.md docker-compose.yml Dockerfile entrypoint.sh icon.png templates static images .gitignore; do
                 if [ -e "/config/$path" ]; then
                     # Check if this is a critical file
                     is_critical=false
@@ -742,9 +742,9 @@ fi
 # Legacy: Move files from /config root to /config/app (only for old installations)
 # This is kept for backward compatibility but shouldn't be needed anymore
 # Skip this if /config IS the app directory (normal case now)
-CRITICAL_FILES="api services tunnel utils.py models.py presets.py app.py config.py auth_decorators.py"
+CRITICAL_FILES="api services tunnel utils models.py presets.py app.py config.py auth_decorators.py"
 if [ "$IS_APP_DIR" != "true" ] && [ -d "/config/app" ]; then
-    for path in api app.py utils.py models.py presets.py auth_decorators.py requirements.txt README.md docker-compose.yml Dockerfile entrypoint.sh icon.png templates static images .gitignore; do
+    for path in api app.py utils models.py presets.py auth_decorators.py requirements.txt README.md docker-compose.yml Dockerfile entrypoint.sh icon.png templates static images .gitignore; do
         if [ -e "/config/$path" ]; then
             # Move to /config/app if it doesn't exist there, or if it's newer
             if [ ! -e "/config/app/$path" ] || [ "/config/$path" -nt "/config/app/$path" ]; then
@@ -755,7 +755,7 @@ if [ "$IS_APP_DIR" != "true" ] && [ -d "/config/app" ]; then
                 # File exists in app and is newer or same
                 # Check if this is a critical file - never delete those
                 is_critical=false
-                for crit_file in api utils.py models.py presets.py app.py; do
+                for crit_file in api utils models.py presets.py app.py; do
                     if [ "$path" = "$crit_file" ]; then
                         is_critical=true
                         break
@@ -779,8 +779,8 @@ fi
 # BUT: Never delete critical files from CLEANUP_ROOT - they might be backups
 # Skip this if /config IS the app directory
 if [ "$IS_APP_DIR" != "true" ] && [ -n "$CLEANUP_ROOT" ] && [ -d "$CLEANUP_ROOT" ]; then
-    CRITICAL_FILES="api services tunnel utils.py models.py presets.py app.py config.py auth_decorators.py"
-    for path in api app.py utils.py models.py presets.py auth_decorators.py requirements.txt README.md docker-compose.yml Dockerfile entrypoint.sh icon.png templates static images .gitignore; do
+    CRITICAL_FILES="api services tunnel utils models.py presets.py app.py config.py auth_decorators.py"
+    for path in api app.py utils models.py presets.py auth_decorators.py requirements.txt README.md docker-compose.yml Dockerfile entrypoint.sh icon.png templates static images .gitignore; do
         if [ -e "$CLEANUP_ROOT/$path" ]; then
             # Check if this is a critical file - don't delete those
             is_critical=false
