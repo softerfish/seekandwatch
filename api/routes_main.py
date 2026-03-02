@@ -540,7 +540,8 @@ def get_metadata(media_type, tmdb_id):
         
     try:
         # get everything in one API call (faster)
-        url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}?api_key={s.tmdb_key}&append_to_response=credits,videos,watch/providers"
+        # include_video_language helps get trailers in multiple languages (en, null for international)
+        url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}?api_key={s.tmdb_key}&append_to_response=credits,videos,watch/providers&include_video_language=en,null"
         resp = requests.get(url, timeout=5)
         print(f"DEBUG: get_metadata TMDB status: {resp.status_code}", flush=True)
         data = resp.json()
@@ -556,15 +557,24 @@ def get_metadata(media_type, tmdb_id):
         trailer = None
         results = data.get('videos', {}).get('results', [])
         print(f"DEBUG: TMDB Videos results for {media_type} {tmdb_id}: {results}", flush=True)
+        
+        # first pass: look for official trailers
         for v in results:
-            if v['type'] == 'Trailer' and v['site'] == 'YouTube':
+            if v.get('type') == 'Trailer' and v.get('site') == 'YouTube' and v.get('official'):
                 trailer = v['key']
                 break
         
-        # if no official trailer, any youtube video works
+        # second pass: any trailer
         if not trailer:
-             for v in data.get('videos', {}).get('results', []):
-                if v['site'] == 'YouTube':
+            for v in results:
+                if v.get('type') == 'Trailer' and v.get('site') == 'YouTube':
+                    trailer = v['key']
+                    break
+        
+        # third pass: any youtube video
+        if not trailer:
+             for v in results:
+                if v.get('site') == 'YouTube':
                     trailer = v['key']
                     break
                 

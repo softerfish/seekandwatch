@@ -81,7 +81,7 @@ if SCHEDULER_USER_ID is not None:
         SCHEDULER_USER_ID = None
 
 # app version and update checking
-VERSION = "1.6.3"
+VERSION = "1.6.4"
 
 # shared cache for update checking (prevents duplicate github api calls)
 UPDATE_CACHE = {
