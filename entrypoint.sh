@@ -880,7 +880,7 @@ if [ -d "$APP_DIR" ]; then
     # Final verification - ensure all critical files/dirs exist before starting
     missing_critical=false
     for file in $CRITICAL_FILES; do
-        if [ "$file" = "api" ] || [ "$file" = "services" ] || [ "$file" = "tunnel" ]; then
+        if [ "$file" = "api" ] || [ "$file" = "services" ] || [ "$file" = "tunnel" ] || [ "$file" = "utils" ]; then
             [ -d "$APP_DIR/$file" ] && [ -f "$APP_DIR/$file/__init__.py" ] || { echo "ERROR: $file package still missing or invalid after restoration!"; missing_critical=true; }
         elif [ ! -f "$APP_DIR/$file" ] || [ ! -s "$APP_DIR/$file" ]; then
             echo "ERROR: Critical file $file is still missing or empty after restoration attempts!"
