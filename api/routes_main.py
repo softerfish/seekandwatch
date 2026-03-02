@@ -37,13 +37,10 @@ from api.helpers import (
 from auth_decorators import admin_required
 from models import db, Blocklist, CollectionSchedule, TmdbAlias, SystemLog, Settings, User, AppRequest, RecoveryCode
 from services.CollectionService import CollectionService
-from utils import (
+from utils.helpers import (
     normalize_title,
     is_duplicate,
     is_owned_item,
-    fetch_omdb_ratings,
-    sync_remote_aliases,
-    get_tmdb_aliases,
     sync_plex_library,
     refresh_radarr_sonarr_cache,
     get_radarr_sonarr_cache,
@@ -62,13 +59,13 @@ from utils import (
     prefetch_omdb_parallel,
     score_recommendation,
     get_owned_tmdb_ids_for_cloud,
-    CUSTOM_POSTER_DIR,
     validate_url_safety,
     get_results_cache,
     set_results_cache,
 )
+from services.tmdb_service import fetch_omdb_ratings, sync_remote_aliases, get_tmdb_aliases
+from config import CLOUD_URL, CUSTOM_POSTER_DIR
 from presets import PLAYLIST_PRESETS
-from config import CLOUD_URL
 
 # recommendation loading and filtering
 

@@ -14,13 +14,8 @@ from plexapi.server import PlexServer
 
 from models import db, CollectionSchedule, TmdbAlias
 from presets import TMDB_GENRE_MAP, TMDB_STUDIO_MAP, PLAYLIST_PRESETS
-from utils import (
-    write_log, 
-    is_system_locked, 
-    set_system_lock, 
-    remove_system_lock, 
-    normalize_title
-)
+from utils.helpers import write_log, normalize_title
+from utils.system import is_system_locked, set_system_lock, remove_system_lock
 
 log = logging.getLogger(__name__)
 

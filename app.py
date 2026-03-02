@@ -15,7 +15,7 @@ logging.getLogger('urllib3.connectionpool').setLevel(logging.WARNING)
 
 import config
 from config import CONFIG_DIR, DATABASE_URI, SECRET_KEY_FILE, CLOUD_REQUEST_TIMEOUT, VERSION, UPDATE_CACHE
-from utils import get_cloud_base_url
+from services.CloudService import CloudService
 import requests
 import random
 import json
@@ -134,18 +134,18 @@ def migrate_custom_poster_paths():
     except Exception as e:
         print(f"Warning: custom poster path migration failed: {e}")
 
-from utils import (normalize_title, is_duplicate, is_owned_item, fetch_omdb_ratings, 
-                   create_backup, list_backups, restore_backup, 
-                   prune_backups, BACKUP_DIR, sync_remote_aliases, get_tmdb_aliases, 
+from utils.helpers import (normalize_title, is_duplicate, is_owned_item,
                    sync_plex_library, refresh_radarr_sonarr_cache, get_lock_status, is_system_locked,
                    write_scanner_log, read_scanner_log, prefetch_keywords_parallel,
                    item_matches_keywords, get_session_filters, write_log,
-                   check_for_updates, handle_lucky_mode, reset_stuck_locks, 
+                   handle_lucky_mode, reset_stuck_locks, 
                    prefetch_tv_states_parallel, prefetch_ratings_parallel, prefetch_omdb_parallel,
-                   prefetch_runtime_parallel, is_docker, is_unraid, is_git_repo, is_app_dir_writable, perform_git_update,
-                   perform_release_update, save_results_cache, get_history_cache, set_history_cache,
+                   prefetch_runtime_parallel, save_results_cache, get_history_cache, set_history_cache,
                    score_recommendation, diverse_sample, get_tmdb_rec_cache, set_tmdb_rec_cache,
                    get_results_cache, set_results_cache)
+from utils.backup import create_backup, list_backups, restore_backup, prune_backups, BACKUP_DIR
+from utils.system import check_for_updates, is_docker, is_unraid, is_git_repo, is_app_dir_writable, perform_git_update, perform_release_update
+from services.tmdb_service import fetch_omdb_ratings, sync_remote_aliases, get_tmdb_aliases
 from utils.db_helpers import commit_with_retry
 from presets import PLAYLIST_PRESETS
 from sqlalchemy.exc import OperationalError
@@ -261,7 +261,7 @@ def init_tunnel_services():
 
                         # re-register webhook with new URL
                         from services.Router import Router
-                        cloud_base = get_cloud_base_url(settings)
+                        cloud_base = CloudService.get_cloud_base_url(settings)
                         app.logger.info(f"Re-registering webhook for quick tunnel: {tunnel_url} with {cloud_base}")
                         tunnel_manager.register_webhook(
                             tunnel_url=tunnel_url,
@@ -315,7 +315,7 @@ def init_tunnel_services():
                             if s and s.cloud_enabled and s.cloud_api_key and s.tunnel_url:
                                 try:
                                     app.logger.info(f"Performing startup handshake for user {s.user_id}...")
-                                    registrar = WebhookRegistrar(get_cloud_base_url(s), s.cloud_api_key)
+                                    registrar = WebhookRegistrar(CloudService.get_cloud_base_url(s), s.cloud_api_key)
                                     success, message = registrar.test_connection(timeout=10)
                                     if success:
                                         app.logger.info(f"Handshake successful: {message}")

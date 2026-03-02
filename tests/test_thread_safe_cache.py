@@ -11,7 +11,7 @@ import os
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils import (
+from utils.cache import (
     get_results_cache,
     set_results_cache,
     clear_results_cache,
