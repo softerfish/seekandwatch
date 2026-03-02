@@ -32,7 +32,7 @@ def test_routes_pair_module_imported():
         from api import routes_pair
         assert hasattr(routes_pair, 'pair_start'), "pair_start function not found in routes_pair"
         assert hasattr(routes_pair, 'pair_receive_key'), "pair_receive_key function not found in routes_pair"
-        assert hasattr(routes_pair, 'cloud_test'), "cloud_test function not found in routes_pair"
+        # cloud_test is in routes_main, not routes_pair
     except ImportError as e:
         pytest.fail(f"routes_pair module not imported: {e}")
 
