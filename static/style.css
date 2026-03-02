@@ -4527,10 +4527,10 @@ details.help-box code {
     padding: 12px 25px;
     border-radius: 8px;
     opacity: 0;
+    display: none;
     transition: opacity 0.5s;
     z-index: 9999;
     box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-    display: flex;
     align-items: center;
     gap: 10px;
     font-weight: bold;
