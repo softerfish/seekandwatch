@@ -120,16 +120,27 @@ class TestCloudSync(unittest.TestCase):
         
         mock_integrations.get_radarr_sonarr_cache.side_effect = mock_cache
         
-        # Mock Plex aliases
+        # Mock Plex aliases with proper attribute access
         mock_movie = MagicMock()
         mock_movie.tmdb_id = 4
         mock_movie.media_type = 'movie'
+        # Ensure getattr works correctly
+        type(mock_movie).tmdb_id = property(lambda self: 4)
+        type(mock_movie).media_type = property(lambda self: 'movie')
         
         mock_tv = MagicMock()
         mock_tv.tmdb_id = 40
         mock_tv.media_type = 'tv'
+        # Ensure getattr works correctly
+        type(mock_tv).tmdb_id = property(lambda self: 40)
+        type(mock_tv).media_type = property(lambda self: 'tv')
         
-        mock_alias.query.filter.return_value.all.return_value = [mock_movie, mock_tv]
+        # Mock the query chain
+        mock_query = MagicMock()
+        mock_filter = MagicMock()
+        mock_filter.all.return_value = [mock_movie, mock_tv]
+        mock_query.filter.return_value = mock_filter
+        mock_alias.query = mock_query
         
         movie_ids, tv_ids = MediaService.get_owned_tmdb_ids_for_cloud()
         
