@@ -1,6 +1,11 @@
 """Test pairing routes are registered and working"""
 import pytest
+import sys
+import os
 from flask import Flask
+
+# add parent directory to path for Docker environment
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 def test_pairing_routes_exist(app):

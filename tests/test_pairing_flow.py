@@ -3,6 +3,12 @@ tests for pairing flow - ensures routes exist, return correct responses, and flo
 """
 
 import pytest
+import sys
+import os
+
+# add parent directory to path for Docker environment
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from flask import url_for
 from models import Settings
 from datetime import datetime, timedelta

@@ -357,7 +357,7 @@ class TestDenyRequestRoute(TestBase):
     """Tests for /deny_request/<id> route"""
     
     @patch('web.routes_requests.requests.post')
-    @patch('web.routes_requests.get_cloud_base_url')
+    @patch('services.CloudService.CloudService.get_cloud_base_url')
     def test_deny_request_success(self, mock_base_url, mock_post):
         """Test denying a cloud request"""
         self.login()
@@ -391,7 +391,7 @@ class TestDeleteRequestRoute(TestBase):
     """Tests for /delete_request/<id> route"""
     
     @patch('web.routes_requests.requests.post')
-    @patch('web.routes_requests.get_cloud_base_url')
+    @patch('services.CloudService.CloudService.get_cloud_base_url')
     def test_delete_request_success(self, mock_base_url, mock_post):
         """Test deleting a cloud request"""
         self.login()
