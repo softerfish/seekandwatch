@@ -33,6 +33,7 @@ from utils.cache import (
     get_history_cache, set_history_cache,
     get_tmdb_rec_cache, set_tmdb_rec_cache,
     score_recommendation, diverse_sample,
+    get_cache_stats,
     RESULTS_CACHE
 )
 from utils.validators import validate_url, validate_path, get_session_filters
@@ -120,12 +121,15 @@ __all__ = [
     # from utils.cache
     'load_results_cache',
     'save_results_cache',
+    'get_results_cache',
+    'set_results_cache',
     'get_history_cache',
     'set_history_cache',
     'get_tmdb_rec_cache',
     'set_tmdb_rec_cache',
     'score_recommendation',
     'diverse_sample',
+    'get_cache_stats',
     'RESULTS_CACHE',
     # from utils.validators
     'validate_url',
