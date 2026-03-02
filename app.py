@@ -134,7 +134,7 @@ def migrate_custom_poster_paths():
     except Exception as e:
         print(f"Warning: custom poster path migration failed: {e}")
 
-from utils.helpers import (normalize_title, is_duplicate, is_owned_item,
+from utils import (normalize_title, is_duplicate, is_owned_item,
                    sync_plex_library, refresh_radarr_sonarr_cache, get_lock_status, is_system_locked,
                    write_scanner_log, read_scanner_log, prefetch_keywords_parallel,
                    item_matches_keywords, get_session_filters, write_log,
@@ -142,10 +142,9 @@ from utils.helpers import (normalize_title, is_duplicate, is_owned_item,
                    prefetch_tv_states_parallel, prefetch_ratings_parallel, prefetch_omdb_parallel,
                    prefetch_runtime_parallel, save_results_cache, get_history_cache, set_history_cache,
                    score_recommendation, diverse_sample, get_tmdb_rec_cache, set_tmdb_rec_cache,
-                   get_results_cache, set_results_cache)
-from utils.backup import create_backup, list_backups, restore_backup, prune_backups, BACKUP_DIR
-from utils.system import check_for_updates, is_docker, is_unraid, is_git_repo, is_app_dir_writable, perform_git_update, perform_release_update
-from services.tmdb_service import fetch_omdb_ratings, sync_remote_aliases, get_tmdb_aliases
+                   get_results_cache, set_results_cache, fetch_omdb_ratings, sync_remote_aliases, get_tmdb_aliases,
+                   create_backup, list_backups, restore_backup, prune_backups, BACKUP_DIR,
+                   check_for_updates, is_docker, is_unraid, is_git_repo, is_app_dir_writable, perform_git_update, perform_release_update)
 from utils.db_helpers import commit_with_retry
 from presets import PLAYLIST_PRESETS
 from sqlalchemy.exc import OperationalError
