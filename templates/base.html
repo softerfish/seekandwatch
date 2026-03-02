@@ -810,7 +810,7 @@ function submitRequest() {
         .then(r => r.json())
         .then(data => {
             if (data.status === 'success') {
-                submitBtn.textContent = 'Added ✅';
+                submitBtn.textContent = 'Added';
                 submitBtn.style.background = 'var(--accent-color)';
                 setTimeout(() => {
                     closeRequestModal();
@@ -845,7 +845,7 @@ function submitRequest() {
         .then(r => r.json())
         .then(data => {
             if (data.status === 'success') {
-                submitBtn.textContent = 'Added ✅';
+                submitBtn.textContent = 'Added';
                 submitBtn.style.background = 'var(--accent-color)';
                 setTimeout(() => {
                     closeRequestModal();
