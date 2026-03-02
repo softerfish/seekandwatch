@@ -8,6 +8,10 @@
         <p class="text-muted">Manage your connections, automation engines, and system preferences.</p>
     </div>
 
+    <div id="save-toast">
+        Saved
+    </div>
+
     <div class="settings-tabs">
         <button type="button" class="tab-link active" onclick="openTab(event, 'tab-apis')">APIs & Connections</button>
         <button type="button" class="tab-link" onclick="openTab(event, 'tab-scanners')">Scanners & memory</button>
@@ -973,6 +977,21 @@
         div.textContent = text;
         return div.innerHTML;
     }
+
+    // Add Enter key handling for all input fields in settings
+    document.addEventListener('DOMContentLoaded', function() {
+        const settingsContainer = document.querySelector('.settings-container');
+        if (settingsContainer) {
+            settingsContainer.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter' && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
+                    // Don't trigger on buttons or if it's a textarea (allow line breaks)
+                    if (e.target.tagName === 'TEXTAREA') return;
+                    e.preventDefault();
+                    submitActiveSettingsForm();
+                }
+            });
+        }
+    });
 
 </script>
 
