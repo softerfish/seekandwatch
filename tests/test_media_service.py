@@ -111,11 +111,14 @@ class TestCloudSync(unittest.TestCase):
     @patch('services.media_service.IntegrationsService')
     def test_get_owned_tmdb_ids_for_cloud(self, mock_integrations, mock_alias):
         """Test getting owned TMDB IDs for cloud"""
-        # Mock Radarr/Sonarr cache
-        mock_integrations.get_radarr_sonarr_cache.side_effect = [
-            {'tmdb_ids': [1, 2, 3]},  # movies
-            {'tmdb_ids': [10, 20, 30]}  # tv
-        ]
+        # Mock Radarr/Sonarr cache - returns dict with 'tmdb_ids' key or empty list
+        def mock_cache(media_type):
+            if media_type == 'movie':
+                return {'tmdb_ids': [1, 2, 3]}
+            else:  # tv
+                return {'tmdb_ids': [10, 20, 30]}
+        
+        mock_integrations.get_radarr_sonarr_cache.side_effect = mock_cache
         
         # Mock Plex aliases
         mock_movie = MagicMock()
@@ -130,9 +133,16 @@ class TestCloudSync(unittest.TestCase):
         
         movie_ids, tv_ids = MediaService.get_owned_tmdb_ids_for_cloud()
         
+        # Check Radarr/Sonarr cache IDs
         self.assertIn(1, movie_ids)
-        self.assertIn(4, movie_ids)
+        self.assertIn(2, movie_ids)
+        self.assertIn(3, movie_ids)
         self.assertIn(10, tv_ids)
+        self.assertIn(20, tv_ids)
+        self.assertIn(30, tv_ids)
+        
+        # Check Plex alias IDs
+        self.assertIn(4, movie_ids)
         self.assertIn(40, tv_ids)
 
 

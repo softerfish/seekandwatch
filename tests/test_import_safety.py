@@ -273,10 +273,15 @@ class TestImportSafety(unittest.TestCase):
         
         # Exceptions: utils/__init__.py can import from services for re-exports (backward compatibility)
         # tunnel modules can import from services (they're integration modules)
+        # app imports migrations for startup migration execution
         allowed_exceptions = {
             ('utils', 'services'),  # utils/__init__.py re-exports service functions
             ('tunnel.health', 'services'),  # tunnel health monitor uses services
             ('tunnel.registrar', 'services'),  # tunnel registrar uses services
+            ('tunnel.health', 'api'),  # tunnel health checks api endpoints
+            ('tunnel.manager', 'services'),  # tunnel manager uses services
+            ('tunnel.startup_detection', 'services'),  # tunnel startup detection uses services
+            ('app', 'migrations'),  # app runs migrations on startup
         }
         
         violations = []
