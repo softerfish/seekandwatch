@@ -25,14 +25,14 @@ import requests
 from plexapi.server import PlexServer
 
 # Import from other utils modules
-from utils.helpers import write_log, normalize_title, get_cache_file
+from utils.helpers import write_log, normalize_title
 from utils.system import is_system_locked, set_system_lock, remove_system_lock, get_app_root
 from utils.cache import get_radarr_sonarr_cache
 from utils.validators import _validate_path
 
 # Import models and database
 from models import db, Settings, TmdbAlias, KeywordCache, AliasCache
-from config import CONFIG_DIR
+from config import CONFIG_DIR, get_cache_file
 
 # Cache file path (for Plex sync)
 CACHE_FILE = get_cache_file()
