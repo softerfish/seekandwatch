@@ -27,7 +27,6 @@ from plexapi.server import PlexServer
 # Import from other utils modules
 from utils.helpers import write_log, normalize_title
 from utils.system import is_system_locked, set_system_lock, remove_system_lock, get_app_root
-from utils.validators import _validate_path
 
 # Import models and database
 from models import db, Settings, TmdbAlias, KeywordCache, AliasCache
