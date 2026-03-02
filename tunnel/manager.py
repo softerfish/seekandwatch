@@ -1578,7 +1578,7 @@ class TunnelManager:
             timeout = 45  # 45 seconds to find the URL
             
             # regex patterns
-            url_pattern = re.compile(r'https://[a-z0-9-]+\.trycloudflare\.com')
+            url_pattern = re.compile(r'https://[a-z]+-[a-z]+-[a-z]+-[a-z]+\.trycloudflare\.com')
             metrics_pattern = re.compile(r'Metrics server listening on 127\.0\.0\.1:(\d+)')
             
             # read output line by line to find metrics port or URL
