@@ -11,7 +11,7 @@ from flask_login import login_required, current_user, logout_user
 from auth_decorators import admin_required
 
 from models import db, User, Settings, SystemLog, TmdbKeywordCache, TmdbRuntimeCache, TmdbAlias, Blocklist, WebhookLog
-from utils import write_log
+from utils.helpers import write_log
 from utils.db_helpers import commit_with_retry
 
 # Create blueprint

@@ -10,7 +10,8 @@ import time
 import datetime
 from flask import current_app
 from models import db, RadarrSonarrCache, Settings, TmdbAlias
-from utils import write_log, normalize_title, is_system_locked, set_system_lock, remove_system_lock
+from utils.helpers import write_log, normalize_title
+from utils.system import is_system_locked, set_system_lock, remove_system_lock
 
 log = logging.getLogger(__name__)
 

@@ -4,7 +4,8 @@ from flask import current_app
 from werkzeug.utils import secure_filename
 import os
 
-from utils import write_log, BACKUP_DIR
+from utils.helpers import write_log
+from utils.backup import BACKUP_DIR
 
 
 def _log_api_exception(context):
