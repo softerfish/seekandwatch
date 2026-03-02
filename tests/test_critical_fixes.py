@@ -243,38 +243,6 @@ class TestDependencyVersions(unittest.TestCase):
                      f"Run: pip install -r requirements.txt")
 
 
-class TestDocumentation(unittest.TestCase):
-    """Test that documentation exists"""
-    
-    @unittest.skip("Documentation files not copied to Docker image - not critical for functionality")
-    def test_dependency_docs_exist(self):
-        """Test that dependency documentation exists"""
-        # try both locations (local dev vs docker)
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        doc_file = os.path.join(base_dir, 'docs', 'DEPENDENCY_VERSIONS.md')
-        
-        # if not found, try app directory (docker environment)
-        if not os.path.exists(doc_file):
-            doc_file = '/app/docs/DEPENDENCY_VERSIONS.md'
-        
-        self.assertTrue(os.path.exists(doc_file), 
-                       f"docs/DEPENDENCY_VERSIONS.md not found at {doc_file}")
-    
-    @unittest.skip("Documentation files not copied to Docker image - not critical for functionality")
-    def test_risk_analysis_exists(self):
-        """Test that risk analysis documentation exists"""
-        # try both locations (local dev vs docker)
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        doc_file = os.path.join(base_dir, 'docs', 'RISK_ANALYSIS_DEEP_DIVE.md')
-        
-        # if not found, try app directory (docker environment)
-        if not os.path.exists(doc_file):
-            doc_file = '/app/docs/RISK_ANALYSIS_DEEP_DIVE.md'
-        
-        self.assertTrue(os.path.exists(doc_file), 
-                       f"docs/RISK_ANALYSIS_DEEP_DIVE.md not found at {doc_file}")
-
-
 class TestIntegration(unittest.TestCase):
     """Integration tests for all fixes working together"""
     
