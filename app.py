@@ -1036,7 +1036,7 @@ def favicon():
 #   - /save_cloud_settings (post)
 
 # custom poster static file serving (kept in app.py as system-level route)
-from utils import CUSTOM_POSTER_DIR
+from config import CUSTOM_POSTER_DIR
 
 @app.route('/img/custom_posters/<path:filename>')
 def custom_poster(filename):
