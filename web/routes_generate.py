@@ -378,7 +378,9 @@ def generate():
                     url = f"https://api.themoviedb.org/3/discover/movie?api_key={s.tmdb_key}&with_genres={random_genre}&sort_by=popularity.desc&page={page}"
                     data = requests.get(url, timeout=10).json().get('results', [])
                     raw_candidates = [{'id': p['id'], 'title': p['title'], 'year': (p.get('release_date') or '')[:4], 'poster_path': p.get('poster_path'), 'overview': p.get('overview'), 'vote_average': p.get('vote_average'), 'media_type': 'movie'} for p in data]
+                    random.seed(int(time.time() * 1000))
                     random.shuffle(raw_candidates)
+                    random.seed()
                 except Exception as e:
                     write_log("warning", "Generate", f"Lucky mode page fetch failed ({type(e).__name__})")
                     break
@@ -681,8 +683,10 @@ def generate():
             unique_recs.append(item)
             seen_final.add(item['id'])
     
-    # shuffle results so they're different each time
+    # shuffle results so they're different each time (use timestamp as seed for variety)
+    random.seed(int(time.time() * 1000))
     random.shuffle(unique_recs)
+    random.seed()  # reset to default random seed
     
     set_results_cache(current_user.id, {
         'candidates': unique_recs,
