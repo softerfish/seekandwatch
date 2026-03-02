@@ -589,7 +589,6 @@
         // update button when it works
         window.onRequestSuccess = function(tmdbId, mediaType) {
             if (btn && tmdbId == id && mediaType == type) {
-                btn.innerHTML = "✅";
                 btn.style.background = "var(--accent-color)";
             }
         };
