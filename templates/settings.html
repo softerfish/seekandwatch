@@ -864,11 +864,10 @@
         const sonarrKey = document.getElementById('sonarr_api_key')?.value;
         const toggle = document.getElementById('radarr-sonarr-toggle');
         
-        // If either key is set and scanner is not enabled, auto-enable it
+        // If either key is set and scanner is not enabled, just check the toggle (don't auto-save)
         if ((radarrKey || sonarrKey) && toggle && !toggle.checked) {
             toggle.checked = true;
-            // Auto-save the setting
-            saveRadarrSonarrScannerSettings();
+            // Don't auto-save - let user manually save if they want the scanner enabled
         }
     }
 
