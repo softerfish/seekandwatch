@@ -26,7 +26,9 @@ this ensures backward compatibility during the migration
 from utils.helpers import write_log, normalize_title
 from utils.system import (
     is_system_locked, set_system_lock, remove_system_lock,
-    get_lock_status, reset_stuck_locks
+    get_lock_status, reset_stuck_locks,
+    check_for_updates, is_docker, is_unraid, is_git_repo,
+    get_app_root, is_app_dir_writable, perform_git_update, perform_release_update
 )
 from utils.cache import (
     load_results_cache, save_results_cache,
@@ -36,6 +38,7 @@ from utils.cache import (
     RESULTS_CACHE
 )
 from utils.validators import validate_url, validate_path, get_session_filters
+from utils.backup import create_backup, list_backups, restore_backup, prune_backups, BACKUP_DIR
 
 # import phase 3 helper modules (for blueprint migration)
 from utils.session_helpers import *
@@ -45,6 +48,7 @@ from utils.db_helpers import *
 from utils.message_helpers import *
 
 # import from new services (service modules)
+# NOTE: import these AFTER utils.helpers to avoid circular imports
 from services.plex_service import PlexService
 from services.tmdb_service import TmdbService
 from services.media_service import MediaService
@@ -58,9 +62,14 @@ prefetch_runtime_parallel = TmdbService.prefetch_runtime_parallel
 prefetch_tv_states_parallel = TmdbService.prefetch_tv_states_parallel
 prefetch_ratings_parallel = TmdbService.prefetch_ratings_parallel
 get_tmdb_aliases = TmdbService.get_tmdb_aliases
+fetch_omdb_ratings = TmdbService.fetch_omdb_ratings
+sync_remote_aliases = TmdbService.sync_remote_aliases
 is_duplicate = MediaService.is_duplicate
 is_owned_item = MediaService.is_owned_item
 get_owned_tmdb_ids_for_cloud = MediaService.get_owned_tmdb_ids_for_cloud
+
+# import from config
+from config import CUSTOM_POSTER_DIR
 
 # import everything else from the original utils.py file
 # this is a wildcard import to ensure ALL functions are available
