@@ -73,15 +73,45 @@ ImportError: cannot import name 'get_cache_file' from 'utils.helpers'
 from config import CONFIG_DIR, get_cache_file
 ```
 
+### Issue 6: Circular Import in utils/legacy.py
+**Commit:** `b0dc066`
+
+**Problem:** `utils/legacy.py` was importing `get_radarr_sonarr_cache` from `utils.cache`, but that function is actually defined in `utils/legacy.py` itself, causing a circular import.
+
+**Error:**
+```
+ImportError: cannot import name 'get_radarr_sonarr_cache' from 'utils.cache'
+```
+
+**Fix:** Removed the circular import. The function `get_radarr_sonarr_cache()` is defined in `utils/legacy.py` and just delegates to `IntegrationsService.get_radarr_sonarr_cache()`.
+
+### Issue 7: Legacy Code Paths Still Referencing utils.py
+**Commit:** `559b3a1`
+
+**Problem:** The entrypoint.sh had multiple legacy code paths (for old installations) that still referenced `utils.py` as a file instead of `utils/` as a package. These sections handle nested app structures and cleanup, and while rarely used, they would fail if triggered.
+
+**Fix:** Updated all legacy code paths to treat `utils` as a package directory:
+- Line 704: CRITICAL_FILES in legacy layout detection
+- Line 707: for loop in legacy layout detection
+- Line 745: CRITICAL_FILES in legacy move section
+- Line 748: for loop in legacy move section
+- Line 758: critical file check
+- Line 782: CRITICAL_FILES in cleanup root section
+- Line 784: for loop in cleanup root section
+
 ## Files Modified
 
-1. **utils/legacy.py** - Added missing imports
-2. **entrypoint.sh** - Updated in 4 places:
+1. **utils/legacy.py** - Added missing imports, fixed circular import
+2. **entrypoint.sh** - Updated in 11 places:
    - UPDATE_FILES/UPDATE_DIRS lists
    - CRITICAL_FILES for nested structure detection (2 occurrences)
    - CRITICAL_FILES for validation
    - Final verification check
    - Added Phase 8 migration cleanup
+   - Legacy layout detection (2 places)
+   - Legacy move section (2 places)
+   - Critical file check in legacy code
+   - Cleanup root section (2 places)
 
 ## Entrypoint Changes Detail
 
