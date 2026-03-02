@@ -810,13 +810,14 @@ if [ -d "$APP_DIR" ]; then
     cp -an /app/. "$APP_DIR/" 2>/dev/null || true
     
     # Ensure critical files exist and are valid - ALWAYS ensure they're good
-    # api, services, tunnel = package directories (with __init__.py), others are files
+    # api, services, tunnel, utils = package directories (with __init__.py), others are files
     # Priority: 1) Image, 2) /config root backup (if APP_DIR is not /config), 3) existing APP_DIR (if valid)
-    CRITICAL_FILES="api services tunnel utils.py models.py presets.py app.py config.py auth_decorators.py"
+    # NOTE: utils.py removed in Phase 8 (migrated to utils/ package)
+    CRITICAL_FILES="api services tunnel utils models.py presets.py app.py config.py auth_decorators.py"
     for file in $CRITICAL_FILES; do
         file_needs_restore=false
         
-        if [ "$file" = "api" ] || [ "$file" = "services" ] || [ "$file" = "tunnel" ]; then
+        if [ "$file" = "api" ] || [ "$file" = "services" ] || [ "$file" = "tunnel" ] || [ "$file" = "utils" ]; then
             # Directory package
             if [ ! -d "$APP_DIR/$file" ] || [ ! -f "$APP_DIR/$file/__init__.py" ]; then
                 file_needs_restore=true
@@ -841,7 +842,7 @@ if [ -d "$APP_DIR" ]; then
         
         # Restore if needed
         if [ "$file_needs_restore" = "true" ]; then
-            if [ "$file" = "api" ] || [ "$file" = "services" ] || [ "$file" = "tunnel" ]; then
+            if [ "$file" = "api" ] || [ "$file" = "services" ] || [ "$file" = "tunnel" ] || [ "$file" = "utils" ]; then
                 if [ -d "/app/$file" ] && [ -f "/app/$file/__init__.py" ]; then
                     echo "Restoring $file package from Docker image to $APP_DIR..."
                     cp -r "/app/$file" "$APP_DIR/"
