@@ -523,9 +523,9 @@ def generate():
                 data = requests.get(disc_url, params=params).json()
                 results = data.get('results', [])
             else:
-                # fetch 2 pages per seed; skip TMDB error responses (e.g. status_code in body)
+                # fetch 5 pages per seed for more variety
                 results = []
-                for page_num in range(1, 3):
+                for page_num in range(1, 6):
                     rec_url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}/recommendations?api_key={s.tmdb_key}&language=en-US&page={page_num}"
                     page_data = requests.get(rec_url, timeout=10).json()
                     if page_data.get('status_code'):
@@ -540,7 +540,7 @@ def generate():
                     if cached_similar:
                         results = cached_similar
                     else:
-                        for page_num in range(1, 3):
+                        for page_num in range(1, 6):
                             sim_url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}/similar?api_key={s.tmdb_key}&language=en-US&page={page_num}"
                             sim_data = requests.get(sim_url, timeout=10).json()
                             if sim_data.get('status_code'):
@@ -606,9 +606,9 @@ def generate():
             if not include_obscure:
                 base_params['with_original_language'] = 'en'
             all_results = []
-            # random starting page (1-10), fetch 6 pages (~120 results) so we get plenty after filtering
+            # random starting page (1-10), fetch 10 pages (~200 results) for more variety
             start_page = random.randint(1, 10)
-            for page_num in range(start_page, start_page + 6):
+            for page_num in range(start_page, start_page + 10):
                 params = dict(base_params, page=page_num)
                 data = requests.get(disc_url, params=params, timeout=10).json()
                 if data.get('status_code'):
