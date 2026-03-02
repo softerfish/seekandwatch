@@ -1308,7 +1308,7 @@ function saveProgress() {
                     tmdb_key: payload.tmdb_key
                 };
             }
-            btn.innerText = "Saved ✅";
+            btn.innerText = "Saved";
             setTimeout(() => { btn.innerText = oldText; btn.disabled = false; }, 2000);
         })
         .catch(e => {
