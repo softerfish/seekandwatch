@@ -1,6 +1,6 @@
 # SeekAndWatch
 
-![Version](https://img.shields.io/badge/version-1.6.3-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) ![License](https://img.shields.io/badge/License-MIT-green.svg)
+![Version](https://img.shields.io/badge/version-1.6.4-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
 **Saved you a scroll or two?** If this app saves you from endless scrolling, a star for the project helps a lot.
 
@@ -155,7 +155,11 @@ docker compose up -d
 
 v1.6.4
 
-
+- several small improvements like movie/tv years on blocklist
+- continued code cleanup
+- SeekAndWatch Cloudflare Tunnels reconnect themselves now without having to reset the container. Still working on adding ngrok
+- fixed Kometa config import from a URL
+- added webhook logs
 
 <details>
   <summary><b>Past Changelog</b></summary>
