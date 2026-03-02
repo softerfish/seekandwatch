@@ -169,7 +169,7 @@ class TestBackupOperations(unittest.TestCase):
         backups = list_backups()
         self.assertIsInstance(backups, list)
     
-    @patch('utils.get_database_path')
+    @patch('config.get_database_path')
     @patch('utils.BACKUP_DIR')
     def test_create_backup(self, mock_backup_dir, mock_db_path):
         """Test backup creation"""

@@ -248,23 +248,29 @@ class TestDocumentation(unittest.TestCase):
     
     def test_dependency_docs_exist(self):
         """Test that dependency documentation exists"""
-        doc_file = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            'docs',
-            'DEPENDENCY_VERSIONS.md'
-        )
+        # try both locations (local dev vs docker)
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        doc_file = os.path.join(base_dir, 'docs', 'DEPENDENCY_VERSIONS.md')
+        
+        # if not found, try app directory (docker environment)
+        if not os.path.exists(doc_file):
+            doc_file = '/app/docs/DEPENDENCY_VERSIONS.md'
+        
         self.assertTrue(os.path.exists(doc_file), 
-                       "docs/DEPENDENCY_VERSIONS.md not found")
+                       f"docs/DEPENDENCY_VERSIONS.md not found at {doc_file}")
     
     def test_risk_analysis_exists(self):
         """Test that risk analysis documentation exists"""
-        doc_file = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            'docs',
-            'RISK_ANALYSIS_DEEP_DIVE.md'
-        )
+        # try both locations (local dev vs docker)
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        doc_file = os.path.join(base_dir, 'docs', 'RISK_ANALYSIS_DEEP_DIVE.md')
+        
+        # if not found, try app directory (docker environment)
+        if not os.path.exists(doc_file):
+            doc_file = '/app/docs/RISK_ANALYSIS_DEEP_DIVE.md'
+        
         self.assertTrue(os.path.exists(doc_file), 
-                       "docs/RISK_ANALYSIS_DEEP_DIVE.md not found")
+                       f"docs/RISK_ANALYSIS_DEEP_DIVE.md not found at {doc_file}")
 
 
 class TestIntegration(unittest.TestCase):
