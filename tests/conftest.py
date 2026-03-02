@@ -23,12 +23,25 @@ if os.path.exists('/app') and '/app' not in sys.path:
 # pytest fixtures for tests that need them
 @pytest.fixture
 def app():
-    """Flask app fixture"""
-    from app import app as flask_app
-    flask_app.config['TESTING'] = True
-    flask_app.config['WTF_CSRF_ENABLED'] = False
-    flask_app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
-    return flask_app
+    """Flask app fixture - creates a test app with in-memory database"""
+    from flask import Flask
+    from models import db as _db
+    from flask_login import LoginManager
+    
+    # create a fresh test app (don't import the real one!)
+    test_app = Flask(__name__)
+    test_app.config['TESTING'] = True
+    test_app.config['WTF_CSRF_ENABLED'] = False
+    test_app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
+    test_app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    test_app.config['SECRET_KEY'] = 'test-secret-key'
+    
+    # initialize extensions with test app
+    _db.init_app(test_app)
+    login_manager = LoginManager()
+    login_manager.init_app(test_app)
+    
+    return test_app
 
 
 @pytest.fixture
@@ -39,13 +52,13 @@ def client(app):
 
 @pytest.fixture
 def db_session(app):
-    """Database session fixture"""
+    """Database session fixture - uses in-memory database"""
     from models import db
     with app.app_context():
         db.create_all()
         yield db
         db.session.remove()
-        db.drop_all()
+        db.drop_all()  # safe because it's in-memory only
 
 
 @pytest.fixture
