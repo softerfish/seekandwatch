@@ -420,8 +420,26 @@ def run_migrations():
         # create backup before migrations (safety net)
         create_backup_before_migration(app)
         
-        # run migrations
+        # run inline migrations (legacy)
         _perform_actual_migrations()
+        
+        # run versioned migrations (new system)
+        try:
+            from migrations.migration_manager import get_manager
+            from migrations.versions import load_migrations
+            
+            manager = get_manager(app, db)
+            load_migrations(manager)
+            applied, failed = manager.run_migrations()
+            
+            if applied > 0:
+                print(f"✓ Applied {applied} versioned migration(s)")
+            if failed > 0:
+                print(f"✗ Failed {failed} versioned migration(s)")
+        except Exception as e:
+            print(f"Warning: Versioned migrations failed: {e}")
+            import traceback
+            traceback.print_exc()
 
 def _perform_actual_migrations():
     with app.app_context():
