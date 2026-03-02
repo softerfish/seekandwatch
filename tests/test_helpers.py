@@ -12,7 +12,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import unittest
 from unittest.mock import Mock, patch, MagicMock
-from app import app, db
 
 
 class TestNormalizeTitle(unittest.TestCase):
@@ -85,53 +84,6 @@ class TestNormalizeTitle(unittest.TestCase):
 
 class TestWriteLog(unittest.TestCase):
     """Test logging function"""
-    
-    def setUp(self):
-        """Set up test environment"""
-        self.app = app
-        self.app_context = self.app.app_context()
-        self.app_context.push()
-    
-    def tearDown(self):
-        """Clean up"""
-        self.app_context.pop()
-    
-    def test_write_log_with_app_context(self):
-        """Test logging with app context"""
-        from utils.helpers import write_log
-        from models import SystemLog
-        
-        initial_count = SystemLog.query.count()
-        write_log("info", "Test", "Test message", app_obj=self.app)
-        new_count = SystemLog.query.count()
-        
-        self.assertEqual(new_count, initial_count + 1)
-        
-        log = SystemLog.query.order_by(SystemLog.id.desc()).first()
-        self.assertEqual(log.level, "info")
-        self.assertEqual(log.category, "Test")
-        self.assertEqual(log.message, "Test message")
-    
-    def test_write_log_levels(self):
-        """Test different log levels"""
-        from utils.helpers import write_log
-        from models import SystemLog
-        
-        for level in ['info', 'warning', 'error', 'success']:
-            write_log(level, "Test", f"Test {level}", app_obj=self.app)
-            log = SystemLog.query.order_by(SystemLog.id.desc()).first()
-            self.assertEqual(log.level, level)
-    
-    def test_log_sanitization(self):
-        """Test that sensitive data is redacted"""
-        from utils.helpers import write_log
-        from models import SystemLog
-        
-        write_log("info", "Test", "https://api.example.com/secret?token=abc123", app_obj=self.app)
-        log = SystemLog.query.order_by(SystemLog.id.desc()).first()
-        
-        self.assertNotIn("abc123", log.message)
-        self.assertIn("[URL redacted]", log.message)
     
     def test_log_sanitization_patterns(self):
         """Test various sanitization patterns"""

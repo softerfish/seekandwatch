@@ -91,10 +91,3 @@ def test_no_duplicate_pairing_routes_in_routes_main():
     # (they should only be in routes_pair)
     assert 'def pair_start(' not in source, "pair_start should not be in routes_main.py (should be in routes_pair.py)"
     assert 'def pair_receive_key(' not in source, "pair_receive_key should not be in routes_main.py (should be in routes_pair.py)"
-
-
-@pytest.fixture
-def app():
-    """Create app instance for testing"""
-    from app import app
-    return app

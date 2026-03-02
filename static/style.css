@@ -2350,6 +2350,7 @@ input[type="checkbox"]:checked:hover {
     color: #aaa;
     font-size: 24px;
     cursor: pointer;
+    z-index: 10;
 }
 .modal-close-btn:hover {
     color: #fff;
@@ -3772,9 +3773,11 @@ details.help-box code {
     padding: 8px;
     cursor: pointer;
     border-bottom: 1px solid #333;
+    color: #e0e0e0;
 }
 .dropdown-item:hover {
     background: #333;
+    color: #fff;
 }
 
 /* results grid (recommendation cards) */
@@ -4506,6 +4509,16 @@ details.help-box code {
     padding: 20px;
     border-radius: 8px;
     margin-top: 30px;
+}
+/* force danger zone buttons to be auto-width (not full width)
+   multiple selectors + !important to override any inherited styles */
+.danger-zone button,
+.danger-zone .btn,
+.danger-zone .btn-danger {
+    width: auto !important;
+    max-width: fit-content !important;
+    display: inline-block !important;
+    flex: none !important;
 }
 
 /* backup list */

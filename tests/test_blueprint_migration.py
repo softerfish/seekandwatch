@@ -10,9 +10,8 @@ import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from app import app
 
-def test_all_routes_registered():
+def test_all_routes_registered(app):
     """Verify all expected routes are registered"""
     print("Testing route registration...")
     

@@ -33,10 +33,9 @@ jobs:
         python -m pip install --upgrade pip
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
     
-    - name: Run all tests
+    - name: Run tests with pytest
       run: |
-        cd tests
-        python run_all_tests.py
+        python -m pytest tests/ -v --tb=short
       continue-on-error: false
     
     - name: Test summary

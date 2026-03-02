@@ -56,6 +56,5 @@ images/*
 # --- Internal Documentation & Scripts ---
 # Not for public GitHub
 docs/
-documentation/
 scripts/
 ROADMAP.md
