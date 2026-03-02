@@ -155,8 +155,9 @@ if [ "$IS_APP_DIR" = "true" ]; then
         echo "   Updating app files from Docker image..."
         
         # List of files/directories to update (excludes user data like db, backups, etc.)
-        UPDATE_FILES="app.py config.py utils.py models.py presets.py auth_decorators.py requirements.txt"
-        UPDATE_DIRS="api services tunnel templates static images"
+        # NOTE: utils.py removed in Phase 8 (migrated to utils/ package)
+        UPDATE_FILES="app.py config.py models.py presets.py auth_decorators.py requirements.txt"
+        UPDATE_DIRS="api services tunnel templates static images utils"
         
         # Backup current version (just in case)
         if [ ! -d "/config/.version_backups" ]; then
@@ -206,10 +207,29 @@ if [ "$IS_APP_DIR" = "true" ]; then
         cp -f "/app/config.py" "/config/config.py"
     fi
     
+    # PHASE 8 MIGRATION: Remove old utils.py (migrated to utils/ package in v1.6.5+)
+    if [ -f "/config/utils.py" ]; then
+        echo "   PHASE 8 MIGRATION: Removing old utils.py (now using utils/ package)..."
+        # Backup just in case
+        if [ ! -d "/config/.migration_backups" ]; then
+            mkdir -p "/config/.migration_backups"
+        fi
+        mv "/config/utils.py" "/config/.migration_backups/utils.py.pre-phase8" 2>/dev/null || rm -f "/config/utils.py"
+        echo "   ✓ Old utils.py removed (backup saved to .migration_backups/)"
+    fi
+    # Also remove any other stale utils files
+    for stale_file in utils_cleaned.py utils_old_backup.py; do
+        if [ -f "/config/$stale_file" ]; then
+            echo "   Removing stale file: $stale_file"
+            rm -f "/config/$stale_file"
+        fi
+    done
+    
     # Check if there's a nested app structure and flatten it recursively
     # IMPORTANT: Detect version mismatches to avoid mixing incompatible files
-    # api, services, tunnel = package directories, others are files
-    CRITICAL_FILES="api services tunnel utils.py models.py presets.py app.py config.py auth_decorators.py"
+    # api, services, tunnel, utils = package directories, others are files
+    # NOTE: utils.py removed in Phase 8 (migrated to utils/ package)
+    CRITICAL_FILES="api services tunnel utils models.py presets.py app.py config.py auth_decorators.py"
     
     # Function to extract version from config.py
     get_version_from_app() {
@@ -223,12 +243,12 @@ if [ "$IS_APP_DIR" = "true" ]; then
     }
     
     # Function to check if a directory structure is "complete" (has all critical files)
-    # api, services, tunnel = package dirs (with __init__.py), others are files
+    # api, services, tunnel, utils = package dirs (with __init__.py), others are files
     is_complete_structure() {
         local dir="$1"
         local missing=0
         for crit_file in $CRITICAL_FILES; do
-            if [ "$crit_file" = "api" ] || [ "$crit_file" = "services" ] || [ "$crit_file" = "tunnel" ]; then
+            if [ "$crit_file" = "api" ] || [ "$crit_file" = "services" ] || [ "$crit_file" = "tunnel" ] || [ "$crit_file" = "utils" ]; then
                 [ -d "$dir/$crit_file" ] && [ -f "$dir/$crit_file/__init__.py" ] || missing=$((missing + 1))
             elif [ ! -f "$dir/$crit_file" ]; then
                 missing=$((missing + 1))
@@ -466,7 +486,9 @@ if [ "$IS_APP_DIR" != "true" ]; then
 
         # Detect and fix nested app/app structure (recursively handles any depth)
         # IMPORTANT: Detect version mismatches to avoid mixing incompatible files
-        CRITICAL_FILES="api services tunnel utils.py models.py presets.py app.py config.py auth_decorators.py"
+        # api, services, tunnel, utils = package directories, others are files
+        # NOTE: utils.py removed in Phase 8 (migrated to utils/ package)
+        CRITICAL_FILES="api services tunnel utils models.py presets.py app.py config.py auth_decorators.py"
         
         # Function to extract version from config.py
         get_version_from_app() {
@@ -479,12 +501,12 @@ if [ "$IS_APP_DIR" != "true" ]; then
             fi
         }
         
-        # Function to check if a directory structure is "complete" (api, services, tunnel = package dirs)
+        # Function to check if a directory structure is "complete" (api, services, tunnel, utils = package dirs)
         is_complete_structure() {
             local dir="$1"
             local missing=0
             for crit_file in $CRITICAL_FILES; do
-                if [ "$crit_file" = "api" ] || [ "$crit_file" = "services" ] || [ "$crit_file" = "tunnel" ]; then
+                if [ "$crit_file" = "api" ] || [ "$crit_file" = "services" ] || [ "$crit_file" = "tunnel" ] || [ "$crit_file" = "utils" ]; then
                     [ -d "$dir/$crit_file" ] && [ -f "$dir/$crit_file/__init__.py" ] || missing=$((missing + 1))
                 elif [ ! -f "$dir/$crit_file" ]; then
                     missing=$((missing + 1))
