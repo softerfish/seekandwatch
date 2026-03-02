@@ -1171,7 +1171,7 @@ class TunnelManager:
             
             # also update database with error if possible
             try:
-                from seekandwatch.models import Settings
+                from models import Settings
                 # find any settings with tunnel enabled
                 settings_list = Settings.query.filter_by(tunnel_enabled=True).all()
                 
