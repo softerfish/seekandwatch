@@ -153,6 +153,13 @@ docker compose up -d
 
 ## Changelog
 
+v1.6.4
+
+
+
+<details>
+  <summary><b>Past Changelog</b></summary>
+
 v1.6.3
 
 I've had to remove Custom Collection Builder and Import Lists to focus on the more widely used features of the project.
@@ -166,9 +173,6 @@ I've had to remove Custom Collection Builder and Import Lists to focus on the mo
 - Plex Collections now supports syncing collections across multiple libraries
 - cache clearing to entrypoint.sh
 - master tasks is background at 15 minute intervals now with plans to allow user setting in future update
-
-<details>
-  <summary><b>Past Changelog</b></summary>
 
 v1.6.2
 

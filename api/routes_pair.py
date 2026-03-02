@@ -114,7 +114,8 @@ def pair_receive_key():
         # save the key and enable cloud
         settings.cloud_api_key = api_key
         settings.cloud_enabled = True
-        settings.cloud_sync_owned_enabled = True
+        # cloud sync requires tunnel (will be enabled when tunnel starts)
+        settings.cloud_sync_owned_enabled = settings.tunnel_enabled if hasattr(settings, 'tunnel_enabled') else False
         
         # save secret if provided (restored from cloud)
         webhook_secret = data.get('webhook_secret')
@@ -133,9 +134,24 @@ def pair_receive_key():
         
         current_app.logger.info(f"successfully paired with cloud for user {settings.user_id}")
         
+        # verify tunnel is still running and restart if needed
+        manager = current_app.tunnel_manager
+        if not manager._is_process_running():
+            current_app.logger.warning("Tunnel process not running after pairing, restarting...")
+            # restart the tunnel
+            if hasattr(settings, 'cloudflare_api_token') and settings.cloudflare_api_token:
+                creds = manager._decrypt_credentials(settings.tunnel_credentials_encrypted)
+                if creds and 'tunnel_token' in creds:
+                    manager.start_tunnel_with_token(settings.user_id, creds['tunnel_token'])
+            else:
+                # restart quick tunnel
+                new_url = manager.start_quick_tunnel(settings.user_id)
+                if new_url:
+                    settings.tunnel_url = new_url
+                    db.session.commit()
+        
         # register webhook with cloud now that we have an api key
         if settings.tunnel_url:
-            manager = current_app.tunnel_manager
             cloud_base = settings.cloud_base_url or CLOUD_URL
             import threading
             def _register_bg(app_context, tunnel_url, api_key, cloud_base, user_id, secret):
@@ -147,6 +163,30 @@ def pair_receive_key():
                 args=(current_app.app_context(), settings.tunnel_url, api_key, cloud_base, settings.user_id, settings.cloud_webhook_secret or ''),
                 daemon=True
             ).start()
+        
+        # trigger initial sync to pull down any pending approved requests
+        def _initial_sync(app_context, settings_id):
+            import time
+            time.sleep(3)  # wait for webhook registration to complete
+            with app_context:
+                from services.CloudService import CloudService
+                s = Settings.query.get(settings_id)
+                if s and s.cloud_enabled and s.cloud_api_key:
+                    current_app.logger.info(f"Running initial sync after pairing for user {s.user_id}")
+                    try:
+                        success, message = CloudService.fetch_cloud_requests(s)
+                        if success:
+                            current_app.logger.info(f"Initial sync completed: {message}")
+                        else:
+                            current_app.logger.warning(f"Initial sync failed: {message}")
+                    except Exception as e:
+                        current_app.logger.error(f"Initial sync error: {e}")
+        
+        threading.Thread(
+            target=_initial_sync,
+            args=(current_app.app_context(), settings.id),
+            daemon=True
+        ).start()
         
         response = jsonify({'success': True, 'message': 'Pairing successful! Local app is now connected.'})
         response.headers['Access-Control-Allow-Origin'] = '*'

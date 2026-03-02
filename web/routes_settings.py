@@ -123,10 +123,8 @@ def settings():
                 s.backup_retention = max(1, min(365, int(request.form.get('backup_retention', 7))))
             except (TypeError, ValueError):
                 s.backup_retention = 7
-            if 'cloud_sync_owned_enabled' in request.form:
-                s.cloud_sync_owned_enabled = True
-            elif form_section in ('system', ''):
-                s.cloud_sync_owned_enabled = False
+            # cloud sync is now tied to tunnel status (no standalone checkbox)
+            # this section is for system settings, so we don't change cloud_sync_owned_enabled here
             
             s.quiet_webhook_logs = 'quiet_webhook_logs' in request.form
             try:

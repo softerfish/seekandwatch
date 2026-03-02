@@ -35,12 +35,14 @@ def enable_tunnel():
                 'error': 'Settings not found for user'
             }), 404
         
-        # check if already enabled
-        if settings.tunnel_enabled:
+        # check if already enabled and has a URL (tunnel is running)
+        if settings.tunnel_enabled and settings.tunnel_url:
             return jsonify({
                 'success': True,
                 'message': 'tunnel already enabled',
-                'status': 'already_enabled'
+                'tunnel_url': settings.tunnel_url,
+                'status': 'connected',
+                'is_quick': 'trycloudflare.com' in settings.tunnel_url.lower() if settings.tunnel_url else False
             })
         
         manager = get_tunnel_manager()
@@ -64,7 +66,7 @@ def enable_tunnel():
                     }), 500
                 
                 # register webhook with cloud app
-                if settings.cloud_enabled and settings.cloud_api_key and settings.cloud_base_url:
+                if settings.cloud_enabled and settings.cloud_api_key:
                     # make sure we have a secret locally
                     if not settings.cloud_webhook_secret:
                         import secrets
@@ -77,18 +79,49 @@ def enable_tunnel():
                     webhook_url = f"{tunnel_url}/api/webhook"
                     settings.cloud_webhook_url = webhook_url
                     
+                    # get cloud base URL (uses config default if not set)
+                    from services.CloudService import CloudService
+                    cloud_base = CloudService.get_cloud_base_url(settings)
+                    
                     # register in background
                     manager.register_webhook(
                         tunnel_url=tunnel_url,
                         api_key=settings.cloud_api_key,
-                        cloud_base_url=settings.cloud_base_url,
+                        cloud_base_url=cloud_base,
                         user_id=user_id,
                         webhook_secret=webhook_secret
                     )
                 
                 # mark tunnel as enabled
                 settings.tunnel_enabled = True
+                settings.cloud_sync_owned_enabled = True  # cloud sync requires tunnel
                 db.session.commit()
+                
+                # trigger initial sync to pull down any pending approved requests
+                if settings.cloud_enabled and settings.cloud_api_key:
+                    def _initial_sync(app_context, settings_id):
+                        import time
+                        time.sleep(3)  # wait for webhook registration
+                        with app_context:
+                            from services.CloudService import CloudService
+                            s = Settings.query.get(settings_id)
+                            if s and s.cloud_enabled and s.cloud_api_key:
+                                current_app.logger.info(f"Running initial sync after tunnel enable for user {s.user_id}")
+                                try:
+                                    success, message = CloudService.fetch_cloud_requests(s)
+                                    if success:
+                                        current_app.logger.info(f"Initial sync completed: {message}")
+                                    else:
+                                        current_app.logger.warning(f"Initial sync failed: {message}")
+                                except Exception as e:
+                                    current_app.logger.error(f"Initial sync error: {e}")
+                    
+                    import threading
+                    threading.Thread(
+                        target=_initial_sync,
+                        args=(current_app.app_context(), settings.id),
+                        daemon=True
+                    ).start()
                 
                 return jsonify({
                     'success': True,
@@ -138,7 +171,7 @@ def enable_tunnel():
                 }), 500
             
             # register webhook with cloud app
-            if settings.cloud_enabled and settings.cloud_api_key and settings.cloud_base_url:
+            if settings.cloud_enabled and settings.cloud_api_key:
                 tunnel_url = tunnel_result['url']
                 
                 # make sure we have a secret locally
@@ -153,18 +186,49 @@ def enable_tunnel():
                 webhook_url = f"{tunnel_url}/api/webhook"
                 settings.cloud_webhook_url = webhook_url
                 
+                # get cloud base URL (uses config default if not set)
+                from services.CloudService import CloudService
+                cloud_base = CloudService.get_cloud_base_url(settings)
+                
                 # register in background
                 manager.register_webhook(
                     tunnel_url=tunnel_url,
                     api_key=settings.cloud_api_key,
-                    cloud_base_url=settings.cloud_base_url,
+                    cloud_base_url=cloud_base,
                     user_id=user_id,
                     webhook_secret=webhook_secret
                 )
             
             # mark tunnel as enabled
             settings.tunnel_enabled = True
+            settings.cloud_sync_owned_enabled = True  # cloud sync requires tunnel
             db.session.commit()
+            
+            # trigger initial sync to pull down any pending approved requests
+            if settings.cloud_enabled and settings.cloud_api_key:
+                def _initial_sync(app_context, settings_id):
+                    import time
+                    time.sleep(3)  # wait for webhook registration
+                    with app_context:
+                        from services.CloudService import CloudService
+                        s = Settings.query.get(settings_id)
+                        if s and s.cloud_enabled and s.cloud_api_key:
+                            current_app.logger.info(f"Running initial sync after tunnel enable for user {s.user_id}")
+                            try:
+                                success, message = CloudService.fetch_cloud_requests(s)
+                                if success:
+                                    current_app.logger.info(f"Initial sync completed: {message}")
+                                else:
+                                    current_app.logger.warning(f"Initial sync failed: {message}")
+                            except Exception as e:
+                                current_app.logger.error(f"Initial sync error: {e}")
+                
+                import threading
+                threading.Thread(
+                    target=_initial_sync,
+                    args=(current_app.app_context(), settings.id),
+                    daemon=True
+                ).start()
             
             return jsonify({
                 'success': True,
@@ -309,6 +373,7 @@ def disable_tunnel():
         # mark tunnel as disabled (but keep credentials)
         settings.tunnel_enabled = False
         settings.tunnel_status = 'disconnected'
+        settings.cloud_sync_owned_enabled = False  # cloud sync requires tunnel
         db.session.commit()
         
         return jsonify({
@@ -400,6 +465,90 @@ def test_tunnel():
         return jsonify({
             'success': False,
             'error': 'Failed to test connection. Please check the logs.'
+        }), 500
+
+
+@api_bp.route('/tunnel/restart', methods=['POST'])
+@login_required
+@rate_limit_decorator("10 per hour")
+def restart_tunnel():
+    """restart tunnel for the current user (stops and starts the process, useful if tunnel died)"""
+    try:
+        user_id = current_user.id
+        settings = Settings.query.filter_by(user_id=user_id).first()
+        
+        if not settings:
+            return jsonify({
+                'success': False,
+                'error': 'Settings not found for user'
+            }), 404
+        
+        if not settings.tunnel_enabled:
+            return jsonify({
+                'success': False,
+                'error': 'Tunnel is not enabled'
+            }), 400
+        
+        manager = get_tunnel_manager()
+        
+        current_app.logger.info(f"restarting tunnel for user {user_id}")
+        
+        # stop existing process
+        manager.stop_tunnel(user_id)
+        
+        # wait a moment
+        import time
+        time.sleep(2)
+        
+        # restart based on tunnel type
+        tunnel_url = None
+        if settings.tunnel_name == 'quick-tunnel' or not hasattr(settings, 'cloudflare_api_token') or not settings.cloudflare_api_token:
+            # restart quick tunnel
+            tunnel_url = manager.start_quick_tunnel(user_id)
+        else:
+            # restart API-based tunnel
+            if settings.tunnel_credentials_encrypted:
+                credentials = manager._decrypt_credentials(settings.tunnel_credentials_encrypted)
+                if credentials and 'tunnel_token' in credentials:
+                    if manager.start_tunnel_with_token(user_id, credentials['tunnel_token']):
+                        tunnel_url = settings.tunnel_url
+        
+        if not tunnel_url:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to restart tunnel'
+            }), 500
+        
+        # re-register webhook if cloud is enabled
+        if settings.cloud_enabled and settings.cloud_api_key:
+            from services.CloudService import CloudService
+            cloud_base = CloudService.get_cloud_base_url(settings)
+            
+            if not settings.cloud_webhook_secret:
+                import secrets
+                settings.cloud_webhook_secret = secrets.token_urlsafe(32)
+                db.session.commit()
+            
+            manager.register_webhook(
+                tunnel_url=tunnel_url,
+                api_key=settings.cloud_api_key,
+                cloud_base_url=cloud_base,
+                user_id=user_id,
+                webhook_secret=settings.cloud_webhook_secret
+            )
+        
+        return jsonify({
+            'success': True,
+            'message': 'tunnel restarted successfully',
+            'tunnel_url': tunnel_url,
+            'status': 'connected'
+        })
+        
+    except Exception:
+        current_app.logger.error("error restarting tunnel")
+        return jsonify({
+            'success': False,
+            'error': 'an unexpected error occurred, please check the logs'
         }), 500
 
 

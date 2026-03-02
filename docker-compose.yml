@@ -10,6 +10,14 @@ services:
       - TZ=America/New_York
       - PUID=1000  # Optional: Change if you have permission issues
       - PGID=1000  # Optional: Change if you have permission issues
+      
+      # Tunnel auto-recovery (optional, defaults to false for safety)
+      # Uncomment to enable automatic tunnel recovery on connection failures
+      # - ENABLE_AUTO_RECOVERY=true
+      
+      # Tunnel health check interval in seconds (optional, defaults to 900 / 15 minutes)
+      # Minimum allowed is 900 seconds to prevent excessive checks
+      # - TUNNEL_HEALTH_CHECK_INTERVAL=900
     restart: unless-stopped
     
     # Graceful shutdown configuration

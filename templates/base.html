@@ -633,6 +633,7 @@
 </div>
 
 <script>
+{% if current_user.is_authenticated %}
 const API_REQUEST_MEDIA = "{{ url_for('api.get_requested_media') }}";
 const API_RADARR_ADD = "{{ url_for('api.add_to_radarr') }}";
 const API_SONARR_ADD = "{{ url_for('api.add_to_sonarr') }}";
@@ -640,8 +641,18 @@ const API_RADARR_QUALITY_PROFILES = "{{ url_for('api.get_radarr_quality_profiles
 const API_SONARR_QUALITY_PROFILES = "{{ url_for('api.get_sonarr_quality_profiles') }}";
 
 // integration status
-const HAS_RADARR = {% if current_user.is_authenticated and current_user.settings.radarr_url and current_user.settings.radarr_api_key %}true{% else %}false{% endif %};
-const HAS_SONARR = {% if current_user.is_authenticated and current_user.settings.sonarr_url and current_user.settings.sonarr_api_key %}true{% else %}false{% endif %};
+const HAS_RADARR = {% if current_user.settings.radarr_url and current_user.settings.radarr_api_key %}true{% else %}false{% endif %};
+const HAS_SONARR = {% if current_user.settings.sonarr_url and current_user.settings.sonarr_api_key %}true{% else %}false{% endif %};
+{% else %}
+// API endpoints not available when not authenticated
+const API_REQUEST_MEDIA = "";
+const API_RADARR_ADD = "";
+const API_SONARR_ADD = "";
+const API_RADARR_QUALITY_PROFILES = "";
+const API_SONARR_QUALITY_PROFILES = "";
+const HAS_RADARR = false;
+const HAS_SONARR = false;
+{% endif %}
 
 // keep track of what we're requesting
 let requestModalState = {

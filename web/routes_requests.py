@@ -47,7 +47,23 @@ def save_cloud_settings():
                 settings.cloud_enabled = False
     settings.cloud_movie_handler = request.form.get('cloud_movie_handler')
     settings.cloud_tv_handler = request.form.get('cloud_tv_handler')
-    settings.cloud_sync_owned_enabled = 'cloud_sync_owned_enabled' in request.form
+    
+    # cloud sync is now tied to tunnel status (webhook-only, no standalone polling)
+    # automatically enable when tunnel is active, disable when tunnel is off
+    settings.cloud_sync_owned_enabled = settings.tunnel_enabled
+    
+    # phase 4: handle auto-recovery toggle (only from tunnel config form)
+    if 'from_tunnel_config' in request.form:
+        # auto-recovery toggle
+        if hasattr(settings, 'tunnel_auto_recovery_enabled'):
+            settings.tunnel_auto_recovery_enabled = 'tunnel_auto_recovery_enabled' in request.form
+        
+        # circuit breaker reset
+        if 'reset_circuit_breaker' in request.form and hasattr(settings, 'tunnel_recovery_disabled'):
+            settings.tunnel_recovery_disabled = False
+            settings.tunnel_recovery_count = 0
+            settings.tunnel_consecutive_failures = 0
+            flash("Auto-recovery has been reset. Try enabling the tunnel again.", "success")
 
     # save cloudflare tunnel settings
     settings.cloudflare_api_token = (request.form.get('cloudflare_api_token') or '').strip() or None

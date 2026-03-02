@@ -18,21 +18,24 @@ class HealthMonitor:
     MAX_RESTART_ATTEMPTS = 5
     RESTART_WINDOW_MINUTES = 10
     
-    def __init__(self, tunnel_manager: 'TunnelManager', check_interval: int = 60):
-        """
-        Initialize health monitor.
-        
-        Args:
-            tunnel_manager: TunnelManager instance to monitor
-            check_interval: Seconds between health checks (default 60)
-        """
-        self.tunnel_manager = tunnel_manager
-        self.check_interval = check_interval
-        self.running = False
-        self.thread = None
-        self.failure_timestamps = []  # track failures for backoff logic
-        self.app = tunnel_manager.app  # grab app reference for logging
-        self.db = tunnel_manager.db  # grab db reference for updates
+    def __init__(self, tunnel_manager: 'TunnelManager', check_interval: int = 900):
+            """
+            Initialize health monitor.
+
+            Args:
+                tunnel_manager: TunnelManager instance to monitor
+                check_interval: Seconds between health checks (default 900 / 15 minutes)
+            """
+            self.tunnel_manager = tunnel_manager
+            self.check_interval = check_interval
+            self.running = False
+            self.thread = None
+            self.failure_timestamps = []  # track failures for backoff logic
+            self.app = tunnel_manager.app  # grab app reference for logging
+            self.db = tunnel_manager.db  # grab db reference for updates
+            
+            # phase 2: consecutive failure tracking for auto-recovery
+            self.consecutive_failures = 0  # track consecutive failures (reset on success)
     
     def start(self):
         """Start health monitoring in background thread."""
@@ -73,6 +76,7 @@ class HealthMonitor:
         
         Checks tunnel health every check_interval seconds.
         Updates database with tunnel_last_health_check timestamp.
+        Phase 2: tracks consecutive failures and triggers auto-recovery on 2nd failure.
         """
         while self.running:
             try:
@@ -83,9 +87,38 @@ class HealthMonitor:
                 self._update_health_check_timestamp()
                 
                 if not is_healthy:
-                    self.app.logger.warning("Tunnel health check failed, process not running")
+                    # increment consecutive failures
+                    self.consecutive_failures += 1
+                    self.app.logger.warning(
+                        f"Tunnel health check failed, process not running "
+                        f"(consecutive failures: {self.consecutive_failures})"
+                    )
                     
-                    # attempt restart if allowed by backoff logic
+                    # phase 2: check if we should trigger auto-recovery
+                    if self.consecutive_failures >= 2:
+                        # check feature flag
+                        from config import ENABLE_AUTO_RECOVERY
+                        
+                        if ENABLE_AUTO_RECOVERY:
+                            self.app.logger.info(
+                                f"2 consecutive failures detected, triggering auto-recovery"
+                            )
+                            
+                            # trigger auto-recovery (stub for now)
+                            recovery_success = self._trigger_auto_recovery()
+                            
+                            if recovery_success:
+                                # reset consecutive failures on success
+                                self.consecutive_failures = 0
+                                self.app.logger.info("Auto-recovery succeeded, reset failure counter")
+                            else:
+                                self.app.logger.warning("Auto-recovery failed or not applicable")
+                        else:
+                            self.app.logger.debug(
+                                "Auto-recovery disabled by feature flag, not triggering"
+                            )
+                    
+                    # attempt restart if allowed by backoff logic (existing behavior)
                     if self._should_attempt_restart():
                         self.app.logger.info("Attempting automatic tunnel restart")
                         
@@ -93,6 +126,8 @@ class HealthMonitor:
                         
                         if restart_success:
                             self._record_success()
+                            # reset consecutive failures on successful restart
+                            self.consecutive_failures = 0
                             self.app.logger.info("Tunnel restarted successfully")
                         else:
                             self._record_failure()
@@ -102,6 +137,14 @@ class HealthMonitor:
                             "Restart attempts exhausted, not attempting restart "
                             f"({len(self.failure_timestamps)} failures in last {self.RESTART_WINDOW_MINUTES} minutes)"
                         )
+                else:
+                    # health check passed, reset consecutive failures
+                    if self.consecutive_failures > 0:
+                        self.app.logger.info(
+                            f"Health check passed, resetting consecutive failures "
+                            f"(was {self.consecutive_failures})"
+                        )
+                        self.consecutive_failures = 0
                 
                 # sleep until next check (but check running flag periodically)
                 # this allows stop() to work quickly
@@ -117,16 +160,51 @@ class HealthMonitor:
     
     def _check_process_health(self) -> bool:
         """
-        Check if cloudflared process is running.
+        Check if cloudflared process is running and tunnel is reachable.
         
-        Verifies process status by checking PID and process state.
+        Phase 5 Enhancement 1: Uses dedicated /api/health endpoint for faster checks.
+        Falls back to checking process status if HTTP check fails.
         
         Returns:
             True if process is running and healthy, False otherwise
         """
         try:
-            # use TunnelManager's _is_process_running method
+            # phase 5 enhancement 1: try HTTP health check first
+            from config import USE_DEDICATED_HEALTH_ENDPOINT, TUNNEL_HEALTH_ENDPOINT
+            
+            if USE_DEDICATED_HEALTH_ENDPOINT:
+                # get tunnel URL from database
+                with self.app.app_context():
+                    from models import Settings
+                    settings = Settings.query.filter_by(tunnel_enabled=True).first()
+                    
+                    if settings and settings.tunnel_url:
+                        import requests
+                        
+                        # construct health check URL
+                        health_url = f"{settings.tunnel_url}{TUNNEL_HEALTH_ENDPOINT}"
+                        
+                        try:
+                            # make HTTP request to health endpoint (10 second timeout)
+                            response = requests.get(health_url, timeout=10)
+                            
+                            if response.status_code == 200:
+                                # health check passed
+                                return True
+                            else:
+                                self.app.logger.warning(
+                                    f"Health endpoint returned {response.status_code}, "
+                                    "falling back to process check"
+                                )
+                        except requests.RequestException as e:
+                            self.app.logger.warning(
+                                f"Health endpoint request failed: {e}, "
+                                "falling back to process check"
+                            )
+            
+            # fallback: use TunnelManager's _is_process_running method
             return self.tunnel_manager._is_process_running()
+            
         except Exception:
             self.app.logger.error("Error checking process health")
             return False
@@ -288,6 +366,51 @@ class HealthMonitor:
         """
         self.failure_timestamps.clear()
         self.app.logger.debug("Cleared failure history after successful recovery")
+    
+    def _trigger_auto_recovery(self) -> bool:
+        """
+        Trigger auto-recovery by calling TunnelManager's auto_recover_tunnel method.
+        
+        Checks if webhook is being processed before triggering recovery.
+        
+        Returns:
+            True if recovery succeeded, False otherwise
+        """
+        try:
+            # check if webhook is being processed
+            try:
+                from api.routes_webhook import is_webhook_processing
+                if is_webhook_processing():
+                    self.app.logger.info("Webhook processing active, delaying recovery")
+                    return False
+            except (ImportError, AttributeError) as e:
+                # webhook module not available or function missing, proceed anyway
+                self.app.logger.debug(f"Webhook lock check skipped: {e}")
+            
+            # ensure we're in app context for database operations
+            with self.app.app_context():
+                from models import Settings
+                
+                # find enabled tunnel to get user_id
+                settings = Settings.query.filter_by(tunnel_enabled=True).first()
+                
+                if not settings:
+                    self.app.logger.error("No enabled tunnel found for auto-recovery")
+                    return False
+                
+                user_id = settings.user_id
+                
+                # update database with consecutive failures count
+                if hasattr(settings, 'tunnel_consecutive_failures'):
+                    settings.tunnel_consecutive_failures = self.consecutive_failures
+                    self.db.session.commit()
+                
+                # call TunnelManager's auto_recover_tunnel method
+                return self.tunnel_manager.auto_recover_tunnel(user_id)
+                
+        except Exception as e:
+            self.app.logger.error(f"Error triggering auto-recovery: {e}")
+            return False
     
     def _update_health_check_timestamp(self):
         """

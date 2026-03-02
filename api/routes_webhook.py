@@ -1,6 +1,7 @@
 """webhook routes - receive approved requests from cloud app with enhanced security"""
 
 import hmac
+import threading
 import time
 from flask import request, jsonify
 from flask_login import login_required, current_user
@@ -11,17 +12,50 @@ from services.Router import Router
 from config import SCHEDULER_USER_ID
 from utils import write_log
 
+# webhook processing lock (prevents recovery during webhook processing)
+_webhook_processing = False
+_webhook_lock = threading.Lock()
+
+def is_webhook_processing():
+    """Check if webhook is currently being processed (used by recovery logic)"""
+    with _webhook_lock:
+        return _webhook_processing
+
+@api_bp.route(Router.LOCAL_WEBHOOK_PATH.replace('/api', ''), methods=['GET'])
+@rate_limit_decorator("60 per hour")
+def webhook_health_check():
+    """health check endpoint for webhook connectivity testing (GET only)"""
+    import socket
+    hostname = socket.gethostname()
+    
+    return jsonify({
+        'status': 'ok',
+        'message': 'Webhook endpoint is reachable',
+        'methods': ['POST'],
+        'hostname': hostname,
+        'app_running': True
+    }), 200
+
+
 @api_bp.route(Router.LOCAL_WEBHOOK_PATH.replace('/api', ''), methods=['POST'])
 @rate_limit_decorator("10 per minute")
 def receive_webhook():
     """receive webhook from cloud app"""
+    global _webhook_processing
+    
     # csrf exempt (webhooks come from external source)
     try:
         from app import csrf
         if csrf and hasattr(csrf, 'exempt'):
             csrf.exempt(receive_webhook)
-    except: pass
+    except:
+        pass
     
+    # set processing flag to prevent recovery during webhook processing
+    with _webhook_lock:
+        _webhook_processing = True
+    
+    # log incoming request
     ip_address = request.remote_addr
     write_log("info", "Webhook", f"webhook request from {ip_address}")
     
@@ -186,6 +220,11 @@ def receive_webhook():
             CloudService.log_webhook('error', request.get_data(as_text=True), 'error', str(e))
         except: pass
         return jsonify({'error': 'internal server error'}), 500
+    
+    finally:
+        # clear processing flag
+        with _webhook_lock:
+            _webhook_processing = False
 
 @api_bp.route('/webhook/clear_logs', methods=['POST'])
 @login_required

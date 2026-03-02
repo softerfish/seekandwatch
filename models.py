@@ -94,7 +94,7 @@ class Settings(db.Model):
     last_owned_sync_at = db.Column(db.DateTime, nullable=True)  # last successful sync to Cloud
     cloud_webhook_url = db.Column(db.String(512), nullable=True)   # when set, cloud POSTs approved requests here for instant sync
     cloud_webhook_secret = db.Column(db.String(255), nullable=True)  # secret sent in X-Webhook-Secret when cloud calls webhook
-    cloud_webhook_failsafe_hours = db.Column(db.Integer, default=6)  # when webhook enabled, poll every X hours as failsafe (6, 12, or 24)
+    cloud_webhook_failsafe_hours = db.Column(db.Integer, default=24)  # when webhook enabled, poll every X hours as failsafe (6, 12, or 24)
     cloud_poll_interval_min = db.Column(db.Integer, nullable=True)  # seconds between polls (min); null = use config/env default
     cloud_poll_interval_max = db.Column(db.Integer, nullable=True)  # seconds between polls (max); null = use config/env default
     last_cloud_poll_at = db.Column(db.DateTime, nullable=True)   # when we last attempted a cloud poll
@@ -117,6 +117,16 @@ class Settings(db.Model):
     cloudflare_account_id = db.Column(db.String(100), nullable=True)  # optional, auto-detected if not provided
     pairing_token = db.Column(db.String(100), nullable=True) # temporary token for zero-config cloud link
     pairing_token_expires = db.Column(db.DateTime, nullable=True)
+    
+    # Tunnel Auto-Recovery (phase 6: changed default to True for opt-out)
+    tunnel_provider = db.Column(db.String(20), nullable=True)  # NULL, 'cloudflare', 'ngrok'
+    tunnel_auto_recovery_enabled = db.Column(db.Boolean, default=True)  # phase 6: opt-out (default True)
+    tunnel_consecutive_failures = db.Column(db.Integer, default=0)
+    tunnel_recovery_count = db.Column(db.Integer, default=0)
+    tunnel_last_recovery = db.Column(db.DateTime, nullable=True)
+    tunnel_recovery_disabled = db.Column(db.Boolean, default=False)  # circuit breaker flag
+    tunnel_user_stopped = db.Column(db.Boolean, default=False)  # manual stop flag
+    tunnel_recovery_history = db.Column(db.Text, nullable=True)  # JSON array of last 10 recovery attempts
 
 class Blocklist(db.Model):
     __table_args__ = {'extend_existing': True}

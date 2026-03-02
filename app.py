@@ -66,7 +66,7 @@ def ensure_cloudflare_columns():
         if 'cloud_webhook_failsafe_hours' not in columns:
             print("Adding cloud_webhook_failsafe_hours column...")
             with db.engine.connect() as conn:
-                conn.execute(text('ALTER TABLE settings ADD COLUMN cloud_webhook_failsafe_hours INTEGER DEFAULT 6'))
+                conn.execute(text('ALTER TABLE settings ADD COLUMN cloud_webhook_failsafe_hours INTEGER DEFAULT 24'))
                 conn.commit()
             print("✓ Added cloud_webhook_failsafe_hours")
 
@@ -208,6 +208,14 @@ with app.app_context():
     
     ensure_cloudflare_columns()
     migrate_custom_poster_paths()
+    
+    # Auto-detect tunnel provider for existing users
+    try:
+        from tunnel.startup_detection import auto_detect_and_set_provider, verify_and_correct_provider
+        auto_detect_and_set_provider()
+        verify_and_correct_provider()  # phase 5 enhancement 2: verify on every startup
+    except Exception as e:
+        print(f"Warning: Tunnel provider auto-detection failed: {e}")
 
 login_manager = LoginManager()
 login_manager.login_view = 'web_auth.login'
@@ -224,13 +232,14 @@ def init_tunnel_services():
     try:
         from tunnel.manager import TunnelManager
         from tunnel.health import HealthMonitor
+        from config import TUNNEL_HEALTH_CHECK_INTERVAL
         
         # create tunnel manager instance
         tunnel_manager = TunnelManager(app, db)
         app.tunnel_manager = tunnel_manager
         
-        # create health monitor
-        health_monitor = HealthMonitor(tunnel_manager, check_interval=60)
+        # create health monitor with configured interval (default 900 seconds / 15 minutes)
+        health_monitor = HealthMonitor(tunnel_manager, check_interval=TUNNEL_HEALTH_CHECK_INTERVAL)
         
         # start tunnels for users who have them enabled AND have the required credentials
         with app.app_context():
@@ -523,7 +532,7 @@ def _perform_actual_migrations():
                     _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN cloud_webhook_secret VARCHAR(255)")
                 if 'cloud_webhook_failsafe_hours' not in settings_columns:
                     print("--- [Migration] Adding 'cloud_webhook_failsafe_hours' column ---")
-                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN cloud_webhook_failsafe_hours INTEGER DEFAULT 6")
+                    _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN cloud_webhook_failsafe_hours INTEGER DEFAULT 24")
                 if 'cloud_poll_interval_min' not in settings_columns:
                     print("--- [Migration] Adding 'cloud_poll_interval_min' column ---")
                     _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN cloud_poll_interval_min INTEGER")

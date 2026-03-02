@@ -143,8 +143,8 @@ if [ "$IS_APP_DIR" = "true" ]; then
     echo "Using /config directly as app directory (detected app directory mount)"
     
     # AUTO-UPDATE: Check if Docker image has a newer version than mounted config
-    IMAGE_VERSION=$(grep -oP 'VERSION\s*=\s*"[0-9]+\.[0-9]+\.[0-9]+"' /app/app.py 2>/dev/null | head -1 | grep -oP '"[0-9]+\.[0-9]+\.[0-9]+"' | tr -d '"' || echo "0.0.0")
-    CONFIG_VERSION=$(grep -oP 'VERSION\s*=\s*"[0-9]+\.[0-9]+\.[0-9]+"' /config/app.py 2>/dev/null | head -1 | grep -oP '"[0-9]+\.[0-9]+\.[0-9]+"' | tr -d '"' || echo "0.0.0")
+    IMAGE_VERSION=$(grep -oP 'VERSION\s*=\s*"[0-9]+\.[0-9]+\.[0-9]+"' /app/config.py 2>/dev/null | head -1 | grep -oP '"[0-9]+\.[0-9]+\.[0-9]+"' | tr -d '"' || echo "0.0.0")
+    CONFIG_VERSION=$(grep -oP 'VERSION\s*=\s*"[0-9]+\.[0-9]+\.[0-9]+"' /config/config.py 2>/dev/null | head -1 | grep -oP '"[0-9]+\.[0-9]+\.[0-9]+"' | tr -d '"' || echo "0.0.0")
     
     echo "Docker image version: $IMAGE_VERSION"
     echo "Installed version: $CONFIG_VERSION"
@@ -211,11 +211,12 @@ if [ "$IS_APP_DIR" = "true" ]; then
     # api, services, tunnel = package directories, others are files
     CRITICAL_FILES="api services tunnel utils.py models.py presets.py app.py config.py auth_decorators.py"
     
-    # Function to extract version from app.py
+    # Function to extract version from config.py
     get_version_from_app() {
-        local app_file="$1"
-        if [ -f "$app_file" ]; then
-            grep -oP 'VERSION\s*=\s*"[0-9]+\.[0-9]+\.[0-9]+"' "$app_file" 2>/dev/null | head -1 | grep -oP '"[0-9]+\.[0-9]+\.[0-9]+"' | tr -d '"' || echo "unknown"
+        local app_dir="$1"
+        local config_file="$app_dir/config.py"
+        if [ -f "$config_file" ]; then
+            grep -oP 'VERSION\s*=\s*"[0-9]+\.[0-9]+\.[0-9]+"' "$config_file" 2>/dev/null | head -1 | grep -oP '"[0-9]+\.[0-9]+\.[0-9]+"' | tr -d '"' || echo "unknown"
         else
             echo "unknown"
         fi
@@ -243,8 +244,8 @@ if [ "$IS_APP_DIR" = "true" ]; then
     declare -A app_timestamps
     
     # Check /config version
-    if [ -f "/config/app.py" ]; then
-        app_versions["/config"]=$(get_version_from_app "/config/app.py")
+    if [ -f "/config/config.py" ]; then
+        app_versions["/config"]=$(get_version_from_app "/config")
         if is_complete_structure "/config"; then
             app_completeness["/config"]="complete"
         else
@@ -276,8 +277,8 @@ if [ "$IS_APP_DIR" = "true" ]; then
     current_path="/config"
     while [ -d "${current_path}/app" ]; do
         current_path="${current_path}/app"
-        if [ -f "$current_path/app.py" ]; then
-            app_versions["$current_path"]=$(get_version_from_app "$current_path/app.py")
+        if [ -f "$current_path/config.py" ]; then
+            app_versions["$current_path"]=$(get_version_from_app "$current_path")
             if is_complete_structure "$current_path"; then
                 app_completeness["$current_path"]="complete"
             else
@@ -467,12 +468,12 @@ if [ "$IS_APP_DIR" != "true" ]; then
         # IMPORTANT: Detect version mismatches to avoid mixing incompatible files
         CRITICAL_FILES="api services tunnel utils.py models.py presets.py app.py config.py auth_decorators.py"
         
-        # Function to extract version from app.py
+        # Function to extract version from config.py
         get_version_from_app() {
-            local app_file="$1"
-            if [ -f "$app_file" ]; then
-                # Extract VERSION = "x.x.x" from app.py
-                grep -oP 'VERSION\s*=\s*"[0-9]+\.[0-9]+\.[0-9]+"' "$app_file" 2>/dev/null | head -1 | grep -oP '"[0-9]+\.[0-9]+\.[0-9]+"' | tr -d '"' || echo "unknown"
+            local app_dir="$1"
+            local config_file="$app_dir/config.py"
+            if [ -f "$config_file" ]; then
+                grep -oP 'VERSION\s*=\s*"[0-9]+\.[0-9]+\.[0-9]+"' "$config_file" 2>/dev/null | head -1 | grep -oP '"[0-9]+\.[0-9]+\.[0-9]+"' | tr -d '"' || echo "unknown"
             else
                 echo "unknown"
             fi
@@ -499,8 +500,8 @@ if [ "$IS_APP_DIR" != "true" ]; then
         declare -A app_timestamps
         
         # Check /config/app version
-        if [ -f "/config/app/app.py" ]; then
-            app_versions["/config/app"]=$(get_version_from_app "/config/app/app.py")
+        if [ -f "/config/app/config.py" ]; then
+            app_versions["/config/app"]=$(get_version_from_app "/config/app")
             if is_complete_structure "/config/app"; then
                 app_completeness["/config/app"]="complete"
             else
@@ -532,8 +533,8 @@ if [ "$IS_APP_DIR" != "true" ]; then
         current_path="/config/app"
         while [ -d "${current_path}/app" ]; do
             current_path="${current_path}/app"
-            if [ -f "$current_path/app.py" ]; then
-                app_versions["$current_path"]=$(get_version_from_app "$current_path/app.py")
+            if [ -f "$current_path/config.py" ]; then
+                app_versions["$current_path"]=$(get_version_from_app "$current_path")
                 if is_complete_structure "$current_path"; then
                     app_completeness["$current_path"]="complete"
                 else

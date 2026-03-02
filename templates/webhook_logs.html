@@ -6,14 +6,20 @@
     <div class="logs-header-row">
         <h2>Webhook Logs</h2>
         <div class="logs-actions">
-            <button onclick="toggleQuietMode()" class="btn-secondary" style="padding: 8px 15px; font-size:0.9em;" id="quiet-mode-btn">
-                {% if quiet_mode %}Quiet Mode ON 🔇{% else %}Quiet Mode OFF 🔊{% endif %}
+            <button onclick="filterLogs('all')" class="btn-secondary" style="padding: 8px 15px; font-size:0.9em;" id="filter-all-btn">
+                All Events
             </button>
-            <button onclick="clearWebhookLogs()" class="btn-delete" style="padding: 8px 15px; font-size:0.9em;">Clear Logs 🗑️</button>
-            <button onclick="location.reload()" class="btn-preview" style="padding: 8px 15px; font-size:0.9em;">Refresh 🔄</button>
+            <button onclick="filterLogs('tunnel')" class="btn-secondary" style="padding: 8px 15px; font-size:0.9em;" id="filter-tunnel-btn">
+                Tunnel Only
+            </button>
+            <button onclick="toggleQuietMode()" class="btn-secondary" style="padding: 8px 15px; font-size:0.9em;" id="quiet-mode-btn">
+                {% if quiet_mode %}Quiet Mode ON{% else %}Quiet Mode OFF{% endif %}
+            </button>
+            <button onclick="clearWebhookLogs()" class="btn-delete" style="padding: 8px 15px; font-size:0.9em;">Clear Logs</button>
+            <button onclick="location.reload()" class="btn-preview" style="padding: 8px 15px; font-size:0.9em;">Refresh</button>
         </div>
     </div>
-    <p class="media-sub">Debug incoming webhook traffic from SeekAndWatch Cloud.</p>
+    <p class="media-sub">Debug incoming webhook traffic from SeekAndWatch Cloud and tunnel events.</p>
     {% if quiet_mode %}
     <div style="margin-top: 10px; padding: 10px; background: rgba(255, 165, 0, 0.1); border-left: 3px solid orange; border-radius: 4px;">
         <strong style="color: orange;">Quiet Mode Enabled:</strong> Only errors and filtered events are logged. Successful webhooks are not shown.
@@ -34,9 +40,9 @@
         </thead>
         <tbody>
             {% for log in logs %}
-            <tr class="log-row">
+            <tr class="log-row" data-event-type="{% if 'tunnel' in log.event.lower() %}tunnel{% else %}webhook{% endif %}">
                 <td style="color: #888;">{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
-                <td><code style="color: #00bcd4;">{{ log.event }}</code></td>
+                <td><code style="color: {% if 'tunnel' in log.event.lower() %}#ff9800{% else %}#00bcd4{% endif %};">{{ log.event }}</code></td>
                 <td>
                     {% if log.status == 'success' %}
                         <span class="log-badge success">success</span>
@@ -129,6 +135,32 @@ function clearWebhookLogs() {
         else alert("Error: " + d.message);
     })
     .catch(() => alert("Request failed. Please try again."));
+}
+
+function filterLogs(type) {
+    const rows = document.querySelectorAll('.log-row');
+    const allBtn = document.getElementById('filter-all-btn');
+    const tunnelBtn = document.getElementById('filter-tunnel-btn');
+    
+    rows.forEach(row => {
+        const eventType = row.getAttribute('data-event-type');
+        if (type === 'all') {
+            row.style.display = '';
+        } else if (type === 'tunnel' && eventType === 'tunnel') {
+            row.style.display = '';
+        } else if (type === 'tunnel' && eventType !== 'tunnel') {
+            row.style.display = 'none';
+        }
+    });
+    
+    // update button styles to show active filter
+    if (type === 'all') {
+        allBtn.style.background = '#7c5dfa';
+        tunnelBtn.style.background = '';
+    } else {
+        allBtn.style.background = '';
+        tunnelBtn.style.background = '#7c5dfa';
+    }
 }
 </script>
 

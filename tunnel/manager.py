@@ -5,6 +5,8 @@ Core tunnel lifecycle management - authentication, creation, process control.
 import json
 import os
 import subprocess
+import threading
+import time
 import yaml
 from base64 import b64encode, b64decode
 from typing import Optional
@@ -36,6 +38,11 @@ class TunnelManager:
         self.app = app
         self.db = db
         self.process = None  # cloudflared subprocess
+        
+        # phase 4: recovery tracking and locking
+        self._recovery_lock = threading.Lock()
+        self._recovery_in_progress = False
+        self._recovery_attempts = []  # track recovery attempts for rate limiting
         
         # set up config directory paths
         # use app's instance path if available, otherwise fall back to user's home
@@ -1641,6 +1648,7 @@ class TunnelManager:
                 settings.tunnel_last_started = datetime.utcnow()
                 settings.tunnel_status = 'connected'
                 settings.tunnel_enabled = True
+                settings.cloud_sync_owned_enabled = True  # cloud sync requires tunnel
                 self.db.session.commit()
             
             # spawn a thread to keep reading output and writing to log so the pipe doesn't fill up
@@ -1658,3 +1666,587 @@ class TunnelManager:
         except Exception:
             self.app.logger.error("Failed to start quick tunnel")
             return None
+
+    
+    # phase 4: helper methods for auto-recovery
+    
+    def _check_internet_connectivity(self) -> bool:
+        """
+        Check if internet is available before attempting recovery.
+        
+        Returns:
+            True if internet is available, False otherwise
+        """
+        try:
+            import socket
+            # try to connect to Cloudflare DNS (1.1.1.1) on port 53
+            socket.create_connection(("1.1.1.1", 53), timeout=3)
+            return True
+        except OSError:
+            self.app.logger.warning("No internet connectivity detected")
+            return False
+    
+    def _log_tunnel_event(self, event: str, status: str, message: str, payload: dict = None):
+        """
+        Log tunnel event to WebhookLog for visibility.
+        
+        Args:
+            event: Event name (e.g. 'tunnel_recovery_started')
+            status: Event status ('info', 'success', 'error', 'warning')
+            message: Human-readable message
+            payload: Optional dict with additional data
+        """
+        try:
+            import json
+            from models import WebhookLog
+            
+            log = WebhookLog(
+                event=event,
+                status=status,
+                message=message,
+                payload=json.dumps(payload or {})
+            )
+            self.db.session.add(log)
+            self.db.session.commit()
+        except Exception as e:
+            self.app.logger.error(f"Failed to log tunnel event: {e}")
+    
+    def _update_recovery_history(self, settings, action: str, result: str, new_url: str = None, error: str = None):
+        """
+        Update tunnel_recovery_history JSON field with latest attempt.
+        
+        Args:
+            settings: Settings object
+            action: Action taken (e.g. 'recovery_attempt')
+            result: Result ('success' or 'failed')
+            new_url: New tunnel URL if successful
+            error: Error message if failed
+        """
+        try:
+            import json
+            from datetime import datetime
+            
+            history = json.loads(settings.tunnel_recovery_history or '[]')
+            history.append({
+                'timestamp': datetime.utcnow().isoformat(),
+                'action': action,
+                'result': result,
+                'new_url': new_url,
+                'error': error
+            })
+            # keep last 10 attempts
+            history = history[-10:]
+            settings.tunnel_recovery_history = json.dumps(history)
+        except Exception as e:
+            self.app.logger.error(f"Failed to update recovery history: {e}")
+    
+    def _check_recovery_rate_limits(self, settings) -> tuple[bool, str]:
+        """
+        Check if recovery is allowed based on rate limits.
+        
+        Rate limits:
+        - Max 3 attempts per hour
+        - Min 10 minutes between attempts
+        
+        Args:
+            settings: Settings object
+            
+        Returns:
+            Tuple of (allowed: bool, reason: str)
+        """
+        from datetime import datetime, timedelta
+        
+        # check last recovery time (10-minute cooldown)
+        if settings.tunnel_last_recovery:
+            time_since_last = datetime.utcnow() - settings.tunnel_last_recovery
+            if time_since_last < timedelta(minutes=10):
+                remaining = timedelta(minutes=10) - time_since_last
+                return False, f"Cooldown active, {int(remaining.total_seconds() / 60)} minutes remaining"
+        
+        # clean up old attempts (outside 1-hour window)
+        cutoff_time = datetime.utcnow() - timedelta(hours=1)
+        self._recovery_attempts = [
+            ts for ts in self._recovery_attempts
+            if ts > cutoff_time
+        ]
+        
+        # check attempt count (max 3 per hour)
+        if len(self._recovery_attempts) >= 3:
+            return False, f"Rate limit exceeded (3 attempts in last hour)"
+        
+        return True, "OK"
+    
+    def _safe_db_commit(self, max_retries=3, retry_delay=1) -> bool:
+        """
+        Safely commit database changes with retry logic for lock contention.
+        
+        Handles SQLite "database is locked" errors with exponential backoff.
+        
+        Args:
+            max_retries: Maximum number of retry attempts
+            retry_delay: Initial delay between retries (doubles each time)
+            
+        Returns:
+            True if commit succeeded, False otherwise
+        """
+        from sqlalchemy.exc import OperationalError
+        
+        for attempt in range(max_retries):
+            try:
+                self.db.session.commit()
+                return True
+            except OperationalError as e:
+                if 'database is locked' in str(e).lower():
+                    if attempt < max_retries - 1:
+                        wait_time = retry_delay * (2 ** attempt)
+                        self.app.logger.warning(
+                            f"Database locked, retrying in {wait_time}s (attempt {attempt + 1}/{max_retries})"
+                        )
+                        # rollback before retry to clear the session
+                        self.db.session.rollback()
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        self.app.logger.error("Database locked after all retries")
+                        self.db.session.rollback()
+                        return False
+                # not a lock error, rollback and re-raise
+                self.db.session.rollback()
+                raise
+            except Exception as e:
+                self.app.logger.error(f"Database commit error: {e}")
+                self.db.session.rollback()
+                return False
+        
+        return False
+    
+    def _is_cloudflare_rate_limit_error(self, error_output: str) -> bool:
+        """
+        Detect if error is from Cloudflare rate limiting.
+        
+        Args:
+            error_output: Error output from cloudflared command
+            
+        Returns:
+            True if rate limit error detected
+        """
+        if not error_output:
+            return False
+        
+        rate_limit_indicators = [
+            'rate limit',
+            'too many requests',
+            '429',
+            'quota exceeded',
+            'throttled'
+        ]
+        
+        error_lower = error_output.lower()
+        return any(indicator in error_lower for indicator in rate_limit_indicators)
+    
+    def _wait_for_dns_propagation(self, tunnel_url: str, max_wait: int = 60) -> bool:
+        """
+        Wait for DNS to propagate before proceeding.
+        
+        Prevents webhook registration failures due to DNS delays.
+        
+        Args:
+            tunnel_url: Tunnel URL to check
+            max_wait: Maximum seconds to wait
+            
+        Returns:
+            True if DNS propagated, False if timeout
+        """
+        import socket
+        from urllib.parse import urlparse
+        
+        try:
+            hostname = urlparse(tunnel_url).hostname
+            if not hostname:
+                self.app.logger.warning("Could not parse hostname from tunnel URL")
+                return False
+            
+            start_time = time.time()
+            
+            while time.time() - start_time < max_wait:
+                try:
+                    socket.gethostbyname(hostname)
+                    elapsed = time.time() - start_time
+                    self.app.logger.info(f"DNS propagated for {hostname} in {elapsed:.1f}s")
+                    return True
+                except socket.gaierror:
+                    time.sleep(2)
+            
+            self.app.logger.warning(f"DNS not propagated after {max_wait}s, proceeding anyway")
+            return False
+            
+        except Exception as e:
+            self.app.logger.error(f"Error checking DNS propagation: {e}")
+            return False
+    
+    def _update_recovery_history_safe(self, settings, action: str, result: str, new_url: str = None, error: str = None):
+        """
+        Update recovery history with comprehensive error handling.
+        
+        Handles JSON corruption, encoding issues, and other edge cases.
+        
+        Args:
+            settings: Settings object
+            action: Action taken
+            result: Result ('success' or 'failed')
+            new_url: New tunnel URL if successful
+            error: Error message if failed
+        """
+        try:
+            import json
+            from datetime import datetime
+            
+            # parse existing history with error handling
+            if settings.tunnel_recovery_history:
+                try:
+                    history = json.loads(settings.tunnel_recovery_history)
+                    if not isinstance(history, list):
+                        self.app.logger.warning("Recovery history is not a list, resetting")
+                        history = []
+                except json.JSONDecodeError as e:
+                    self.app.logger.warning(f"Corrupted recovery history, resetting: {e}")
+                    history = []
+                except Exception as e:
+                    self.app.logger.error(f"Error parsing recovery history: {e}")
+                    history = []
+            else:
+                history = []
+            
+            # add new entry
+            entry = {
+                'timestamp': datetime.utcnow().isoformat(),
+                'action': action,
+                'result': result
+            }
+            
+            if new_url:
+                entry['new_url'] = new_url
+            if error:
+                entry['error'] = str(error)[:500]  # limit error length
+            
+            history.append(entry)
+            
+            # keep last 10 only
+            history = history[-10:]
+            
+            # serialize back to JSON
+            try:
+                settings.tunnel_recovery_history = json.dumps(history)
+            except Exception as e:
+                self.app.logger.error(f"Failed to serialize recovery history: {e}")
+                # don't fail recovery if history update fails
+                
+        except Exception as e:
+            self.app.logger.error(f"Failed to update recovery history: {e}")
+            # don't fail recovery if history update fails
+    
+    # phase 4: auto-recovery method (full implementation)
+    def auto_recover_tunnel(self, user_id: int) -> bool:
+        """
+        Auto-recover tunnel after failure (phase 4: full implementation).
+        
+        Steps:
+        1. Check rate limits and circuit breaker
+        2. Verify internet connectivity
+        3. Stop old cloudflared process
+        4. Wait for cleanup
+        5. Start new cloudflared process
+        6. Extract new Quick Tunnel URL
+        7. Update database
+        8. Run immediate health check
+        9. Register webhook
+        10. Reset failure counters
+        
+        Args:
+            user_id: User ID for database updates
+            
+        Returns:
+            bool: True if recovery succeeded, False otherwise
+        """
+        # prevent concurrent recovery attempts
+        if not self._recovery_lock.acquire(blocking=False):
+            self.app.logger.info("Recovery already in progress, skipping")
+            return False
+        
+        try:
+            self._recovery_in_progress = True
+            
+            from config import ENABLE_AUTO_RECOVERY
+            from datetime import datetime
+            
+            # feature flag check
+            if not ENABLE_AUTO_RECOVERY:
+                self.app.logger.debug("Auto-recovery disabled by feature flag")
+                return False
+            
+            from models import Settings
+            
+            with self.app.app_context():
+                settings = Settings.query.filter_by(user_id=user_id).first()
+                
+                if not settings:
+                    self.app.logger.error(f"Settings not found for user {user_id}")
+                    return False
+                
+                # check if auto-recovery is enabled for this user
+                if not getattr(settings, 'tunnel_auto_recovery_enabled', False):
+                    self.app.logger.info(f"Auto-recovery disabled for user {user_id}")
+                    return False
+                
+                # check if circuit breaker is tripped
+                if getattr(settings, 'tunnel_recovery_disabled', False):
+                    self.app.logger.warning(f"Auto-recovery disabled by circuit breaker for user {user_id}")
+                    self._log_tunnel_event(
+                        'tunnel_recovery_blocked',
+                        'warning',
+                        'Auto-recovery blocked by circuit breaker, manual intervention required',
+                        {'user_id': user_id}
+                    )
+                    return False
+                
+                # check if user manually stopped tunnel
+                if getattr(settings, 'tunnel_user_stopped', False):
+                    self.app.logger.info(f"Tunnel manually stopped by user {user_id}, not recovering")
+                    return False
+                
+                # check provider
+                provider = getattr(settings, 'tunnel_provider', None)
+                if provider != 'cloudflare':
+                    self.app.logger.debug(f"Auto-recovery only supports cloudflare, got: {provider}")
+                    return False
+                
+                # check if this is a quick tunnel
+                tunnel_url = settings.tunnel_url
+                if not tunnel_url or 'trycloudflare.com' not in tunnel_url.lower():
+                    self.app.logger.debug("Auto-recovery only for quick tunnels")
+                    return False
+                
+                # check rate limits
+                allowed, reason = self._check_recovery_rate_limits(settings)
+                if not allowed:
+                    self.app.logger.warning(f"Recovery rate limit: {reason}")
+                    self._log_tunnel_event(
+                        'tunnel_recovery_rate_limited',
+                        'warning',
+                        f'Recovery attempt blocked: {reason}',
+                        {'user_id': user_id}
+                    )
+                    return False
+                
+                # check internet connectivity
+                if not self._check_internet_connectivity():
+                    self.app.logger.warning("No internet connectivity, skipping recovery")
+                    self._log_tunnel_event(
+                        'tunnel_recovery_no_internet',
+                        'warning',
+                        'Recovery skipped, waiting for internet connection',
+                        {'user_id': user_id}
+                    )
+                    # don't count this toward circuit breaker
+                    return False
+                
+                # log recovery start
+                self.app.logger.info(f"Starting auto-recovery for user {user_id}")
+                self._log_tunnel_event(
+                    'tunnel_recovery_started',
+                    'info',
+                    f'Auto-recovery triggered after consecutive failures',
+                    {
+                        'user_id': user_id,
+                        'consecutive_failures': getattr(settings, 'tunnel_consecutive_failures', 0),
+                        'old_url': tunnel_url
+                    }
+                )
+                
+                # record recovery attempt for rate limiting
+                self._recovery_attempts.append(datetime.utcnow())
+                
+                # step 1: stop old cloudflared process
+                self.app.logger.info("Stopping old cloudflared process")
+                self.stop_tunnel(user_id)
+                
+                # step 2: wait for cleanup
+                self.app.logger.info("Waiting 15 seconds for cleanup")
+                time.sleep(15)
+                
+                # step 3: start new cloudflared process
+                self.app.logger.info("Starting new cloudflared process")
+                
+                # start_quick_tunnel returns None on failure
+                new_tunnel_url = self.start_quick_tunnel(user_id)
+                
+                if not new_tunnel_url:
+                    # check if this might be a Cloudflare rate limit
+                    # read recent log entries to check for rate limit indicators
+                    is_rate_limited = False
+                    try:
+                        log_path = os.path.join(self.config_dir, 'tunnel.log')
+                        if os.path.exists(log_path):
+                            with open(log_path, 'r') as f:
+                                # read last 50 lines
+                                lines = f.readlines()[-50:]
+                                recent_output = ''.join(lines)
+                                is_rate_limited = self._is_cloudflare_rate_limit_error(recent_output)
+                    except Exception as e:
+                        self.app.logger.warning(f"Could not check tunnel log for rate limit: {e}")
+                    
+                    if is_rate_limited:
+                        self.app.logger.warning("Cloudflare rate limit detected, entering longer backoff")
+                        
+                        # don't count toward circuit breaker
+                        settings.tunnel_last_error = 'Cloudflare rate limit, will retry in 30 minutes'
+                        settings.tunnel_status = 'error'
+                        
+                        # update recovery history
+                        self._update_recovery_history_safe(
+                            settings,
+                            'recovery_attempt',
+                            'rate_limited',
+                            error='Cloudflare rate limit exceeded'
+                        )
+                        
+                        # log rate limit event
+                        self._log_tunnel_event(
+                            'tunnel_recovery_rate_limited_cloudflare',
+                            'warning',
+                            'Cloudflare rate limit detected, will retry later',
+                            {'user_id': user_id}
+                        )
+                        
+                        self._safe_db_commit()
+                        return False
+                    
+                    # not a rate limit, treat as normal failure
+                    self.app.logger.error("Failed to start new tunnel")
+                    
+                    # update recovery history
+                    self._update_recovery_history_safe(
+                        settings,
+                        'recovery_attempt',
+                        'failed',
+                        error='Failed to start new tunnel process'
+                    )
+                    
+                    # log failure
+                    self._log_tunnel_event(
+                        'tunnel_recovery_failed',
+                        'error',
+                        'Failed to start new tunnel process',
+                        {'user_id': user_id}
+                    )
+                    
+                    # increment recovery count
+                    settings.tunnel_recovery_count = getattr(settings, 'tunnel_recovery_count', 0) + 1
+                    settings.tunnel_last_recovery = datetime.utcnow()
+                    
+                    # check circuit breaker (3 failed recoveries in a row)
+                    if settings.tunnel_recovery_count >= 3:
+                        self.app.logger.error("Circuit breaker triggered after 3 failed recoveries")
+                        settings.tunnel_recovery_disabled = True
+                        settings.tunnel_status = 'error'
+                        settings.tunnel_last_error = 'Auto-recovery disabled after repeated failures, manual intervention required'
+                        
+                        self._log_tunnel_event(
+                            'tunnel_circuit_breaker_triggered',
+                            'error',
+                            'Circuit breaker triggered, auto-recovery disabled',
+                            {'user_id': user_id, 'failed_attempts': settings.tunnel_recovery_count}
+                        )
+                    
+                    self._safe_db_commit()
+                    return False
+                
+                # step 4: update database with new URL
+                self.app.logger.info(f"New tunnel URL: {new_tunnel_url}")
+                settings.tunnel_url = new_tunnel_url
+                settings.tunnel_last_recovery = datetime.utcnow()
+                settings.tunnel_status = 'connected'
+                settings.tunnel_last_error = None
+                
+                # step 5: run immediate health check
+                self.app.logger.info("Running immediate health check on new tunnel")
+                # health check happens automatically via start_quick_tunnel
+                
+                # step 6: wait for DNS propagation before webhook registration
+                if settings.cloud_enabled and settings.cloud_api_key:
+                    self.app.logger.info("Waiting for DNS propagation")
+                    self._wait_for_dns_propagation(new_tunnel_url, max_wait=60)
+                    
+                    self.app.logger.info("Registering webhook with new tunnel URL")
+                    
+                    # ensure we have a secret
+                    if not settings.cloud_webhook_secret:
+                        import secrets
+                        settings.cloud_webhook_secret = secrets.token_urlsafe(32)
+                    
+                    webhook_url = f"{new_tunnel_url}/api/webhook"
+                    settings.cloud_webhook_url = webhook_url
+                    
+                    # register in background (don't fail recovery if webhook fails)
+                    from services.CloudService import CloudService
+                    cloud_base = CloudService.get_cloud_base_url(settings)
+                    
+                    self.register_webhook(
+                        tunnel_url=new_tunnel_url,
+                        api_key=settings.cloud_api_key,
+                        cloud_base_url=cloud_base,
+                        user_id=user_id,
+                        webhook_secret=settings.cloud_webhook_secret
+                    )
+                
+                # step 7: reset failure counters
+                settings.tunnel_consecutive_failures = 0
+                settings.tunnel_recovery_count = 0  # reset on success
+                
+                # update recovery history with safe error handling
+                self._update_recovery_history_safe(
+                    settings,
+                    'recovery_attempt',
+                    'success',
+                    new_url=new_tunnel_url
+                )
+                
+                # commit with retry logic for database locks
+                if not self._safe_db_commit():
+                    self.app.logger.error("Failed to commit recovery success to database")
+                    # recovery succeeded but database update failed
+                    # log it but don't fail the recovery
+                
+                # log success
+                self.app.logger.info(f"Auto-recovery succeeded for user {user_id}")
+                self._log_tunnel_event(
+                    'tunnel_recovery_success',
+                    'success',
+                    f'Auto-recovery completed successfully',
+                    {
+                        'user_id': user_id,
+                        'new_url': new_tunnel_url
+                    }
+                )
+                
+                return True
+                
+        except Exception as e:
+            self.app.logger.error(f"Error in auto_recover_tunnel: {e}")
+            
+            # log error
+            try:
+                self._log_tunnel_event(
+                    'tunnel_recovery_error',
+                    'error',
+                    f'Recovery error: {str(e)}',
+                    {'user_id': user_id}
+                )
+            except:
+                pass
+            
+            return False
+            
+        finally:
+            self._recovery_in_progress = False
+            self._recovery_lock.release()

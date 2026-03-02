@@ -24,4 +24,4 @@ def rate_limit_decorator(limit_str):
 
 # import route modules so they register routes on api_bp
 # order doesn't matter, each module uses "from api import api_bp, rate_limit_decorator"
-from api import routes_backup, routes_main, routes_tunnel, routes_webhook, routes_pair  # noqa: E402,F401
+from api import routes_backup, routes_main, routes_tunnel, routes_webhook, routes_pair, routes_health, routes_monitoring  # noqa: E402,F401

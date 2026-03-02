@@ -88,3 +88,17 @@ UPDATE_CACHE = {
     'version': None,
     'last_check': 0
 }
+
+# tunnel auto-recovery feature flag (phase 1: disabled by default)
+ENABLE_AUTO_RECOVERY = os.environ.get("ENABLE_AUTO_RECOVERY", "false").lower() == "true"
+
+# tunnel health check interval (minimum 900 seconds / 15 minutes)
+_tunnel_interval = os.environ.get("TUNNEL_HEALTH_CHECK_INTERVAL", "900")
+TUNNEL_HEALTH_CHECK_INTERVAL = max(900, int(_tunnel_interval)) if _tunnel_interval.isdigit() else 900
+
+# phase 5 enhancement 1: dedicated health check endpoint
+USE_DEDICATED_HEALTH_ENDPOINT = os.environ.get("USE_DEDICATED_HEALTH_ENDPOINT", "true").lower() == "true"
+TUNNEL_HEALTH_ENDPOINT = os.environ.get("TUNNEL_HEALTH_ENDPOINT", "/api/health")
+
+# phase 5 enhancement 2: startup configuration verification
+VERIFY_TUNNEL_CONFIG_ON_STARTUP = os.environ.get("VERIFY_TUNNEL_CONFIG_ON_STARTUP", "true").lower() == "true"
