@@ -28,7 +28,7 @@
         
         {% for block in blocks if block.media_type == 'movie' %}
         <div class="block-item-row" id="block-{{ block.id }}">
-            <span>{{ block.title }}</span>
+            <span>{{ block.title }}{% if block.year %} ({{ block.year }}){% endif %}</span>
             <button onclick="unblock({{ block.id }})" class="btn-delete" title="Unblock Title">
                 Unblock
             </button>
@@ -45,7 +45,7 @@
         
         {% for block in blocks if block.media_type == 'tv' %}
         <div class="block-item-row" id="block-{{ block.id }}">
-            <span>{{ block.title }}</span>
+            <span>{{ block.title }}{% if block.year %} ({{ block.year }}){% endif %}</span>
             <button onclick="unblock({{ block.id }})" class="btn-delete" title="Unblock Title">
                 Unblock
             </button>
@@ -130,7 +130,10 @@ searchInput.addEventListener('input', function(e) {
                     </div>
                     `;
                     
-                    div.onclick = () => addBlock(title, searchType);
+                    div.onclick = () => {
+                        window.selectedYear = year;  // store year for addBlock
+                        addBlock(title, searchType);
+                    };
                     suggestionsBox.appendChild(div);
                 });
                 suggestionsBox.style.display = 'block';
@@ -159,7 +162,8 @@ function addBlock(title, type) {
         },
         body: JSON.stringify({ 
             title: title, 
-            media_type: type
+            media_type: type,
+            year: window.selectedYear || null  // pass year if available
         })
     }).then(res => {
         if (res.ok) {

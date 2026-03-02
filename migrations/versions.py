@@ -41,6 +41,14 @@ def load_migrations(manager):
         upgrade=upgrade_2_tunnel_recovery,
         downgrade=downgrade_2_tunnel_recovery
     )
+    
+    # migration 3: blocklist year column
+    manager.register(
+        version=3,
+        description="Add year column to blocklist for better identification",
+        upgrade=upgrade_3_blocklist_year,
+        downgrade=downgrade_3_blocklist_year
+    )
 
 
 # migration 1: baseline
@@ -120,6 +128,51 @@ def downgrade_2_tunnel_recovery(app: Flask, db: SQLAlchemy):
         conn.commit()
         conn.close()
         log.info("Cleared tunnel auto-recovery data (columns remain)")
+
+
+# migration 3: blocklist year
+def upgrade_3_blocklist_year(app: Flask, db: SQLAlchemy):
+    """add year column to blocklist table for better identification"""
+    with app.app_context():
+        db_path = app.config.get('SQLALCHEMY_DATABASE_URI', '').replace('sqlite:///', '')
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # check existing columns
+        cursor.execute("PRAGMA table_info(blocklist)")
+        columns = [row[1] for row in cursor.fetchall()]
+        
+        # add year column if it doesn't exist
+        if 'year' not in columns:
+            cursor.execute("ALTER TABLE blocklist ADD COLUMN year INTEGER")
+            log.info("Added year column to blocklist")
+        else:
+            log.info("year column already exists in blocklist")
+        
+        conn.commit()
+        conn.close()
+        log.info("Blocklist year migration complete")
+
+
+def downgrade_3_blocklist_year(app: Flask, db: SQLAlchemy):
+    """remove year column from blocklist table"""
+    # SQLite doesn't support DROP COLUMN easily
+    # would need to recreate table without the column
+    # for now, just leave it (harmless, will be ignored by old code)
+    log.warning("Downgrade not fully implemented for blocklist year (column will remain but be unused)")
+    
+    # we can at least clear the data
+    with app.app_context():
+        db_path = app.config.get('SQLALCHEMY_DATABASE_URI', '').replace('sqlite:///', '')
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # reset year column to NULL
+        cursor.execute("UPDATE blocklist SET year = NULL")
+        
+        conn.commit()
+        conn.close()
+        log.info("Cleared blocklist year data (column remains)")
 
 
 # example migration 2 (for reference, not active):

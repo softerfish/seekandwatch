@@ -134,6 +134,7 @@ class Blocklist(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
     title = db.Column(db.String(200))
     media_type = db.Column(db.String(50))
+    year = db.Column(db.Integer, nullable=True)  # release year for better identification
 
 class CollectionSchedule(db.Model):
     __table_args__ = {'extend_existing': True}

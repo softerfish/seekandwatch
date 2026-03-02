@@ -628,11 +628,12 @@ def block_movie():
         return jsonify({'status': 'error', 'message': 'Title is required'}), 400
     title = request.json['title']
     media_type = request.json.get('media_type', 'movie')
+    year = request.json.get('year')  # get year from request
     
     # Avoid duplicates.
     exists = Blocklist.query.filter_by(user_id=current_user.id, title=title, media_type=media_type).first()
     if not exists:
-        db.session.add(Blocklist(user_id=current_user.id, title=title, media_type=media_type))
+        db.session.add(Blocklist(user_id=current_user.id, title=title, media_type=media_type, year=year))
         db.session.commit()
     return {'status': 'success'}
 
