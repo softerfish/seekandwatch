@@ -81,30 +81,23 @@ def __getattr__(name):
 # import from config
 from config import CUSTOM_POSTER_DIR
 
-# import remaining functions from utils.py (parent directory)
-# use importlib to avoid circular import issues
-import importlib.util
-import os
-utils_py_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'utils.py')
-spec = importlib.util.spec_from_file_location("utils_legacy", utils_py_path)
-utils_legacy = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(utils_legacy)
-
-# re-export functions from utils.py that haven't been migrated yet
-get_tautulli_trending = utils_legacy.get_tautulli_trending
-handle_lucky_mode = utils_legacy.handle_lucky_mode
-write_scanner_log = utils_legacy.write_scanner_log
-read_scanner_log = utils_legacy.read_scanner_log
-validate_url_safety = utils_legacy.validate_url_safety
-prefetch_tv_states_parallel = utils_legacy.prefetch_tv_states_parallel
-prefetch_ratings_parallel = utils_legacy.prefetch_ratings_parallel
-prefetch_omdb_parallel = utils_legacy.prefetch_omdb_parallel
-prefetch_runtime_parallel = utils_legacy.prefetch_runtime_parallel
-sync_plex_library = utils_legacy.sync_plex_library
-refresh_radarr_sonarr_cache = utils_legacy.refresh_radarr_sonarr_cache
-get_radarr_sonarr_cache = utils_legacy.get_radarr_sonarr_cache
-prefetch_keywords_parallel = utils_legacy.prefetch_keywords_parallel
-item_matches_keywords = utils_legacy.item_matches_keywords
+# import remaining functions from utils/legacy.py (being phased out)
+from utils.legacy import (
+    get_tautulli_trending,
+    handle_lucky_mode,
+    write_scanner_log,
+    read_scanner_log,
+    validate_url_safety,
+    prefetch_tv_states_parallel,
+    prefetch_ratings_parallel,
+    prefetch_omdb_parallel,
+    prefetch_runtime_parallel,
+    sync_plex_library,
+    refresh_radarr_sonarr_cache,
+    get_radarr_sonarr_cache,
+    prefetch_keywords_parallel,
+    item_matches_keywords,
+)
 
 __all__ = [
     # from utils.helpers
