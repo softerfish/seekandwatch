@@ -23,7 +23,24 @@ HISTORY_CACHE_FILE = get_history_cache_file()
 RESULTS_CACHE = {}
 HISTORY_CACHE = {}
 TMDB_REC_CACHE = {}
+
+# Thread locks for cache safety
+RESULTS_CACHE_LOCK = threading.Lock()
 TMDB_REC_CACHE_LOCK = threading.Lock()
+
+# Cache configuration
+MAX_CACHE_ENTRIES = 100  # max users in cache at once
+MAX_CACHE_AGE = 3600  # 1 hour
+
+# Cache statistics for monitoring
+CACHE_STATS = {
+    'hits': 0,
+    'misses': 0,
+    'sets': 0,
+    'clears': 0,
+    'prunes': 0,
+    'lock_wait_times': []
+}
 
 # cache TTLs (time to live in seconds)
 RESULTS_CACHE_TTL = 60 * 60 * 24  # 24 hours
@@ -92,6 +109,106 @@ def load_results_cache():
 def save_results_cache():
     """save results cache to disk"""
     _save_cache_file(RESULTS_CACHE_FILE, RESULTS_CACHE)
+
+
+def get_results_cache(user_id):
+    """get results cache for user (thread-safe with metrics)"""
+    start = time.time()
+    with RESULTS_CACHE_LOCK:
+        wait_time = time.time() - start
+        if wait_time > 0.001:  # only track if wait was significant
+            CACHE_STATS['lock_wait_times'].append(wait_time)
+            # keep only last 1000 measurements
+            if len(CACHE_STATS['lock_wait_times']) > 1000:
+                CACHE_STATS['lock_wait_times'] = CACHE_STATS['lock_wait_times'][-1000:]
+        
+        result = RESULTS_CACHE.get(user_id)
+        if result:
+            CACHE_STATS['hits'] += 1
+        else:
+            CACHE_STATS['misses'] += 1
+        return result
+
+
+def set_results_cache(user_id, data):
+    """set results cache for user (thread-safe with size limits)"""
+    with RESULTS_CACHE_LOCK:
+        # add timestamp if not present
+        if isinstance(data, dict) and '_cached_at' not in data:
+            data['_cached_at'] = time.time()
+        
+        # prune old entries if cache is full
+        if len(RESULTS_CACHE) >= MAX_CACHE_ENTRIES:
+            _prune_old_cache_entries()
+        
+        RESULTS_CACHE[user_id] = data
+        CACHE_STATS['sets'] += 1
+
+
+def clear_results_cache(user_id):
+    """clear results cache for user (thread-safe)"""
+    with RESULTS_CACHE_LOCK:
+        RESULTS_CACHE.pop(user_id, None)
+        CACHE_STATS['clears'] += 1
+
+
+def _prune_old_cache_entries():
+    """remove oldest cache entries (must be called with lock held)"""
+    now = time.time()
+    to_remove = []
+    
+    # find entries older than MAX_CACHE_AGE
+    for user_id, data in RESULTS_CACHE.items():
+        if isinstance(data, dict):
+            cached_at = data.get('_cached_at', 0)
+            if now - cached_at > MAX_CACHE_AGE:
+                to_remove.append(user_id)
+    
+    # if still too many, remove oldest entries
+    if len(RESULTS_CACHE) - len(to_remove) >= MAX_CACHE_ENTRIES:
+        # sort by age and remove oldest
+        entries_with_age = []
+        for user_id, data in RESULTS_CACHE.items():
+            if user_id not in to_remove and isinstance(data, dict):
+                cached_at = data.get('_cached_at', 0)
+                entries_with_age.append((user_id, cached_at))
+        
+        entries_with_age.sort(key=lambda x: x[1])  # sort by timestamp
+        excess = (len(RESULTS_CACHE) - len(to_remove)) - (MAX_CACHE_ENTRIES - 10)  # keep 10 slots free
+        if excess > 0:
+            to_remove.extend([user_id for user_id, _ in entries_with_age[:excess]])
+    
+    # remove entries
+    for user_id in to_remove:
+        RESULTS_CACHE.pop(user_id, None)
+    
+    if to_remove:
+        CACHE_STATS['prunes'] += len(to_remove)
+
+
+def get_cache_stats():
+    """get cache performance statistics"""
+    with RESULTS_CACHE_LOCK:
+        total_requests = CACHE_STATS['hits'] + CACHE_STATS['misses']
+        hit_rate = CACHE_STATS['hits'] / total_requests if total_requests > 0 else 0
+        
+        wait_times = CACHE_STATS['lock_wait_times']
+        avg_wait = sum(wait_times) / len(wait_times) if wait_times else 0
+        max_wait = max(wait_times) if wait_times else 0
+        
+        return {
+            'hits': CACHE_STATS['hits'],
+            'misses': CACHE_STATS['misses'],
+            'sets': CACHE_STATS['sets'],
+            'clears': CACHE_STATS['clears'],
+            'prunes': CACHE_STATS['prunes'],
+            'hit_rate': round(hit_rate * 100, 2),
+            'cache_size': len(RESULTS_CACHE),
+            'max_cache_size': MAX_CACHE_ENTRIES,
+            'avg_lock_wait_ms': round(avg_wait * 1000, 3),
+            'max_lock_wait_ms': round(max_wait * 1000, 3),
+            'lock_wait_samples': len(wait_times)
+        }
 
 
 def load_history_cache():

@@ -29,6 +29,7 @@ from utils.system import (
 )
 from utils.cache import (
     load_results_cache, save_results_cache,
+    get_results_cache, set_results_cache,
     get_history_cache, set_history_cache,
     get_tmdb_rec_cache, set_tmdb_rec_cache,
     score_recommendation, diverse_sample,
@@ -95,8 +96,6 @@ handle_lucky_mode = utils_legacy.handle_lucky_mode
 write_scanner_log = utils_legacy.write_scanner_log
 read_scanner_log = utils_legacy.read_scanner_log
 validate_url_safety = utils_legacy.validate_url_safety
-get_results_cache = utils_legacy.get_results_cache
-set_results_cache = utils_legacy.set_results_cache
 prefetch_tv_states_parallel = utils_legacy.prefetch_tv_states_parallel
 prefetch_ratings_parallel = utils_legacy.prefetch_ratings_parallel
 prefetch_omdb_parallel = utils_legacy.prefetch_omdb_parallel
