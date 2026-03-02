@@ -9,7 +9,6 @@ from flask_login import login_required, current_user
 
 from models import db, Settings, CloudRequest, DeletedCloudId
 from services.CloudService import CloudService
-from utils import get_cloud_base_url
 from config import CLOUD_REQUEST_TIMEOUT
 
 # Create blueprint
@@ -144,7 +143,7 @@ def deny_request(req_id):
         try:
             settings = current_user.settings
             if settings and settings.cloud_api_key:
-                base = get_cloud_base_url(settings)
+                base = CloudService.get_cloud_base_url(settings)
                 r = requests.post(
                     f"{base}/api/acknowledge.php",
                     headers={
@@ -184,7 +183,7 @@ def delete_request(req_id):
         try:
             settings = current_user.settings
             if settings and settings.cloud_api_key:
-                base = get_cloud_base_url(settings)
+                base = CloudService.get_cloud_base_url(settings)
                 r = requests.post(
                     f"{base}/api/delete.php",
                     headers={

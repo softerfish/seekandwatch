@@ -6,7 +6,7 @@ import subprocess
 import hashlib
 from pathlib import Path
 from typing import Dict, Set, Optional
-from utils import write_log
+from utils.helpers import write_log
 
 class SecureTestRunner:
     """handles secure test execution with comprehensive validation"""

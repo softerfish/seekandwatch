@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from typing import Optional, Tuple
 from models import db
 from models_security import WebhookAttempt
-from utils import write_log
+from utils.helpers import write_log
 
 # configuration
 WEBHOOK_MAX_FAILURES = 5  # lock after 5 failures

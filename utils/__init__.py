@@ -4,29 +4,28 @@ utils package
 modular utility functions for SeekAndWatch
 
 this package contains refactored utility modules:
-- helpers: logging and title normalization
-- system: lock management
+- helpers: logging and title normalization (core functions)
+- system: lock management and system operations
 - cache: caching operations
 - validators: input validation and security
+- backup: backup and restore operations
 
-and services:
+and services (in services/ directory):
 - plex_service: plex library integration
 - tmdb_service: TMDB API integration
 - media_service: media matching and ownership
 
-important: this __init__.py re-exports ALL functions from both:
-1. new modular files (utils/helpers.py, utils/system.py, etc.)
-2. new services (services/plex_service.py, etc.)
-3. original utils.py file (for functions not yet migrated)
-
-this ensures backward compatibility during the migration
+note: many functions still live in utils.py (parent directory) for backward compatibility
+this will be fully migrated in a future phase
 """
 
-# import from new modular files (migrated functions)
+# import from new modular files
 from utils.helpers import write_log, normalize_title
 from utils.system import (
     is_system_locked, set_system_lock, remove_system_lock,
-    get_lock_status, reset_stuck_locks
+    get_lock_status, reset_stuck_locks,
+    check_for_updates, is_docker, is_unraid, is_git_repo,
+    get_app_root, is_app_dir_writable, perform_git_update, perform_release_update
 )
 from utils.cache import (
     load_results_cache, save_results_cache,
@@ -36,6 +35,7 @@ from utils.cache import (
     RESULTS_CACHE
 )
 from utils.validators import validate_url, validate_path, get_session_filters
+from utils.backup import create_backup, list_backups, restore_backup, prune_backups, BACKUP_DIR
 
 # import phase 3 helper modules (for blueprint migration)
 from utils.session_helpers import *
@@ -44,55 +44,88 @@ from utils.template_helpers import *
 from utils.db_helpers import *
 from utils.message_helpers import *
 
-# import from new services (service modules)
-from services.plex_service import PlexService
-from services.tmdb_service import TmdbService
-from services.media_service import MediaService
+# import from services (these are in services/ directory, not utils/)
+# NOTE: import these AFTER utils.helpers to avoid circular imports
+# Delay import of services until they're actually needed
+def _get_service_exports():
+    """Lazy load service exports to avoid circular imports"""
+    from services.plex_service import PlexService
+    from services.tmdb_service import TmdbService
+    from services.media_service import MediaService
+    return PlexService, TmdbService, MediaService
 
-# re-export service functions for backward compatibility
-sync_plex_library = PlexService.sync_library
-prefetch_keywords_parallel = TmdbService.prefetch_keywords_parallel
-item_matches_keywords = TmdbService.item_matches_keywords
-prefetch_omdb_parallel = TmdbService.prefetch_omdb_parallel
-prefetch_runtime_parallel = TmdbService.prefetch_runtime_parallel
-prefetch_tv_states_parallel = TmdbService.prefetch_tv_states_parallel
-prefetch_ratings_parallel = TmdbService.prefetch_ratings_parallel
-get_tmdb_aliases = TmdbService.get_tmdb_aliases
-is_duplicate = MediaService.is_duplicate
-is_owned_item = MediaService.is_owned_item
-get_owned_tmdb_ids_for_cloud = MediaService.get_owned_tmdb_ids_for_cloud
+# Export service classes (will be imported on first access)
+def __getattr__(name):
+    """Lazy load services to avoid circular imports"""
+    if name in ('PlexService', 'TmdbService', 'MediaService'):
+        PlexService, TmdbService, MediaService = _get_service_exports()
+        globals()['PlexService'] = PlexService
+        globals()['TmdbService'] = TmdbService
+        globals()['MediaService'] = MediaService
+        globals()['fetch_omdb_ratings'] = TmdbService.fetch_omdb_ratings
+        globals()['sync_remote_aliases'] = TmdbService.sync_remote_aliases
+        globals()['get_tmdb_aliases'] = TmdbService.get_tmdb_aliases
+        globals()['is_duplicate'] = MediaService.is_duplicate
+        globals()['is_owned_item'] = MediaService.is_owned_item
+        globals()['get_owned_tmdb_ids_for_cloud'] = MediaService.get_owned_tmdb_ids_for_cloud
+        return globals()[name]
+    elif name in ('fetch_omdb_ratings', 'sync_remote_aliases', 'get_tmdb_aliases', 
+                  'is_duplicate', 'is_owned_item', 'get_owned_tmdb_ids_for_cloud'):
+        # Trigger service loading
+        _get_service_exports()
+        __getattr__('PlexService')  # This will populate all the globals
+        return globals()[name]
+    raise AttributeError(f"module 'utils' has no attribute '{name}'")
 
-# import everything else from the original utils.py file
-# this is a wildcard import to ensure ALL functions are available
-import sys
-import os
-# get the parent directory (where utils.py is located)
-parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if parent_dir not in sys.path:
-    sys.path.insert(0, parent_dir)
+# import from config
+from config import CUSTOM_POSTER_DIR
 
-# import the original utils module (utils.py file, not utils/ package)
+# import remaining functions from utils.py (parent directory)
+# use importlib to avoid circular import issues
 import importlib.util
-utils_py_path = os.path.join(parent_dir, 'utils.py')
-spec = importlib.util.spec_from_file_location("utils_original", utils_py_path)
-utils_original = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(utils_original)
+import os
+utils_py_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'utils.py')
+spec = importlib.util.spec_from_file_location("utils_legacy", utils_py_path)
+utils_legacy = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(utils_legacy)
 
-# re-export everything from utils.py that's not already defined above
-for name in dir(utils_original):
-    if not name.startswith('_') and name not in globals():
-        globals()[name] = getattr(utils_original, name)
+# re-export functions from utils.py that haven't been migrated yet
+get_tautulli_trending = utils_legacy.get_tautulli_trending
+handle_lucky_mode = utils_legacy.handle_lucky_mode
+write_scanner_log = utils_legacy.write_scanner_log
+read_scanner_log = utils_legacy.read_scanner_log
+validate_url_safety = utils_legacy.validate_url_safety
+get_results_cache = utils_legacy.get_results_cache
+set_results_cache = utils_legacy.set_results_cache
+prefetch_tv_states_parallel = utils_legacy.prefetch_tv_states_parallel
+prefetch_ratings_parallel = utils_legacy.prefetch_ratings_parallel
+prefetch_omdb_parallel = utils_legacy.prefetch_omdb_parallel
+prefetch_runtime_parallel = utils_legacy.prefetch_runtime_parallel
+sync_plex_library = utils_legacy.sync_plex_library
+refresh_radarr_sonarr_cache = utils_legacy.refresh_radarr_sonarr_cache
+get_radarr_sonarr_cache = utils_legacy.get_radarr_sonarr_cache
+prefetch_keywords_parallel = utils_legacy.prefetch_keywords_parallel
+item_matches_keywords = utils_legacy.item_matches_keywords
 
-# explicitly list commonly used exports for IDE autocomplete
 __all__ = [
-    # from new modular files
+    # from utils.helpers
     'write_log',
     'normalize_title',
+    # from utils.system
     'is_system_locked',
     'set_system_lock',
     'remove_system_lock',
     'get_lock_status',
     'reset_stuck_locks',
+    'check_for_updates',
+    'is_docker',
+    'is_unraid',
+    'is_git_repo',
+    'get_app_root',
+    'is_app_dir_writable',
+    'perform_git_update',
+    'perform_release_update',
+    # from utils.cache
     'load_results_cache',
     'save_results_cache',
     'get_history_cache',
@@ -102,44 +135,43 @@ __all__ = [
     'score_recommendation',
     'diverse_sample',
     'RESULTS_CACHE',
+    # from utils.validators
     'validate_url',
     'validate_path',
     'get_session_filters',
-    # from new services
-    'PlexService',
-    'TmdbService',
-    'MediaService',
-    'sync_plex_library',
-    'prefetch_keywords_parallel',
-    'item_matches_keywords',
-    'prefetch_omdb_parallel',
-    'prefetch_runtime_parallel',
-    'prefetch_tv_states_parallel',
-    'prefetch_ratings_parallel',
-    'get_tmdb_aliases',
-    'is_duplicate',
-    'is_owned_item',
-    'get_owned_tmdb_ids_for_cloud',
-    # from original utils.py (commonly used)
-    'get_cloud_base_url',
-    'fetch_omdb_ratings',
+    # from utils.backup
     'create_backup',
     'list_backups',
     'restore_backup',
     'prune_backups',
     'BACKUP_DIR',
-    'CUSTOM_POSTER_DIR',
+    # from services
+    'PlexService',
+    'TmdbService',
+    'MediaService',
+    'fetch_omdb_ratings',
     'sync_remote_aliases',
-    'refresh_radarr_sonarr_cache',
-    'get_radarr_sonarr_cache',
+    'get_tmdb_aliases',
+    'is_duplicate',
+    'is_owned_item',
+    'get_owned_tmdb_ids_for_cloud',
+    # from config
+    'CUSTOM_POSTER_DIR',
+    # from utils.py (not yet migrated)
+    'get_tautulli_trending',
+    'handle_lucky_mode',
     'write_scanner_log',
     'read_scanner_log',
-    'check_for_updates',
-    'handle_lucky_mode',
-    'is_docker',
-    'is_unraid',
-    'is_git_repo',
-    'is_app_dir_writable',
-    'perform_git_update',
-    'perform_release_update',
+    'validate_url_safety',
+    'get_results_cache',
+    'set_results_cache',
+    'prefetch_tv_states_parallel',
+    'prefetch_ratings_parallel',
+    'prefetch_omdb_parallel',
+    'prefetch_runtime_parallel',
+    'sync_plex_library',
+    'refresh_radarr_sonarr_cache',
+    'get_radarr_sonarr_cache',
+    'prefetch_keywords_parallel',
+    'item_matches_keywords',
 ]

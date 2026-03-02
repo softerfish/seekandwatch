@@ -17,12 +17,13 @@ from plexapi.server import PlexServer
 
 from models import db, Blocklist, TmdbAlias, Settings
 from utils import (
-    get_tautulli_trending, normalize_title, is_owned_item, fetch_omdb_ratings,
+    get_tautulli_trending, normalize_title, is_owned_item,
     prefetch_keywords_parallel, item_matches_keywords, get_session_filters, write_log,
     handle_lucky_mode, prefetch_tv_states_parallel, prefetch_ratings_parallel,
     prefetch_omdb_parallel, prefetch_runtime_parallel, save_results_cache,
     get_history_cache, set_history_cache, score_recommendation, diverse_sample,
-    get_tmdb_rec_cache, set_tmdb_rec_cache, get_results_cache, set_results_cache
+    get_tmdb_rec_cache, set_tmdb_rec_cache, get_results_cache, set_results_cache,
+    fetch_omdb_ratings,
 )
 from utils.background_tasks import run_in_background
 

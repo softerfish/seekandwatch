@@ -405,3 +405,27 @@ class TmdbService:
         except Exception:
             log.debug("Get TMDB aliases failed")
         return []
+
+    @staticmethod
+    def fetch_omdb_ratings(title, year, api_key):
+        """Fetch OMDb ratings (currently disabled to prevent API limit issues)."""
+        # OMDb fetch removed to prevent API limit issues.
+        # We now rely on Plex's internal metadata for critic ratings.
+        return []
+
+    @staticmethod
+    def sync_remote_aliases():
+        """Sync remote aliases (currently a no-op, handled by sync_plex_library)."""
+        return True, "Started in background"
+
+    @staticmethod
+    def fetch_omdb_ratings(title, year, api_key):
+        """Fetch OMDb ratings (currently disabled to prevent API limit issues)."""
+        # OMDb fetch removed to prevent API limit issues.
+        # We now rely on Plex's internal metadata for critic ratings.
+        return []
+
+    @staticmethod
+    def sync_remote_aliases():
+        """Sync remote aliases (currently a no-op, handled by sync_plex_library)."""
+        return True, "Started in background"

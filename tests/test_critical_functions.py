@@ -17,16 +17,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app import app, db
 from models import Settings, User, SystemLog, TmdbAlias, CollectionSchedule
-from utils import (
-    normalize_title,
-    write_log,
-    is_system_locked,
-    set_system_lock,
-    remove_system_lock,
-    get_lock_status,
-    create_backup,
-    list_backups,
-)
+from utils.helpers import normalize_title, write_log
+from utils.system import is_system_locked, set_system_lock, remove_system_lock, get_lock_status
+from utils.backup import create_backup, list_backups
 
 
 class TestNormalizeTitle(unittest.TestCase):

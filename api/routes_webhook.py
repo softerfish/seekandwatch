@@ -10,7 +10,7 @@ from models import db, Settings, CloudRequest
 from services.CloudService import CloudService
 from services.Router import Router
 from config import SCHEDULER_USER_ID
-from utils import write_log
+from utils.helpers import write_log
 
 # webhook processing lock (prevents recovery during webhook processing)
 _webhook_processing = False

@@ -16,7 +16,7 @@ from models import db, Settings, CloudRequest, AppRequest, DeletedCloudId
 from config import CONFIG_DIR, CLOUD_REQUEST_TIMEOUT, SCHEDULER_USER_ID, POLL_INTERVAL_MIN, POLL_INTERVAL_MAX, CLOUD_URL
 from services.IntegrationsService import IntegrationsService
 from services.Router import Router
-from utils import write_log
+from utils.helpers import write_log
 
 log = logging.getLogger(__name__)
 

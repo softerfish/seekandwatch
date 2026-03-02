@@ -102,3 +102,12 @@ TUNNEL_HEALTH_ENDPOINT = os.environ.get("TUNNEL_HEALTH_ENDPOINT", "/api/health")
 
 # phase 5 enhancement 2: startup configuration verification
 VERIFY_TUNNEL_CONFIG_ON_STARTUP = os.environ.get("VERIFY_TUNNEL_CONFIG_ON_STARTUP", "true").lower() == "true"
+
+
+def get_custom_poster_dir():
+    """Get custom poster directory path"""
+    return os.path.join(CONFIG_DIR, 'custom_posters')
+
+
+# custom poster directory constant
+CUSTOM_POSTER_DIR = get_custom_poster_dir()

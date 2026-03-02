@@ -11,7 +11,8 @@ from flask_login import login_required, current_user
 from plexapi.server import PlexServer
 
 from models import db, Settings
-from utils import check_for_updates, write_log, is_docker, is_unraid, is_git_repo, is_app_dir_writable, perform_git_update, perform_release_update
+from utils.helpers import write_log
+from utils.system import check_for_updates, is_docker, is_unraid, is_git_repo, is_app_dir_writable, perform_git_update, perform_release_update
 from utils.rate_limiter import limiter
 from services.CloudService import CloudService
 from config import VERSION, CLOUD_REQUEST_TIMEOUT
