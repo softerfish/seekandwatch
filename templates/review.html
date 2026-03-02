@@ -135,8 +135,6 @@
                 <div class="selection-overlay">
                     <input type="checkbox" name="selected_movies" value="{{ movie.title }}" checked class="custom-check" onclick="event.stopPropagation();">
                 </div>
-
-                <button type="button" class="btn-block-floating" onclick="blockItem(event, '{{ movie.title|replace("'", "\\'") }}', '{{ media_type }}', this)" title="Block this title">🚫</button>
             </div>
             <div class="selection-info">
                 <div class="selection-title">{{ movie.title }}</div>
