@@ -180,8 +180,10 @@ def plex_metadata_api():
             plex_libraries = [sec.title for sec in p.library.sections() if sec.type in ['movie', 'show']]
         except: pass
         
-    except Exception as e:
-        return jsonify({'error': str(e), 'users': [], 'libraries': []})
+    except Exception:
+        from utils.helpers import write_log
+        write_log("error", "Utility", "Failed to fetch Plex users/libraries")
+        return jsonify({'error': 'Failed to fetch Plex data', 'users': [], 'libraries': []})
         
     return jsonify({
         'users': plex_users, 
