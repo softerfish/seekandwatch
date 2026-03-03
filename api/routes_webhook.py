@@ -235,8 +235,10 @@ def clear_webhook_logs():
         db.session.query(WebhookLog).delete()
         db.session.commit()
         return jsonify({'status': 'success'})
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+    except Exception:
+        from api.helpers import _log_api_exception
+        _log_api_exception("webhook/clear_logs")
+        return jsonify({'status': 'error', 'message': 'Failed to clear webhook logs'}), 500
 
 @api_bp.route('/webhook/toggle_quiet_mode', methods=['POST'])
 @login_required
@@ -256,8 +258,8 @@ def toggle_webhook_quiet_mode():
             'status': 'success',
             'quiet_mode': s.quiet_webhook_logs
         })
-    except Exception as e:
+    except Exception:
         db.session.rollback()
-        import traceback
-        traceback.print_exc()
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        from api.helpers import _log_api_exception
+        _log_api_exception("webhook/toggle_quiet_mode")
+        return jsonify({'status': 'error', 'message': 'Failed to toggle quiet mode'}), 500

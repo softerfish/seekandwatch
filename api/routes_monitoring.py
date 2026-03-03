@@ -40,8 +40,10 @@ def get_metrics_api():
             'uptime_seconds': uptime.total_seconds(),
             'metrics': metrics if isinstance(metrics, list) else [metrics]
         })
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+    except Exception:
+        from api.helpers import _log_api_exception
+        _log_api_exception("metrics")
+        return jsonify({'status': 'error', 'message': 'Failed to retrieve metrics'}), 500
 
 
 @api_bp.route('/admin/metrics/errors')
@@ -56,8 +58,10 @@ def get_errors_api():
             'errors': errors,
             'total_errors': sum(errors.values())
         })
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+    except Exception:
+        from api.helpers import _log_api_exception
+        _log_api_exception("metrics/errors")
+        return jsonify({'status': 'error', 'message': 'Failed to retrieve error summary'}), 500
 
 
 @api_bp.route('/admin/metrics/reset', methods=['POST'])
@@ -71,8 +75,10 @@ def reset_metrics_api():
             'status': 'success',
             'message': 'Metrics reset successfully'
         })
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+    except Exception:
+        from api.helpers import _log_api_exception
+        _log_api_exception("metrics/reset")
+        return jsonify({'status': 'error', 'message': 'Failed to reset metrics'}), 500
 
 
 @api_bp.route('/admin/migration/status')
@@ -86,8 +92,10 @@ def get_migration_status_api():
             'status': 'success',
             'features': status
         })
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+    except Exception:
+        from api.helpers import _log_api_exception
+        _log_api_exception("migration/status")
+        return jsonify({'status': 'error', 'message': 'Failed to retrieve migration status'}), 500
 
 
 @api_bp.route('/admin/feature-flags')
@@ -101,8 +109,10 @@ def get_feature_flags_api():
             'status': 'success',
             'flags': flags
         })
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+    except Exception:
+        from api.helpers import _log_api_exception
+        _log_api_exception("feature-flags")
+        return jsonify({'status': 'error', 'message': 'Failed to retrieve feature flags'}), 500
 
 
 @api_bp.route('/admin/feature-flags/<flag_name>', methods=['POST'])
@@ -138,8 +148,10 @@ def toggle_feature_flag_api(flag_name):
             'enabled': enabled,
             'message': f'Feature flag {flag_name} {"enabled" if enabled else "disabled"}'
         })
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+    except Exception:
+        from api.helpers import _log_api_exception
+        _log_api_exception("feature-flags/toggle")
+        return jsonify({'status': 'error', 'message': 'Failed to toggle feature flag'}), 500
 
 
 @api_bp.route('/admin/feature-flags/reload', methods=['POST'])
@@ -155,8 +167,10 @@ def reload_feature_flags_api():
             'message': 'Feature flags reloaded',
             'flags': flags
         })
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+    except Exception:
+        from api.helpers import _log_api_exception
+        _log_api_exception("feature-flags/reload")
+        return jsonify({'status': 'error', 'message': 'Failed to reload feature flags'}), 500
 
 
 @api_bp.route('/admin/health/detailed')
@@ -199,11 +213,13 @@ def detailed_health_check():
             },
             'feature_flags': get_all_flags(),
         })
-    except Exception as e:
+    except Exception:
+        from api.helpers import _log_api_exception
+        _log_api_exception("health/detailed")
         return jsonify({
             'status': 'error',
             'health': 'unhealthy',
-            'message': str(e)
+            'message': 'Health check failed'
         }), 500
 
 
@@ -221,8 +237,10 @@ def get_cache_stats_api():
             'status': 'success',
             'cache_stats': stats
         })
-    except Exception as e:
+    except Exception:
+        from api.helpers import _log_api_exception
+        _log_api_exception("cache/stats")
         return jsonify({
             'status': 'error',
-            'message': str(e)
+            'message': 'Failed to retrieve cache stats'
         }), 500

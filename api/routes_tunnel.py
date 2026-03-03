@@ -37,12 +37,18 @@ def enable_tunnel():
         
         # check if already enabled and has a URL (tunnel is running)
         if settings.tunnel_enabled and settings.tunnel_url:
+            # check if it's a quick tunnel using proper domain validation
+            is_quick = False
+            if settings.tunnel_url:
+                url_lower = settings.tunnel_url.lower()
+                is_quick = url_lower.endswith('.trycloudflare.com') or url_lower.startswith('https://trycloudflare.com/')
+            
             return jsonify({
                 'success': True,
                 'message': 'tunnel already enabled',
                 'tunnel_url': settings.tunnel_url,
                 'status': 'connected',
-                'is_quick': ('.trycloudflare.com' in settings.tunnel_url.lower()) if settings.tunnel_url else False
+                'is_quick': is_quick
             })
         
         manager = get_tunnel_manager()
