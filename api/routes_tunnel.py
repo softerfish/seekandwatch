@@ -42,7 +42,7 @@ def enable_tunnel():
                 'message': 'tunnel already enabled',
                 'tunnel_url': settings.tunnel_url,
                 'status': 'connected',
-                'is_quick': 'trycloudflare.com' in settings.tunnel_url.lower() if settings.tunnel_url else False
+                'is_quick': ('.trycloudflare.com' in settings.tunnel_url.lower()) if settings.tunnel_url else False
             })
         
         manager = get_tunnel_manager()
