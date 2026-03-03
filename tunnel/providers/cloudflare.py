@@ -125,4 +125,4 @@ class CloudflareTunnelProvider(TunnelProvider):
         if not tunnel_url:
             return False
         
-        return 'trycloudflare.com' in tunnel_url.lower()
+        return '.trycloudflare.com' in tunnel_url.lower()
