@@ -13,9 +13,13 @@ from utils.helpers import write_log
 # backup directory
 BACKUP_DIR = get_backup_dir()
 
-# ensure backup directory exists
-if not os.path.exists(BACKUP_DIR):
-    os.makedirs(BACKUP_DIR, exist_ok=True)
+# ensure backup directory exists (only if parent directory is writable)
+try:
+    if not os.path.exists(BACKUP_DIR):
+        os.makedirs(BACKUP_DIR, exist_ok=True)
+except (PermissionError, OSError):
+    # in test environments or restricted environments, skip directory creation
+    pass
 
 
 def create_backup():
