@@ -19,6 +19,9 @@ on:
       - 'api/__init__.py'
       - 'templates/requests_settings.html'
 
+permissions:
+  contents: read
+
 jobs:
   validate:
     runs-on: ubuntu-latest
