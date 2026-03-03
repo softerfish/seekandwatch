@@ -157,7 +157,7 @@ if [ "$IS_APP_DIR" = "true" ]; then
         # List of files/directories to update (excludes user data like db, backups, etc.)
         # NOTE: utils.py removed in Phase 8 (migrated to utils/ package)
         UPDATE_FILES="app.py config.py models.py presets.py auth_decorators.py requirements.txt"
-        UPDATE_DIRS="api services tunnel templates static images utils"
+        UPDATE_DIRS="api services tunnel templates static images utils web migrations tests scripts"
         
         # Backup current version (just in case)
         if [ ! -d "/config/.version_backups" ]; then
