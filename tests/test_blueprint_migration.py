@@ -44,7 +44,7 @@ def test_all_routes_registered(app):
         print(f"  ✓ All {len(critical_routes)} critical routes present")
         return True
 
-def test_health_endpoint():
+def test_health_endpoint(app):
     """Test health endpoint works"""
     print("Testing health endpoint...")
     
@@ -62,7 +62,7 @@ def test_health_endpoint():
         print("  ✓ Health endpoint works")
         return True
 
-def test_ready_endpoint():
+def test_ready_endpoint(app):
     """Test ready endpoint works (if it exists)"""
     print("Testing ready endpoint...")
     
@@ -81,7 +81,7 @@ def test_ready_endpoint():
         print("  ✓ Ready endpoint works")
         return True
 
-def test_login_page():
+def test_login_page(app):
     """Test login page loads"""
     print("Testing login page...")
     
@@ -96,7 +96,7 @@ def test_login_page():
         print(f"  ✗ Login page returned {response.status_code}")
         return False
 
-def test_static_files():
+def test_static_files(app):
     """Test static files accessible"""
     print("Testing static files...")
     
@@ -111,7 +111,7 @@ def test_static_files():
         print("  ✓ Static files accessible")
         return True
 
-def test_protected_routes_require_auth():
+def test_protected_routes_require_auth(app):
     """Test protected routes redirect to login"""
     print("Testing auth protection...")
     
@@ -126,7 +126,7 @@ def test_protected_routes_require_auth():
         print("  ✓ Auth protection works")
         return True
 
-def test_api_endpoints_exist():
+def test_api_endpoints_exist(app):
     """Test API endpoints are registered"""
     print("Testing API endpoints...")
     
@@ -150,7 +150,7 @@ def test_api_endpoints_exist():
         print(f"  ✓ All {len(api_routes)} critical API endpoints registered")
         return True
 
-def test_no_duplicate_routes():
+def test_no_duplicate_routes(app):
     """Test no duplicate route definitions"""
     print("Testing for duplicate routes...")
     
@@ -178,7 +178,7 @@ def test_no_duplicate_routes():
         print(f"  ✓ No duplicate routes ({len(routes)} unique)")
         return True
 
-def test_blueprints_registered():
+def test_blueprints_registered(app):
     """Test blueprints are properly registered"""
     print("Testing blueprint registration...")
     
@@ -192,7 +192,7 @@ def test_blueprints_registered():
     print(f"  ✓ {len(blueprints)} blueprints registered: {', '.join(blueprints)}")
     return True
 
-def test_url_for_works():
+def test_url_for_works(app):
     """Test url_for works for routes"""
     print("Testing url_for...")
     
