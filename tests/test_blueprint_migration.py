@@ -8,6 +8,7 @@ Usage:
 
 import sys
 import os
+import pytest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 
@@ -81,6 +82,7 @@ def test_ready_endpoint(app):
         print("  ✓ Ready endpoint works")
         return True
 
+@pytest.mark.requires_config_dir
 def test_login_page(app):
     """Test login page loads"""
     print("Testing login page...")
@@ -111,6 +113,7 @@ def test_static_files(app):
         print("  ✓ Static files accessible")
         return True
 
+@pytest.mark.requires_config_dir
 def test_protected_routes_require_auth(app):
     """Test protected routes redirect to login"""
     print("Testing auth protection...")
