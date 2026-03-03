@@ -38,7 +38,7 @@ jobs:
     
     - name: Run tests with pytest
       run: |
-        python -m pytest tests/ -v --tb=short
+        python -m pytest tests/ -v --tb=short -m "not requires_config_dir"
       continue-on-error: false
     
     - name: Test summary
