@@ -31,12 +31,12 @@ def detect_provider_from_url(tunnel_url: str) -> str:
     
     tunnel_url_lower = tunnel_url.lower()
     
-    # use domain extraction to avoid substring bypass attacks
-    if '.trycloudflare.com' in tunnel_url_lower or tunnel_url_lower.startswith('https://trycloudflare.com'):
+    # use proper domain checking to avoid substring bypass attacks
+    if tunnel_url_lower.endswith('.trycloudflare.com') or tunnel_url_lower.startswith('https://trycloudflare.com/'):
         return 'cloudflare'
-    elif '.ngrok' in tunnel_url_lower or 'ngrok.io' in tunnel_url_lower or 'ngrok.app' in tunnel_url_lower:
+    elif tunnel_url_lower.endswith('.ngrok.io') or tunnel_url_lower.endswith('.ngrok.app') or tunnel_url_lower.endswith('.ngrok-free.app'):
         return 'ngrok'
-    elif '.cfargotunnel.com' in tunnel_url_lower or tunnel_url_lower.startswith('https://cfargotunnel.com'):
+    elif tunnel_url_lower.endswith('.cfargotunnel.com') or tunnel_url_lower.startswith('https://cfargotunnel.com/'):
         return 'cloudflare'  # named tunnel
     
     return None
