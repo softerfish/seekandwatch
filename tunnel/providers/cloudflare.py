@@ -125,4 +125,5 @@ class CloudflareTunnelProvider(TunnelProvider):
         if not tunnel_url:
             return False
         
-        return '.trycloudflare.com' in tunnel_url.lower()
+        url_lower = tunnel_url.lower()
+        return url_lower.endswith('.trycloudflare.com') or url_lower.startswith('https://trycloudflare.com/')
