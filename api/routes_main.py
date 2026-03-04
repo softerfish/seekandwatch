@@ -1126,15 +1126,15 @@ def schedule_collection():
                 'message': 'Selected mode requires at least one library'
             }), 400
             
-    except json.JSONDecodeError as e:
+    except json.JSONDecodeError:
         return jsonify({
             'status': 'error', 
-            'message': f'Invalid JSON in target_libraries: {str(e)}'
+            'message': 'Invalid JSON in target_libraries'
         }), 400
-    except Exception as e:
+    except Exception:
         return jsonify({
             'status': 'error', 
-            'message': f'Error parsing target_libraries: {str(e)}'
+            'message': 'Error parsing target_libraries'
         }), 400
 
     job = CollectionSchedule.query.filter_by(preset_key=preset_key).first()
@@ -1321,8 +1321,8 @@ def test_connection():
                 if r.status_code == 200:
                     return jsonify({'status': 'success', 'message': 'Radarr Connected!', 'msg': 'Radarr Connected!'})
                 return jsonify({'status': 'error', 'message': f'Radarr returned HTTP {r.status_code}', 'msg': f'Radarr returned HTTP {r.status_code}'})
-            except Exception as e:
-                return jsonify({'status': 'error', 'message': f'Radarr connection error: {str(e)}', 'msg': 'Connection Failed'})
+            except Exception:
+                return jsonify({'status': 'error', 'message': 'Radarr connection failed', 'msg': 'Connection Failed'})
 
         elif service == 'sonarr':
             u = (s.sonarr_url or '').strip() if use_stored and s else (data.get('url') or '').strip()
@@ -1338,8 +1338,8 @@ def test_connection():
                 if r.status_code == 200:
                     return jsonify({'status': 'success', 'message': 'Sonarr Connected!', 'msg': 'Sonarr Connected!'})
                 return jsonify({'status': 'error', 'message': f'Sonarr returned HTTP {r.status_code}', 'msg': f'Sonarr returned HTTP {r.status_code}'})
-            except Exception as e:
-                return jsonify({'status': 'error', 'message': f'Sonarr connection error: {str(e)}', 'msg': 'Connection Failed'})
+            except Exception:
+                return jsonify({'status': 'error', 'message': 'Sonarr connection failed', 'msg': 'Connection Failed'})
 
         return jsonify({'status': 'error', 'message': 'Unknown service', 'msg': 'Unknown service'})
 
@@ -4607,7 +4607,7 @@ def run_test():
         write_log("error", "TestRunner", f"test failed: {test_name} - {result.get('error')}")
         return jsonify({
             'status': 'error',
-            'message': result['error']
+            'message': 'Test execution failed'
         }), 400
     
     write_log("info", "TestRunner", f"test executed: {test_name} (passed: {result['success']})")
@@ -4708,7 +4708,7 @@ def run_script():
         write_log("error", "ScriptRunner", f"script failed: {script_name} - {result.get('error')}")
         return jsonify({
             'status': 'error',
-            'message': result['error']
+            'message': 'Script execution failed'
         }), 400
     
     write_log("info", "ScriptRunner", f"script executed: {script_name}")
