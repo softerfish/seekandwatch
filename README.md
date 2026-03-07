@@ -1,6 +1,6 @@
 # SeekAndWatch
 
-![Version](https://img.shields.io/badge/version-1.6.4-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) ![License](https://img.shields.io/badge/License-MIT-green.svg)
+![Version](https://img.shields.io/badge/version-1.6.5-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
 **Saved you a scroll or two?** If this app saves you from endless scrolling, a star for the project helps a lot.
 
@@ -8,7 +8,7 @@ Self-hosted Plex companion: Smart Discovery from your watch history, add movies/
 
 **[SeekAndWatch Cloud](https://github.com/softerfish/seekandwatch/wiki/SeekAndWatch-Cloud)** (beta) - Hosted option so friends and family can request from your Plex server without needing access to your apps. You approve or deny; requests sync to Radarr or Sonarr. Zero port forwarding.
 
-**Documentation:** [Wiki](https://github.com/softerfish/seekandwatch/wiki) - [install](https://github.com/softerfish/seekandwatch/wiki/Installation-and-Update-Guide), [Smart Discovery](https://github.com/softerfish/seekandwatch/wiki/Smart-Discovery), [Plex Collections](https://github.com/softerfish/seekandwatch/wiki/Plex-Collections), [Radarr](https://github.com/softerfish/seekandwatch/wiki/Radarr), [Sonarr](https://github.com/softerfish/seekandwatch/wiki/Sonarr), [Kometa builder](https://github.com/softerfish/seekandwatch/wiki/Kometa-Config-Builder), troubleshooting.
+**Documentation:** [Wiki](https://github.com/softerfish/seekandwatch/wiki) - [install](https://github.com/softerfish/seekandwatch/wiki/Installation-&-Update-Guide), [Smart Discovery](https://github.com/softerfish/seekandwatch/wiki/Smart-Discovery), [Plex Collections](https://github.com/softerfish/seekandwatch/wiki/Plex-Collections), [Radarr](https://github.com/softerfish/seekandwatch/wiki/Radarr), [Sonarr](https://github.com/softerfish/seekandwatch/wiki/Sonarr), [Kometa builder](https://github.com/softerfish/seekandwatch/wiki/Kometa-Config-Builder), troubleshooting.
 
 ---
 
@@ -111,7 +111,7 @@ Cloud is currently **in beta**. To request access: [r/SeekAndWatch](https://www.
 
 ## Installation
 
-Full install and troubleshooting: [Wiki  - Install & Troubleshooting](https://github.com/softerfish/seekandwatch/wiki/Installation-and-Update-Guide).
+Full install and troubleshooting: [Wiki  - Install & Troubleshooting](https://github.com/softerfish/seekandwatch/wiki/Installation-&-Update-Guide).
 
 ### Unraid
 
@@ -147,11 +147,18 @@ docker compose up -d
 
 - **Manual Docker installs:** Use the version badge in the app (one-click updater) or run `docker pull ghcr.io/softerfish/seekandwatch:latest` and recreate the container. Your database and config in `/config` are not touched.
 - **Unraid App Store installs:** Update only through the Unraid App Store.
-- **Manual steps (if you prefer):** See [Wiki  - Install & Troubleshooting](https://github.com/softerfish/seekandwatch/wiki/Installation-and-Update-Guide).
+- **Manual steps (if you prefer):** See [Wiki  - Install & Troubleshooting](https://github.com/softerfish/seekandwatch/wiki/Installation-&-Update-Guide).
 
 ---
 
 ## Changelog
+
+v1.6.5
+
+- small webhook update. Quick tunnels was not always reconnecting in the background
+
+<details>
+  <summary><b>Past Changelog</b></summary>
 
 v1.6.4
 
@@ -160,9 +167,6 @@ v1.6.4
 - SeekAndWatch Cloudflare Tunnels reconnect themselves now without having to reset the container. Still working on adding ngrok
 - fixed Kometa config import from a URL
 - added webhook logs
-
-<details>
-  <summary><b>Past Changelog</b></summary>
 
 v1.6.3
 
