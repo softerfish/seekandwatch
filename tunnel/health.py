@@ -89,6 +89,26 @@ class HealthMonitor:
                 if not is_healthy:
                     # increment consecutive failures
                     self.consecutive_failures += 1
+                    
+                    # record failure for backoff tracking
+                    self._record_failure()
+                    
+                    # update database with failure info
+                    try:
+                        with self.app.app_context():
+                            from models import Settings
+                            from datetime import datetime
+                            
+                            settings = Settings.query.filter_by(tunnel_enabled=True).first()
+                            if settings:
+                                settings.tunnel_last_error = f"Health check failed (DNS resolution error)"
+                                settings.tunnel_last_failure = datetime.utcnow()
+                                if hasattr(settings, 'tunnel_consecutive_failures'):
+                                    settings.tunnel_consecutive_failures = self.consecutive_failures
+                                self.db.session.commit()
+                    except Exception:
+                        self.app.logger.error("Failed to update database with failure info")
+                    
                     self.app.logger.warning(
                         f"Tunnel health check failed, process not running "
                         f"(consecutive failures: {self.consecutive_failures})"
@@ -194,13 +214,24 @@ class HealthMonitor:
                             else:
                                 self.app.logger.warning(
                                     f"Health endpoint returned {response.status_code}, "
+                                    "tunnel is unhealthy"
+                                )
+                                return False
+                        except requests.RequestException as e:
+                            # DNS resolution errors, connection errors, etc. mean tunnel is down
+                            error_str = str(e)
+                            if 'Failed to resolve' in error_str or 'Name or service not known' in error_str or 'NameResolutionError' in error_str:
+                                self.app.logger.error(
+                                    f"Health endpoint DNS resolution failed: {e}, "
+                                    "tunnel URL is not reachable"
+                                )
+                                return False
+                            else:
+                                self.app.logger.warning(
+                                    f"Health endpoint request failed: {e}, "
                                     "falling back to process check"
                                 )
-                        except requests.RequestException as e:
-                            self.app.logger.warning(
-                                f"Health endpoint request failed: {e}, "
-                                "falling back to process check"
-                            )
+
             
             # fallback: use TunnelManager's _is_process_running method
             return self.tunnel_manager._is_process_running()
