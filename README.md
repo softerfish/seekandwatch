@@ -153,12 +153,18 @@ docker compose up -d
 
 ## Changelog
 
-v1.6.5
+v1.6.6
 
-- small webhook update. Quick tunnels was not always reconnecting in the background
+- fix to sending Radarr/Sonarr requests to the selected profile
+- support for posters showing on users visiting via Cloudflared
+- ignore specific Plex profiles repaired and brought back for Smart Discovery
 
 <details>
   <summary><b>Past Changelog</b></summary>
+
+v1.6.5
+
+- small webhook update. Quick tunnels was not always reconnecting in the background
 
 v1.6.4
 

@@ -246,6 +246,11 @@ def init_tunnel_services():
             enabled_users = Settings.query.filter_by(tunnel_enabled=True).all()
             
             for settings in enabled_users:
+                # Skip if using external tunnel (managed by user)
+                if getattr(settings, 'tunnel_provider', None) == 'external':
+                    app.logger.info(f"Skipping tunnel start for user {settings.user_id}: external tunnel configured")
+                    continue
+
                 # Check for Quick Tunnel first
                 if settings.tunnel_name == 'quick-tunnel' or not hasattr(settings, 'cloudflare_api_token') or not settings.cloudflare_api_token:
                     app.logger.info(f"Starting quick tunnel for user {settings.user_id}")
@@ -291,8 +296,19 @@ def init_tunnel_services():
                         app.logger.error(f"Failed to decrypt tunnel token for user {settings.user_id}")
                         continue
                     
-                    # start tunnel with token (API-based approach)
-                    tunnel_manager.start_tunnel_with_token(settings.user_id, credentials['tunnel_token'])
+                    if tunnel_manager.start_tunnel_with_token(settings.user_id, credentials['tunnel_token']):
+                        # successful start, register webhook if cloud enabled
+                        if settings.cloud_enabled and settings.cloud_api_key:
+                            from services.Router import Router
+                            cloud_base = CloudService.get_cloud_base_url(settings)
+                            app.logger.info(f"Registering webhook for named tunnel: {settings.tunnel_url} with {cloud_base}")
+                            tunnel_manager.register_webhook(
+                                tunnel_url=settings.tunnel_url,
+                                api_key=settings.cloud_api_key,
+                                cloud_base_url=cloud_base,
+                                user_id=settings.user_id,
+                                webhook_secret=settings.cloud_webhook_secret
+                            )
                     
                 except Exception:
                     app.logger.error(f"Failed to start tunnel for user {settings.user_id}")
@@ -356,7 +372,7 @@ def _ensure_migrations():
         row = db.session.execute(text("SELECT version FROM schema_info WHERE id = 1")).fetchone()
         if row is not None and row[0] >= CURRENT_SCHEMA_VERSION:
             return
-    except OperationalError:
+    except OperationalError as e:
         msg = str(e).lower()
         if "no such column" not in msg and "no such table" not in msg:
             raise
@@ -659,21 +675,6 @@ def _perform_actual_migrations():
             except Exception as e:
                 print(f"--- [Migration] Create table {model_name} failed: {e} ---", flush=True)
         
-        # create security tables (webhook_attempt, login_attempt, account_lockout)
-        try:
-            from models_security import WebhookAttempt, LoginAttempt, AccountLockout
-            for model_name, model in [
-                ('WebhookAttempt', WebhookAttempt),
-                ('LoginAttempt', LoginAttempt),
-                ('AccountLockout', AccountLockout),
-            ]:
-                try:
-                    model.__table__.create(db.engine, checkfirst=True)
-                    print(f"✓ Created security table: {model_name}")
-                except Exception as e:
-                    print(f"--- [Migration] Create security table {model_name} failed: {e} ---", flush=True)
-        except ImportError as e:
-            print(f"--- [Migration] Could not import security models: {e} ---", flush=True)
         # add user_id to app_request so requested media is per-user (security)
         try:
             inspector = sqlalchemy.inspect(db.engine)
@@ -776,7 +777,7 @@ def update_github_stats():
                 
             github_cache['last_updated'] = time.time()
             
-        except Exception:
+        except Exception as e:
             print(f"GitHub Update Error: {e}")
             
         time.sleep(3600)
@@ -846,10 +847,23 @@ from services.CloudService import CloudService
 
 def scheduled_tasks():
     with app.app_context():
-        # prune backups
+        # prune backups and image cache (at 04:00)
         try:
             if datetime.datetime.now().hour == 4 and datetime.datetime.now().minute == 0:
                 prune_backups()
+                
+                # Cleanup image proxy cache (7-day TTL)
+                cache_dir = os.path.join('assets', 'cache', 'images')
+                if os.path.exists(cache_dir):
+                    print("Scheduler: Cleaning up image proxy cache...")
+                    now_ts = time.time()
+                    for f in os.listdir(cache_dir):
+                        f_path = os.path.join(cache_dir, f)
+                        if os.path.isfile(f_path):
+                            if (now_ts - os.path.getmtime(f_path)) > (7 * 86400):
+                                try: os.remove(f_path)
+                                except: pass
+                    print("✓ Image proxy cache cleaned")
         except Exception as e:
             print(f"Scheduler Error (Pruning): {e}")
             

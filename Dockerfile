@@ -5,9 +5,12 @@ WORKDIR /app
 # This line forces Python to print logs instantly
 ENV PYTHONUNBUFFERED=1
 
-# Install dependencies
-# We need apt-get to install gosu, then we clean up to keep the image small.
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Install dependencies with network resilience
+RUN apt-get update -o Acquire::Retries=3 && \
+    apt-get install -y --no-install-recommends \
+    -o Acquire::Retries=3 \
+    -o Acquire::http::Timeout="60" \
+    -o Acquire::https::Timeout="60" \
     gosu \
     && rm -rf /var/lib/apt/lists/*
 

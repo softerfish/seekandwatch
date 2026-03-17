@@ -127,6 +127,25 @@ class Settings(db.Model):
     tunnel_recovery_disabled = db.Column(db.Boolean, default=False)  # circuit breaker flag
     tunnel_user_stopped = db.Column(db.Boolean, default=False)  # manual stop flag
     tunnel_recovery_history = db.Column(db.Text, nullable=True)  # JSON array of last 10 recovery attempts
+    
+    def get_public_url(self):
+        """
+        returns the best available public URL for this user.
+        handy to avoid checking tunnel_url vs cloud_webhook_url everywhere.
+        """
+        if self.tunnel_provider == 'external' and self.cloud_webhook_url:
+            # use the manual webhook URL, but stripped to the base
+            from urllib.parse import urlparse
+            parsed = urlparse(self.cloud_webhook_url)
+            # return scheme://domain (and port/path if they have one before /api/webhook)
+            base = f"{parsed.scheme}://{parsed.netloc}"
+            if parsed.path and '/api/webhook' in parsed.path:
+                path_base = parsed.path.split('/api/webhook')[0].rstrip('/')
+                if path_base:
+                    base += path_base
+            return base
+            
+        return self.tunnel_url or ''
 
 class Blocklist(db.Model):
     __table_args__ = {'extend_existing': True}
