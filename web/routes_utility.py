@@ -10,7 +10,7 @@ import os
 import hashlib
 import datetime
 from urllib.parse import urlparse, quote_plus
-from flask import Blueprint, request, jsonify, Response, send_file
+from flask import Blueprint, request, jsonify, Response, send_file, redirect, url_for
 from flask_login import login_required, current_user
 from plexapi.server import PlexServer
 
@@ -277,7 +277,7 @@ def image_proxy():
                         p_path = tr.json().get('poster_path')
                         if p_path:
                             # Recurse with TMDB URL
-                            return Response(f"<script>location.href='/api/proxy/image?url=https://image.tmdb.org/t/p/w500{p_path}'</script>", mimetype='text/html')
+                            return redirect(url_for('web_utility.image_proxy', url=f"https://image.tmdb.org/t/p/w500{p_path}"))
                 except: pass
             
             return f"Source Error: {r.status_code}", 404
