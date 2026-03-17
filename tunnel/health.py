@@ -80,6 +80,22 @@ class HealthMonitor:
         """
         while self.running:
             try:
+                # phase 7: skip health checks for external tunnels
+                with self.app.app_context():
+                    from models import Settings
+                    settings = Settings.query.filter_by(tunnel_enabled=True).first()
+                    # if using an external tunnel, we don't manage it - but we do keep the timestamp
+                    if settings and getattr(settings, 'tunnel_provider', None) == 'external':
+                        settings.tunnel_last_health_check = datetime.utcnow()
+                        self.db.session.commit()
+                        
+                        # sleep and continue
+                        sleep_remaining = self.check_interval
+                        while sleep_remaining > 0 and self.running:
+                            time.sleep(min(1, sleep_remaining))
+                            sleep_remaining -= 1
+                        continue
+
                 # check if process is healthy
                 is_healthy = self._check_process_health()
                 

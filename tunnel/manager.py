@@ -493,7 +493,10 @@ class TunnelManager:
                         settings = Settings.query.filter_by(user_id=user_id).first()
                         
                         if settings:
-                            settings.tunnel_status = 'connected'
+                            # only update tunnel_status if it's NOT an external tunnel OR if it was in error
+                            if settings.tunnel_provider != 'external' or settings.tunnel_status == 'error':
+                                settings.tunnel_status = 'connected'
+                            
                             settings.tunnel_last_error = None
                             settings.cloud_webhook_url = registrar._construct_webhook_url(tunnel_url)
                             self.db.session.commit()
@@ -1539,10 +1542,19 @@ class TunnelManager:
         import time
         
         try:
+            # FUTUREPROOFING: Safety guard to prevent overwriting external settings
+            from models import Settings
+            settings = Settings.query.filter_by(user_id=user_id).first()
+            if settings and getattr(settings, 'tunnel_provider', None) == 'external':
+                 self.app.logger.warning(f"Refusing to start quick tunnel for user {user_id}: provider is set to 'external'")
+                 return None
+
             # prevent duplicate process instances
             if self._is_process_running():
-                self.app.logger.warning("Cloudflared process already running, stopping it first")
+                self.app.logger.info("[Tunnel Trace] Process already running, restarting for user %s", user_id)
                 self.stop_tunnel(user_id)
+            else:
+                self.app.logger.info("[Tunnel Trace] Starting fresh quick tunnel for user %s", user_id)
             
             # ensure binary is available
             if not self.ensure_binary():
@@ -1564,7 +1576,7 @@ class TunnelManager:
             # so we'll start it, read from its pipe until we find the URL, then redirect to log
             
             process = subprocess.Popen(
-                [binary_path, 'tunnel', '--url', local_url],
+                [binary_path, 'tunnel', '--url', local_url, '--no-autoupdate'],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
@@ -1578,12 +1590,13 @@ class TunnelManager:
             timeout = 45  # 45 seconds to find the URL
             
             # regex patterns
-            url_pattern = re.compile(r'https://[a-z]+-[a-z]+-[a-z]+-[a-z]+\.trycloudflare\.com')
+            url_pattern = re.compile(r'https://[a-z0-9-]+\.trycloudflare\.com')
             metrics_pattern = re.compile(r'Metrics server listening on 127\.0\.0\.1:(\d+)')
             
             # read output line by line to find metrics port or URL
             with open(log_path, 'a') as log_file:
                 log_file.write(f"\n--- Quick Tunnel Started at {time.ctime()} ---\n")
+                log_file.write(f"Command: {' '.join([binary_path, 'tunnel', '--url', local_url, '--no-autoupdate'])}\n")
                 
                 while time.time() - start_time < timeout:
                     line = process.stdout.readline()
@@ -1600,24 +1613,28 @@ class TunnelManager:
                     metrics_match = metrics_pattern.search(line)
                     if metrics_match:
                         metrics_port = metrics_match.group(1)
-                        self.app.logger.info(f"Found Cloudflare metrics port: {metrics_port}")
-                        
-                        # Query metrics endpoint for URL
-                        try:
-                            import requests
-                            # Give cloudflared a second to establish connection
-                            for _ in range(10):
-                                time.sleep(1)
-                                try:
-                                    m_resp = requests.get(f"http://127.0.0.1:{metrics_port}/quicktunnelurl", timeout=2)
-                                    if m_resp.status_code == 200:
-                                        tunnel_url = m_resp.text.strip()
-                                        if tunnel_url: break
-                                except: continue
-                        except Exception as me:
-                            self.app.logger.warning(f"Metrics query failed: {me}")
-                        
-                        if tunnel_url: break
+                        if not metrics_port in [None, ""]:
+                            self.app.logger.info(f"Found Cloudflare metrics port: {metrics_port}")
+                            
+                            # Query metrics endpoint for URL
+                            try:
+                                import requests
+                                # Give cloudflared a second to establish connection
+                                for _ in range(5):
+                                    time.sleep(1)
+                                    try:
+                                        m_resp = requests.get(f"http://127.0.0.1:{metrics_port}/quicktunnelurl", timeout=2)
+                                        if m_resp.status_code == 200:
+                                            found_url = m_resp.text.strip()
+                                            if found_url and url_pattern.match(found_url):
+                                                tunnel_url = found_url
+                                                self.app.logger.info(f"Found tunnel URL via metrics: {tunnel_url}")
+                                                break
+                                    except: continue
+                            except Exception as me:
+                                self.app.logger.warning(f"Metrics query failed: {me}")
+                            
+                            if tunnel_url: break
 
                     # 2. Fallback to stdout parsing
                     match = url_pattern.search(line)
@@ -1627,12 +1644,41 @@ class TunnelManager:
                         break
                     
                     if process.poll() is not None:
+                        self.app.logger.error(f"Cloudflared process exited unexpectedly with code {process.returncode}")
                         break
             
             if not tunnel_url:
                 self.app.logger.error("Failed to find Quick Tunnel URL in cloudflared output within timeout")
                 process.terminate()
                 return None
+            
+            # stability delay - ensure Cloudflare's edge is ready
+            self.app.logger.info("Tunnel found, waiting for edge stability and loopback test...")
+            
+            # loopback verification - try to reach ourselves through the tunnel
+            # this proves DNS is propagated AND the tunnel is routing
+            loopback_success = False
+            for attempt in range(5):
+                time.sleep(3) # Wait 3s between attempts
+                try:
+                    import requests
+                    # We use a custom User-Agent to avoid being blocked by Cloudflare or server WAFs
+                    headers = {'User-Agent': 'SeekAndWatch-Pairing-Bot/1.0'}
+                    # We hit the pairing endpoint with OPTIONS to see if it's reachable
+                    # Use a short timeout so we don't hang
+                    self.app.logger.debug(f"Loopback attempt {attempt+1} to {tunnel_url}...")
+                    l_resp = requests.options(f"{tunnel_url.rstrip('/')}/api/pair/receive_key", headers=headers, timeout=5)
+                    if l_resp.status_code in [200, 204, 405]: # 405 is fine too, means it hit the Flask route
+                        loopback_success = True
+                        self.app.logger.info(f"Tunnel loopback verified after {attempt+1} attempts!")
+                        break
+                except Exception as e:
+                    self.app.logger.debug(f"Loopback attempt {attempt+1} failed: {e}")
+            
+            if not loopback_success:
+                self.app.logger.warning("Tunnel loopback verification timed out. The URL might still work from outside, but edge propagation is slow.")
+                # We don't fail the whole thing, but we wait a little longer just in case
+                time.sleep(2)
             
             # the process is still running and we have the URL
             self.process = process
@@ -1644,6 +1690,7 @@ class TunnelManager:
             
             if settings:
                 settings.tunnel_url = tunnel_url
+                settings.tunnel_provider = 'cloudflare'
                 settings.tunnel_name = 'quick-tunnel'
                 settings.tunnel_last_started = datetime.utcnow()
                 settings.tunnel_status = 'connected'

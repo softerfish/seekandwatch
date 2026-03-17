@@ -88,9 +88,9 @@ class WebhookRegistrar:
                 return False, error_msg
             
             # send registration request to cloud app
-            print(f"DEBUG: Sending registration request to {Router.get_cloud_url(self.cloud_base_url, Router.CLOUD_SAVE_WEBHOOK)}", flush=True)
+            print(f"DEBUG: Sending registration request to {Router.get_cloud_url(self.cloud_base_url, Router.CLOUD_REGISTER_WEBHOOK)}", flush=True)
             response = requests.post(
-                Router.get_cloud_url(self.cloud_base_url, Router.CLOUD_SAVE_WEBHOOK),
+                Router.get_cloud_url(self.cloud_base_url, Router.CLOUD_REGISTER_WEBHOOK),
                 json={
                     'webhook_url': webhook_url,
                     'webhook_secret': webhook_secret
@@ -191,7 +191,7 @@ class WebhookRegistrar:
         try:
             # send empty webhook URL to clear registration
             response = requests.post(
-                Router.get_cloud_url(self.cloud_base_url, Router.CLOUD_SAVE_WEBHOOK),
+                Router.get_cloud_url(self.cloud_base_url, Router.CLOUD_REGISTER_WEBHOOK),
                 json={
                     'webhook_url': '',
                     'webhook_secret': ''
