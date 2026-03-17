@@ -1,6 +1,6 @@
 # SeekAndWatch
 
-![Version](https://img.shields.io/badge/version-1.6.5-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) ![License](https://img.shields.io/badge/License-MIT-green.svg)
+![Version](https://img.shields.io/badge/version-1.6.6-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
 **Saved you a scroll or two?** If this app saves you from endless scrolling, a star for the project helps a lot.
 
@@ -156,7 +156,7 @@ docker compose up -d
 v1.6.6
 
 - fix to sending Radarr/Sonarr requests to the selected profile
-- support for posters showing on users visiting via Cloudflared
+- support for users visiting via Cloudflared and webhooks support
 - ignore specific Plex profiles repaired and brought back for Smart Discovery
 
 <details>
