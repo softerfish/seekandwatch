@@ -92,7 +92,7 @@ class IntegrationsService:
         return u
 
     @staticmethod
-    def send_to_radarr_sonarr(settings, media_type, tmdb_id):
+    def send_to_radarr_sonarr(settings, media_type, tmdb_id, quality_profile_id=None):
         """Sends a request directly to Radarr or Sonarr."""
         if not settings:
             write_log("error", "Integrations", "Settings not found")
@@ -107,8 +107,11 @@ class IntegrationsService:
                 base_url = IntegrationsService._get_clean_base_url(settings.radarr_url)
                 headers = {"X-Api-Key": settings.radarr_api_key, "Content-Type": "application/json"}
 
-                root_path, quality_profile_id, err = IntegrationsService._arr_root_and_quality(base_url, headers)
+                root_path, default_quality_id, err = IntegrationsService._arr_root_and_quality(base_url, headers)
                 if err: return False, f"Radarr: {err}"
+
+                # Use provided profile or fall back to default
+                final_quality_id = quality_profile_id if quality_profile_id is not None else default_quality_id
 
                 # Lookup movie in Radarr first to get full metadata
                 lookup_url = f"{base_url}/api/v3/movie/lookup?term=tmdb:{tmdb_id}"
@@ -125,7 +128,7 @@ class IntegrationsService:
                         payload = {
                             "tmdbId": int(tmdb_id),
                             "title": movie_data.get('title'),
-                            "qualityProfileId": quality_profile_id,
+                            "qualityProfileId": int(final_quality_id),
                             "rootFolderPath": root_path,
                             "monitored": True,
                             "year": movie_data.get('year'),
@@ -134,8 +137,15 @@ class IntegrationsService:
                             "addOptions": {"searchForMovie": True}
                         }
                         
-                        write_log("info", "Radarr", f"Adding movie '{movie_data.get('title')}'")
+                        write_log("info", "Radarr", f"Adding movie '{movie_data.get('title')}' with profile {final_quality_id}")
                         resp = requests.post(f"{base_url}/api/v3/movie", json=payload, headers=headers, timeout=15)
+                        
+                        # Resilience: If profile fails (400), retry once with default
+                        if resp.status_code == 400 and quality_profile_id is not None:
+                            write_log("warning", "Radarr", f"Profile {quality_profile_id} failed, retrying with default {default_quality_id}")
+                            payload["qualityProfileId"] = int(default_quality_id)
+                            resp = requests.post(f"{base_url}/api/v3/movie", json=payload, headers=headers, timeout=15)
+
                         if resp.status_code in [200, 201]:
                             write_log("success", "Radarr", f"Added '{movie_data.get('title')}' to Radarr")
                             return True, "Added to Radarr"
@@ -158,9 +168,12 @@ class IntegrationsService:
                 base_url = IntegrationsService._get_clean_base_url(settings.sonarr_url)
                 headers = {"X-Api-Key": settings.sonarr_api_key, "Content-Type": "application/json"}
 
-                root_path, quality_profile_id, err = IntegrationsService._arr_root_and_quality(base_url, headers)
+                root_path, default_quality_id, err = IntegrationsService._arr_root_and_quality(base_url, headers)
                 if err: return False, f"Sonarr: {err}"
                 
+                # Use provided profile or fall back to default
+                final_quality_id = quality_profile_id if quality_profile_id is not None else default_quality_id
+
                 language_profile_id, lang_err = IntegrationsService._arr_language_profile(base_url, headers)
                 if lang_err: return False, f"Sonarr: {lang_err}"
 
@@ -179,7 +192,7 @@ class IntegrationsService:
                             "tvdbId": series_data.get('tvdbId'),
                             "tmdbId": int(tmdb_id),
                             "title": series_data.get('title'),
-                            "qualityProfileId": quality_profile_id,
+                            "qualityProfileId": int(final_quality_id),
                             "languageProfileId": language_profile_id,
                             "rootFolderPath": root_path,
                             "monitored": True,
@@ -188,8 +201,15 @@ class IntegrationsService:
                             "addOptions": {"searchForMissingEpisodes": True}
                         }
                         
-                        write_log("info", "Sonarr", f"Adding series '{series_data.get('title')}'")
+                        write_log("info", "Sonarr", f"Adding series '{series_data.get('title')}' with profile {final_quality_id}")
                         resp = requests.post(f"{base_url}/api/v3/series", json=payload, headers=headers, timeout=15)
+                        
+                        # Resilience: If profile fails (400), retry once with default
+                        if resp.status_code == 400 and quality_profile_id is not None:
+                            write_log("warning", "Sonarr", f"Profile {quality_profile_id} failed, retrying with default {default_quality_id}")
+                            payload["qualityProfileId"] = int(default_quality_id)
+                            resp = requests.post(f"{base_url}/api/v3/series", json=payload, headers=headers, timeout=15)
+
                         if resp.status_code in [200, 201]:
                             write_log("success", "Sonarr", f"Added '{series_data.get('title')}' to Sonarr")
                             return True, "Added to Sonarr"
