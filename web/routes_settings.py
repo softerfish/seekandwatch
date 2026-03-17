@@ -76,8 +76,9 @@ def settings():
             if 'sonarr_url' in request.form:
                 s.sonarr_url = request.form.get('sonarr_url')
             _apply_key('sonarr_api_key', 'sonarr_api_key_unchanged', 'sonarr_api_key')
-            if 'plex_url' in request.form or 'plex_token' in request.form:
-                s.ignored_users = ','.join(request.form.getlist('ignored_plex_users'))
+            if 'plex_url' in request.form or 'plex_token' in request.form or form_section == 'apis':
+                # request.form.getlist handles multiple checkboxes with same name; if none checked, returns []
+                s.ignored_users = ','.join([u for u in request.form.getlist('ignored_plex_users') if u])
             try:
                 commit_with_retry()
             except Exception as e:
@@ -86,14 +87,16 @@ def settings():
                 return jsonify({'status': 'error', 'message': 'Database save failed. Please try again.'}), 500
 
         if update_scanners:
-            try:
-                s.keyword_cache_size = max(100, min(50000, int(request.form.get('keyword_cache_size', 3000))))
-            except (TypeError, ValueError):
-                s.keyword_cache_size = 3000
-            try:
-                s.runtime_cache_size = max(100, min(50000, int(request.form.get('runtime_cache_size', 3000))))
-            except (TypeError, ValueError):
-                s.runtime_cache_size = 3000
+            if 'keyword_cache_size' in request.form:
+                try:
+                    s.keyword_cache_size = max(100, min(50000, int(request.form.get('keyword_cache_size', 3000))))
+                except (TypeError, ValueError):
+                    s.keyword_cache_size = 3000
+            if 'runtime_cache_size' in request.form:
+                try:
+                    s.runtime_cache_size = max(100, min(50000, int(request.form.get('runtime_cache_size', 3000))))
+                except (TypeError, ValueError):
+                    s.runtime_cache_size = 3000
             if 'max_log_size' in request.form:
                 try:
                     s.max_log_size = max(1, min(100, int(request.form.get('max_log_size', 5))))
@@ -104,8 +107,8 @@ def settings():
                     s.scanner_log_size = max(1, min(100, int(request.form.get('scanner_log_size', 10))))
                 except (TypeError, ValueError):
                     s.scanner_log_size = 10
-            if 'ignored_libraries' in request.form or request.form.getlist('ignored_libraries'):
-                ignored_libs = request.form.getlist('ignored_libraries')
+            if 'ignored_libraries' in request.form or form_section == 'scanners':
+                ignored_libs = [l for l in request.form.getlist('ignored_libraries') if l]
                 s.ignored_libraries = ",".join(ignored_libs)
             try:
                 commit_with_retry()

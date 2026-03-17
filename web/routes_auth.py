@@ -37,6 +37,9 @@ def index():
 @web_auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
     """login page and form submission"""
+    if current_user.is_authenticated:
+        return redirect(url_for('web_pages.dashboard'))
+    
     # check if no users exist, redirect to register
     if User.query.count() == 0:
         flash('No accounts exist. Please register to create the first admin account.')
@@ -61,6 +64,9 @@ def login():
 @web_auth_bp.route('/register', methods=['GET', 'POST'])
 def register():
     """registration page and form submission"""
+    if current_user.is_authenticated:
+        return redirect(url_for('web_pages.dashboard'))
+    
     if request.method == 'POST':
         username = (request.form.get('username') or '').strip()
         password = (request.form.get('password') or '')

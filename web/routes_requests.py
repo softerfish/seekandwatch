@@ -47,12 +47,38 @@ def save_cloud_settings():
     settings.cloud_movie_handler = request.form.get('cloud_movie_handler')
     settings.cloud_tv_handler = request.form.get('cloud_tv_handler')
     
-    # cloud sync is now tied to tunnel status (webhook-only, no standalone polling)
-    # automatically enable when tunnel is active, disable when tunnel is off
-    settings.cloud_sync_owned_enabled = settings.tunnel_enabled
+    # cloud sync logic: enabled if tunnel is active OR if manual external URL is provided
+    tunnel_choice = request.form.get('tunnel_provider_choice')
+    if tunnel_choice == 'external':
+        settings.tunnel_provider = 'external'
+        settings.tunnel_enabled = False # app itself doesn't "run" the tunnel
+        settings.cloud_sync_owned_enabled = True # but sync is on
+    elif tunnel_choice == 'cloudflare_quick':
+        settings.tunnel_provider = 'cloudflare'
+        settings.tunnel_name = 'quick-tunnel'
+        settings.cloud_sync_owned_enabled = settings.tunnel_enabled
+    elif tunnel_choice == 'cloudflare_named':
+        settings.tunnel_provider = 'cloudflare'
+        if not settings.tunnel_name or settings.tunnel_name == 'quick-tunnel':
+            settings.tunnel_name = 'named-tunnel'
+        settings.cloud_sync_owned_enabled = settings.tunnel_enabled
+    else:
+        # standard auto-enable logic for internal tunnels
+        settings.cloud_sync_owned_enabled = settings.tunnel_enabled
     
     # phase 4: handle auto-recovery toggle (only from tunnel config form)
     if 'from_tunnel_config' in request.form:
+        # update provider if changed
+        if tunnel_choice:
+            if tunnel_choice == 'cloudflare_quick':
+                settings.tunnel_provider = 'cloudflare'
+                settings.tunnel_name = 'quick-tunnel'
+            elif tunnel_choice == 'cloudflare_named':
+                settings.tunnel_provider = 'cloudflare'
+                settings.tunnel_name = 'named-tunnel' # or preserve existing if already named
+            elif tunnel_choice == 'external':
+                settings.tunnel_provider = 'external'
+
         # auto-recovery toggle
         if hasattr(settings, 'tunnel_auto_recovery_enabled'):
             settings.tunnel_auto_recovery_enabled = 'tunnel_auto_recovery_enabled' in request.form
@@ -73,7 +99,9 @@ def save_cloud_settings():
     if webhook_failsafe and webhook_failsafe in ['6', '12', '24']:
         settings.cloud_webhook_failsafe_hours = int(webhook_failsafe)
 
-    webhook_url = (request.form.get('cloud_webhook_url') or '').strip()
+    # Use the name 'external_tunnel_url' from the form if present (template uses this)
+    webhook_url = request.form.get('external_tunnel_url') or request.form.get('cloud_webhook_url')
+    webhook_url = (webhook_url or '').strip()
     if 'cloud_webhook_secret' in request.form:
         if 'cloud_webhook_secret_unchanged' in request.form:
             pass  # keep existing

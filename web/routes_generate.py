@@ -9,6 +9,7 @@ import json
 import random
 import threading
 import time
+from urllib.parse import quote_plus
 
 import requests
 from flask import Blueprint, request, jsonify, session, redirect, url_for, render_template, flash, current_app
@@ -289,12 +290,17 @@ def review_history():
                     except Exception as e:
                         write_log("warning", "Generate", f"Plex poster/thumb fetch failed ({type(e).__name__})")
 
-                    candidates.append({
+                    c = {
                         'title': title,
-                        'year': year,
-                        'thumb': f"{s.plex_url}{thumb}?X-Plex-Token={s.plex_token}" if thumb else None,
-                        'poster_path': None
-                    })
+                        'year': year
+                    }
+                    if thumb:
+                        raw_plex_url = f"{s.plex_url}{thumb}?X-Plex-Token={s.plex_token}"
+                        c['thumb'] = url_for('web_utility.image_proxy', url=raw_plex_url)
+                    else:
+                        c['thumb'] = None
+                    c['poster_path'] = None
+                    candidates.append(c)
                     seen_titles.add(title)
 
                 # score items based on how often and recently they were watched
@@ -310,8 +316,8 @@ def review_history():
                 candidates = candidates[:limit]
                 set_history_cache(cache_key, candidates)
 
-    except Exception:
-        write_log("error", "Review History", "Scan failed")
+    except Exception as e:
+        write_log("error", "Review History", f"Scan failed: {e}")
         flash("scan failed, please check your plex connection and try again", "error")
         return redirect(url_for('web_pages.dashboard'))
 
