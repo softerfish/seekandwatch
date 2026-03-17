@@ -31,7 +31,15 @@ from utils.system import is_system_locked, set_system_lock, remove_system_lock, 
 
 # Import models and database
 from models import db, Settings, TmdbAlias, TmdbKeywordCache, TmdbRuntimeCache
+import shutil
+import random
+from urllib.parse import urlparse
+import socket
+import ipaddress
+import datetime
+
 from config import CONFIG_DIR, get_cache_file
+SCANNER_LOG_FILE = os.path.join(CONFIG_DIR, 'scanner.log')
 
 # Cache file path (for Plex sync)
 CACHE_FILE = get_cache_file()
@@ -1013,7 +1021,7 @@ def validate_url(url):
         # resolve all IPs for this host
         try:
             addr_info = socket.getaddrinfo(hostname, None)
-        except (socket.gaierror, OSError):
+        except (socket.gaierror, OSError) as e:
             return False, f"Could not resolve hostname ({type(e).__name__})"
 
         # check all resolved IPs

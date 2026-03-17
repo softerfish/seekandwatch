@@ -6,7 +6,6 @@ import time
 from datetime import datetime, timedelta
 from typing import Optional, Tuple
 from models import db
-from models_security import WebhookAttempt
 from utils.helpers import write_log
 
 # configuration
@@ -50,56 +49,3 @@ class WebhookSigner:
             
         except (ValueError, TypeError) as e:
             return False, f"validation error: {str(e)}"
-
-class WebhookRateLimiter:
-    """rate limiting and lockout for webhook endpoint"""
-    
-    @staticmethod
-    def is_ip_locked_out(ip_address: str) -> tuple[bool, str]:
-        """check if ip is locked out due to failed attempts"""
-        cutoff = datetime.utcnow() - timedelta(seconds=WEBHOOK_LOCKOUT_DURATION)
-        
-        try:
-            recent_failures = WebhookAttempt.query.filter(
-                WebhookAttempt.ip_address == ip_address,
-                WebhookAttempt.timestamp > cutoff,
-                WebhookAttempt.success == False
-            ).count()
-            
-            if recent_failures >= WEBHOOK_MAX_FAILURES:
-                return True, f"too many failed attempts, locked for {WEBHOOK_LOCKOUT_DURATION // 60} minutes"
-            
-            return False, ""
-        except Exception as e:
-            write_log("error", "WebhookSecurity", f"lockout check failed: {str(e)}")
-            return False, ""
-    
-    @staticmethod
-    def log_attempt(ip_address: str, success: bool, user_agent: str, 
-                   failure_reason: Optional[str] = None):
-        """log webhook authentication attempt"""
-        try:
-            attempt = WebhookAttempt(
-                ip_address=ip_address,
-                success=success,
-                user_agent=user_agent,
-                failure_reason=failure_reason
-            )
-            db.session.add(attempt)
-            db.session.commit()
-        except Exception as e:
-            write_log("error", "WebhookSecurity", f"failed to log attempt: {str(e)}")
-            db.session.rollback()
-    
-    @staticmethod
-    def clear_attempts(ip_address: str):
-        """clear failed attempts after successful authentication"""
-        try:
-            WebhookAttempt.query.filter_by(
-                ip_address=ip_address,
-                success=False
-            ).delete()
-            db.session.commit()
-        except Exception as e:
-            write_log("error", "WebhookSecurity", f"failed to clear attempts: {str(e)}")
-            db.session.rollback()
