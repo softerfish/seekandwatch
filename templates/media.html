@@ -5,7 +5,8 @@
 <div class="media-container">
     <div class="media-header">
         <h2>Media Management</h2>
-        <p class="text-muted">View and manage your requested media.</p>
+        <p class="text-muted">View and manage your requested media from Smart Discovery and SeekAndWatch Web requests.
+        </p>
     </div>
 
     <!-- Requested Tab -->
@@ -37,139 +38,258 @@
 </div>
 
 <style>
-.media-container { max-width: 1400px; margin: 0 auto; }
-.media-header { margin-bottom: 30px; }
-.media-tab-content { display: none; }
-.media-tab-content.active { display: block; }
-.media-filters { margin-bottom: 15px; }
-.filter-row { display: flex; gap: 8px; flex-wrap: nowrap; align-items: center; }
-.filter-select { padding: 6px 10px; background: #111; border: 1px solid #444; color: white; border-radius: 4px; flex: 1 1 auto; min-width: 0; font-size: 0.9em; cursor: pointer; transition: border-color 0.2s; }
-.filter-select:hover { border-color: #666; }
-.filter-select:focus { outline: none; border-color: var(--accent-color); }
-.media-table-container { background: rgba(0,0,0,0.2); border-radius: 8px; padding: 15px; }
-.media-detail-container { background: rgba(0,0,0,0.2); border-radius: 8px; padding: 20px; }
-.media-table { width: 100%; border-collapse: collapse; }
-.media-table th { text-align: left; padding: 12px; border-bottom: 2px solid #333; color: var(--accent-color); font-weight: bold; }
-.media-table td { padding: 12px; border-bottom: 1px solid #333; }
-.media-table tr:hover { background: rgba(255,255,255,0.05); }
-.status-badge { padding: 4px 8px; border-radius: 4px; font-size: 0.85em; font-weight: bold; }
-.status-pending { background: #f39c12; color: #000; }
-.status-approved { background: #3498db; color: #fff; }
-.status-available { background: #2ecc71; color: #fff; }
-.status-failed { background: #e74c3c; color: #fff; }
-.monitored-badge { padding: 4px 8px; border-radius: 4px; font-size: 0.85em; }
-.monitored-yes { background: #2ecc71; color: #fff; }
-.monitored-no { background: #95a5a6; color: #fff; }
-.action-btn { padding: 4px 8px; margin: 0 2px; border: 1px solid #555; background: #222; color: #fff; border-radius: 4px; cursor: pointer; font-size: 0.85em; position: relative; }
-.action-btn:hover { background: #333; border-color: var(--accent-color); }
-/* Tooltip styling - ensure tooltips are visible */
-.action-btn[title]:hover::after {
-    content: attr(title);
-    position: absolute;
-    bottom: 100%;
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(0, 0, 0, 0.9);
-    color: #fff;
-    padding: 6px 10px;
-    border-radius: 4px;
-    font-size: 0.75em;
-    white-space: nowrap;
-    z-index: 1000;
-    margin-bottom: 5px;
-    pointer-events: none;
-}
+    .media-container {
+        max-width: 1400px;
+        margin: 0 auto;
+    }
+
+    .media-header {
+        margin-bottom: 30px;
+    }
+
+    .media-tab-content {
+        display: none;
+    }
+
+    .media-tab-content.active {
+        display: block;
+    }
+
+    .media-filters {
+        margin-bottom: 15px;
+    }
+
+    .filter-row {
+        display: flex;
+        gap: 8px;
+        flex-wrap: nowrap;
+        align-items: center;
+    }
+
+    .filter-select {
+        padding: 6px 10px;
+        background: #111;
+        border: 1px solid #444;
+        color: white;
+        border-radius: 4px;
+        flex: 1 1 auto;
+        min-width: 0;
+        font-size: 0.9em;
+        cursor: pointer;
+        transition: border-color 0.2s;
+    }
+
+    .filter-select:hover {
+        border-color: #666;
+    }
+
+    .filter-select:focus {
+        outline: none;
+        border-color: var(--accent-color);
+    }
+
+    .media-table-container {
+        background: rgba(0, 0, 0, 0.2);
+        border-radius: 8px;
+        padding: 15px;
+    }
+
+    .media-detail-container {
+        background: rgba(0, 0, 0, 0.2);
+        border-radius: 8px;
+        padding: 20px;
+    }
+
+    .media-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .media-table th {
+        text-align: left;
+        padding: 12px;
+        border-bottom: 2px solid #333;
+        color: var(--accent-color);
+        font-weight: bold;
+    }
+
+    .media-table td {
+        padding: 12px;
+        border-bottom: 1px solid #333;
+    }
+
+    .media-table tr:hover {
+        background: rgba(255, 255, 255, 0.05);
+    }
+
+    .status-badge {
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 0.85em;
+        font-weight: bold;
+    }
+
+    .status-pending {
+        background: #f39c12;
+        color: #000;
+    }
+
+    .status-approved {
+        background: #3498db;
+        color: #fff;
+    }
+
+    .status-available {
+        background: #2ecc71;
+        color: #fff;
+    }
+
+    .status-failed {
+        background: #e74c3c;
+        color: #fff;
+    }
+
+    .monitored-badge {
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 0.85em;
+    }
+
+    .monitored-yes {
+        background: #2ecc71;
+        color: #fff;
+    }
+
+    .monitored-no {
+        background: #95a5a6;
+        color: #fff;
+    }
+
+    .action-btn {
+        padding: 4px 8px;
+        margin: 0 2px;
+        border: 1px solid #555;
+        background: #222;
+        color: #fff;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 0.85em;
+        position: relative;
+    }
+
+    .action-btn:hover {
+        background: #333;
+        border-color: var(--accent-color);
+    }
+
+    /* Tooltip styling - ensure tooltips are visible */
+    .action-btn[title]:hover::after {
+        content: attr(title);
+        position: absolute;
+        bottom: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(0, 0, 0, 0.9);
+        color: #fff;
+        padding: 6px 10px;
+        border-radius: 4px;
+        font-size: 0.75em;
+        white-space: nowrap;
+        z-index: 1000;
+        margin-bottom: 5px;
+        pointer-events: none;
+    }
 </style>
 
 <script>
-const API_MEDIA_REQUESTED = "{{ url_for('api.get_requested_media') }}";
-const MEDIA_CSRF = "{{ csrf_token() }}";
-let currentTab = 'requested';
+    const API_MEDIA_REQUESTED = "{{ url_for('api.get_requested_media') }}";
+    const MEDIA_CSRF = "{{ csrf_token() }}";
+    let currentTab = 'requested';
 
-function switchMediaTab(evt, tabName) {
-    console.log('Switching to tab:', tabName);
-    currentTab = tabName;
-    const tabContents = document.querySelectorAll('.media-tab-content');
-    
-    // Hide all tabs
-    tabContents.forEach(tab => tab.classList.remove('active'));
-    
-    // Show the selected tab
-    const selectedTab = document.getElementById(`tab-${tabName}`);
-    if (selectedTab) {
-        selectedTab.classList.add('active');
+    function switchMediaTab(evt, tabName) {
+        console.log('Switching to tab:', tabName);
+        currentTab = tabName;
+        const tabContents = document.querySelectorAll('.media-tab-content');
+
+        // Hide all tabs
+        tabContents.forEach(tab => tab.classList.remove('active'));
+
+        // Show the selected tab
+        const selectedTab = document.getElementById(`tab-${tabName}`);
+        if (selectedTab) {
+            selectedTab.classList.add('active');
+        }
+
+        // Update sidebar active state
+        updateSidebarActiveState(tabName);
+
+        loadMediaData();
     }
-    
-    // Update sidebar active state
-    updateSidebarActiveState(tabName);
-    
-    loadMediaData();
-}
 
-function updateSidebarActiveState(activeTab) {
-    document.querySelectorAll('.media-nav-item').forEach(item => {
-        item.classList.remove('active');
-    });
-    const sidebarLink = document.querySelector('.media-nav-item[data-tab="requested"]');
-    if (sidebarLink) {
-        sidebarLink.classList.add('active');
+    function updateSidebarActiveState(activeTab) {
+        document.querySelectorAll('.media-nav-item').forEach(item => {
+            item.classList.remove('active');
+        });
+        const sidebarLink = document.querySelector('.media-nav-item[data-tab="requested"]');
+        if (sidebarLink) {
+            sidebarLink.classList.add('active');
+        }
     }
-}
 
 
-function loadMediaData() {
-    const requestedPageEl = document.getElementById('requested-page');
-    if (requestedPageEl) {
-        requestedPageEl.textContent = '1';
+    function loadMediaData() {
+        const requestedPageEl = document.getElementById('requested-page');
+        if (requestedPageEl) {
+            requestedPageEl.textContent = '1';
+        }
+        const savedPageSizeRequested = localStorage.getItem('pageSizeRequested');
+        if (savedPageSizeRequested) {
+            const select = document.getElementById('page-size-requested');
+            if (select) select.value = savedPageSizeRequested;
+        }
+        loadRequested();
     }
-    const savedPageSizeRequested = localStorage.getItem('pageSizeRequested');
-    if (savedPageSizeRequested) {
-        const select = document.getElementById('page-size-requested');
-        if (select) select.value = savedPageSizeRequested;
-    }
-    loadRequested();
-}
 
-function loadRequested() {
-    const container = document.getElementById('requested-table-container');
-    container.innerHTML = '<div style="text-align: center; padding: 40px; color: #888;">Loading...</div>';
-    
-    const source = document.getElementById('filter-source')?.value || '';
-    const sort = document.getElementById('sort-by')?.value || 'added_desc';
-    const pageSize = document.getElementById('page-size-requested')?.value || '200';
-    
-    // Get current page from hidden element or default to 1
-    const pageElement = document.getElementById('requested-page');
-    const page = pageElement ? parseInt(pageElement.textContent || '1') : 1;
-    
-    // Save page size preference to localStorage
-    localStorage.setItem('pageSizeRequested', pageSize);
-    
-    fetch(API_MEDIA_REQUESTED + '?source=' + encodeURIComponent(source) + '&sort=' + encodeURIComponent(sort) + '&page=' + page + '&page_size=' + pageSize)
-        .then(r => r.json())
-        .then(data => {
-            if (data.status === 'error') {
-                container.innerHTML = `<div style="text-align: center; padding: 40px; color: #e74c3c;">${escapeHtml(String(data.message || ''))}</div>`;
-                return;
-            }
-            
-            if (data.items.length === 0) {
-                container.innerHTML = '<div style="text-align: center; padding: 40px; color: #888;">No requested media found.</div>';
-                return;
-            }
-            
-            let html = '<div class="media-poster-grid">';
-            
-            data.items.forEach(item => {
-                const posterUrl = item.poster_url || '';
-                const status = (item.status || '').toString().toLowerCase();
-                const statusBarClass = `status-${status.replace(' ', '-')}`;
-                const addedDate = item.added ? formatAddedDate(item.added) : 'N/A';
-                const mediaTypeIcon = item.media_type === 'tv' ? '📺' : '🎬';
-                
-                html += `<div class="media-poster-card">
+    function loadRequested() {
+        const container = document.getElementById('requested-table-container');
+        container.innerHTML = '<div style="text-align: center; padding: 40px; color: #888;">Loading...</div>';
+
+        const source = document.getElementById('filter-source')?.value || '';
+        const sort = document.getElementById('sort-by')?.value || 'added_desc';
+        const pageSize = document.getElementById('page-size-requested')?.value || '200';
+
+        // Get current page from hidden element or default to 1
+        const pageElement = document.getElementById('requested-page');
+        const page = pageElement ? parseInt(pageElement.textContent || '1') : 1;
+
+        // Save page size preference to localStorage
+        localStorage.setItem('pageSizeRequested', pageSize);
+
+        fetch(API_MEDIA_REQUESTED + '?source=' + encodeURIComponent(source) + '&sort=' + encodeURIComponent(sort) + '&page=' + page + '&page_size=' + pageSize)
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'error') {
+                    container.innerHTML = `<div style="text-align: center; padding: 40px; color: #e74c3c;">${escapeHtml(String(data.message || ''))}</div>`;
+                    return;
+                }
+
+                if (data.items.length === 0) {
+                    container.innerHTML = '<div style="text-align: center; padding: 40px; color: #888;">No requested media found.</div>';
+                    return;
+                }
+
+                let html = '<div class="media-poster-grid">';
+
+                data.items.forEach(item => {
+                    const posterUrl = item.poster_url || '';
+                    const status = (item.status || '').toString().toLowerCase();
+                    const statusBarClass = `status-${status.replace(' ', '-')}`;
+                    const addedDate = item.added ? formatAddedDate(item.added) : 'N/A';
+                    const mediaTypeIcon = item.media_type === 'tv' ? '📺' : '🎬';
+
+                    html += `<div class="media-poster-card">
                     <div class="media-poster-image-container">
-                        ${posterUrl ? 
+                        ${posterUrl ?
                             `<img src="${escapeHtml(posterUrl)}" alt="${escapeHtml(item.title)}" class="media-poster-image" onerror="this.parentElement.innerHTML='<div class=\\'media-poster-image-placeholder\\'>${mediaTypeIcon}</div>'">` :
                             `<div class="media-poster-image-placeholder">${mediaTypeIcon}</div>`
                         }
@@ -182,183 +302,183 @@ function loadRequested() {
                         </div>
                     </div>
                 </div>`;
-            });
-            
-            html += '</div>';
-            
-            // Add pagination controls
-            if (data.pagination) {
-                const pagination = data.pagination;
-                html += '<div style="margin-top: 20px; display: flex; justify-content: center; align-items: center; gap: 10px; padding: 15px;">';
-                
-                // Previous button (only show if not on first page)
-                if (pagination.page > 1) {
-                    html += `<button class="action-btn" onclick="goToRequestedPage(${pagination.page - 1})" style="padding: 8px 16px;">← Previous</button>`;
-                }
-                
-                // Page info (always show)
-                html += `<span style="color: #888; padding: 0 15px;">Page ${pagination.page} of ${pagination.total_pages} (${pagination.total_items} total requests)</span>`;
-                
-                // Next button (only show if not on last page)
-                if (pagination.page < pagination.total_pages) {
-                    html += `<button class="action-btn" onclick="goToRequestedPage(${pagination.page + 1})" style="padding: 8px 16px;">Next -></button>`;
-                }
-                
+                });
+
                 html += '</div>';
-            } else {
-                // Fallback: show item count if pagination data not available
-                html += `<div style="margin-top: 20px; text-align: center; color: #888; padding: 15px;">Showing ${data.items.length} requests</div>`;
-            }
-            
-            container.innerHTML = html;
-            
-            // Store current page for pagination
-            if (data.pagination) {
-                const pageIndicator = document.getElementById('requested-page');
-                if (pageIndicator) {
-                    pageIndicator.textContent = data.pagination.page;
+
+                // Add pagination controls
+                if (data.pagination) {
+                    const pagination = data.pagination;
+                    html += '<div style="margin-top: 20px; display: flex; justify-content: center; align-items: center; gap: 10px; padding: 15px;">';
+
+                    // Previous button (only show if not on first page)
+                    if (pagination.page > 1) {
+                        html += `<button class="action-btn" onclick="goToRequestedPage(${pagination.page - 1})" style="padding: 8px 16px;">← Previous</button>`;
+                    }
+
+                    // Page info (always show)
+                    html += `<span style="color: #888; padding: 0 15px;">Page ${pagination.page} of ${pagination.total_pages} (${pagination.total_items} total requests)</span>`;
+
+                    // Next button (only show if not on last page)
+                    if (pagination.page < pagination.total_pages) {
+                        html += `<button class="action-btn" onclick="goToRequestedPage(${pagination.page + 1})" style="padding: 8px 16px;">Next -></button>`;
+                    }
+
+                    html += '</div>';
                 } else {
-                    // Create hidden element to store current page
-                    const hiddenPage = document.createElement('span');
-                    hiddenPage.id = 'requested-page';
-                    hiddenPage.style.display = 'none';
-                    hiddenPage.textContent = data.pagination.page;
-                    container.appendChild(hiddenPage);
+                    // Fallback: show item count if pagination data not available
+                    html += `<div style="margin-top: 20px; text-align: center; color: #888; padding: 15px;">Showing ${data.items.length} requests</div>`;
                 }
-            }
-        })
-        .catch(err => {
-            container.innerHTML = `<div style="text-align: center; padding: 40px; color: #e74c3c;">Error loading data: ${escapeHtml(String(err.message || ''))}</div>`;
-        });
-}
 
-function goToRequestedPage(page) {
-    const pageIndicator = document.getElementById('requested-page');
-    if (!pageIndicator) {
-        // Create hidden element if it doesn't exist
-        const hiddenPage = document.createElement('span');
-        hiddenPage.id = 'requested-page';
-        hiddenPage.style.display = 'none';
-        hiddenPage.textContent = page;
-        document.getElementById('requested-table-container').appendChild(hiddenPage);
-    } else {
-        pageIndicator.textContent = page;
+                container.innerHTML = html;
+
+                // Store current page for pagination
+                if (data.pagination) {
+                    const pageIndicator = document.getElementById('requested-page');
+                    if (pageIndicator) {
+                        pageIndicator.textContent = data.pagination.page;
+                    } else {
+                        // Create hidden element to store current page
+                        const hiddenPage = document.createElement('span');
+                        hiddenPage.id = 'requested-page';
+                        hiddenPage.style.display = 'none';
+                        hiddenPage.textContent = data.pagination.page;
+                        container.appendChild(hiddenPage);
+                    }
+                }
+            })
+            .catch(err => {
+                container.innerHTML = `<div style="text-align: center; padding: 40px; color: #e74c3c;">Error loading data: ${escapeHtml(String(err.message || ''))}</div>`;
+            });
     }
-    loadRequested();
-}
 
-function formatSize(bytes) {
-    if (!bytes || bytes === 0 || bytes === null || bytes === undefined) return 'N/A';
-    const gb = bytes / (1024 * 1024 * 1024);
-    if (gb >= 1) return gb.toFixed(2) + ' GB';
-    const mb = bytes / (1024 * 1024);
-    return mb.toFixed(2) + ' MB';
-}
-
-function formatAddedDate(dateString) {
-    if (!dateString) return 'N/A';
-    try {
-        const date = new Date(dateString);
-        
-        // Always show actual date (Feb 28, 2026)
-        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        const month = months[date.getMonth()];
-        const day = date.getDate();
-        const year = date.getFullYear();
-        return `${month} ${day}, ${year}`;
-    } catch (e) {
-        return 'N/A';
+    function goToRequestedPage(page) {
+        const pageIndicator = document.getElementById('requested-page');
+        if (!pageIndicator) {
+            // Create hidden element if it doesn't exist
+            const hiddenPage = document.createElement('span');
+            hiddenPage.id = 'requested-page';
+            hiddenPage.style.display = 'none';
+            hiddenPage.textContent = page;
+            document.getElementById('requested-table-container').appendChild(hiddenPage);
+        } else {
+            pageIndicator.textContent = page;
+        }
+        loadRequested();
     }
-}
 
-function escapeHtml(text) {
-    // Handle null/undefined
-    if (text === null || text === undefined) return '';
-    
-    // Convert to string first - handle all edge cases
-    let textStr;
-    try {
-        textStr = String(text);
-    } catch (e) {
-        return '';
+    function formatSize(bytes) {
+        if (!bytes || bytes === 0 || bytes === null || bytes === undefined) return 'N/A';
+        const gb = bytes / (1024 * 1024 * 1024);
+        if (gb >= 1) return gb.toFixed(2) + ' GB';
+        const mb = bytes / (1024 * 1024);
+        return mb.toFixed(2) + ' MB';
     }
-    
-    // Double-check it's a string
-    if (typeof textStr !== 'string') {
+
+    function formatAddedDate(dateString) {
+        if (!dateString) return 'N/A';
         try {
-            textStr = String(textStr);
+            const date = new Date(dateString);
+
+            // Always show actual date (Feb 28, 2026)
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const month = months[date.getMonth()];
+            const day = date.getDate();
+            const year = date.getFullYear();
+            return `${month} ${day}, ${year}`;
+        } catch (e) {
+            return 'N/A';
+        }
+    }
+
+    function escapeHtml(text) {
+        // Handle null/undefined
+        if (text === null || text === undefined) return '';
+
+        // Convert to string first - handle all edge cases
+        let textStr;
+        try {
+            textStr = String(text);
         } catch (e) {
             return '';
         }
+
+        // Double-check it's a string
         if (typeof textStr !== 'string') {
-            return '';
-        }
-    }
-    
-    // Use DOM-based escaping (most reliable)
-    try {
-        const div = document.createElement('div');
-        div.textContent = textStr;
-        const result = div.innerHTML;
-        // Ensure we always return a string
-        if (result && typeof result === 'string') {
-            return result;
-        }
-    } catch (e) {
-        // Fall through to manual escaping
-    }
-    
-    // Fallback to manual escaping if DOM manipulation fails or returns non-string
-    try {
-        // ensure we have a primitive string before calling replace
-        let safeStr = textStr;
-        
-        // if it's not already a string primitive, convert it
-        if (typeof safeStr !== 'string') {
-            // try valueOf first if it exists (for String objects)
-            if (safeStr && typeof safeStr.valueOf === 'function') {
-                try {
-                    safeStr = String(safeStr.valueOf());
-                } catch (e) {
-                    safeStr = String(safeStr || '');
-                }
-            } else {
-                safeStr = String(safeStr || '');
+            try {
+                textStr = String(textStr);
+            } catch (e) {
+                return '';
+            }
+            if (typeof textStr !== 'string') {
+                return '';
             }
         }
-        
-        // final check - must be a primitive string
-        if (typeof safeStr !== 'string') {
+
+        // Use DOM-based escaping (most reliable)
+        try {
+            const div = document.createElement('div');
+            div.textContent = textStr;
+            const result = div.innerHTML;
+            // Ensure we always return a string
+            if (result && typeof result === 'string') {
+                return result;
+            }
+        } catch (e) {
+            // Fall through to manual escaping
+        }
+
+        // Fallback to manual escaping if DOM manipulation fails or returns non-string
+        try {
+            // ensure we have a primitive string before calling replace
+            let safeStr = textStr;
+
+            // if it's not already a string primitive, convert it
+            if (typeof safeStr !== 'string') {
+                // try valueOf first if it exists (for String objects)
+                if (safeStr && typeof safeStr.valueOf === 'function') {
+                    try {
+                        safeStr = String(safeStr.valueOf());
+                    } catch (e) {
+                        safeStr = String(safeStr || '');
+                    }
+                } else {
+                    safeStr = String(safeStr || '');
+                }
+            }
+
+            // final check - must be a primitive string
+            if (typeof safeStr !== 'string') {
+                return '';
+            }
+
+            return safeStr
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        } catch (e) {
             return '';
         }
-        
-        return safeStr
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;');
-    } catch (e) {
-        return '';
     }
-}
 
-// For embedding in single-quoted JS strings (e.g. onclick="foo('...')") so apostrophes don't break
-function escapeJsString(s) {
-    if (s == null || s === undefined) return '';
-    const str = String(s);
-    return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-}
-
-// Load data on page load
-document.addEventListener('DOMContentLoaded', function() {
-    const savedPageSizeRequested = localStorage.getItem('pageSizeRequested');
-    if (savedPageSizeRequested) {
-        const select = document.getElementById('page-size-requested');
-        if (select) select.value = savedPageSizeRequested;
+    // For embedding in single-quoted JS strings (e.g. onclick="foo('...')") so apostrophes don't break
+    function escapeJsString(s) {
+        if (s == null || s === undefined) return '';
+        const str = String(s);
+        return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
     }
-    loadMediaData();
-});
+
+    // Load data on page load
+    document.addEventListener('DOMContentLoaded', function () {
+        const savedPageSizeRequested = localStorage.getItem('pageSizeRequested');
+        if (savedPageSizeRequested) {
+            const select = document.getElementById('page-size-requested');
+            if (select) select.value = savedPageSizeRequested;
+        }
+        loadMediaData();
+    });
 </script>
 
 {% endblock %}

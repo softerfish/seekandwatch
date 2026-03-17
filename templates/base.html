@@ -609,6 +609,11 @@
             </div>
         </div>
         
+        <div id="request-error-area" style="display: none; background: rgba(231, 76, 60, 0.1); border-left: 4px solid #e74c3c; padding: 10px; margin: 0 25px 15px; border-radius: 4px; color: #e74c3c; font-size: 0.9em;">
+            <i class="fas fa-exclamation-circle" style="margin-right: 8px;"></i>
+            <span id="request-error-message"></span>
+        </div>
+        
         <div class="request-modal-form">
             <div class="request-form-group">
                 <label class="request-form-label">Instance</label>
@@ -724,6 +729,11 @@ function closeRequestModal() {
     const modal = document.getElementById('request-modal');
     modal.style.display = 'none';
     document.body.style.overflow = '';
+    
+    // reset error area
+    const errorArea = document.getElementById('request-error-area');
+    if (errorArea) errorArea.style.display = 'none';
+    
     requestModalState = {
         mediaType: null,
         tmdbId: null,
@@ -791,80 +801,70 @@ function submitRequest() {
     
     const qualityProfileId = qualitySelect.value || null;
     
-    submitBtn.disabled = true;
-    submitBtn.textContent = 'Requesting...';
+    const errorArea = document.getElementById('request-error-area');
+    const errorMsg = document.getElementById('request-error-message');
+    if (errorArea) errorArea.style.display = 'none';
     
-    if (selectedInstance === 'radarr') {
-        // send to radarr
-        fetch(API_RADARR_ADD, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': csrfToken
-            },
-            body: JSON.stringify({
-                tmdb_id: requestModalState.tmdbId,
-                quality_profile_id: qualityProfileId
-            })
-        })
-        .then(r => r.json())
-        .then(data => {
-            if (data.status === 'success') {
-                submitBtn.textContent = 'Added';
-                submitBtn.style.background = 'var(--accent-color)';
-                setTimeout(() => {
-                    closeRequestModal();
-                    if (window.onRequestSuccess) {
-                        window.onRequestSuccess(requestModalState.tmdbId, requestModalState.mediaType);
-                    }
-                }, 1000);
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+    
+    const finishRequest = (data, instanceName) => {
+        if (data.status === 'success') {
+            submitBtn.textContent = 'Added';
+            submitBtn.style.background = 'var(--accent-color)';
+            setTimeout(() => {
+                closeRequestModal();
+                if (window.onRequestSuccess) {
+                    window.onRequestSuccess(requestModalState.tmdbId, requestModalState.mediaType);
+                }
+            }, 1000);
+        } else {
+            if (errorArea && errorMsg) {
+                errorMsg.textContent = data.message || `Failed to add to ${instanceName}`;
+                errorArea.style.display = 'block';
             } else {
-                alert(data.message || 'Failed to add to Radarr');
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'Request';
+                alert(data.message || `Failed to add to ${instanceName}`);
             }
-        })
-        .catch(err => {
-            alert('Error: ' + err.message);
             submitBtn.disabled = false;
             submitBtn.textContent = 'Request';
-        });
-    } else if (selectedInstance === 'sonarr') {
-        // send to sonarr
-        fetch(API_SONARR_ADD, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': csrfToken
-            },
-            body: JSON.stringify({
-                tmdb_id: requestModalState.tmdbId,
-                quality_profile_id: qualityProfileId
-            })
+        }
+    };
+
+    const handleFetchError = (err) => {
+        let msg = err.message || 'Connection Failed';
+        if (msg.includes('401') || msg.toLowerCase().includes('unauthorized')) {
+            msg = 'Your session has expired. Please refresh the page and log in again.';
+        }
+        
+        if (errorArea && errorMsg) {
+            errorMsg.textContent = msg;
+            errorArea.style.display = 'block';
+        } else {
+            alert('Error: ' + msg);
+        }
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Request';
+    };
+
+    const url = selectedInstance === 'radarr' ? API_RADARR_ADD : API_SONARR_ADD;
+    
+    fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
+        },
+        body: JSON.stringify({
+            tmdb_id: requestModalState.tmdbId,
+            quality_profile_id: qualityProfileId
         })
-        .then(r => r.json())
-        .then(data => {
-            if (data.status === 'success') {
-                submitBtn.textContent = 'Added';
-                submitBtn.style.background = 'var(--accent-color)';
-                setTimeout(() => {
-                    closeRequestModal();
-                    if (window.onRequestSuccess) {
-                        window.onRequestSuccess(requestModalState.tmdbId, requestModalState.mediaType);
-                    }
-                }, 1000);
-            } else {
-                alert(data.message || 'Failed to add to Sonarr');
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'Request';
-            }
-        })
-        .catch(err => {
-            alert('Error: ' + err.message);
-            submitBtn.disabled = false;
-            submitBtn.textContent = 'Request';
-        });
-    }
+    })
+    .then(r => {
+        if (r.status === 401) throw new Error('401 Unauthorized');
+        return r.json();
+    })
+    .then(data => finishRequest(data, selectedInstance === 'radarr' ? 'Radarr' : 'Sonarr'))
+    .catch(handleFetchError);
 }
 </script>
 

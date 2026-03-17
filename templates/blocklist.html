@@ -3,58 +3,57 @@
 {% block content %}
 
 <div class="settings-container">
-    <div class="settings-header">
-        <h2>Manage Blocklist</h2>
-        <p class="text-muted">Preemptively block titles to prevent them from appearing in recommendations.</p>
-    </div>
+    <div class="blocklist-wrap">
+        <div class="settings-header">
+            <h2>Manage Blocklist</h2>
+            <p class="text-muted">Preemptively block titles to prevent them from appearing in recommendations.</p>
+        </div>
 
-    <div class="tab-container">
-        <button onclick="showTab('movie')" class="tab-btn active" id="btn-movie">Movies</button>
-        <button onclick="showTab('tv')" class="tab-btn" id="btn-tv">TV Shows</button>
-    </div>
+        <div class="tab-container">
+            <button onclick="showTab('movie')" class="tab-btn active" id="btn-movie">Movies</button>
+            <button onclick="showTab('tv')" class="tab-btn" id="btn-tv">TV Shows</button>
+        </div>
 
-    <div class="card setting-card border-accent" style="overflow: visible;"> 
-        <h3>Add to Blocklist</h3>
-        <p class="text-muted">Search for a title to ban it permanently.</p>
-        
-        <div class="search-container-block">
-            <input type="text" id="searchInput" class="main-search" placeholder="Start typing a title..." autocomplete="off" style="font-size: 1em; padding: 12px; margin-top: 0;">
-            <div id="suggestions"></div>
+        <div class="card setting-card border-accent" style="overflow: visible; padding: 15px; margin-bottom: 20px;"> 
+            <div class="search-container-block" style="margin: 0 auto; max-width: 600px;">
+                <input type="text" id="searchInput" class="main-search" placeholder="Search title to block..." autocomplete="off" style="font-size: 0.95em; padding: 10px; margin-top: 0;">
+                <div id="suggestions"></div>
+            </div>
         </div>
-    </div>
 
-    <div id="list-movie" class="block-list-container">
-        <h3 class="text-center mb-20" style="border-bottom: 1px solid #333; padding-bottom: 10px;">Blocked Movies</h3>
-        
-        {% for block in blocks if block.media_type == 'movie' %}
-        <div class="block-item-row" id="block-{{ block.id }}">
-            <span>{{ block.title }}{% if block.year %} ({{ block.year }}){% endif %}</span>
-            <button onclick="unblock({{ block.id }})" class="btn-delete" title="Unblock Title">
-                Unblock
-            </button>
+        <div id="list-movie" class="block-list-container card setting-card">
+            <h3 class="text-center mb-20" style="border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 10px;">Blocked Movies</h3>
+            
+            {% for block in blocks if block.media_type == 'movie' %}
+            <div class="block-item-row" id="block-{{ block.id }}">
+                <span>{{ block.title }}{% if block.year %} ({{ block.year }}){% endif %}</span>
+                <button onclick="unblock({{ block.id }})" class="btn-delete" title="Unblock Title">
+                    Unblock
+                </button>
+            </div>
+            {% else %}
+            <div class="text-center text-muted" style="padding: 30px; border: 1px dashed rgba(255,255,255,0.1); border-radius: 8px;">
+                No movies currently blocked.
+            </div>
+            {% endfor %}
         </div>
-        {% else %}
-        <div class="text-center text-muted" style="padding: 30px; border: 1px dashed #333; border-radius: 8px;">
-            No movies currently blocked.
-        </div>
-        {% endfor %}
-    </div>
 
-    <div id="list-tv" class="block-list-container" style="display: none;">
-        <h3 class="text-center mb-20" style="border-bottom: 1px solid #333; padding-bottom: 10px;">Blocked TV Shows</h3>
-        
-        {% for block in blocks if block.media_type == 'tv' %}
-        <div class="block-item-row" id="block-{{ block.id }}">
-            <span>{{ block.title }}{% if block.year %} ({{ block.year }}){% endif %}</span>
-            <button onclick="unblock({{ block.id }})" class="btn-delete" title="Unblock Title">
-                Unblock
-            </button>
+        <div id="list-tv" class="block-list-container card setting-card" style="display: none;">
+            <h3 class="text-center mb-20" style="border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 10px;">Blocked TV Shows</h3>
+            
+            {% for block in blocks if block.media_type == 'tv' %}
+            <div class="block-item-row" id="block-{{ block.id }}">
+                <span>{{ block.title }}{% if block.year %} ({{ block.year }}){% endif %}</span>
+                <button onclick="unblock({{ block.id }})" class="btn-delete" title="Unblock Title">
+                    Unblock
+                </button>
+            </div>
+            {% else %}
+            <div class="text-center text-muted" style="padding: 30px; border: 1px dashed rgba(255,255,255,0.1); border-radius: 8px;">
+                No TV shows currently blocked.
+            </div>
+            {% endfor %}
         </div>
-        {% else %}
-        <div class="text-center text-muted" style="padding: 30px; border: 1px dashed #333; border-radius: 8px;">
-            No TV shows currently blocked.
-        </div>
-        {% endfor %}
     </div>
 </div>
 

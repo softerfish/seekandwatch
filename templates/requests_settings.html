@@ -2,53 +2,73 @@
 {% block page_title %}Requests Settings{% endblock %}
 {% block content %}
 <style>
-    .input-group-text { background-color: #2a2a2a; border-color: #444; color: #fff; display: flex; align-items: center; }
-    #cloudApiKey { background-color: #1e1e1e; border-color: #444; color: #fff; }
-    .requests-settings-card .form-control { 
-        background: #1e1e1e; 
-        color: white; 
-        border-color: #444; 
+    .input-group-text {
+        background-color: #2a2a2a;
+        border-color: #444;
+        color: #fff;
+        display: flex;
+        align-items: center;
+    }
+
+    #cloudApiKey {
+        background-color: #1e1e1e;
+        border-color: #444;
+        color: #fff;
+    }
+
+    .requests-settings-card .form-control {
+        background: #1e1e1e;
+        color: white;
+        border-color: #444;
         border-radius: 6px;
         height: 42px;
     }
-    
+
     /* New Layout Styles */
     .seekandwatch-promo-settings {
-        background-color: #000000; /* Pure black */
-        border: 1px solid #7c5dfa; /* Purple border */
+        background-color: #000000;
+        /* Pure black */
+        border: 1px solid #7c5dfa;
+        /* Purple border */
         border-radius: 8px;
     }
+
     .seekandwatch-promo-settings .card-header {
-        background-color: #7c5dfa !important; /* Purple header */
+        background-color: #7c5dfa !important;
+        /* Purple header */
         color: #000 !important;
         border-bottom: none;
         font-weight: bold;
         border-radius: 7px 7px 0 0;
     }
+
     .seekandwatch-promo-settings .card-body {
         background-color: transparent !important;
         color: #fff !important;
     }
+
     .seekandwatch-promo-settings a {
         color: #7c5dfa !important;
         text-decoration: underline;
     }
-    
+
     .btn-back-config {
         background-color: transparent;
-        border: 1px solid #6f42c1; /* Purple border */
+        border: 1px solid #6f42c1;
+        /* Purple border */
         color: #a0a0a0;
         border-radius: 20px;
         padding: 5px 15px;
         font-size: 0.9em;
         transition: all 0.2s;
     }
+
     .btn-back-config:hover {
         background-color: #6f42c1;
         color: white;
         text-decoration: none;
     }
-    
+
     .btn-test-connection {
         background-color: #7c5dfa;
         border-color: #7c5dfa;
@@ -61,6 +81,7 @@
         align-items: center;
         justify-content: center;
     }
+
     .btn-test-connection:hover {
         background-color: #7c5dfa;
         border-color: #7c5dfa;
@@ -75,12 +96,14 @@
         font-weight: bold;
         border-radius: 6px;
     }
+
     .btn-save-settings:hover {
         background-color: #7c5dfa;
         border-color: #7c5dfa;
         color: #000000;
         filter: brightness(1.1);
     }
+
     /* Checkbox custom style */
     .custom-checkbox-container {
         display: flex;
@@ -89,10 +112,12 @@
         margin-top: 15px;
         font-weight: bold;
     }
+
     .custom-checkbox-container input[type="checkbox"] {
         width: 18px;
         height: 18px;
-        accent-color: #7c5dfa; /* Purple check */
+        accent-color: #7c5dfa;
+        /* Purple check */
         cursor: pointer;
     }
 </style>
@@ -102,60 +127,71 @@
     <div id="seekandwatch-promo" class="card mb-4 seekandwatch-promo-settings" style="display: none;">
         <div class="card-header d-flex justify-content-between align-items-center py-2">
             <span><i class="fas fa-info-circle mr-1"></i> What is SeekAndWatch?</span>
-            <button type="button" class="btn btn-sm btn-link text-dark btn-close-promo" id="promo-dismiss" title="Close and don't show again" aria-label="Close" style="text-decoration: none;"><i class="fas fa-times"></i></button>
+            <button type="button" class="btn btn-sm btn-link text-dark btn-close-promo" id="promo-dismiss"
+                title="Close and don't show again" aria-label="Close" style="text-decoration: none;"><i
+                    class="fas fa-times"></i></button>
         </div>
         <div class="card-body">
-            <p class="mb-2"><strong>SeekAndWatch</strong> (<a href="https://seekandwatch.com" target="_blank" rel="noopener">seekandwatch.com</a>) lets your friends and family <strong>request movies and TV shows</strong> from your Plex server without needing access to Plex or Radarr/Sonarr. Approved items sync to this app and are sent to Radarr/Sonarr.</p>
-            <p class="mb-0"><strong>Why it's safe:</strong> Your Plex URL and tokens stay on your machine. The cloud service only relays requests and connection keys; it does not store your media or control your server.</p>
+            <p class="mb-2"><strong>SeekAndWatch</strong> (<a href="https://seekandwatch.com" target="_blank"
+                    rel="noopener">seekandwatch.com</a>) lets your friends and family <strong>request movies and TV
+                    shows</strong> from your Plex server without needing access to Plex or Radarr/Sonarr. Approved items
+                sync to this app and are sent to Radarr/Sonarr.</p>
+            <p class="mb-0"><strong>Why it's safe:</strong> Your Plex URL and tokens stay on your machine. The cloud
+                service only relays requests and connection keys; it does not store your media or control your server.
+            </p>
         </div>
     </div>
     <script>
-    (function() {
-        var PROMO_KEY = 'seekandwatch_promo_dismissed';
-        var promo = document.getElementById('seekandwatch-promo');
-        var dismissPromo = document.getElementById('promo-dismiss');
-        try {
-            if (localStorage.getItem(PROMO_KEY) === 'true') { if (promo) promo.style.display = 'none'; }
-            else if (promo) promo.style.display = 'block';
-        } catch (e) {}
-        if (dismissPromo) dismissPromo.addEventListener('click', function() {
-            try { localStorage.setItem(PROMO_KEY, 'true'); } catch (e) {}
-            if (promo) promo.style.display = 'none';
-        });
-    })();
+        (function () {
+            var PROMO_KEY = 'seekandwatch_promo_dismissed';
+            var promo = document.getElementById('seekandwatch-promo');
+            var dismissPromo = document.getElementById('promo-dismiss');
+            try {
+                if (localStorage.getItem(PROMO_KEY) === 'true') { if (promo) promo.style.display = 'none'; }
+                else if (promo) promo.style.display = 'block';
+            } catch (e) { }
+            if (dismissPromo) dismissPromo.addEventListener('click', function () {
+                try { localStorage.setItem(PROMO_KEY, 'true'); } catch (e) { }
+                if (promo) promo.style.display = 'none';
+            });
+        })();
     </script>
 
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2>Requests Settings</h2>
-        <a href="{{ url_for('web_settings.settings') }}" class="btn btn-back-config"><i class="fas fa-arrow-left"></i> Back to Configuration</a>
+        <a href="{{ url_for('web_settings.settings') }}" class="btn btn-back-config"><i class="fas fa-arrow-left"></i>
+            Back to Configuration</a>
     </div>
 
-    <div class="card mb-4 requests-settings-card">
-        <div class="card-header bg-dark text-white">
-            <h5 class="mb-0">SeekAndWatch Cloud</h5>
-        </div>
-        <div class="card-body bg-dark text-white">
-            <!-- Pairing Section (Zero Config) -->
-            {% if not settings.cloud_api_key %}
-            <div id="pairing-section" class="mb-4 text-center p-4" style="background: rgba(124, 93, 250, 0.1); border: 2px dashed #7c5dfa; border-radius: 8px;">
-                <h6 class="text-white mb-3">Connect to SeekAndWatch Cloud</h6>
-                <p class="text-muted small">The easiest way to sync your requests. No manual key entry required.</p>
-                <button type="button" class="btn btn-test-connection" id="btnPairStart" onclick="startPairing()">
-                    <i class="fas fa-link me-2"></i>One-Click Pair with Cloud
-                </button>
-                <div id="pairingStatus" class="mt-2 small d-none"></div>
-            </div>
-            {% endif %}
+    <form method="POST" action="{{ url_for('web_requests.save_cloud_settings') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="from_tunnel_config" value="1">
 
-            <form method="POST" action="{{ url_for('web_requests.save_cloud_settings') }}">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="card mb-4 requests-settings-card">
+            <div class="card-header bg-dark text-white">
+                <h5 class="mb-0">SeekAndWatch Cloud</h5>
+            </div>
+            <div class="card-body bg-dark text-white">
+                <!-- Pairing Section (Zero Config) -->
+                {% if not settings.cloud_api_key %}
+                <div id="pairing-section" class="mb-4 text-center p-4"
+                    style="background: rgba(124, 93, 250, 0.1); border: 2px dashed #7c5dfa; border-radius: 8px;">
+                    <h6 class="text-white mb-3">Connect to SeekAndWatch Cloud</h6>
+                    <p class="text-muted small">The easiest way to sync your requests. No manual key entry required.</p>
+                    <button type="button" class="btn btn-test-connection" id="btnPairStart" onclick="startPairing()">
+                        <i class="fas fa-link me-2"></i>One-Click Pair with Cloud
+                    </button>
+                    <div id="pairingStatus" class="mt-2 small d-none"></div>
+                </div>
+                {% endif %}
 
                 <div class="row mb-4">
                     <div class="col-md-6">
                         <div class="form-group">
                             <label for="movieHandler" class="font-weight-bold text-white">Movies Handler</label>
                             <select name="cloud_movie_handler" id="movieHandler" class="form-control">
-                                <option value="direct" {% if settings.cloud_movie_handler == 'direct' %}selected{% endif %}>Radarr</option>
+                                <option value="direct" {% if settings.cloud_movie_handler=='direct' %}selected{% endif
+                                    %}>Radarr</option>
                             </select>
                             <small class="form-text text-muted">Where to send approved movies.</small>
                         </div>
@@ -164,7 +200,8 @@
                         <div class="form-group">
                             <label for="tvHandler" class="font-weight-bold text-white">TV Shows Handler</label>
                             <select name="cloud_tv_handler" id="tvHandler" class="form-control">
-                                <option value="direct" {% if settings.cloud_tv_handler == 'direct' %}selected{% endif %}>Sonarr</option>
+                                <option value="direct" {% if settings.cloud_tv_handler=='direct' %}selected{% endif %}>
+                                    Sonarr</option>
                             </select>
                             <small class="form-text text-muted">Where to send approved shows.</small>
                         </div>
@@ -175,306 +212,400 @@
 
                 <h6 class="text-white mb-3">SeekAndWatch Cloud API Key</h6>
                 <div class="form-group">
-                    <label for="cloudApiKey" class="text-white small mb-1">API Key {% if settings.cloud_api_key %}<span class="badge bg-success ms-2" style="font-size: 0.7em; font-weight: normal;">Saved</span>{% endif %}</label>
-                    <div class="text-muted small mb-2" style="font-size: 0.85em;">Only required for manual setup if One-Click pairing does not work.</div>
+                    <label for="cloudApiKey" class="text-white small mb-1">API Key {% if settings.cloud_api_key %}<span
+                            class="badge bg-success ms-2" style="font-size: 0.7em; font-weight: normal;">Saved</span>{%
+                        endif %}</label>
+                    <div class="text-muted small mb-2" style="font-size: 0.85em;">Only required for manual setup if
+                        One-Click pairing does not work.</div>
                     <div class="d-flex gap-2 align-items-center flex-wrap">
                         <div class="input-group" style="max-width: 400px;">
-                            <input type="password" class="form-control form-control-sm" name="cloud_api_key" id="cloudApiKey"
-                                   value="{{ settings.cloud_api_key or '' }}" placeholder="{% if settings.cloud_api_key %}••••••••{% else %}Paste your key here (e.g. 8f9a...){% endif %}"
-                                   {% if settings.cloud_api_key %}data-key-set="1"{% endif %} autocomplete="off">
-                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="togglePasswordVisibility('cloudApiKey', this)" title="Show/hide key">
+                            <input type="password" class="form-control form-control-sm" name="cloud_api_key"
+                                id="cloudApiKey" value="{{ settings.cloud_api_key or '' }}"
+                                placeholder="{% if settings.cloud_api_key %}••••••••{% else %}Paste your key here (e.g. 8f9a...){% endif %}"
+                                {% if settings.cloud_api_key %}data-key-set="1" {% endif %} autocomplete="off">
+                            <button type="button" class="btn btn-sm btn-outline-secondary"
+                                onclick="togglePasswordVisibility('cloudApiKey', this)" title="Show/hide key">
                                 <i class="fas fa-eye"></i>
                             </button>
                         </div>
-                        <button type="button" class="btn btn-sm btn-outline-info" id="cloudTestBtn" onclick="testCloudConnection()">Test key</button>
+                        <button type="button" class="btn btn-sm btn-outline-info" id="cloudTestBtn"
+                            onclick="testCloudConnection()">Test key</button>
                         {% if settings.cloud_api_key %}
-                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="clearCloudKey()">Clear</button>
+                        <button type="button" class="btn btn-sm btn-outline-danger"
+                            onclick="clearCloudKey()">Clear</button>
                         {% endif %}
                         <span id="cloudTestResult" class="small ms-2" style="display: none;"></span>
                     </div>
-                    {% if settings.cloud_api_key %}<input type="hidden" name="cloud_api_key_unchanged" value="1" id="cloudApiKey_unchanged_h">{% endif %}
+                    {% if settings.cloud_api_key %}<input type="hidden" name="cloud_api_key_unchanged" value="1"
+                        id="cloudApiKey_unchanged_h">{% endif %}
                 </div>
 
                 <hr style="border-color: #444; margin: 24px 0;">
 
                 <h6 class="text-white mb-3">Cloud Sync</h6>
-                <p class="text-muted small mb-2">SeekAndWatch Cloud requires a tunnel for instant webhook notifications. Polling runs automatically every 24 hours as a failsafe backup.</p>
-                
-                <div class="alert alert-info" style="background-color: #1a1a2e; border-color: #2d2d44; color: #a0a0a0; display: inline-block; max-width: fit-content;">
-                    {% if settings.tunnel_enabled %}
-                        <i class="fas fa-check-circle text-success"></i> <strong style="color: #fff;">Cloud sync is active</strong>
-                        <p class="mb-0 mt-2 small">Your tunnel is connected. Approved requests sync instantly via webhooks, with automatic polling backup every {{ settings.cloud_webhook_failsafe_hours or 24 }} hours.</p>
+                <p class="text-muted small mb-2">SeekAndWatch Cloud requires a tunnel for instant webhook notifications.
+                    Polling runs automatically every 24 hours as a failsafe backup.</p>
+
+                <div class="alert alert-info"
+                    style="background-color: #1a1a2e; border-color: #2d2d44; color: #a0a0a0; display: inline-block; max-width: fit-content;">
+                    {% if settings.tunnel_enabled or settings.tunnel_provider == 'external' %}
+                    <i class="fas fa-check-circle text-success"></i> <strong style="color: #fff;">Cloud sync is
+                        active</strong>
+                    <p class="mb-0 mt-2 small">
+                        {% if settings.tunnel_provider == 'external' %}
+                        Approved requests sync instantly via your external tunnel at {{ settings.cloud_webhook_url or 'your domain' }}.
+                        {% else %}
+                        Your tunnel is connected. Approved requests sync instantly via webhooks,
+                        {% endif %}
+                        with automatic polling backup every {{ settings.cloud_webhook_failsafe_hours or 24 }} hours.
+                    </p>
                     {% else %}
-                        <i class="fas fa-info-circle text-warning"></i> <strong style="color: #fff;">Tunnel required for cloud sync</strong>
-                        <p class="mb-0 mt-2 small">Set up a tunnel in the Tunnel Configuration card below to enable cloud features. One-click setup with Cloudflare Quick Tunnel (free, no account needed).</p>
+                    <i class="fas fa-info-circle text-warning"></i> <strong style="color: #fff;">Tunnel required for
+                        cloud sync</strong>
+                    <p class="mb-0 mt-2 small">Set up a tunnel in the Tunnel Configuration card below to enable cloud
+                        features. One-click setup with Cloudflare Quick Tunnel (free, no account needed).</p>
                     {% endif %}
                 </div>
 
                 <hr style="border-color: #444; margin: 24px 0;">
-                
+
                 <div class="form-group mt-3">
                     <label for="webhookFailsafe" class="text-white small mb-1">Webhook Failsafe Poll Interval</label>
-                    <div class="text-muted small mb-2" style="font-size: 0.85em;">When webhooks are enabled, polling runs less frequently as a background backup.</div>
-                    <select class="form-control form-control-sm" name="cloud_webhook_failsafe_hours" id="webhookFailsafe" style="max-width: 300px;">
-                        <option value="6" {% if settings.cloud_webhook_failsafe_hours == 6 %}selected{% endif %}>Every 6 hours</option>
-                        <option value="12" {% if settings.cloud_webhook_failsafe_hours == 12 %}selected{% endif %}>Every 12 hours</option>
-                        <option value="24" {% if not settings.cloud_webhook_failsafe_hours or settings.cloud_webhook_failsafe_hours == 24 %}selected{% endif %}>Every 24 hours</option>
+                    <div class="text-muted small mb-2" style="font-size: 0.85em;">When webhooks are enabled, polling
+                        runs less frequently as a background backup.</div>
+                    <select class="form-control form-control-sm" name="cloud_webhook_failsafe_hours"
+                        id="webhookFailsafe" style="max-width: 300px;">
+                        <option value="6" {% if settings.cloud_webhook_failsafe_hours==6 %}selected{% endif %}>Every 6
+                            hours</option>
+                        <option value="12" {% if settings.cloud_webhook_failsafe_hours==12 %}selected{% endif %}>Every
+                            12 hours</option>
+                        <option value="24" {% if not settings.cloud_webhook_failsafe_hours or
+                            settings.cloud_webhook_failsafe_hours==24 %}selected{% endif %}>Every 24 hours</option>
                     </select>
                 </div>
-                
+
                 <!-- Hidden inputs for legacy/advanced settings -->
-                <input type="hidden" name="cloud_poll_interval_min" value="{{ settings.cloud_poll_interval_min or 75 }}">
-                <input type="hidden" name="cloud_poll_interval_max" value="{{ settings.cloud_poll_interval_max or 120 }}">
+                <input type="hidden" name="cloud_poll_interval_min"
+                    value="{{ settings.cloud_poll_interval_min or 75 }}">
+                <input type="hidden" name="cloud_poll_interval_max"
+                    value="{{ settings.cloud_poll_interval_max or 120 }}">
                 <input type="hidden" name="cloud_webhook_secret_unchanged" value="1">
 
-                <button type="submit" class="btn btn-save-settings mt-4" style="max-width: 200px; padding: 8px 20px; font-size: 0.9em;">
-                    Save Settings
-                </button>
-            </form>
-        </div>
-    </div>
 
-    <!-- Tunnel Status Card (Phase 3: Read-Only Display) -->
-    <div class="card mb-4 requests-settings-card">
-        <div class="card-header bg-dark text-white d-flex align-items-center justify-content-between">
-            <h5 class="mb-0">Tunnel Configuration</h5>
-            {% if settings.tunnel_enabled and settings.tunnel_status == 'connected' %}
+            </div>
+        </div>
+
+        <!-- Tunnel Status Card (Phase 3: Read-Only Display) -->
+        <div class="card mb-4 requests-settings-card">
+            <div class="card-header bg-dark text-white d-flex align-items-center justify-content-between">
+                <h5 class="mb-0">Tunnel Configuration</h5>
+                {% if settings.tunnel_enabled and settings.tunnel_status == 'connected' %}
                 <span class="badge bg-success">Connected</span>
-            {% elif settings.tunnel_enabled and settings.tunnel_status == 'error' %}
+                {% elif settings.tunnel_enabled and settings.tunnel_status == 'error' %}
                 <span class="badge bg-danger">Error</span>
-            {% elif settings.tunnel_enabled %}
+                {% elif settings.tunnel_enabled %}
                 <span class="badge bg-warning">{{ settings.tunnel_status or 'Starting' }}</span>
-            {% endif %}
-        </div>
-        <div class="card-body bg-dark text-white">
-            <!-- Provider Selection (always visible) -->
-            <div class="mb-4">
-                <p class="text-muted mb-3">Choose your tunnel provider to enable instant webhook notifications:</p>
-                
-                <div class="mb-3 p-3" style="background: rgba(124, 93, 250, 0.05); border: 1px solid rgba(124, 93, 250, 0.2); border-radius: 8px; display: inline-block; max-width: fit-content;">
-                    <div class="form-check mb-2">
-                        <input class="form-check-input" type="radio" name="tunnel_provider_choice" id="provider_quick" value="cloudflare_quick" 
-                            {% if not settings.tunnel_provider or (settings.tunnel_provider == 'cloudflare' and settings.tunnel_name == 'quick-tunnel') %}checked{% endif %}
-                            {% if settings.tunnel_enabled %}disabled{% endif %}>
-                        <label class="form-check-label text-white" for="provider_quick">
-                            <strong>Cloudflare Quick Tunnel</strong> (recommended)
-                        </label>
-                        <p class="text-muted small mb-0 ms-4">Free, no account needed, URL changes occasionally. Auto-recovery keeps connection alive.</p>
-                    </div>
-                </div>
+                {% endif %}
+            </div>
+            <div class="card-body bg-dark text-white">
+                <!-- Provider Selection (always visible) -->
+                <div class="mb-4">
+                    <p class="text-muted mb-3">Choose your tunnel provider to enable instant webhook notifications:</p>
 
-                <div class="mb-3 p-3" style="background: rgba(124, 93, 250, 0.05); border: 1px solid rgba(124, 93, 250, 0.2); border-radius: 8px; display: inline-block; max-width: 100%;">
-                    <div class="form-check mb-2">
-                        <input class="form-check-input" type="radio" name="tunnel_provider_choice" id="provider_named" value="cloudflare_named"
-                            {% if settings.tunnel_provider == 'cloudflare' and settings.tunnel_name != 'quick-tunnel' %}checked{% endif %}
-                            {% if settings.tunnel_enabled %}disabled{% endif %}>
-                        <label class="form-check-label text-white" for="provider_named">
-                            <strong>Cloudflare Named Tunnel</strong> (advanced)
-                        </label>
-                        <p class="text-muted small mb-0 ms-4">Requires domain and Cloudflare account. Permanent URL, best for production.</p>
+                    <div class="mb-3 p-3"
+                        style="background: rgba(124, 93, 250, 0.05); border: 1px solid rgba(124, 93, 250, 0.2); border-radius: 8px; display: inline-block; max-width: fit-content;">
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="radio" name="tunnel_provider_choice"
+                                id="provider_quick" value="cloudflare_quick" {% if not settings.tunnel_provider or
+                                (settings.tunnel_provider=='cloudflare' and settings.tunnel_name=='quick-tunnel' )
+                                %}checked{% endif %}>
+                            <label class="form-check-label text-white" for="provider_quick">
+                                <strong>Cloudflare Quick Tunnel</strong> (recommended)
+                            </label>
+                            <p class="text-muted small mb-0 ms-4">Free, no account needed, URL changes occasionally.
+                                Auto-recovery keeps connection alive.</p>
+                        </div>
                     </div>
-                    
-                    <!-- Cloudflare credentials (shown inline with Named Tunnel option) -->
-                    <div class="ms-4 mt-3" id="cloudflare_named_fields">
-                        <div class="form-group mb-3">
-                            <label for="cloudflareApiToken" class="text-white small mb-1">Cloudflare API Token</label>
-                            <div class="text-muted small mb-2" style="font-size: 0.85em;">Required for Named Tunnels. Get this from your Cloudflare dashboard.</div>
-                            <div class="input-group" style="max-width: 500px;">
-                                <input type="password" class="form-control form-control-sm" name="cloudflare_api_token" id="cloudflareApiToken" 
-                                       placeholder="Paste your Cloudflare API token here" value="{{ settings.cloudflare_api_token or '' }}" autocomplete="off">
-                                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="togglePasswordVisibility('cloudflareApiToken', this)" title="Show/hide token">
-                                    <i class="fas fa-eye"></i>
-                                </button>
+
+                    <div class="mb-3 p-3"
+                        style="background: rgba(124, 93, 250, 0.05); border: 1px solid rgba(124, 93, 250, 0.2); border-radius: 8px; display: inline-block; max-width: 100%;">
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="radio" name="tunnel_provider_choice"
+                                id="provider_named" value="cloudflare_named" {% if
+                                settings.tunnel_provider=='cloudflare' and settings.tunnel_name !='quick-tunnel'
+                                %}checked{% endif %}>
+                            <label class="form-check-label text-white" for="provider_named">
+                                <strong>Cloudflare Named Tunnel</strong> (advanced)
+                            </label>
+                            <p class="text-muted small mb-0 ms-4">Requires domain and Cloudflare account. Permanent URL,
+                                best for production.</p>
+                        </div>
+
+                        <!-- Cloudflare credentials (shown inline with Named Tunnel option) -->
+                        <div class="ms-4 mt-3" id="cloudflare_named_fields">
+                            <div class="form-group mb-3">
+                                <label for="cloudflareApiToken" class="text-white small mb-1">Cloudflare API
+                                    Token</label>
+                                <div class="text-muted small mb-2" style="font-size: 0.85em;">Required for Named
+                                    Tunnels.
+                                    Get this from your Cloudflare dashboard.</div>
+                                <div class="input-group" style="max-width: 500px;">
+                                    <input type="password" class="form-control form-control-sm"
+                                        name="cloudflare_api_token" id="cloudflareApiToken"
+                                        placeholder="Paste your Cloudflare API token here"
+                                        value="{{ settings.cloudflare_api_token or '' }}" autocomplete="off">
+                                    <button type="button" class="btn btn-sm btn-outline-secondary"
+                                        onclick="togglePasswordVisibility('cloudflareApiToken', this)"
+                                        title="Show/hide token">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="cloudflareAccountId" class="text-white small mb-1">Cloudflare Account ID
+                                    (Optional)</label>
+                                <div class="text-muted small mb-2" style="font-size: 0.85em;">Leave blank to attempt
+                                    automatic detection from your API token.</div>
+                                <input type="text" class="form-control form-control-sm" name="cloudflare_account_id"
+                                    id="cloudflareAccountId" placeholder="Leave blank to auto-detect"
+                                    style="max-width: 500px;" value="{{ settings.cloudflare_account_id or '' }}">
                             </div>
                         </div>
-                        
-                        <div class="form-group">
-                            <label for="cloudflareAccountId" class="text-white small mb-1">Cloudflare Account ID (Optional)</label>
-                            <div class="text-muted small mb-2" style="font-size: 0.85em;">Leave blank to attempt automatic detection from your API token.</div>
-                            <input type="text" class="form-control form-control-sm" name="cloudflare_account_id" id="cloudflareAccountId" 
-                                   placeholder="Leave blank to auto-detect" style="max-width: 500px;" value="{{ settings.cloudflare_account_id or '' }}">
+                    </div>
+
+                    <div class="mb-3 p-3"
+                        style="background: rgba(124, 93, 250, 0.05); border: 1px solid rgba(124, 93, 250, 0.2); border-radius: 8px; display: inline-block; width: 100%; max-width: 800px;">
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="radio" name="tunnel_provider_choice"
+                                id="provider_external" value="external" {% if settings.tunnel_provider=='external'
+                                %}checked{% endif %}>
+                            <label class="form-check-label text-white" for="provider_external">
+                                <strong>External / Permanent Tunnel</strong> (manual)
+                            </label>
+                            <p class="text-muted small mb-0 ms-4">Use your own <code>cloudflared</code> setup or a
+                                permanent
+                                domain. App will only listen for webhooks.</p>
+                        </div>
+
+                        <!-- External Tunnel URL input -->
+                        <div class="ms-4 mt-3 {% if settings.tunnel_provider != 'external' %}d-none{% endif %}"
+                            id="external_tunnel_fields">
+                            <div class="form-group mb-0">
+                                <label for="cloudWebhookUrl" class="text-white small mb-1">Your External Tunnel
+                                    URL</label>
+                                <div class="text-muted small mb-2" style="font-size: 0.85em;">Enter the full HTTPS URL
+                                    where
+                                    your app is accessible (e.g. <code>https://requests.yourdomain.com</code>).</div>
+                                <input type="url" class="form-control form-control-sm" name="cloud_webhook_url"
+                                    id="cloudWebhookUrl" placeholder="https://..."
+                                    value="{{ settings.cloud_webhook_url or '' }}" style="max-width: 500px;">
+                                <p class="text-muted small mb-0 mt-2">
+                                    <i class="fas fa-info-circle me-1"></i>
+                                    <strong>Setup Tip:</strong> Point your tunnel to this machine's IP and the app's
+                                    port (usually 5000).
+                                </p>
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                <div class="mb-3 p-3" style="background: rgba(100, 100, 100, 0.1); border: 1px solid rgba(100, 100, 100, 0.3); border-radius: 8px; display: inline-block; max-width: fit-content;">
-                    <div class="form-check mb-2">
-                        <input class="form-check-input" type="radio" name="tunnel_provider_choice" id="provider_ngrok" value="ngrok" disabled>
-                        <label class="form-check-label text-muted" for="provider_ngrok">
-                            <strong>ngrok</strong> <span class="badge bg-secondary" style="font-size: 0.7em;">Coming Soon</span>
-                        </label>
-                        <p class="text-muted small mb-0 ms-4">Free tier available, requires account. Permanent URL with free account.</p>
+                    {% if not settings.tunnel_enabled %}
+                    <div class="alert alert-info mt-3"
+                        style="background-color: rgba(23, 162, 184, 0.1); border-color: rgba(23, 162, 184, 0.3); max-width: fit-content;"
+                        id="provider_info_alert">
+                        <small>
+                            Select your provider above, then click the button below to start your tunnel.
+                        </small>
                     </div>
+                    {% endif %}
                 </div>
 
                 {% if not settings.tunnel_enabled %}
-                <div class="alert alert-info mt-3" style="background-color: rgba(23, 162, 184, 0.1); border-color: rgba(23, 162, 184, 0.3); max-width: fit-content;">
-                    <small>
-                        Select your provider above, then click the button below to start your tunnel.
-                    </small>
+                <!-- Enable Tunnel Button -->
+                <div class="mt-3" id="tunnelActionButtons"
+                    style="display: {{ 'none' if settings.tunnel_provider == 'external' else 'block' }};">
+                    <button type="button" class="btn btn-success" onclick="enableTunnel(event)">
+                        <i class="fas fa-play-circle mr-2"></i>Enable Tunnel
+                    </button>
+                </div>
+
+                {% if settings.tunnel_provider == 'external' %}
+                <div class="mt-3" id="externalSaveNotice">
+                    <div class="alert alert-success d-inline-block"
+                        style="background-color: rgba(40, 167, 69, 0.1); border-color: #28a745;">
+                        <span class="badge bg-success me-2"><i class="fas fa-bolt"></i> INSTANT SYNC ACTIVE</span>
+                        <small>Since you are using an external tunnel, just save your settings below to register your
+                            URL with the cloud.</small>
+                    </div>
                 </div>
                 {% endif %}
-            </div>
 
-            {% if not settings.tunnel_enabled %}
-            <!-- Enable Tunnel Button -->
-            <div class="mt-3">
-                <button type="button" class="btn btn-success" onclick="enableTunnel()">
-                    <i class="fas fa-play-circle mr-2"></i>Enable Tunnel
-                </button>
-            </div>
-
-            {% else %}
-            <!-- Tunnel Status Display (shown when tunnel is enabled) -->
-            <div class="row">
-                <div class="col-md-6">
-                    <p class="text-muted small mb-1">Provider</p>
-                    <p class="mb-3">
-                        {% if settings.tunnel_provider == 'cloudflare' and settings.tunnel_name == 'quick-tunnel' %}
+                {% else %}
+                <!-- Tunnel Status Display (shown when tunnel is enabled) -->
+                <div class="row">
+                    <div class="col-md-6">
+                        <p class="text-muted small mb-1">Provider</p>
+                        <p class="mb-3">
+                            {% if settings.tunnel_provider == 'cloudflare' and settings.tunnel_name == 'quick-tunnel' %}
                             Cloudflare Quick Tunnel
-                        {% elif settings.tunnel_provider == 'cloudflare' %}
+                            {% elif settings.tunnel_provider == 'cloudflare' %}
                             Cloudflare Named Tunnel
-                        {% elif settings.tunnel_provider == 'ngrok' %}
+                            {% elif settings.tunnel_provider == 'ngrok' %}
                             ngrok
-                        {% else %}
-                            Cloudflare (legacy)
-                        {% endif %}
-                    </p>
-                </div>
-                <div class="col-md-6">
-                    <p class="text-muted small mb-1">Auto-Recovery</p>
-                    <p class="mb-3">
-                        {% if settings.tunnel_auto_recovery_enabled %}
+                            {% elif settings.tunnel_url and 'trycloudflare.com' in settings.tunnel_url %}
+                            Cloudflare Quick Tunnel
+                            {% else %}
+                            External / Permanent
+                            {% endif %}
+                        </p>
+                    </div>
+                    <div class="col-md-6">
+                        <p class="text-muted small mb-1">Auto-Recovery</p>
+                        <p class="mb-3">
+                            {% if settings.tunnel_auto_recovery_enabled %}
                             <span class="text-success">Enabled</span>
-                        {% else %}
+                            {% else %}
                             <span class="text-muted">Disabled</span>
-                        {% endif %}
-                    </p>
+                            {% endif %}
+                        </p>
+                    </div>
                 </div>
-            </div>
 
-            {% if settings.tunnel_url %}
-            <div class="mb-3">
-                <p class="text-muted small mb-1">Current URL</p>
-                <code class="d-block p-2" style="background: rgba(255,255,255,0.05); border-radius: 4px; word-break: break-all;">{{ settings.tunnel_url }}</code>
-            </div>
-            {% endif %}
-
-            <div class="row">
-                <div class="col-md-6">
-                    <p class="text-muted small mb-1">Last Recovery</p>
-                    <p class="mb-3">
-                        {% if settings.tunnel_last_recovery %}
-                            {{ settings.tunnel_last_recovery.strftime('%Y-%m-%d %H:%M UTC') }}
-                        {% else %}
-                            Never
-                        {% endif %}
-                    </p>
+                {% if settings.tunnel_url %}
+                <div class="mb-3">
+                    <p class="text-muted small mb-1">Current URL</p>
+                    <code class="d-block p-2"
+                        style="background: rgba(255,255,255,0.05); border-radius: 4px; word-break: break-all;">{{ settings.tunnel_url }}</code>
                 </div>
-                <div class="col-md-6">
-                    <p class="text-muted small mb-1">Last Failure</p>
-                    <p class="mb-3">
-                        {% if settings.tunnel_last_error %}
-                            <span class="text-warning">{{ settings.tunnel_last_error }}</span>
-                        {% else %}
-                            None
-                        {% endif %}
-                    </p>
-                </div>
-            </div>
-
-            {% if settings.tunnel_consecutive_failures and settings.tunnel_consecutive_failures > 0 %}
-            <div class="alert alert-warning mb-3" style="background-color: rgba(255, 193, 7, 0.1); border-color: #ffc107;">
-                <strong>Consecutive Failures:</strong> {{ settings.tunnel_consecutive_failures }}
-                {% if settings.tunnel_consecutive_failures >= 2 %}
-                    <br><small>Auto-recovery will trigger on next health check if enabled.</small>
                 {% endif %}
-            </div>
-            {% endif %}
 
-            {% if settings.tunnel_recovery_count and settings.tunnel_recovery_count > 0 %}
-            <div class="mb-3">
-                <p class="text-muted small mb-1">Recovery Attempts (last hour)</p>
-                <p class="mb-0">{{ settings.tunnel_recovery_count }}/3</p>
-            </div>
-            {% endif %}
+                <div class="row">
+                    <div class="col-md-6">
+                        <p class="text-muted small mb-1">Last Recovery</p>
+                        <p class="mb-3">
+                            {% if settings.tunnel_last_recovery %}
+                            {{ settings.tunnel_last_recovery.strftime('%Y-%m-%d %H:%M UTC') }}
+                            {% else %}
+                            Never
+                            {% endif %}
+                        </p>
+                    </div>
+                    <div class="col-md-6">
+                        <p class="text-muted small mb-1">Last Failure</p>
+                        <p class="mb-3">
+                            {% if settings.tunnel_last_error %}
+                            <span class="text-warning">{{ settings.tunnel_last_error }}</span>
+                            {% else %}
+                            None
+                            {% endif %}
+                        </p>
+                    </div>
+                </div>
 
-            {% if settings.tunnel_recovery_disabled %}
-            <div class="alert alert-danger mb-3" style="background-color: rgba(220, 53, 69, 0.1); border-color: #dc3545;">
-                <strong>Circuit Breaker Active:</strong> Auto-recovery has been disabled due to repeated failures. Manual intervention required.
-                <br><small>Check your network connection and Cloudflare status, then click Reset below.</small>
-            </div>
-            {% endif %}
+                {% if settings.tunnel_consecutive_failures and settings.tunnel_consecutive_failures > 0 %}
+                <div class="alert alert-warning mb-3"
+                    style="background-color: rgba(255, 193, 7, 0.1); border-color: #ffc107;">
+                    <strong>Consecutive Failures:</strong> {{ settings.tunnel_consecutive_failures }}
+                    {% if settings.tunnel_consecutive_failures >= 2 %}
+                    <br><small>Auto-recovery will trigger on next health check if enabled.</small>
+                    {% endif %}
+                </div>
+                {% endif %}
 
-            <form method="POST" action="{{ url_for('web_requests.save_cloud_settings') }}" class="mb-3">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <input type="hidden" name="from_tunnel_config" value="1">
-                
+                {% if settings.tunnel_recovery_count and settings.tunnel_recovery_count > 0 %}
+                <div class="mb-3">
+                    <p class="text-muted small mb-1">Recovery Attempts (last hour)</p>
+                    <p class="mb-0">{{ settings.tunnel_recovery_count }}/3</p>
+                </div>
+                {% endif %}
+
+                {% if settings.tunnel_recovery_disabled %}
+                <div class="alert alert-danger mb-3"
+                    style="background-color: rgba(220, 53, 69, 0.1); border-color: #dc3545;">
+                    <strong>Circuit Breaker Active:</strong> Auto-recovery has been disabled due to repeated failures.
+                    Manual intervention required.
+                    <br><small>Check your network connection and Cloudflare status, then click Reset below.</small>
+                </div>
+                {% endif %}
+
                 {% if settings.tunnel_provider == 'cloudflare' and settings.tunnel_name == 'quick-tunnel' %}
                 <div class="custom-checkbox-container" style="margin-top: 0; margin-bottom: 15px;">
-                    <input type="checkbox" name="tunnel_auto_recovery_enabled" id="autoRecoveryCheck" {% if settings.tunnel_auto_recovery_enabled %}checked{% endif %}>
-                    <label for="autoRecoveryCheck" class="mb-0 text-white cursor-pointer">Enable automatic recovery (recommended for Quick Tunnels)</label>
+                    <input type="checkbox" name="tunnel_auto_recovery_enabled" id="autoRecoveryCheck" {% if
+                        settings.tunnel_auto_recovery_enabled %}checked{% endif %}>
+                    <label for="autoRecoveryCheck" class="mb-0 text-white cursor-pointer">Enable automatic recovery
+                        (recommended for Quick Tunnels)</label>
                 </div>
-                <p class="text-muted small mb-3">Automatically restarts tunnel and updates webhook URL when connection fails. Disabled by default for safety.</p>
+                <p class="text-muted small mb-3">Automatically restarts tunnel and updates webhook URL when connection
+                    fails. Disabled by default for safety.</p>
                 {% endif %}
-                
+
                 {% if settings.tunnel_recovery_disabled %}
                 <button type="submit" name="reset_circuit_breaker" value="1" class="btn btn-warning btn-sm">
                     Reset Auto-Recovery
                 </button>
                 {% endif %}
-                
-                {% if settings.tunnel_provider == 'cloudflare' and settings.tunnel_name == 'quick-tunnel' %}
-                <button type="submit" class="btn btn-primary btn-sm">
-                    Save Auto-Recovery Settings
-                </button>
-                {% endif %}
-            </form>
 
-            <!-- Tunnel Control Buttons -->
-            <div class="mt-3 mb-3">
-                {% if settings.tunnel_enabled %}
-                    <button type="button" class="btn btn-warning mr-2" onclick="restartTunnel()">
+
+
+
+
+                <!-- Tunnel Control Buttons -->
+                <div class="mt-3 mb-3">
+                    {% if settings.tunnel_enabled %}
+                    <button type="button" class="btn btn-warning mr-2" onclick="restartTunnel(event)">
                         <i class="fas fa-sync-alt mr-2"></i>Restart Tunnel
                     </button>
-                    <button type="button" class="btn btn-danger" onclick="disableTunnel()">
+                    <button type="button" class="btn btn-danger" onclick="disableTunnel(event)">
                         <i class="fas fa-stop-circle mr-2"></i>Disable Tunnel
                     </button>
-                {% else %}
-                    <button type="button" class="btn btn-success" onclick="enableTunnel()">
+                    {% else %}
+                    <button type="button" class="btn btn-success" onclick="enableTunnel(event)">
                         <i class="fas fa-play-circle mr-2"></i>Enable Tunnel
                     </button>
-                {% endif %}
-            </div>
-
-            <!-- Tunnel Status (moved here from above) -->
-            <div id="tunnelStatus" class="mt-3" style="{% if settings.tunnel_enabled %}display: block;{% else %}display: none;{% endif %}display: inline-block; max-width: fit-content;">
-                <div class="alert {% if settings.tunnel_status == 'connected' %}alert-success{% elif settings.tunnel_status == 'error' %}alert-danger{% else %}alert-info{% endif %} mb-2 text-center fw-bold" id="tunnelStatusMessage" style="padding: 8px 12px; font-size: 0.9em;">
-                    {% if settings.tunnel_enabled and settings.tunnel_status == 'connected' %}
-                        <span id="tunnelStatusText">Tunnel connected</span>
-                    {% elif settings.tunnel_enabled and settings.tunnel_status == 'error' %}
-                        <span id="tunnelStatusText">Tunnel error: {{ settings.tunnel_last_error or 'Unknown error' }}</span>
-                    {% elif settings.tunnel_enabled %}
-                        <span id="tunnelStatusText">Tunnel is starting...</span>
-                    {% else %}
-                        <span id="tunnelStatusText">Tunnel not enabled</span>
                     {% endif %}
+
+                    <button type="button" class="btn btn-outline-danger btn-sm ms-2" onclick="resetTunnelConfig(event)">
+                        <i class="fas fa-trash-alt mr-2"></i>Reset Configuration
+                    </button>
                 </div>
-                
-                <div id="tunnelError" style="display: none;">
-                    <div class="alert alert-danger mb-2">
-                        <strong>Error:</strong> <span id="tunnelErrorMessage"></span>
+
+                <!-- Tunnel Status (moved here from above) -->
+                <div id="tunnelStatus" class="mt-3"
+                    style="{% if settings.tunnel_enabled %}display: inline-block;{% else %}display: none;{% endif %} max-width: fit-content;">
+                    <div class="alert {% if settings.tunnel_status == 'connected' %}alert-success{% elif settings.tunnel_status == 'error' %}alert-danger{% else %}alert-info{% endif %} mb-2 text-center fw-bold"
+                        id="tunnelStatusMessage" style="padding: 8px 12px; font-size: 0.9em;">
+                        {% if settings.tunnel_enabled and settings.tunnel_status == 'connected' %}
+                        <span id="tunnelStatusText">Tunnel connected</span>
+                        {% elif settings.tunnel_enabled and settings.tunnel_status == 'error' %}
+                        <span id="tunnelStatusText">Tunnel error: {{ settings.tunnel_last_error or 'Unknown error' }}</span>
+                        {% elif settings.tunnel_enabled %}
+                        <span id="tunnelStatusText">Tunnel is starting...</span>
+                        {% else %}
+                        <span id="tunnelStatusText">Tunnel not enabled</span>
+                        {% endif %}
                     </div>
-                    <p class="text-muted small" id="tunnelErrorGuidance"></p>
+
+                    <div id="tunnelError" style="display: none;">
+                        <div class="alert alert-danger mb-2">
+                            <strong>Error:</strong> <span id="tunnelErrorMessage"></span>
+                        </div>
+                        <p class="text-muted small" id="tunnelErrorGuidance"></p>
+                    </div>
+                </div>
+
+                <p class="text-muted small mb-0">
+                    Health checks run every 15 minutes. Auto-recovery triggers after 2 consecutive failures.
+                </p>
+                {% endif %}
+                <div class="mt-4 pt-4 border-top text-center" style="border-color: #444 !important;">
+                    <button type="submit" class="btn btn-save-settings" style="min-width: 250px; padding: 12px 30px; font-size: 1em;">
+                        <i class="fas fa-save mr-2"></i> Save Cloud & Tunnel Settings
+                    </button>
+                    <p class="text-muted small mt-2">Always save after changing tunnel settings or URLs.</p>
                 </div>
             </div>
-
-            <p class="text-muted small mb-0">
-                Health checks run every 15 minutes. Auto-recovery triggers after 2 consecutive failures.
-            </p>
-            {% endif %}
         </div>
-    </div>
+    </form>
 
     <!-- Last 20 imported (cloud webhook/poll) -->
     <div class="card mb-4 requests-settings-card">
@@ -501,497 +632,561 @@
                             <td><code>{{ e.source }}</code></td>
                             <td>{{ e.title }}</td>
                             <td>{{ e.media_type }}</td>
-                            <td>{% if e.success %}<span class="text-success">OK</span>{% else %}<span class="text-danger">Failed</span>{% endif %}</td>
+                            <td>{% if e.success %}<span class="text-success">OK</span>{% else %}<span
+                                    class="text-danger">Failed</span>{% endif %}</td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
             {% else %}
-            <p class="text-muted mb-0 p-3">No imports yet. Entries appear when the app adds items from the cloud (webhook or poll).</p>
+            <p class="text-muted mb-0 p-3">No imports yet. Entries appear when the app adds items from the cloud
+                (webhook or poll).</p>
             {% endif %}
         </div>
     </div>
 </div>
 <script>
-function testCloudConnection() {
-    var btn = document.getElementById('cloudTestBtn');
-    var resultEl = document.getElementById('cloudTestResult');
-    var keyEl = document.getElementById('cloudApiKey');
-    var key = (keyEl && keyEl.value) ? keyEl.value.trim() : '';
-    var payload = {};
-    if (key) payload.api_key = key;
-    var csrf = document.querySelector('input[name="csrf_token"]');
-    var headers = { 'Content-Type': 'application/json' };
-    if (csrf && csrf.value) headers['X-CSRFToken'] = csrf.value;
-    if (btn) { btn.disabled = true; btn.textContent = 'Testing...'; }
-    if (resultEl) { resultEl.style.display = 'none'; resultEl.className = 'small ms-2'; }
-    fetch('{{ url_for("api.test_cloud_connection") }}', { method: 'POST', headers: headers, body: JSON.stringify(payload) })
-        .then(function(r) { return r.json(); })
-        .then(function(d) {
-            if (resultEl) {
-                resultEl.style.display = 'inline';
-                resultEl.textContent = d.message || (d.status === 'success' ? 'OK' : (d.status === 'warning' ? 'Rate limited' : 'Failed'));
-                var cls = d.status === 'success' ? 'text-success' : (d.status === 'warning' ? 'text-warning' : 'text-danger');
-                resultEl.classList.add(cls);
+    document.querySelectorAll('input[name="tunnel_provider_choice"]').forEach(radio => {
+        radio.addEventListener('change', function () {
+            const namedFields = document.getElementById('cloudflare_named_fields');
+            const externalFields = document.getElementById('external_tunnel_fields');
+            const actionButtons = document.getElementById('tunnelActionButtons');
+            const saveNotice = document.getElementById('externalSaveNotice');
+            const infoAlert = document.getElementById('provider_info_alert');
+
+            // Hide all provider fields first
+            if (namedFields) namedFields.classList.add('d-none');
+            if (externalFields) externalFields.classList.add('d-none');
+
+            if (this.value === 'cloudflare_named') {
+                if (namedFields) namedFields.classList.remove('d-none');
+            } else if (this.value === 'external') {
+                if (externalFields) externalFields.classList.remove('d-none');
             }
-        })
-        .catch(function() {
-            if (resultEl) { resultEl.style.display = 'inline'; resultEl.className = 'small ms-2 text-danger'; resultEl.textContent = 'Request failed.'; }
-        })
-        .finally(function() {
-            if (!btn) return;
-            var waitSec = 120;
-            btn.disabled = true;
-            var tick = function() {
-                if (waitSec <= 0) {
-                    btn.disabled = false;
-                    btn.textContent = 'Test key';
-                    return;
-                }
-                var m = Math.floor(waitSec / 60);
-                var s = waitSec % 60;
-                btn.textContent = 'Try again in ' + m + ':' + (s < 10 ? '0' : '') + s;
-                waitSec--;
-                setTimeout(tick, 1000);
-            };
-            tick();
-        });
-}
 
-function clearCloudKey() {
-    if (!confirm("Are you sure you want to clear the saved API key? This will disconnect your app from SeekAndWatch Cloud.")) return;
-    const input = document.getElementById('cloudApiKey');
-    const hidden = document.getElementById('cloudApiKey_unchanged_h');
-    const badge = document.querySelector('.key-saved-badge') || document.querySelector('.badge.bg-success');
-    
-    input.value = '';
-    input.placeholder = 'Paste your key here (e.g. 8f9a...)';
-    input.removeAttribute('data-key-set');
-    if (hidden) hidden.remove();
-    if (badge) badge.remove();
-    
-    // Auto-save the empty state
-    input.form.submit();
-}
-
-function startPairing() {
-    const btn = document.getElementById('btnPairStart');
-    const status = document.getElementById('pairingStatus');
-    
-    // Open a blank window immediately to satisfy popup blockers
-    const popup = window.open('about:blank', 'seekandwatch_pair', 'width=600,height=700');
-    if (!popup || popup.closed || typeof popup.closed == 'undefined') {
-        status.className = 'mt-2 small text-warning';
-        status.textContent = 'Popup blocked! Please allow popups for this site and try again.';
-        btn.disabled = false;
-        return;
-    }
-    
-    popup.document.write('<html><body style="background:#1a1a2e; color:white; display:flex; align-items:center; justify-content:center; height:100vh; font-family:sans-serif;"><div><h2>Connecting...</h2><p>Please wait while we establish a secure handshake.</p></div></body></html>');
-
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Starting Tunnel...';
-    status.className = 'mt-2 small text-info';
-    status.textContent = 'Establishing secure connection... this can take 30-60 seconds.';
-    status.classList.remove('d-none');
-
-    fetch('/api/pair/start', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': document.querySelector('input[name="csrf_token"]').value
-        }
-    })
-    .then(r => r.json())
-    .then(data => {
-        if (data.success) {
-            status.innerHTML = 'Connection established! If the window didn\'t open, <a href="' + data.pair_url + '" target="_blank" class="text-white text-decoration-underline">click here to link manually</a>.';
-            btn.innerHTML = '<i class="fas fa-check me-2"></i>Handshake Ready';
-            
-            // Update the already-open popup
-            popup.location.href = data.pair_url;
-            
-            // Start polling for success
-            const checkPair = setInterval(() => {
-                fetch('{{ url_for("api.pair_status") }}', { 
-                    method: 'GET', 
-                    headers: { 'X-CSRFToken': document.querySelector('input[name="csrf_token"]').value }
-                })
-                .then(r => r.json())
-                .then(d => {
-                    if (d.paired) {
-                        clearInterval(checkPair);
-                        status.className = 'mt-2 small text-success';
-                        status.textContent = 'Successfully paired! Reloading...';
-                        setTimeout(() => location.reload(), 1500);
-                    }
-                })
-                .catch(() => {
-                    // silently ignore errors during polling
-                });
-            }, 3000);
-        } else {
-            popup.close();
-            status.className = 'mt-2 small text-danger';
-            status.textContent = 'Pairing failed: ' + (data.error || 'Unknown error');
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-link me-2"></i>One-Click Pair with Cloud';
-        }
-    })
-    .catch(err => {
-        popup.close();
-        status.className = 'mt-2 small text-danger';
-        status.textContent = 'Request failed. Please check your logs.';
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-link me-2"></i>One-Click Pair with Cloud';
-    });
-}
-
-document.addEventListener('DOMContentLoaded', function() {
-    ['cloudApiKey', 'cloudWebhookSecret'].forEach(function(id) {
-        var el = document.getElementById(id);
-        if (el) el.addEventListener('input', function() {
-            var h = document.getElementById(id + '_unchanged_h');
-            if (h) h.remove();
+            // Hide/show action buttons
+            if (this.value === 'external') {
+                if (actionButtons) actionButtons.style.display = 'none';
+                if (saveNotice) saveNotice.classList.remove('d-none');
+                if (infoAlert) infoAlert.style.display = 'none';
+            } else {
+                if (actionButtons) actionButtons.style.display = 'block';
+                if (saveNotice) saveNotice.classList.add('d-none');
+                if (infoAlert) infoAlert.style.display = 'block';
+            }
         });
     });
-
-    // Handle "Enter" to save
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') {
-            const active = document.activeElement;
-            if (active && (active.tagName === 'INPUT' || active.tagName === 'SELECT')) {
-                const type = active.getAttribute('type');
-                if (type !== 'button' && type !== 'submit' && type !== 'checkbox' && type !== 'radio') {
-                    const form = active.closest('form');
-                    if (form) {
-                        e.preventDefault();
-                        form.submit();
-                    }
+    function testCloudConnection() {
+        var btn = document.getElementById('cloudTestBtn');
+        var resultEl = document.getElementById('cloudTestResult');
+        var keyEl = document.getElementById('cloudApiKey');
+        var key = (keyEl && keyEl.value) ? keyEl.value.trim() : '';
+        var payload = {};
+        if (key) payload.api_key = key;
+        var csrf = document.querySelector('input[name="csrf_token"]');
+        var headers = { 'Content-Type': 'application/json' };
+        if (csrf && csrf.value) headers['X-CSRFToken'] = csrf.value;
+        if (btn) { btn.disabled = true; btn.textContent = 'Testing...'; }
+        if (resultEl) { resultEl.style.display = 'none'; resultEl.className = 'small ms-2'; }
+        fetch('{{ url_for("api.test_cloud_connection") }}', { method: 'POST', headers: headers, body: JSON.stringify(payload) })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (resultEl) {
+                    resultEl.style.display = 'inline';
+                    resultEl.textContent = d.message || (d.status === 'success' ? 'OK' : (d.status === 'warning' ? 'Rate limited' : 'Failed'));
+                    var cls = d.status === 'success' ? 'text-success' : (d.status === 'warning' ? 'text-warning' : 'text-danger');
+                    resultEl.classList.add(cls);
                 }
-            }
-        }
-    });
-    
-    // check tunnel status on page load if enabled
-    {% if settings.tunnel_enabled %}
-        updateTunnelStatus();
-        // poll status every 30 seconds
-        setInterval(updateTunnelStatus, 30000);
-    {% endif %}
-});
-
-function enableTunnel() {
-    var statusDiv = document.getElementById('tunnelStatus');
-    var statusMsg = document.getElementById('tunnelStatusMessage');
-    var statusText = document.getElementById('tunnelStatusText');
-    var enableBtn = event.target;
-    
-    // disable button and show loading
-    enableBtn.disabled = true;
-    enableBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Enabling...';
-    
-    // show status (with null check)
-    if (statusDiv) statusDiv.style.display = 'block';
-    if (statusMsg) statusMsg.className = 'alert alert-info mb-2 text-center fw-bold';
-    if (statusText) statusText.textContent = 'Creating and starting tunnel...';
-    
-    // call API to enable tunnel
-    fetch('/api/tunnel/enable', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': document.querySelector('input[name="csrf_token"]').value
-        }
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-        if (data.success) {
-            if (statusMsg) statusMsg.className = 'alert alert-success mb-2 text-center fw-bold';
-            if (statusText) statusText.textContent = 'Tunnel enabled successfully! Reloading page...';
-            // reload page to show new state
-            setTimeout(function() { window.location.reload(); }, 2000);
-        } else {
-            if (statusMsg) statusMsg.className = 'alert alert-danger mb-2 text-center fw-bold';
-            if (statusText) statusText.textContent = 'Failed to enable tunnel: ' + (data.error || 'Unknown error');
-            
-            // re-enable button
-            enableBtn.disabled = false;
-            enableBtn.innerHTML = '<i class="fas fa-play-circle mr-2"></i>Enable Tunnel';
-            
-            // show error details if available
-            if (data.guidance) {
-                var errorMsg = document.getElementById('tunnelErrorMessage');
-                var errorGuidance = document.getElementById('tunnelErrorGuidance');
-                if (errorMsg) errorMsg.textContent = data.error;
-                if (errorGuidance) errorGuidance.textContent = data.guidance;
-                document.getElementById('tunnelError').style.display = 'block';
-            }
-        }
-    })
-    .catch(function(err) {
-        statusMsg.className = 'alert alert-danger mb-2';
-        statusText.textContent = 'Request failed';
-    });
-}
-
-function disableTunnel() {
-    if (!confirm('Are you sure you want to disable the tunnel? Webhook notifications will stop working.')) {
-        return;
+            })
+            .catch(function () {
+                if (resultEl) { resultEl.style.display = 'inline'; resultEl.className = 'small ms-2 text-danger'; resultEl.textContent = 'Request failed.'; }
+            })
+            .finally(function () {
+                if (!btn) return;
+                var waitSec = 120;
+                btn.disabled = true;
+                var tick = function () {
+                    if (waitSec <= 0) {
+                        btn.disabled = false;
+                        btn.textContent = 'Test key';
+                        return;
+                    }
+                    var m = Math.floor(waitSec / 60);
+                    var s = waitSec % 60;
+                    btn.textContent = 'Try again in ' + m + ':' + (s < 10 ? '0' : '') + s;
+                    waitSec--;
+                    setTimeout(tick, 1000);
+                };
+                tick();
+            });
     }
-    
-    var statusDiv = document.getElementById('tunnelStatus');
-    var statusMsg = document.getElementById('tunnelStatusMessage');
-    var statusText = document.getElementById('tunnelStatusText');
-    var disableBtn = event.target;
-    
-    // disable button and show loading
-    disableBtn.disabled = true;
-    disableBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Disabling...';
-    
-    if (statusDiv) statusDiv.style.display = 'block';
-    if (statusMsg) statusMsg.className = 'alert alert-info mb-2 text-center fw-bold';
-    if (statusText) statusText.textContent = 'Stopping tunnel...';
-    
-    // call API to disable tunnel
-    fetch('/api/tunnel/disable', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': document.querySelector('input[name="csrf_token"]').value
-        }
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-        if (data.success) {
-            if (statusMsg) statusMsg.className = 'alert alert-success mb-2 text-center fw-bold';
-            if (statusText) statusText.textContent = 'Tunnel disabled. Reloading page...';
-            setTimeout(function() { window.location.reload(); }, 2000);
-        } else {
-            if (statusMsg) statusMsg.className = 'alert alert-danger mb-2 text-center fw-bold';
-            if (statusText) statusText.textContent = 'Failed to disable tunnel: ' + (data.error || 'Unknown error');
-            
-            // re-enable button
-            disableBtn.disabled = false;
-            disableBtn.innerHTML = '<i class="fas fa-stop-circle mr-2"></i>Disable Tunnel';
-        }
-    })
-    .catch(function(err) {
-        if (statusMsg) statusMsg.className = 'alert alert-danger mb-2 text-center fw-bold';
-        if (statusText) statusText.textContent = 'Request failed';
-        
-        // re-enable button
-        disableBtn.disabled = false;
-        disableBtn.innerHTML = '<i class="fas fa-stop-circle mr-2"></i>Disable Tunnel';
-    });
-}
 
-function restartTunnel() {
-    var statusDiv = document.getElementById('tunnelStatus');
-    var statusMsg = document.getElementById('tunnelStatusMessage');
-    var statusText = document.getElementById('tunnelStatusText');
-    
-    statusDiv.style.display = 'block';
-    statusMsg.className = 'alert alert-info mb-2';
-    statusText.textContent = 'Restarting tunnel (this may take 10-15 seconds)...';
-    
-    // call API to restart tunnel
-    fetch('/api/tunnel/restart', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': document.querySelector('input[name="csrf_token"]').value
-        }
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-        if (data.success) {
-            statusMsg.className = 'alert alert-success mb-2';
-            statusText.textContent = 'Tunnel restarted successfully! Reloading page...';
-            setTimeout(function() { window.location.reload(); }, 2000);
-        } else {
-            statusMsg.className = 'alert alert-danger mb-2';
-            statusText.textContent = 'Failed to restart tunnel: ' + (data.error || 'Unknown error');
-        }
-    })
-    .catch(function(err) {
-        statusMsg.className = 'alert alert-danger mb-2';
-        statusText.textContent = 'Request failed';
-    });
-}
+    function clearCloudKey() {
+        if (!confirm("Are you sure you want to clear the saved API key? This will disconnect your app from SeekAndWatch Cloud.")) return;
+        const input = document.getElementById('cloudApiKey');
+        const hidden = document.getElementById('cloudApiKey_unchanged_h');
+        const badge = document.querySelector('.key-saved-badge') || document.querySelector('.badge.bg-success');
 
-function updateTunnelStatus() {
-    fetch('/api/tunnel/status', {
-        headers: {
-            'X-CSRFToken': document.querySelector('input[name="csrf_token"]').value
-        }
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-        if (data.success && data.status) {
-            var status = data.status;
-            var statusDiv = document.getElementById('tunnelStatus');
-            var statusMsg = document.getElementById('tunnelStatusMessage');
-            var statusText = document.getElementById('tunnelStatusText');
-            var detailsDiv = document.getElementById('tunnelDetails');
-            var errorDiv = document.getElementById('tunnelError');
+        input.value = '';
+        input.placeholder = 'Paste your key here (e.g. 8f9a...)';
+        input.removeAttribute('data-key-set');
+        if (hidden) hidden.remove();
+        if (badge) badge.remove();
+
+        // Auto-save the empty state
+        input.form.submit();
+    }
+
+    function startPairing() {
+        const btn = document.getElementById('btnPairStart');
+        const status = document.getElementById('pairingStatus');
+
+        // Check if external provider is selected but URL is missing or likely unsaved
+        const providerChoice = document.querySelector('input[name="tunnel_provider_choice"]:checked')?.value;
+        if (providerChoice === 'external') {
+            const externalUrlEl = document.getElementById('cloudWebhookUrl');
+            const externalUrl = externalUrlEl?.value;
             
-            if (!statusDiv || !statusMsg || !statusText) {
-                console.error('Tunnel status elements not found');
+            if (!externalUrl || !externalUrl.startsWith('https://')) {
+                status.className = 'mt-2 small text-warning';
+                status.textContent = 'Please enter and SAVE your External Tunnel URL before pairing.';
+                status.classList.remove('d-none');
                 return;
             }
             
-            statusDiv.style.display = 'block';
-            
-            if (status.status === 'connected') {
-                statusMsg.className = 'alert alert-success mb-2';
-                statusText.textContent = 'Tunnel connected';
-                if (detailsDiv) detailsDiv.style.display = 'block';
-                if (errorDiv) errorDiv.style.display = 'none';
-                
-                if (status.url) {
-                    var urlDisplay = document.getElementById('tunnelUrlDisplay');
-                    if (urlDisplay) urlDisplay.value = status.url + '/webhook';
-                }
-            } else if (status.status === 'error') {
-                statusMsg.className = 'alert alert-danger mb-2';
-                statusText.textContent = 'Tunnel error';
-                if (detailsDiv) detailsDiv.style.display = 'none';
-                if (errorDiv) errorDiv.style.display = 'block';
-                
-                if (status.last_error) {
-                    var errorMsg = document.getElementById('tunnelErrorMessage');
-                    if (errorMsg) errorMsg.textContent = status.last_error;
-                }
+            // Helpful reminder
+            if (confirm("Have you clicked 'Save All Settings' since adding or changing your External Tunnel? If not, pairing might fail or use old settings. Click 'Cancel' to save first, or 'OK' to proceed if already saved.")) {
+                // proceed
             } else {
-                statusMsg.className = 'alert alert-warning mb-2';
-                statusText.textContent = 'Tunnel ' + status.status;
-                if (detailsDiv) detailsDiv.style.display = 'none';
-                if (errorDiv) errorDiv.style.display = 'none';
+                btn.disabled = false;
+                return;
             }
         }
-    })
-    .catch(function(err) {
-        console.error('Failed to get tunnel status:', err);
-    });
-}
 
-function testTunnelConnection() {
-    var resultDiv = document.getElementById('tunnelTestResult');
-    resultDiv.style.display = 'block';
-    resultDiv.className = 'alert alert-info mt-2';
-    resultDiv.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Testing connection...';
-    
-    fetch('/api/tunnel/test', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': document.querySelector('input[name="csrf_token"]').value
+        // Open a blank window immediately to satisfy popup blockers
+        const popup = window.open('about:blank', 'seekandwatch_pair', 'width=600,height=700');
+        if (!popup || popup.closed || typeof popup.closed == 'undefined') {
+            status.className = 'mt-2 small text-warning';
+            status.textContent = 'Popup blocked! Please allow popups for this site and try again.';
+            btn.disabled = false;
+            return;
         }
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-        if (data.success) {
-            resultDiv.className = 'alert alert-success mt-2';
-            resultDiv.innerHTML = '<i class="fas fa-check-circle mr-2"></i>' + (data.message || 'Connection test passed');
+
+        popup.document.write('<html><body style="background:#1a1a2e; color:white; display:flex; align-items:center; justify-content:center; height:100vh; font-family:sans-serif;"><div><h2>Connecting...</h2><p>Please wait while we establish a secure handshake.</p></div></body></html>');
+
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Starting Tunnel...';
+        status.className = 'mt-2 small text-info';
+        status.textContent = 'Establishing secure connection... this can take 30-60 seconds.';
+        status.classList.remove('d-none');
+
+        // Scrape current form data to pass "unsaved" state to backend
+        const currentProvider = document.querySelector('input[name="tunnel_provider_choice"]:checked')?.value || 'cloudflare_quick';
+        const currentExternalUrl = document.getElementById('cloudWebhookUrl')?.value || '';
+
+        fetch('/api/pair/start', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('input[name="csrf_token"]').value
+            },
+            body: JSON.stringify({
+                tunnel_provider: currentProvider,
+                cloud_webhook_url: currentExternalUrl
+            })
+        })
+            .then(r => r.json())
+
+            .then(data => {
+                if (data.success) {
+                    status.innerHTML = 'Connection established! If the window didn\'t open, <a href="' + data.pair_url + '" target="_blank" class="text-white text-decoration-underline">click here to link manually</a>.';
+                    btn.innerHTML = '<i class="fas fa-check me-2"></i>Handshake Ready';
+
+                    // Update the already-open popup
+                    popup.location.href = data.pair_url;
+
+                    // Start polling for success
+                    const checkPair = setInterval(() => {
+                        fetch('{{ url_for("api.pair_status") }}', {
+                            method: 'GET',
+                            headers: { 'X-CSRFToken': document.querySelector('input[name="csrf_token"]').value }
+                        })
+                            .then(r => r.json())
+                            .then(d => {
+                                if (d.paired) {
+                                    clearInterval(checkPair);
+                                    status.className = 'mt-2 small text-success';
+                                    status.textContent = 'Successfully paired! Reloading...';
+                                    setTimeout(() => location.reload(), 1500);
+                                }
+                            })
+                            .catch(() => {
+                                // silently ignore errors during polling
+                            });
+                    }, 3000);
+                } else {
+                    popup.close();
+                    status.className = 'mt-2 small text-danger';
+                    
+                    let errorMsg = data.error || 'Unknown error';
+                    if (errorMsg.includes('reach your external URL')) {
+                        errorMsg = '<strong>Reachability Error:</strong> ' + errorMsg + '<br><span class="mt-1 d-block">Tip: Make sure your tunnel is pointing to <code>http://localhost:5000</code> and is publicly accessible.</span>';
+                    }
+                    
+                    status.innerHTML = '<i class="fas fa-exclamation-triangle mr-1"></i> ' + errorMsg;
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-link me-2"></i>One-Click Pair with Cloud';
+                }
+            })
+            .catch(err => {
+                popup.close();
+                status.className = 'mt-2 small text-danger';
+                status.textContent = 'Request failed. Please check your logs.';
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-link me-2"></i>One-Click Pair with Cloud';
+            });
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        ['cloudApiKey', 'cloudWebhookSecret'].forEach(function (id) {
+            var el = document.getElementById(id);
+            if (el) el.addEventListener('input', function () {
+                var h = document.getElementById(id + '_unchanged_h');
+                if (h) h.remove();
+            });
+        });
+
+        // Handle "Enter" to save
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                const active = document.activeElement;
+                if (active && (active.tagName === 'INPUT' || active.tagName === 'SELECT')) {
+                    const type = active.getAttribute('type');
+                    if (type !== 'button' && type !== 'submit' && type !== 'checkbox' && type !== 'radio') {
+                        const form = active.closest('form');
+                        if (form) {
+                            e.preventDefault();
+                            form.submit();
+                        }
+                    }
+                }
+            }
+        });
+
+        // check tunnel status on page load if enabled (safe boolean cast)
+        const isTunnelEnabled = Boolean({{ 1 if settings.tunnel_enabled else 0 }});
+        if (isTunnelEnabled) {
+            updateTunnelStatus();
+            // poll status every 30 seconds
+            setInterval(updateTunnelStatus, 30000);
+        }
+    });
+
+    function enableTunnel(event) {
+        var statusDiv = document.getElementById('tunnelStatus');
+        var statusMsg = document.getElementById('tunnelStatusMessage');
+        var statusText = document.getElementById('tunnelStatusText');
+        var enableBtn = event.target;
+
+        // disable button and show loading
+        enableBtn.disabled = true;
+        enableBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Enabling...';
+
+        // show status (with null check)
+        if (statusDiv) statusDiv.style.display = 'block';
+        if (statusMsg) statusMsg.className = 'alert alert-info mb-2 text-center fw-bold';
+        if (statusText) statusText.textContent = 'Creating and starting tunnel...';
+
+        // call API to enable tunnel
+        fetch('/api/tunnel/enable', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('input[name="csrf_token"]').value
+            }
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.success) {
+                    if (statusMsg) statusMsg.className = 'alert alert-success mb-2 text-center fw-bold';
+                    if (statusText) statusText.textContent = 'Tunnel enabled successfully! Reloading page...';
+                    // reload page to show new state
+                    setTimeout(function () { window.location.reload(); }, 2000);
+                } else {
+                    if (statusMsg) statusMsg.className = 'alert alert-danger mb-2 text-center fw-bold';
+                    if (statusText) statusText.textContent = 'Failed to enable tunnel: ' + (data.error || 'Unknown error');
+
+                    // re-enable button
+                    enableBtn.disabled = false;
+                    enableBtn.innerHTML = '<i class="fas fa-play-circle mr-2"></i>Enable Tunnel';
+
+                    // show error details if available
+                    if (data.guidance) {
+                        var errorMsg = document.getElementById('tunnelErrorMessage');
+                        var errorGuidance = document.getElementById('tunnelErrorGuidance');
+                        if (errorMsg) errorMsg.textContent = data.error;
+                        if (errorGuidance) errorGuidance.textContent = data.guidance;
+                        document.getElementById('tunnelError').style.display = 'block';
+                    }
+                }
+            })
+            .catch(function (err) {
+                statusMsg.className = 'alert alert-danger mb-2';
+                statusText.textContent = 'Request failed';
+            });
+    }
+
+    function disableTunnel(event) {
+        if (!confirm('Are you sure you want to disable the tunnel? Webhook notifications will stop working.')) {
+            return;
+        }
+
+        var statusDiv = document.getElementById('tunnelStatus');
+        var statusMsg = document.getElementById('tunnelStatusMessage');
+        var statusText = document.getElementById('tunnelStatusText');
+        var disableBtn = event.target;
+
+        // disable button and show loading
+        disableBtn.disabled = true;
+        disableBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Disabling...';
+
+        if (statusDiv) statusDiv.style.display = 'block';
+        if (statusMsg) statusMsg.className = 'alert alert-info mb-2 text-center fw-bold';
+        if (statusText) statusText.textContent = 'Stopping tunnel...';
+
+        // call API to disable tunnel
+        fetch('/api/tunnel/disable', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('input[name="csrf_token"]').value
+            }
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.success) {
+                    if (statusMsg) statusMsg.className = 'alert alert-success mb-2 text-center fw-bold';
+                    if (statusText) statusText.textContent = 'Tunnel disabled. Reloading page...';
+                    setTimeout(function () { window.location.reload(); }, 2000);
+                } else {
+                    if (statusMsg) statusMsg.className = 'alert alert-danger mb-2 text-center fw-bold';
+                    if (statusText) statusText.textContent = 'Failed to disable tunnel: ' + (data.error || 'Unknown error');
+
+                    // re-enable button
+                    disableBtn.disabled = false;
+                    disableBtn.innerHTML = '<i class="fas fa-stop-circle mr-2"></i>Disable Tunnel';
+                }
+            })
+            .catch(function (err) {
+                if (statusMsg) statusMsg.className = 'alert alert-danger mb-2 text-center fw-bold';
+                if (statusText) statusText.textContent = 'Request failed';
+
+                // re-enable button
+                disableBtn.disabled = false;
+                disableBtn.innerHTML = '<i class="fas fa-stop-circle mr-2"></i>Disable Tunnel';
+            });
+    }
+
+    function restartTunnel(event) {
+        var statusDiv = document.getElementById('tunnelStatus');
+        var statusMsg = document.getElementById('tunnelStatusMessage');
+        var statusText = document.getElementById('tunnelStatusText');
+
+        statusDiv.style.display = 'block';
+        statusMsg.className = 'alert alert-info mb-2';
+        statusText.textContent = 'Restarting tunnel (this may take 10-15 seconds)...';
+
+        // call API to restart tunnel
+        fetch('/api/tunnel/restart', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('input[name="csrf_token"]').value
+            }
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.success) {
+                    statusMsg.className = 'alert alert-success mb-2';
+                    statusText.textContent = 'Tunnel restarted successfully! Reloading page...';
+                    setTimeout(function () { window.location.reload(); }, 2000);
+                } else {
+                    statusMsg.className = 'alert alert-danger mb-2';
+                    statusText.textContent = 'Failed to restart tunnel: ' + (data.error || 'Unknown error');
+                }
+            })
+            .catch(function (err) {
+                statusMsg.className = 'alert alert-danger mb-2';
+                statusText.textContent = 'Request failed';
+            });
+    }
+
+    function updateTunnelStatus() {
+        fetch('/api/tunnel/status', {
+            headers: {
+                'X-CSRFToken': document.querySelector('input[name="csrf_token"]').value
+            }
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.success && data.status) {
+                    var status = data.status;
+                    var statusDiv = document.getElementById('tunnelStatus');
+                    var statusMsg = document.getElementById('tunnelStatusMessage');
+                    var statusText = document.getElementById('tunnelStatusText');
+                    var detailsDiv = document.getElementById('tunnelDetails');
+                    var errorDiv = document.getElementById('tunnelError');
+
+                    if (!statusDiv || !statusMsg || !statusText) {
+                        console.error('Tunnel status elements not found');
+                        return;
+                    }
+
+                    statusDiv.style.display = 'block';
+
+                    if (status.status === 'connected') {
+                        statusMsg.className = 'alert alert-success mb-2';
+                        statusText.textContent = 'Tunnel connected';
+                        if (detailsDiv) detailsDiv.style.display = 'block';
+                        if (errorDiv) errorDiv.style.display = 'none';
+
+                        if (status.url) {
+                            var urlDisplay = document.getElementById('tunnelUrlDisplay');
+                            if (urlDisplay) urlDisplay.value = status.url + '/webhook';
+                        }
+                    } else if (status.status === 'error') {
+                        statusMsg.className = 'alert alert-danger mb-2';
+                        statusText.textContent = 'Tunnel error';
+                        if (detailsDiv) detailsDiv.style.display = 'none';
+                        if (errorDiv) errorDiv.style.display = 'block';
+
+                        if (status.last_error) {
+                            var errorMsg = document.getElementById('tunnelErrorMessage');
+                            if (errorMsg) errorMsg.textContent = status.last_error;
+                        }
+                    } else {
+                        statusMsg.className = 'alert alert-warning mb-2';
+                        statusText.textContent = 'Tunnel ' + status.status;
+                        if (detailsDiv) detailsDiv.style.display = 'none';
+                        if (errorDiv) errorDiv.style.display = 'none';
+                    }
+                }
+            })
+            .catch(function (err) {
+                console.error('Failed to get tunnel status:', err);
+            });
+    }
+
+    function testTunnelConnection() {
+        var resultDiv = document.getElementById('tunnelTestResult');
+        resultDiv.style.display = 'block';
+        resultDiv.className = 'alert alert-info mt-2';
+        resultDiv.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Testing connection...';
+
+        fetch('/api/tunnel/test', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('input[name="csrf_token"]').value
+            }
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.success) {
+                    resultDiv.className = 'alert alert-success mt-2';
+                    resultDiv.innerHTML = '<i class="fas fa-check-circle mr-2"></i>' + (data.message || 'Connection test passed');
+                } else {
+                    resultDiv.className = 'alert alert-danger mt-2';
+                    resultDiv.innerHTML = '<i class="fas fa-times-circle mr-2"></i>' + (data.error || 'Connection test failed');
+                }
+            })
+            .catch(function (err) {
+                resultDiv.className = 'alert alert-danger mt-2';
+                resultDiv.textContent = 'Request failed';
+            });
+    }
+
+    function resetTunnelConfig(event) {
+        if (!confirm('Are you sure you want to reset the tunnel configuration? This will stop the tunnel and clear all settings.')) {
+            return;
+        }
+
+        var statusMsg = document.getElementById('tunnelStatusMessage');
+        var statusText = document.getElementById('tunnelStatusText');
+
+        if (!statusMsg || !statusText) {
+            console.error('Tunnel status elements not found');
+            return;
+        }
+
+        statusMsg.className = 'alert alert-info mb-2';
+        statusText.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Resetting configuration...';
+
+        fetch('/api/tunnel/reset', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('input[name="csrf_token"]').value
+            }
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.success) {
+                    statusMsg.className = 'alert alert-success mb-2';
+                    statusText.innerHTML = '<i class="fas fa-check-circle mr-2"></i>Configuration reset successfully';
+                    var tunnelCheck = document.getElementById('tunnelEnabledCheck');
+                    if (tunnelCheck) tunnelCheck.checked = false;
+                    var tunnelDetails = document.getElementById('tunnelDetails');
+                    if (tunnelDetails) tunnelDetails.style.display = 'none';
+                    setTimeout(function () {
+                        location.reload();
+                    }, 500);
+                } else {
+                    statusMsg.className = 'alert alert-danger mb-2';
+                    statusText.textContent = 'Failed to reset: ' + (data.error || 'Unknown error');
+                }
+            })
+            .catch(function (err) {
+                statusMsg.className = 'alert alert-danger mb-2';
+                statusText.textContent = 'Request failed';
+            });
+    }
+
+    function copyTunnelUrl(event) {
+        var urlInput = document.getElementById('tunnelUrlDisplay');
+        if (!urlInput) return;
+        urlInput.select();
+        document.execCommand('copy');
+
+        // show feedback
+        var btn = event.target.closest('button');
+        var originalHtml = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-check"></i>';
+        setTimeout(function () {
+            btn.innerHTML = originalHtml;
+        }, 2000);
+    }
+
+    // Tunnel status polling is handled in the DOMContentLoaded listener above
+
+    function togglePasswordVisibility(fieldId, button) {
+        var field = document.getElementById(fieldId);
+        if (!field) return;
+
+        var icon = button.querySelector('i');
+        if (!icon) return;
+
+        if (field.type === 'password') {
+            field.type = 'text';
+            icon.classList.remove('fa-eye');
+            icon.classList.add('fa-eye-slash');
+            button.title = 'Hide';
         } else {
-            resultDiv.className = 'alert alert-danger mt-2';
-            resultDiv.innerHTML = '<i class="fas fa-times-circle mr-2"></i>' + (data.error || 'Connection test failed');
+            field.type = 'password';
+            icon.classList.remove('fa-eye-slash');
+            icon.classList.add('fa-eye');
+            button.title = 'Show';
         }
-    })
-    .catch(function(err) {
-        resultDiv.className = 'alert alert-danger mt-2';
-        resultDiv.textContent = 'Request failed';
-    });
-}
-
-function resetTunnelConfig() {
-    if (!confirm('Are you sure you want to reset the tunnel configuration? This will stop the tunnel and clear all settings.')) {
-        return;
     }
-    
-    var statusMsg = document.getElementById('tunnelStatusMessage');
-    var statusText = document.getElementById('tunnelStatusText');
-    
-    if (!statusMsg || !statusText) {
-        console.error('Tunnel status elements not found');
-        return;
-    }
-    
-    statusMsg.className = 'alert alert-info mb-2';
-    statusText.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Resetting configuration...';
-    
-    fetch('/api/tunnel/reset', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': document.querySelector('input[name="csrf_token"]').value
-        }
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-        if (data.success) {
-            statusMsg.className = 'alert alert-success mb-2';
-            statusText.innerHTML = '<i class="fas fa-check-circle mr-2"></i>Configuration reset successfully';
-            var tunnelCheck = document.getElementById('tunnelEnabledCheck');
-            if (tunnelCheck) tunnelCheck.checked = false;
-            var tunnelDetails = document.getElementById('tunnelDetails');
-            if (tunnelDetails) tunnelDetails.style.display = 'none';
-            setTimeout(function() { 
-                var tunnelStatus = document.getElementById('tunnelStatus');
-                if (tunnelStatus) tunnelStatus.style.display = 'none'; 
-            }, 3000);
-        } else {
-            statusMsg.className = 'alert alert-danger mb-2';
-            statusText.textContent = 'Failed to reset: ' + (data.error || 'Unknown error');
-        }
-    })
-    .catch(function(err) {
-        statusMsg.className = 'alert alert-danger mb-2';
-        statusText.textContent = 'Request failed';
-    });
-}
-
-function copyTunnelUrl() {
-    var urlInput = document.getElementById('tunnelUrlDisplay');
-    urlInput.select();
-    document.execCommand('copy');
-    
-    // show feedback
-    var btn = event.target.closest('button');
-    var originalHtml = btn.innerHTML;
-    btn.innerHTML = '<i class="fas fa-check"></i>';
-    setTimeout(function() {
-        btn.innerHTML = originalHtml;
-    }, 2000);
-}
-
-// poll tunnel status every 30 seconds if enabled
-setInterval(function() {
-    var tunnelCheck = document.getElementById('tunnelEnabledCheck');
-    if (tunnelCheck && tunnelCheck.checked) {
-        updateTunnelStatus();
-    }
-}, 30000);
-
-function togglePasswordVisibility(fieldId, button) {
-    var field = document.getElementById(fieldId);
-    if (!field) return;
-    
-    var icon = button.querySelector('i');
-    if (!icon) return;
-    
-    if (field.type === 'password') {
-        field.type = 'text';
-        icon.classList.remove('fa-eye');
-        icon.classList.add('fa-eye-slash');
-        button.title = 'Hide';
-    } else {
-        field.type = 'password';
-        icon.classList.remove('fa-eye-slash');
-        icon.classList.add('fa-eye');
-        button.title = 'Show';
-    }
-}
 </script>{% endblock %}

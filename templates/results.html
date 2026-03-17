@@ -15,7 +15,7 @@
     });
 </script>
 
-<div class="results-header">
+<div class="results-header" style="margin-bottom: 10px;">
     <a href="{{ url_for('web_pages.dashboard') }}" class="back-link">← Back to Dashboard</a>
     <h2 class="m-0">Top Picks For You</h2>
     <div class="d-flex gap-10" style="align-items: center;">
@@ -28,88 +28,95 @@
     {% if not is_lucky %}
     <div class="card filter-card">
         
-        <div class="top-filters-grid mb-20">
+        <div class="top-filters-grid">
             
-            <div>
+            <div class="filter-col">
+                <label class="input-label" title="Filters based on TheMovieDB User Score">
+                    Min. Rating: <span id="rating-val" class="text-accent">{{ min_rating }}</span>/10
+                </label>
+                <input type="range" id="filter-rating" min="0" max="10" step="0.5" 
+                       value="{{ min_rating }}" class="w-100 mt-10" 
+                       oninput="document.getElementById('rating-val').innerText=this.value; filterVisibleCards();">
+            </div>
+
+            <div class="filter-col">
                 <label class="input-label">Released After (Year)</label>
-                <input type="number" id="filter-year" placeholder="e.g. 1990" 
+                <input type="number" id="filter-year" placeholder="e.g. 1990" class="w-100"
                        value="{{ min_year if min_year > 0 else '' }}" 
                        onkeyup="filterVisibleCards()">
             </div>
 
-            <div>
-                <label class="input-label">
-                    Min. Rating: <span id="rating-val" class="text-accent">{{ min_rating }}</span>/10
-                </label>
-                <input type="range" id="filter-rating" min="0" max="10" step="0.5" 
-                       value="{{ min_rating }}" class="w-100 mt-10" style="accent-color:var(--accent-color);" 
-                       oninput="document.getElementById('rating-val').innerText=this.value; filterVisibleCards();">
-            </div>
-
-            <div>
-                <label class="input-label">Max Runtime (minutes)</label>
-                <input type="number" id="filter-runtime" placeholder="e.g. 90" min="0" 
-                       onkeyup="filterVisibleCards()">
-            </div>
-
-            <div class="position-relative">
+            <div class="filter-col" style="position:relative;">
                 <label class="input-label" title="Search specific TMDB tags.">
                     TMDB Keywords <span class="text-muted fs-small" style="font-weight: normal;">(Not Genres)</span>
                 </label>
-                <input type="text" id="keyword-search" placeholder="Filter tags..." autocomplete="off">
+                <input type="text" id="keyword-search" placeholder="Filter tags..." autocomplete="off" class="w-100">
                 <div id="keyword-results" class="keyword-dropdown"></div>
                 <div id="selected-keywords" class="tag-container mt-5"></div>
             </div>
 
         </div>
-        <div class="mb-20 border-bottom pb-20">
-            <label class="input-label mb-10">Content Rating</label>
-            <div class="rating-grid" style="grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));">
-                {% set saved_ratings = session.get('rating_filter') %}
-                {% set all_ratings = ['G', 'PG', 'PG-13', 'R', 'NC-17', 'TV-Y', 'TV-Y7', 'TV-G', 'TV-PG', 'TV-14', 'TV-MA', 'NR'] %}
-                {% set defaults = ['G', 'PG', 'PG-13', 'R', 'TV-Y', 'TV-Y7', 'TV-G', 'TV-PG', 'TV-14', 'NR'] %}
-                {% set m_type = session.get('media_type', 'movie') %}
-                
-                {% for r in all_ratings %}
-                    {# Skip ratings that don't match the current media type. #}
-                    {% set is_tv = 'TV-' in r %}
-                    {% set show_box = (m_type == 'tv' and is_tv) or (m_type == 'movie' and not is_tv) or r == 'NR' %}
+
+        <div class="filter-side-by-side border-top pt-15">
+            <div class="filter-col" style="min-width: 250px;">
+                <label class="input-label">Max Runtime (minutes)</label>
+                <input type="number" id="filter-runtime" placeholder="e.g. 90" min="0" class="w-100" style="max-width: 250px;"
+                       onkeyup="filterVisibleCards()">
+            </div>
+
+            <div class="filter-col-full" style="flex: 2;">
+                <label class="input-label">Content Rating (US)</label>
+                <div class="rating-grid">
+                    {% set saved_ratings = session.get('rating_filter') %}
+                    {% set all_ratings = ['G', 'PG', 'PG-13', 'R', 'NC-17', 'TV-Y', 'TV-Y7', 'TV-G', 'TV-PG', 'TV-14', 'TV-MA', 'NR'] %}
+                    {% set defaults = ['G', 'PG', 'PG-13', 'R', 'TV-Y', 'TV-Y7', 'TV-G', 'TV-PG', 'TV-14', 'NR'] %}
+                    {% set m_type = session.get('media_type', 'movie') %}
                     
-                    {% if show_box %}
-                        {% set is_checked = r in saved_ratings if saved_ratings else r in defaults %}
-                        <label class="rating-check {% if is_checked %}checked{% endif %}">
-                            <input type="checkbox" class="rating-filter-box" value="{{ r }}" {% if is_checked %}checked{% endif %} onchange="this.parentElement.classList.toggle('checked'); filterVisibleCards();">
-                            <span>{{ r }}</span>
-                        </label>
-                    {% endif %}
-                {% endfor %}
-            </div>
-        </div>
-        <div class="genre-selector">
-            <div class="genre-header">
-                <strong>Genres</strong>
-                <a href="javascript:void(0)" onclick="toggleResultsGenres(this)" id="btn-toggle-results-genres" class="fs-small text-muted" style="text-decoration:underline;">Deselect All</a>
-            </div>
-            
-            <div class="genre-grid" id="results-genre-grid">
-                {% for g in genres %}
-                <div class="genre-check {% if loop.index > 12 %}hidden-genre{% endif %}">
-                    <input type="checkbox" class="genre-checkbox" value="{{ g.id }}" 
-                           id="sb-g-{{ g.id }}" 
-                           {% if not current_genre or g.id|string in current_genre %}checked{% endif %}>
-                    <label for="sb-g-{{ g.id }}">{{ g.name }}</label>
+                    {% for r in all_ratings %}
+                        {# Skip ratings that don't match the current media type. #}
+                        {% set is_tv = 'TV-' in r %}
+                        {% set show_box = (m_type == 'tv' and is_tv) or (m_type == 'movie' and not is_tv) or r == 'NR' %}
+                        
+                        {% if show_box %}
+                            {% set is_checked = r in saved_ratings if saved_ratings else r in defaults %}
+                            <label class="rating-check {% if is_checked %}checked{% endif %}">
+                                <input type="checkbox" class="rating-filter-box" value="{{ r }}" {% if is_checked %}checked{% endif %} onchange="this.parentElement.classList.toggle('checked'); filterVisibleCards();">
+                                <span>{{ r }}</span>
+                            </label>
+                        {% endif %}
+                    {% endfor %}
                 </div>
-                {% endfor %}
             </div>
-
-            {% if genres|length > 12 %}
-            <div class="genre-expand expanded" onclick="toggleGenreView(this)" id="genre-expand-btn">
-                <span id="genre-arrow">▲</span> Show Less
-            </div>
-            {% endif %}
         </div>
 
-        <button class="btn btn-primary w-100 fw-bold fs-large" onclick="updateFilters()">
+        <div class="filter-col-full mt-15">
+            <div class="genre-selector">
+                <div class="genre-header" style="justify-content: center; position: relative;">
+                    <strong style="font-size: 1.1em;">Genre Filter</strong>
+                    <a href="javascript:void(0)" onclick="toggleResultsGenres(this)" id="btn-toggle-results-genres" 
+                       class="fs-small text-muted" style="text-decoration:underline; position: absolute; right: 0;">Deselect All</a>
+                </div>
+                
+                <div class="genre-grid" id="results-genre-grid">
+                    {% for g in genres %}
+                    <div class="genre-check {% if loop.index > 12 %}hidden-genre{% endif %}">
+                        <input type="checkbox" class="genre-checkbox" value="{{ g.id }}" 
+                               id="sb-g-{{ g.id }}" 
+                               {% if not current_genre or g.id|string in current_genre %}checked{% endif %}>
+                        <label for="sb-g-{{ g.id }}">{{ g.name }}</label>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                {% if genres|length > 12 %}
+                <div class="genre-expand expanded" onclick="toggleGenreView(this)" id="genre-expand-btn">
+                    <span id="genre-arrow">▲</span> Show Less
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <button class="btn btn-primary w-100 fw-bold fs-large mt-15" onclick="updateFilters()">
             Update Results
         </button>
     </div>
