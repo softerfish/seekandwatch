@@ -809,7 +809,7 @@ def get_plex_collections():
         
         return jsonify({'status': 'success', 'collections': collections})
         
-    except Exception:
+    except Exception as e:
         print(f"Error fetching collections: {e}")
         _log_api_exception("get_plex_collections")
         return _error_response("Could not load collections from Plex. Check that the server is running and try again.")
@@ -1153,10 +1153,10 @@ def schedule_collection():
     old_libraries = current_config.get('target_libraries', [])
     
     if target_library_mode != old_mode:
-        log.info(f"Collection '{preset_key}' library mode changed: {old_mode} -> {target_library_mode}")
+        write_log("info", "Collections", f"Collection '{preset_key}' library mode changed: {old_mode} -> {target_library_mode}")
     
     if target_libraries != old_libraries:
-        log.info(f"Collection '{preset_key}' target libraries changed: {old_libraries} -> {target_libraries}")
+        write_log("info", "Collections", f"Collection '{preset_key}' target libraries changed: {old_libraries} -> {target_libraries}")
             
     current_config['sync_mode'] = sync_mode
     current_config['visibility_home'] = visibility_home
@@ -2713,8 +2713,21 @@ def add_to_radarr():
     tmdb_id = data.get('tmdb_id')
     if not tmdb_id: return _error_response('TMDB ID required')
     
+    try:
+        tmdb_id = int(tmdb_id)
+        if tmdb_id <= 0: raise ValueError
+    except:
+        return _error_response('Invalid TMDB ID')
+        
+    quality_profile_id = data.get('quality_profile_id')
+    if quality_profile_id:
+        try:
+            quality_profile_id = int(quality_profile_id)
+        except:
+            quality_profile_id = None # fall back if weird data
+    
     from services.IntegrationsService import IntegrationsService
-    success, msg = IntegrationsService.send_to_radarr_sonarr(s, 'movie', tmdb_id)
+    success, msg = IntegrationsService.send_to_radarr_sonarr(s, 'movie', tmdb_id, quality_profile_id=quality_profile_id)
     
     if success:
         # Log to history immediately (not in background thread to avoid context issues)
@@ -2825,8 +2838,21 @@ def add_to_sonarr():
     tmdb_id = data.get('tmdb_id')
     if not tmdb_id: return _error_response('TMDB ID required')
     
+    try:
+        tmdb_id = int(tmdb_id)
+        if tmdb_id <= 0: raise ValueError
+    except:
+        return _error_response('Invalid TMDB ID')
+        
+    quality_profile_id = data.get('quality_profile_id')
+    if quality_profile_id:
+        try:
+            quality_profile_id = int(quality_profile_id)
+        except:
+            quality_profile_id = None # fall back if weird data
+            
     from services.IntegrationsService import IntegrationsService
-    success, msg = IntegrationsService.send_to_radarr_sonarr(s, 'tv', tmdb_id)
+    success, msg = IntegrationsService.send_to_radarr_sonarr(s, 'tv', tmdb_id, quality_profile_id=quality_profile_id)
     
     if success:
         # Log to history immediately (not in background thread to avoid context issues)
@@ -3021,7 +3047,7 @@ def get_radarr_movie_detail(movie_id):
                                 'sizeleft': item.get('sizeleft', 0)
                             }
                             break  # Found the queue item for this movie
-        except Exception:
+        except Exception as e:
             # Don't fail if queue check fails, just log it
             try:
                 write_log("warning", "Radarr", f"Failed to check queue: {e}")
@@ -3160,7 +3186,7 @@ def get_radarr_movie_detail(movie_id):
                                     break
                                 except (ValueError, TypeError):
                                     pass
-                except Exception:
+                except Exception as e:
                     write_log("warning", "Radarr", f"Failed to fetch movieFile separately: {e}")
             
             # Get custom format score - check multiple possible locations and field names
@@ -3248,7 +3274,7 @@ def get_radarr_movie_detail(movie_id):
                                 'department': c.get('department', '') if isinstance(c, dict) else '',
                                 'profile_path': c.get('profile_path', '') if isinstance(c, dict) else ''
                             } for c in crew_list[:30] if isinstance(c, dict)]
-            except Exception:
+            except Exception as e:
                 write_log("warning", "Radarr", f"Failed to fetch TMDB credits: {e}")
         
         # Alternative titles - safely handle list
@@ -3275,7 +3301,7 @@ def get_radarr_movie_detail(movie_id):
             else:
                 # Use the actual movie ID from the response
                 radarr_url = f"{base_url}/movie/{actual_movie_id}"
-        except Exception:
+        except Exception as e:
             # Fallback to using the API ID if there's any error
             write_log("warning", "Radarr", f"Error constructing URL for movie '{movie.get('title')}': {e}")
             radarr_url = f"{base_url}/movie/{actual_movie_id}"
@@ -3465,7 +3491,7 @@ def radarr_search():
                             elif isinstance(q, str):
                                 quality_name = q
                         current_file = {'releaseGroup': rg or '', 'quality': quality_name}
-            except Exception:
+            except Exception as e:
                 write_log("warning", "Radarr", f"Could not fetch current file for downloaded icon: {e}")
             return jsonify({'status': 'success', 'releases': releases, 'current_file': current_file})
         
@@ -3762,6 +3788,20 @@ def sonarr_search_episode(episode_id):
     except Exception:
         _log_api_exception("sonarr_search_episode")
         return jsonify({'status': 'error', 'message': 'Request failed'})
+
+@api_bp.route('/radarr/download-release', methods=['POST'])
+@login_required
+def radarr_download_release():
+    """Download a release via Radarr."""
+    s = current_user.settings
+    if not s.radarr_url or not s.radarr_api_key:
+        return jsonify({'status': 'error', 'message': 'Radarr not configured'})
+    
+    data = request.json or {}
+    guid = data.get('guid')
+    indexer_id = data.get('indexer_id')
+    movie_id = data.get('movie_id')
+    release_data = data.get('release_data')
 
     if not guid:
         return jsonify({'status': 'error', 'message': 'Release GUID required'})
@@ -4120,7 +4160,7 @@ def sonarr_search():
                             elif isinstance(q, str):
                                 quality_name = q
                         current_file = {'releaseGroup': rg or '', 'quality': quality_name}
-            except Exception:
+            except Exception as e:
                 write_log("warning", "Sonarr", f"Could not fetch current file for downloaded icon: {e}")
             return jsonify({'status': 'success', 'releases': releases, 'episode': ep_for_response, 'current_file': current_file})
         

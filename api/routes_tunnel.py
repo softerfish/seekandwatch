@@ -100,6 +100,8 @@ def enable_tunnel():
                 
                 # mark tunnel as enabled
                 settings.tunnel_enabled = True
+                settings.tunnel_provider = 'cloudflare'
+                settings.tunnel_name = 'quick-tunnel'
                 settings.cloud_sync_owned_enabled = True  # cloud sync requires tunnel
                 db.session.commit()
                 
@@ -207,6 +209,8 @@ def enable_tunnel():
             
             # mark tunnel as enabled
             settings.tunnel_enabled = True
+            settings.tunnel_provider = 'cloudflare'
+            settings.tunnel_name = 'named-tunnel'
             settings.cloud_sync_owned_enabled = True  # cloud sync requires tunnel
             db.session.commit()
             
