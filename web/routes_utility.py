@@ -222,6 +222,16 @@ def image_proxy():
             write_log("warning", "Security", f"Blocked proxy attempt to untrusted domain: {parsed.netloc}")
             return "Forbidden: Domain not in allowlist", 403
             
+        # Reconstruct URL to prevent SSRF (CodeQL)
+        if is_tmdb:
+            target_url = f"https://image.tmdb.org{parsed.path}"
+        elif is_plex:
+            plex_base = s.plex_url.rstrip('/')
+            target_url = f"{plex_base}{parsed.path}"
+            
+        if parsed.query:
+            target_url += f"?{parsed.query}"
+            
     except Exception as e:
         return f"Invalid URL: {type(e).__name__}", 400
 
