@@ -11,9 +11,7 @@ echo "User ID: $USER_ID"
 echo "Group ID: $GROUP_ID"
 echo "-----------------------------------"
 
-# 2. Update the 'appuser' to match the ID the user wants
-# We use 'usermod' to change the ID of our existing user to match the host's ID
-# This prevents "Permission Denied" errors on mounted folders.
+# Match appuser to the host UID/GID so mounted folders stay writable.
 
 if [ "$USER_ID" != "1000" ]; then
     echo "Switching appuser UID to $USER_ID..."
@@ -26,9 +24,7 @@ fi
 echo "Fixing permissions for /config..."
 chown -R appuser:appuser /config
 
-# --- DATA MIGRATION: Ensure user data is in /config ---
-# This fixes the "Forcing a new password" issue where data was left in subfolders
-# while config.py was updated to look in the root /config folder.
+# Move old data files into /config if they were left in legacy subfolders.
 for data_file in seekandwatch.db secret.key plex_cache.json scanner.log results_cache.json history_cache.json; do
     # Check /config/app/ (Legacy)
     if [ -f "/config/app/$data_file" ]; then
@@ -61,8 +57,7 @@ elif [ -d "/config/config/backups" ] && [ ! -d "/config/backups" ]; then
     mv "/config/config/backups" "/config/backups"
 fi
 
-# MIGRATE: move custom poster artwork to /config so it survives container updates
-# old location was inside the image at /app/assets/custom_posters (wiped on upgrade)
+# Copy poster artwork into /config so updates do not wipe it out.
 mkdir -p /config/custom_posters
 if [ -d "/app/assets/custom_posters" ]; then
     file_count=$(find "/app/assets/custom_posters" -maxdepth 1 -type f 2>/dev/null | wc -l)

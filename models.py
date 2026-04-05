@@ -253,6 +253,7 @@ class WebhookLog(db.Model):
 
 class CloudRequest(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    owner_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
     cloud_id = db.Column(db.String(36), unique=True) # the id from the php site
     title = db.Column(db.String(255))
     media_type = db.Column(db.String(20)) # 'movie' or 'tv'

@@ -16,9 +16,10 @@ class Router:
     CLOUD_POLL = "/api/poll.php"
     CLOUD_SYNC = "/api/sync.php"
     CLOUD_ACKNOWLEDGE = "/api/acknowledge.php"
+    CLOUD_MARK_SYNCED = "/api/mark_synced.php"
     CLOUD_SAVE_WEBHOOK = "/api/save_webhook.php"
     CLOUD_TEST_WEBHOOK = "/api/test_webhook.php"
-    CLOUD_REGISTER_WEBHOOK = "/api/register_webhook.php"
+    CLOUD_REGISTER_WEBHOOK = "/api/save_webhook.php" # consolidated with save_webhook
     CLOUD_PAIR_PAGE = "/pair.php"
 
     @staticmethod

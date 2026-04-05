@@ -1,0 +1,64 @@
+# --- python and system ---
+__pycache__/
+*.pyc
+.DS_Store
+venv/
+.pytest_cache/
+.tox/
+.coverage
+htmlcov/
+.ipynb_checkpoints/
+*.egg-info/
+dist/
+build/
+
+# --- secrets and environment ---
+.env
+instance/
+config/
+*.key
+
+# --- database and cache ---
+*.db
+seekandwatch.db
+site.db
+*.sqlite
+*.sqlite3
+plex_cache.json
+*_cache.json
+*.lock
+
+# --- logsand backups ---
+*.log
+*.zip
+
+# --- docker ---
+.docker/
+docker-compose.override.yml
+
+# --- IDE settings ---
+.idea/
+.vscode/
+
+# --- user data and runtime files ---
+instance/
+assets/*
+!assets/.gitkeep
+
+images/*
+!images/.gitkeep
+
+# --- internal documentation and scripts ---
+documentation/
+tests/
+ROADMAP.md
+CHANGELOG.md
+GEMINI.md
+secret.key
+
+# --- temporary repair / scratch files ---
+*_patch.ps1
+fix_*.ps1
+merged_*.php
+recovered_*.php
+.git/

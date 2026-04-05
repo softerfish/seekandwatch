@@ -11,21 +11,21 @@
             <label class="switch-container">
                 <input type="checkbox" id="log-toggle" {% if settings.logging_enabled %}checked{% endif %} onchange="toggleLogging()">
                 <span class="switch-label">
-                    {% if settings.logging_enabled %}Recording ON 🟢{% else %}Recording OFF 🔴{% endif %}
+                    {% if settings.logging_enabled %}Recording ON{% else %}Recording OFF{% endif %}
                 </span>
             </label>
 
             <label class="switch-container">
                 <input type="checkbox" id="hide-errors-toggle" onchange="filterLogs()">
-                <span class="switch-label" id="hide-errors-label">Hide Errors 👁️</span>
+                <span class="switch-label" id="hide-errors-label">Hide Errors</span>
             </label>
             <label class="switch-container">
                 <input type="checkbox" id="show-only-errors-toggle" onchange="filterLogs()">
-                <span class="switch-label" id="errors-only-label">Errors Only ⚠️</span>
+                <span class="switch-label" id="errors-only-label">Errors Only</span>
             </label>
 
-            <button onclick="clearLogs()" class="btn-delete" style="padding: 8px 15px; font-size:0.9em;">Clear Logs 🗑️</button>
-            <button onclick="location.reload()" class="btn-preview" style="padding: 8px 15px; font-size:0.9em;">Refresh 🔄</button>
+            <button onclick="clearLogs()" class="btn-delete" style="padding: 8px 15px; font-size:0.9em;">Clear Logs</button>
+            <button onclick="location.reload()" class="btn-preview" style="padding: 8px 15px; font-size:0.9em;">Refresh</button>
         </div>
     </div>
     <p class="media-sub">Track collection syncs, cache updates, and system errors.</p>
@@ -35,7 +35,7 @@
 <div class="card" style="margin-bottom: 20px; border-left: 4px solid #e74c3c;">
     <div class="d-flex flex-between mb-10" style="align-items:center;">
         <div>
-            <h3 class="m-0 text-error">⚠️ Error Summary</h3>
+            <h3 class="m-0 text-error">Error Summary</h3>
             <p class="text-muted fs-small mb-0 mt-5">
                 Total Errors: <strong class="text-error">{{ error_count }}</strong> | 
                 Last 7 Days: <strong class="text-error">{{ recent_error_count }}</strong>
@@ -134,18 +134,18 @@ function filterLogs() {
     const errorsOnlyLabel = document.getElementById('errors-only-label');
     
     if (hideErrors) {
-        hideErrorsLabel.textContent = 'Hide Errors ✅ (ON)';
+        hideErrorsLabel.textContent = 'Hide Errors (ON)';
         hideErrorsLabel.style.color = '#2ecc71';
     } else {
-        hideErrorsLabel.textContent = 'Hide Errors 👁️';
+        hideErrorsLabel.textContent = 'Hide Errors';
         hideErrorsLabel.style.color = '';
     }
     
     if (showOnlyErrors) {
-        errorsOnlyLabel.textContent = 'Errors Only ✅ (ON)';
+        errorsOnlyLabel.textContent = 'Errors Only (ON)';
         errorsOnlyLabel.style.color = '#e74c3c';
     } else {
-        errorsOnlyLabel.textContent = 'Errors Only ⚠️';
+        errorsOnlyLabel.textContent = 'Errors Only';
         errorsOnlyLabel.style.color = '';
     }
     

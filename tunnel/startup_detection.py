@@ -10,6 +10,21 @@ from config import SCHEDULER_USER_ID
 
 logger = logging.getLogger(__name__)
 
+def _normalize_quick_tunnel_defaults(settings):
+    """ensure quick tunnel users get the intended defaults on existing installs"""
+    if not settings:
+        return False
+    changed = False
+    if (
+        getattr(settings, 'tunnel_enabled', False)
+        and getattr(settings, 'tunnel_provider', None) == 'cloudflare'
+        and getattr(settings, 'tunnel_name', None) == 'quick-tunnel'
+    ):
+        if hasattr(settings, 'tunnel_auto_recovery_enabled') and not settings.tunnel_auto_recovery_enabled:
+            settings.tunnel_auto_recovery_enabled = True
+            changed = True
+    return changed
+
 def auto_detect_and_set_provider():
     """
     Auto-detect tunnel provider on startup for existing users.
@@ -25,6 +40,10 @@ def auto_detect_and_set_provider():
         if not settings:
             logger.info("No settings found, skipping provider detection")
             return
+
+        if _normalize_quick_tunnel_defaults(settings):
+            db.session.commit()
+            logger.info("Applied quick tunnel default settings on startup")
         
         # Only auto-detect if provider not set yet
         if settings.tunnel_provider:
@@ -88,9 +107,14 @@ def verify_and_correct_provider():
         if not settings:
             logger.debug("No settings found, skipping verification")
             return
+
+        changed = _normalize_quick_tunnel_defaults(settings)
         
         # only verify if tunnel is enabled
         if not settings.tunnel_enabled:
+            if changed:
+                db.session.commit()
+                logger.info("Applied quick tunnel default settings on startup")
             logger.debug("Tunnel not enabled, skipping verification")
             return
         
@@ -98,11 +122,17 @@ def verify_and_correct_provider():
         stored_provider = settings.tunnel_provider
         
         if not stored_provider:
+            if changed:
+                db.session.commit()
+                logger.info("Applied quick tunnel default settings on startup")
             logger.debug("No provider set, skipping verification (will be auto-detected)")
             return
         
         # skip verification for custom providers
         if stored_provider == 'custom':
+            if changed:
+                db.session.commit()
+                logger.info("Applied quick tunnel default settings on startup")
             logger.debug("Custom provider, skipping verification")
             return
         
@@ -110,6 +140,9 @@ def verify_and_correct_provider():
         actual_provider = detect_provider_from_process()
         
         if not actual_provider:
+            if changed:
+                db.session.commit()
+                logger.info("Applied quick tunnel default settings on startup")
             # no process running, this is normal (tunnel not started yet)
             logger.debug(f"No tunnel process running (stored provider: {stored_provider})")
             return
@@ -143,6 +176,9 @@ def verify_and_correct_provider():
             except:
                 pass  # don't fail if logging fails
         else:
+            if changed:
+                db.session.commit()
+                logger.info("Applied quick tunnel default settings on startup")
             logger.debug(f"Provider verification passed: {stored_provider}")
     
     except Exception as e:

@@ -365,7 +365,7 @@ def generate():
         flash("TMDB API key is required for recommendations. Add it in Settings > APIs & Connections.", "error")
         return redirect(url_for('web_pages.dashboard'))
     
-    # "I'm feeling lucky" mode - just grab random popular stuff
+    # "I'm feeling lucky" just pulls a few random popular movies
     if request.form.get('lucky_mode') == 'true':
         raw_candidates = handle_lucky_mode(s)
         if not raw_candidates:
@@ -373,7 +373,7 @@ def generate():
              return redirect(url_for('web_pages.dashboard'))
         
         lucky_result = []
-        # keep fetching pages until we have 5 unowned items
+        # keep going until we find 5 movies the user doesn't already own
         page = 1
         max_pages = 10
         while len(lucky_result) < 5 and page <= max_pages:
@@ -395,11 +395,11 @@ def generate():
                 if len(lucky_result) >= 5:
                     break
                 
-                # Set default runtime (will be fetched in background)
+                # start with 0; the real runtime gets filled in later
                 if not item.get('runtime'):
                     item['runtime'] = 0
                 
-                # check if already owned (improved duplicate detection)
+                # skip anything the user already owns
                 if is_owned_item(item, 'movie'):
                     continue
                 
@@ -417,10 +417,10 @@ def generate():
             genres = requests.get(g_url, timeout=10).json().get('genres', [])
         except Exception: pass
 
-        # Fetch runtime in background for lucky results (using helper)
+        # fill in runtimes in the background
         run_in_background(prefetch_runtime_parallel, lucky_result, s.tmdb_key)
 
-        # Ensure every item has 'title' for frontend (lucky is movies-only but keep consistent)
+        # frontend expects a title key
         for item in lucky_result:
             if not item.get('title') and item.get('name'):
                 item['title'] = item['name']
@@ -448,6 +448,11 @@ def generate():
     except Exception: session['min_year'] = 0
     try: session['min_rating'] = float(request.form.get('min_rating', 0))
     except Exception: session['min_rating'] = 0
+    try:
+        max_runtime = int(request.form.get('max_runtime', 9999))
+        session['max_runtime'] = max_runtime if max_runtime > 0 else 9999
+    except Exception:
+        session['max_runtime'] = 9999
     
     if not selected_titles:
         flash('Please select at least one item.', 'error')
@@ -472,7 +477,7 @@ def generate():
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
         resolved = list(executor.map(resolve_title_to_id, selected_titles))
     seed_ids = [tid for tid in resolved if tid is not None]
-    # Cap seeds to avoid long timeouts (TMDB calls scale with seed count)
+    # keep seed count down so TMDB calls don't drag
     max_seeds = 10
     if len(seed_ids) > max_seeds:
         write_log("info", "Generate", f"Capping seeds from {len(seed_ids)} to {max_seeds} to reduce timeout risk.")
@@ -486,7 +491,7 @@ def generate():
     include_obscure = request.form.get('include_obscure') == 'true'
     today = datetime.datetime.now().strftime('%Y-%m-%d')
 
-    # Get app object before threading to avoid context issues
+    # grab the app object before we hop into threads
     app_obj = current_app._get_current_object()
 
     def fetch_seed_results(tmdb_id):
@@ -495,7 +500,7 @@ def generate():
             return _fetch_seed_results_impl(tmdb_id)
 
     def _fetch_seed_results_impl(tmdb_id):
-        # keep cache key simple - we'll shuffle results after combining all seeds
+        # keep the cache key simple; we shuffle later
         cache_key = f"{media_type}:{tmdb_id}:{'future' if future_mode else 'recs'}:{today}"
         cached = get_tmdb_rec_cache(cache_key)
         if cached:
@@ -531,17 +536,17 @@ def generate():
                 data = requests.get(disc_url, params=params).json()
                 results = data.get('results', [])
             else:
-                # fetch 5 pages per seed for more variety
+                # pull a few pages per seed so the pool isn't tiny
                 results = []
                 for page_num in range(1, 6):
                     rec_url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}/recommendations?api_key={s.tmdb_key}&language=en-US&page={page_num}"
                     page_data = requests.get(rec_url, timeout=10).json()
                     if page_data.get('status_code'):
                         write_log("warning", "Generate", f"TMDB recommendations error for {media_type} {tmdb_id}: {page_data.get('status_message', page_data.get('status_code'))}")
-                        continue  # TMDB error response, skip this page
+                        continue  # TMDB errored on this page
                     results.extend(page_data.get('results', []))
 
-                # recommendations often empty for niche titles; fall back to similar (genre/keyword-based)
+                # niche titles often have empty recs, so try similar next
                 if not results:
                     similar_key = f"{media_type}:{tmdb_id}:similar:{today}"
                     cached_similar = get_tmdb_rec_cache(similar_key)
@@ -558,7 +563,7 @@ def generate():
                         if results:
                             set_tmdb_rec_cache(similar_key, results)
 
-                # still empty: discover by this title's genres so we always get something per seed
+                # still nothing? fall back to a genre-based discover call
                 if not results:
                     disc_key = f"{media_type}:{tmdb_id}:discover:{today}"
                     cached_disc = get_tmdb_rec_cache(disc_key)
@@ -606,7 +611,7 @@ def generate():
     raw_count = len(all_results)
     used_last_resort = False
 
-    # last-resort: if every seed returned nothing (e.g. cache was empty, API flakiness), get popular discover
+    # if every seed came back empty, fall back to plain popular discover results
     if raw_count == 0:
         try:
             disc_url = f"https://api.themoviedb.org/3/discover/{media_type}"
@@ -614,7 +619,7 @@ def generate():
             if not include_obscure:
                 base_params['with_original_language'] = 'en'
             all_results = []
-            # random starting page (1-10), fetch 10 pages (~200 results) for more variety
+            # start on a random page so this doesn't feel the same every time
             start_page = random.randint(1, 10)
             for page_num in range(start_page, start_page + 10):
                 params = dict(base_params, page=page_num)
@@ -636,27 +641,27 @@ def generate():
     # shuffle all results once before processing to get variety
     random.shuffle(all_results)
     
-    # vote threshold: 10 so niche/seasonal titles still pass; use 20 only when we have plenty of raw recs
+    # keep the vote floor low unless we already have a big pool
     vote_min = 10 if raw_count < 100 else 20
     # now filter and process
     for item in all_results:
         if item['id'] in seen_ids: continue
         
-        # filter out low-quality stuff (unless user wants obscure content)
+        # filter out weak picks unless the user asked for obscure stuff
         if not include_obscure:
-            # only english-language content in standard mode
+            # standard mode stays with English-language picks
             if item.get('original_language') != 'en': continue
             
-            # skip stuff with very few votes (probably not great)
+            # skip titles with barely any votes
             if not future_mode and item.get('vote_count', 0) < vote_min: continue
         
         item['media_type'] = media_type
         date = item.get('release_date') or item.get('first_air_date')
         item['year'] = int(date[:4]) if date else 0
         item['score'] = score_recommendation(item)
-        # Set default runtime (will be fetched in background)
+        # start with 0; runtime gets filled in later
         if not item.get('runtime'):
-            item['runtime'] = 0 if media_type == 'tv' else 0  # Start with 0, will be updated when fetched
+            item['runtime'] = 0 if media_type == 'tv' else 0  # filled in later
         
         if item.get('title', item.get('name')) in blocked: continue
         

@@ -3,47 +3,21 @@
 {% block content %}
 
 <script>
-    // Initialize availableLibraries globally before any inline scripts
-    var availableLibraries = { movie: [], show: [] };
-    var librariesLoadedCallbacks = [];
-    var librariesLoaded = false;
-    
-    // Function to register callbacks that should run when libraries are loaded
-    function onLibrariesLoaded(callback) {
-        if (librariesLoaded) {
-            callback();
-        } else {
-            librariesLoadedCallbacks.push(callback);
-        }
-    }
-    
-    // Fetch available libraries immediately on page load
-    fetch("{{ url_for('api.get_available_libraries') }}", {
-        credentials: 'same-origin'  // Include cookies for authentication
-    })
-        .then(r => {
-            if (!r.ok) {
-                throw new Error(`HTTP ${r.status}: ${r.statusText}`);
-            }
-            return r.json();
-        })
-        .then(data => {
-            if (data.status === 'success') {
-                availableLibraries = data.libraries;
-                librariesLoaded = true;
-                console.log('Libraries loaded:', availableLibraries);
-                
-                // Execute all registered callbacks
-                librariesLoadedCallbacks.forEach(cb => cb());
-                librariesLoadedCallbacks = [];
-            } else {
-                console.error('Failed to fetch libraries:', data.message);
-            }
-        })
-        .catch(err => {
-            console.error('Failed to fetch libraries:', err);
-        });
+    window.playlistsConfig = {
+        availableLibrariesUrl: {{ url_for('api.get_available_libraries') | tojson }},
+        saveScheduleTimeUrl: {{ url_for('api.save_schedule_time') | tojson }},
+        cacheStatusUrl: {{ url_for('api.get_cache_status_route') | tojson }},
+        getPlexCollectionsUrl: {{ url_for('api.get_plex_collections') | tojson }},
+        plexCollectionVisibilityUrl: {{ url_for('api.set_plex_collection_visibility') | tojson }},
+        previewPresetItemsBase: {{ url_for('api.preview_preset_items', key='') | tojson }},
+        createCollectionBase: {{ url_for('api.create_collection', key='') | tojson }},
+        deleteCollectionBase: {{ url_for('api.delete_collection', key='') | tojson }},
+        scheduleCollectionUrl: {{ url_for('api.schedule_collection') | tojson }},
+        csrfToken: {{ csrf_token() | tojson }},
+        setupIncomplete: {{ (not has_tmdb_key or not has_plex or not has_library_scan) | tojson }}
+    };
 </script>
+<script src="{{ url_for('static', filename='playlists.js') }}"></script>
 
 <div class="playlist-header">
     <h2>Plex Collections</h2>
@@ -55,7 +29,7 @@
 {% if not has_tmdb_key or not has_plex or not has_library_scan %}
 <div class="card" style="margin: 0 auto 20px; max-width: 800px; border-left: 4px solid var(--error, #e74c3c); background: rgba(231, 76, 60, 0.1);">
     <div style="display: flex; align-items: flex-start; gap: 15px;">
-        <div style="font-size: 32px;">⚠️</div>
+        <div style="font-size: 32px;">Warning</div>
         <div style="flex: 1;">
             <h4 style="margin: 0 0 8px 0; color: var(--error, #e74c3c);">Setup Required</h4>
             <p style="margin: 0 0 12px 0; color: #ccc; font-size: 0.9em;">
@@ -63,40 +37,26 @@
             </p>
             <ul style="margin: 0; padding-left: 20px; color: #ccc; font-size: 0.9em; line-height: 1.6;">
                 {% if not has_plex %}
-                <li style="color: var(--error, #e74c3c);">❌ Link your Plex account and enter Plex URL</li>
+                <li style="color: var(--error, #e74c3c);">Not set: Link your Plex account and enter Plex URL</li>
                 {% else %}
-                <li style="color: #2ecc71;">✓ Plex connected</li>
+                <li style="color: #2ecc71;">Ready: Plex connected</li>
                 {% endif %}
                 
                 {% if not has_tmdb_key %}
-                <li style="color: var(--error, #e74c3c);">❌ Add TMDB API key</li>
+                <li style="color: var(--error, #e74c3c);">Not set: Add TMDB API key</li>
                 {% else %}
-                <li style="color: #2ecc71;">✓ TMDB API key added</li>
+                <li style="color: #2ecc71;">Ready: TMDB API key added</li>
                 {% endif %}
                 
                 {% if not has_library_scan %}
-                <li style="color: var(--error, #e74c3c);">❌ Run library sync (click "Sync library now" in Settings)</li>
+                <li style="color: var(--error, #e74c3c);">Not set: Run library sync (click "Sync library now" in Settings)</li>
                 {% else %}
-                <li style="color: #2ecc71;">✓ Library synced</li>
+                <li style="color: #2ecc71;">Ready: Library synced</li>
                 {% endif %}
             </ul>
         </div>
     </div>
 </div>
-<script>
-    // Disable all Run Now buttons and show setup message on click
-    document.addEventListener('DOMContentLoaded', function() {
-        const runButtons = document.querySelectorAll('.btn-sync');
-        runButtons.forEach(btn => {
-            btn.style.opacity = '0.5';
-            btn.style.cursor = 'not-allowed';
-            btn.style.pointerEvents = 'none';
-            btn.disabled = true;
-            btn.setAttribute('disabled', 'disabled');
-            btn.title = 'Complete setup steps above first';
-        });
-    });
-</script>
 {% endif %}
 
 <div id="tab-manager" class="tab-content active playlists-center">
@@ -119,12 +79,13 @@
         <button class="btn btn-primary schedule-save-btn" onclick="saveGlobalTime()">Save</button>
     </div>
     <span id="save-time-feedback" class="save-feedback" style="display:none;">Saved</span>
+    <span id="schedule-save-feedback" class="save-feedback" style="display:none;">Settings saved</span>
 </div>
 <div id="tab-viewer" class="tab-content">
     <div style="text-align:center; color:#aaa; margin-bottom: 30px;">
         <p>A live view of all collections currently existing on your Plex server.</p>
         <p class="viewer-visibility-hint">Use <strong>Home</strong>, <strong>Library</strong>, and
-            <strong>Friends</strong> to match Plex’s Manage Recommendations (Library Recommended, Home, Friends' Home).
+            <strong>Friends</strong> to match Plex's Manage Recommendations (Library Recommended, Home, Friends' Home).
             In Plex: <strong>Settings -> Manage -> Libraries</strong>, then <strong>Manage Recommendations</strong>.
             There you can reorder collections and change which appear on Home, Library, or Friends. Requires Plex Pass
             and server 1.22.3+.</p>
@@ -146,38 +107,17 @@
     style="display: none;">
     <div class="import-content wide">
         <span onclick="closePreviewModal()" class="close-btn">&times;</span>
-        <h2 id="preview-title" style="margin-top:0;">👀 Collection Preview</h2>
+        <h2 id="preview-title" style="margin-top:0;">Collection Preview</h2>
         <div id="preview-grid" class="preview-grid"></div>
     </div>
 </div>
 
-<script>
-    const API_SAVE_SCHEDULE_TIME = "{{ url_for('api.save_schedule_time') }}";
-    function saveGlobalTime() {
-        const t = document.getElementById('globalTime').value;
-        const feedback = document.getElementById('save-time-feedback');
-        fetch(API_SAVE_SCHEDULE_TIME, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': '{{ csrf_token() }}' },
-            body: 'time=' + encodeURIComponent(t)
-        })
-            .then(r => r.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    if (feedback) { feedback.style.display = 'inline'; feedback.textContent = 'Saved'; setTimeout(() => { feedback.style.display = 'none'; }, 2500); }
-                } else {
-                    alert(data.message || 'Could not save time');
-                }
-            })
-            .catch(() => alert('Could not save schedule time'));
-    }
-</script>
 
 {% if custom_presets %}
 <div class="category-block category-block--collapsed" data-type="any">
     <button type="button" class="category-header category-header--toggle" aria-expanded="false"
         aria-controls="custom-collections-grid">
-        <span class="category-chevron" aria-hidden="true">▶</span>
+        <span class="category-chevron" aria-hidden="true">&gt;</span>
         Custom Collections
     </button>
     <div id="custom-collections-grid" class="playlist-grid category-grid" hidden>
@@ -185,9 +125,9 @@
         <div class="card playlist-card" data-type="{{ playlist.media_type }}">
             <div>
                 <div class="playlist-header-row">
-                    <div class="playlist-icon">{% if 'Imported' in playlist.description %}📋{% else %}🛠️{% endif %}
+                    <div class="playlist-icon">{% if 'Imported' in playlist.description %}Imported{% else %}Custom{% endif %}
                     </div>
-                    <button onclick="deleteCollection('{{ key }}', event)" class="btn-delete">Delete 🗑️</button>
+                    <button onclick="deleteCollection('{{ key }}', event)" class="btn-delete">Delete</button>
                 </div>
                 <h3 class="playlist-title">{{ playlist.title }}</h3>
                 <p class="playlist-desc">{{ playlist.description }}</p>
@@ -210,7 +150,7 @@
                         <label class="control-label-with-tip">
                             Sync Mode
                             <span class="tooltip-container">
-                                <span class="info-icon" aria-label="Help">ℹ️</span>
+                                <span class="info-icon" aria-label="Help">i</span>
                                 <span class="tooltip-text"><strong>Sync (Strict):</strong> Adds and removes to match the
                                     list.<br><strong>Append:</strong> Only adds, never removes.</span>
                             </span>
@@ -225,7 +165,7 @@
                         <label class="control-label-with-tip">
                             Target Libraries
                             <span class="tooltip-container">
-                                <span class="info-icon" aria-label="Help">ℹ️</span>
+                                <span class="info-icon" aria-label="Help">i</span>
                                 <span class="tooltip-text"><strong>All:</strong> Sync to all {{ playlist.media_type }} libraries.<br><strong>First:</strong> Sync to first library only.<br><strong>Selected:</strong> Choose specific libraries.</span>
                             </span>
                         </label>
@@ -290,16 +230,16 @@
 
                 <div class="playlist-control-section playlist-control-section--actions">
                     <button onclick="previewCollection('{{ key }}', '{{ playlist.title|replace("'", "\\'") }}')"
-                        class="btn-preview" title="Preview Contents">👀</button>
+                        class="btn-preview" title="Preview Contents">Preview</button>
                     <button onclick="openArtworkModal('{{ key }}', '{{ playlist.title|replace("'", "\\'") }}')"
-                        class="btn-artwork" title="Custom Artwork">🎨</button>
+                        class="btn-artwork" title="Custom Artwork">Artwork</button>
                     <button onclick="createCollection('{{ key }}')" id="btn-{{ key }}" class="btn-sync">Run Now</button>
                     <button onclick="deleteCollection('{{ key }}', event)" class="btn-delete-inline"
                         title="Remove from app and Plex">Delete</button>
                 </div>
                 {% else %}
                 <div class="static-badge">Static Import</div>
-                <button disabled class="btn-synced-disabled">Synced ✅</button>
+                <button disabled class="btn-synced-disabled">Synced</button>
                 {% endif %}
             </div>
         </div>
@@ -342,7 +282,7 @@
 
             <div id="artwork-dropzone" class="artwork-dropzone-area">
                 <div id="artwork-dropzone-idle" class="artwork-dropzone-idle">
-                    <div class="artwork-dropzone-icon">🖼️</div>
+                    <div class="artwork-dropzone-icon">Image</div>
                     <p style="margin: 8px 0 4px; font-size: 15px; color: #ccc;">Drag and drop an image here</p>
                     <p style="margin: 0 0 14px; font-size: 12px; color: #666;">JPG, JPEG or PNG - max 5MB</p>
                     <button type="button" class="btn-primary"
@@ -626,7 +566,7 @@
 <div class="category-block category-block--collapsed playlist-section" data-cat="{{ cat }}">
     <button type="button" class="category-header category-header--toggle" aria-expanded="false"
         aria-controls="cat-{{ cat_id }}">
-        <span class="category-chevron" aria-hidden="true">▶</span>
+        <span class="category-chevron" aria-hidden="true">&gt;</span>
         {{ cat }}
     </button>
     <div id="cat-{{ cat_id }}" class="playlist-grid category-grid" hidden>
@@ -657,7 +597,7 @@
                             Sync Mode
                             {% if 'Trending' not in playlist.title %}
                             <span class="tooltip-container">
-                                <span class="info-icon" aria-label="Help">ℹ️</span>
+                                <span class="info-icon" aria-label="Help">i</span>
                                 <span class="tooltip-text"><strong>Sync (Strict):</strong> Adds and removes to match the
                                     list.<br><strong>Append:</strong> Only adds, never removes.</span>
                             </span>
@@ -665,7 +605,7 @@
                         </label>
                         {% if 'Trending' in playlist.title or 'Trending' in playlist.category %}
                         <input type="hidden" id="sync-{{ key }}" value="sync">
-                        <div class="locked-badge">🔒 Strict Sync</div>
+                        <div class="locked-badge">Locked: Strict Sync</div>
                         {% else %}
                         {% set sm = (sync_modes or {}).get(key, 'append') %}
                         <select id="sync-{{ key }}" onchange="saveSettings('{{ key }}')" class="control-select">
@@ -678,7 +618,7 @@
                         <label class="control-label-with-tip">
                             Target Libraries
                             <span class="tooltip-container">
-                                <span class="info-icon" aria-label="Help">ℹ️</span>
+                                <span class="info-icon" aria-label="Help">i</span>
                                 <span class="tooltip-text"><strong>All:</strong> Sync to all {{ playlist.media_type }} libraries.<br><strong>First:</strong> Sync to first library only.<br><strong>Selected:</strong> Choose specific libraries.</span>
                             </span>
                         </label>
@@ -745,9 +685,9 @@
 
                 <div class="playlist-control-section playlist-control-section--actions">
                     <button onclick="previewCollection('{{ key }}', '{{ playlist.title|replace("'", "\\'") }}')"
-                        class="btn-preview" title="Preview Contents">👀</button>
+                        class="btn-preview" title="Preview Contents">Preview</button>
                     <button onclick="openArtworkModal('{{ key }}', '{{ playlist.title|replace("'", "\\'") }}')"
-                        class="btn-artwork" title="Custom Artwork">🎨</button>
+                        class="btn-artwork" title="Custom Artwork">Artwork</button>
                     <button onclick="createCollection('{{ key }}')" id="btn-{{ key }}" class="btn-sync">Run Now</button>
                     {% if schedules.get(key) is not none %}
                     <button onclick="deleteCollection('{{ key }}', event)" class="btn-delete-inline"
@@ -762,443 +702,4 @@
 </div>
 {% endfor %}
 
-<script>
-    const API_GET_CACHE_STATUS = "{{ url_for('api.get_cache_status_route') }}";
-    const API_GET_PLEX_COLLECTIONS = "{{ url_for('api.get_plex_collections') }}";
-    const API_PLEX_COLLECTION_VISIBILITY = "{{ url_for('api.set_plex_collection_visibility') }}";
-    const API_PREVIEW_PRESET_ITEMS_BASE = "{{ url_for('api.preview_preset_items', key='') }}";
-    const API_CREATE_COLLECTION_BASE = "{{ url_for('api.create_collection', key='') }}";
-    const API_DELETE_COLLECTION_BASE = "{{ url_for('api.delete_collection', key='') }}";
-    const API_SCHEDULE_COLLECTION = "{{ url_for('api.schedule_collection') }}";
-    const API_GET_AVAILABLE_LIBRARIES = "{{ url_for('api.get_available_libraries') }}";
-
-    // Libraries are fetched at the top of the page before any inline scripts run
-    
-    // Toggle library selector visibility based on mode
-    function toggleLibrarySelector(key) {
-        const modeEl = document.getElementById('library-mode-' + key);
-        const selectorEl = document.getElementById('library-selector-' + key);
-        if (modeEl && selectorEl) {
-            selectorEl.style.display = modeEl.value === 'selected' ? 'block' : 'none';
-        }
-        saveSettings(key);
-    }
-
-    function openTab(evt, tabName) {
-        // Hide every tab panel first.
-        var tabcontent = document.getElementsByClassName("tab-content");
-        for (var i = 0; i < tabcontent.length; i++) {
-            tabcontent[i].style.display = "none";
-            tabcontent[i].classList.remove("active");
-        }
-
-        // Clear active state on tabs.
-        var tablinks = document.getElementsByClassName("tab-btn");
-        for (var i = 0; i < tablinks.length; i++) {
-            tablinks[i].classList.remove("active");
-        }
-
-        // Show selected tab and mark it active.
-        document.getElementById(tabName).style.display = "block";
-        // Small delay so the transition has a frame to kick in.
-        setTimeout(() => document.getElementById(tabName).classList.add("active"), 10);
-        evt.currentTarget.classList.add("active");
-    }
-
-    // Live collections viewer
-    let viewerLoaded = false;
-    function refreshLibraryBrowser() {
-        viewerLoaded = false;
-        document.getElementById('viewer-loading').style.display = 'block';
-        document.getElementById('viewer-grid').style.display = 'none';
-        document.getElementById('viewer-grid').innerHTML = '';
-        loadLiveCollections();
-    }
-    function loadLiveCollections() {
-        if (viewerLoaded) return; // Avoid repeat API calls.
-
-        fetch(API_GET_PLEX_COLLECTIONS)
-            .then(r => r.json())
-            .then(data => {
-                document.getElementById('viewer-loading').style.display = 'none';
-                const grid = document.getElementById('viewer-grid');
-                grid.style.display = 'grid';
-
-                if (data.status === 'success' && data.collections.length > 0) {
-                    let html = '';
-                    data.collections.forEach(c => {
-                        const thumb = (c.thumb && (c.thumb.startsWith('http://') || c.thumb.startsWith('https://'))) ? c.thumb : 'https://via.placeholder.com/200x300?text=No+Art';
-                        const url = (c.url && (c.url.startsWith('http://') || c.url.startsWith('https://'))) ? c.url : '#';
-                        const keyPath = escapeHtml(String(c.keyPath || c.key || ''));
-                        const home = !!c.visible_home;
-                        const lib = !!c.visible_library;
-                        const friends = !!c.visible_friends;
-                        html += `
-                    <div class="viewer-card" data-url="${escapeHtml(url)}" role="button" tabindex="0">
-                        <img src="${escapeHtml(thumb)}" style="width:100%; height:100%; object-fit:cover;" alt="">
-                        <div class="viewer-badge">${escapeHtml(String(c.count || ''))}</div>
-                        <div class="viewer-info">
-                            <div style="font-weight:bold; color:white; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(String(c.title || ''))}</div>
-                            <div style="font-size:0.8em; color:#ccc;">${escapeHtml(String(c.library || ''))}</div>
-                            <div class="viewer-visibility" onclick="event.stopPropagation();">
-                                <label class="viewer-check"><input type="checkbox" class="viewer-check-home" data-keypath="${keyPath}" ${home ? 'checked' : ''}> Home</label>
-                                <label class="viewer-check"><input type="checkbox" class="viewer-check-library" data-keypath="${keyPath}" ${lib ? 'checked' : ''}> Library</label>
-                                <label class="viewer-check"><input type="checkbox" class="viewer-check-friends" data-keypath="${keyPath}" ${friends ? 'checked' : ''}> Friends</label>
-                            </div>
-                        </div>
-                    </div>`;
-                    });
-                    grid.innerHTML = html;
-                    // open collection URL on click (delegated; only allow http(s))
-                    grid.querySelectorAll('.viewer-card').forEach(card => {
-                        card.addEventListener('click', function (e) {
-                            if (e.target.closest('.viewer-visibility')) return;
-                            const u = this.getAttribute('data-url');
-                            if (u && u !== '#' && (u.startsWith('http://') || u.startsWith('https://'))) window.open(u, '_blank');
-                        });
-                    });
-                    // save visibility when tickboxes change (same three columns as Plex Manage Recommendations)
-                    grid.querySelectorAll('.viewer-check-home, .viewer-check-library, .viewer-check-friends').forEach(el => {
-                        el.addEventListener('change', function () {
-                            const keyPath = this.getAttribute('data-keypath');
-                            if (!keyPath) return;
-                            const card = this.closest('.viewer-card');
-                            const homeEl = card.querySelector('.viewer-check-home');
-                            const libEl = card.querySelector('.viewer-check-library');
-                            const friendsEl = card.querySelector('.viewer-check-friends');
-                            const visible_home = homeEl ? homeEl.checked : true;
-                            const visible_library = libEl ? libEl.checked : true;
-                            const visible_friends = friendsEl ? friendsEl.checked : false;
-                            fetch(API_PLEX_COLLECTION_VISIBILITY, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}' },
-                                body: JSON.stringify({ keyPath: keyPath, visible_home: visible_home, visible_library: visible_library, visible_friends: visible_friends })
-                            }).then(r => r.json()).then(data => {
-                                if (data.status !== 'success') {
-                                    alert(data.message || 'Could not update visibility');
-                                } else if (data.message) {
-                                    const banner = document.createElement('div');
-                                    banner.className = 'viewer-save-banner';
-                                    banner.textContent = data.message;
-                                    grid.insertBefore(banner, grid.firstChild);
-                                    setTimeout(() => banner.remove(), 8000);
-                                }
-                            }).catch(() => alert('Request failed'));
-                        });
-                    });
-                    viewerLoaded = true;
-                } else {
-                    grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:50px; color:#666;">No collections found. Make sure you have at least one Movie or TV library in Plex with collections. If you just created some, try <strong>Refresh list</strong> above.</div>';
-                }
-            })
-            .catch(() => {
-                const loader = document.getElementById('viewer-loading');
-                const grid = document.getElementById('viewer-grid');
-                if (loader) loader.style.display = 'none';
-                if (grid) { grid.style.display = 'grid'; grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:50px; color:#e74c3c;">Failed to load collections. Check Plex connection in Settings and try <strong>Refresh list</strong>.</div>'; }
-            });
-    }
-    // Check cache lockout so we don't fire while busy.
-    setInterval(checkCacheStatus, 2000);
-
-    // Efficiently check cache status to avoid UI lag
-    let syncButtons = [];
-
-    function initStatusCheckElements() {
-        // No additional elements to track
-    }
-
-    function checkCacheStatus() {
-        fetch(API_GET_CACHE_STATUS).then(r => r.json()).then(data => {
-            if (data.running) {
-                document.querySelectorAll('.btn-sync').forEach(b => { b.disabled = true; b.innerText = "System Busy ⏳"; b.style.opacity = "0.5"; b.style.cursor = "not-allowed"; });
-            } else {
-                document.querySelectorAll('.btn-sync').forEach(b => {
-                    b.disabled = false;
-                    b.style.opacity = "1";
-                    b.style.cursor = "pointer";
-                    b.innerText = (b.id && b.id.startsWith("btn-custom")) ? "Sync Now" : "Run Now";
-                });
-            }
-        });
-    }
-
-    const PLAYLISTS_TYPE_KEY = 'seekandwatch_playlists_type';
-
-    // Filter cards by media type.
-    function filterType(type) {
-        if (type !== 'movie' && type !== 'tv') type = 'movie';
-        try { localStorage.setItem(PLAYLISTS_TYPE_KEY, type); } catch (e) { }
-        document.getElementById('btn-movie').classList.remove('active');
-        document.getElementById('btn-tv').classList.remove('active');
-        document.getElementById('btn-' + type).classList.add('active');
-        const cards = document.querySelectorAll('.playlist-card');
-        cards.forEach(card => {
-            card.style.display = (card.dataset.type === type) ? 'flex' : 'none';
-        });
-        const blocks = document.querySelectorAll('.category-block');
-        blocks.forEach(block => {
-            const grid = block.querySelector('.playlist-grid');
-            if (!grid) return;
-            let hasVisible = false;
-            grid.querySelectorAll('.playlist-card').forEach(c => { if (c.style.display !== 'none') hasVisible = true; });
-            block.style.display = hasVisible ? '' : 'none';
-            const header = block.querySelector('.category-header');
-            if (header) header.style.display = hasVisible ? 'flex' : 'none';
-        });
-        restoreOpenCategories();
-    }
-
-    // persist which category dropdowns are open per tab (Movies vs TV) so refresh / run list keeps them dropped down
-    function getCurrentFilter() {
-        const btn = document.querySelector('.type-toggle-btn.active');
-        return (btn && btn.id === 'btn-tv') ? 'tv' : 'movie';
-    }
-
-    function saveOpenCategories() {
-        const filter = getCurrentFilter();
-        const open = [];
-        document.querySelectorAll('.category-block').forEach(block => {
-            const grid = block.querySelector('.playlist-grid');
-            if (!grid || !grid.id) return;
-            if (!block.classList.contains('category-block--collapsed')) open.push(grid.id);
-        });
-        try { sessionStorage.setItem('playlist-open-categories-' + filter, JSON.stringify(open)); } catch (e) { }
-    }
-
-    function restoreOpenCategories() {
-        const filter = getCurrentFilter();
-        try {
-            const raw = sessionStorage.getItem('playlist-open-categories-' + filter);
-            if (!raw) return;
-            const open = JSON.parse(raw);
-            if (!Array.isArray(open) || open.length === 0) return;
-            document.querySelectorAll('.category-block').forEach(block => {
-                const grid = block.querySelector('.playlist-grid');
-                const header = block.querySelector('.category-header--toggle');
-                const chevron = block.querySelector('.category-chevron');
-                if (!grid || !grid.id || open.indexOf(grid.id) === -1) return;
-                block.classList.remove('category-block--collapsed');
-                grid.hidden = false;
-                grid.style.display = 'grid';
-                if (header) header.setAttribute('aria-expanded', 'true');
-                if (chevron) chevron.textContent = '▼';
-            });
-        } catch (e) { }
-    }
-
-    // Collapsible category sections (minimized by default, click header to expand).
-    function initCategoryToggles() {
-        document.querySelectorAll('.category-header--toggle').forEach(btn => {
-            btn.addEventListener('click', function () {
-                const block = this.closest('.category-block');
-                const grid = block && block.querySelector('.playlist-grid');
-                if (!block || !grid) return;
-                const isCollapsed = block.classList.toggle('category-block--collapsed');
-                grid.hidden = isCollapsed;
-                grid.style.display = isCollapsed ? 'none' : 'grid';
-                this.setAttribute('aria-expanded', !isCollapsed);
-                const chevron = this.querySelector('.category-chevron');
-                if (chevron) chevron.textContent = isCollapsed ? '▶' : '▼';
-                saveOpenCategories();
-            });
-        });
-    }
-
-    document.addEventListener('DOMContentLoaded', () => {
-        let savedType = 'movie';
-        try { savedType = localStorage.getItem(PLAYLISTS_TYPE_KEY) || 'movie'; } catch (e) { }
-        if (savedType !== 'movie' && savedType !== 'tv') savedType = 'movie';
-        filterType(savedType);
-        restoreOpenCategories();
-        initCategoryToggles();
-        initStatusCheckElements();
-    });
-
-    // Preview modal
-    function previewCollection(key, title) {
-        document.getElementById('preview-title').innerText = "👀 " + title;
-        const grid = document.getElementById('preview-grid');
-        grid.innerHTML = '<div style="text-align:center; grid-column:1/-1; padding:20px; color:#aaa;">Loading live data from TMDB...</div>';
-        document.getElementById('preview-modal').style.display = 'block';
-        document.body.style.overflow = 'hidden';
-
-        const previewController = new AbortController();
-        const previewTimeout = setTimeout(() => previewController.abort(), 15000);
-        fetch(API_PREVIEW_PRESET_ITEMS_BASE + encodeURIComponent(key), { signal: previewController.signal })
-            .then(r => r.json())
-            .then(data => {
-                clearTimeout(previewTimeout);
-                if (data.status === 'success') {
-                    let items = data.items;
-
-                    let html = '';
-                    items.forEach(item => {
-                        const opacity = item.owned ? '1' : '0.6';
-                        const status = item.owned ? '✅ Owned' : 'missing';
-                        const poster = item.poster_path ? 'https://image.tmdb.org/t/p/w200' + item.poster_path : 'https://via.placeholder.com/200x300?text=No+Poster';
-                        const vote = (item.vote_average || 0) * 10;
-                        const pct = Math.round(vote) + '%';
-                        const ratingBadge = `<span class="preview-badge" style="background:${vote >= 70 ? '#2ecc71' : (vote >= 50 ? '#f1c40f' : '#e74c3c')}">${pct}</span>`;
-                        html += `<div class="preview-item" style="opacity: ${opacity};">
-                    <img src="${escapeHtml(poster)}" class="preview-poster" alt="">
-                    ${ratingBadge}
-                    <div class="preview-title">${escapeHtml(String(item.title || ''))}</div>
-                    <div class="preview-meta">${escapeHtml(String(item.year || ''))} • ${escapeHtml(String(status || ''))}</div>
-                </div>`;
-                    });
-                    const grid = document.getElementById('preview-grid');
-                    grid.innerHTML = html;
-                } else {
-                    grid.innerHTML = `<div style="color:var(--error); grid-column:1/-1; text-align:center;">Error: ${(data.message || 'Unknown error').replace(/</g, '&lt;')}</div>`;
-                }
-            })
-            .catch(() => { clearTimeout(previewTimeout); grid.innerHTML = '<div style="color:var(--error); grid-column:1/-1; text-align:center;">Request failed or timed out.</div>'; });
-    }
-
-    function closePreviewModal() {
-        const modal = document.getElementById('preview-modal');
-        if (modal) { modal.style.display = 'none'; document.body.style.overflow = ''; }
-    }
-
-    // Delete a collection (from app and Plex). Returns fast; Plex delete runs in background to avoid slow click handler.
-    function deleteCollection(key, ev) {
-        if (!confirm("Delete this collection from the app and from Plex?")) return;
-        const btn = (ev && ev.target) ? ev.target : null;
-        if (btn) { btn.disabled = true; btn.textContent = 'Deleting…'; }
-        fetch(API_DELETE_COLLECTION_BASE + encodeURIComponent(key), {
-            method: 'POST',
-            headers: { 'X-CSRFToken': '{{ csrf_token() }}' }
-        })
-            .then(res => res.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    location.reload();
-                } else {
-                    if (btn) { btn.disabled = false; btn.textContent = 'Delete 🗑️'; }
-                    alert(data.message || 'Could not delete collection.');
-                }
-            })
-            .catch(() => {
-                if (btn) { btn.disabled = false; btn.textContent = 'Delete 🗑️'; }
-                alert('Request failed. Could not delete collection.');
-            });
-    }
-
-    // Legacy name for custom-card delete (same as deleteCollection).
-    function deleteCustom(key) { deleteCollection(key); }
-
-    // Run a preset now. Sends current visibility checkboxes so first run uses them.
-    function createCollection(key) {
-        const btn = document.getElementById('btn-' + key);
-        if (!btn) return;
-        const originalText = btn.innerText;
-        btn.disabled = true; btn.innerText = "Processing... ⏳"; btn.style.background = "#555";
-
-        const visHome = document.getElementById('visibility-home-' + key);
-        const visLib = document.getElementById('visibility-library-' + key);
-        const visFriends = document.getElementById('visibility-friends-' + key);
-        const body = JSON.stringify({
-            visibility_home: visHome ? visHome.checked : true,
-            visibility_library: visLib ? visLib.checked : true,
-            visibility_friends: visFriends ? visFriends.checked : false
-        });
-        const createController = new AbortController();
-        const createTimeout = setTimeout(() => createController.abort(), 60000);
-        fetch(API_CREATE_COLLECTION_BASE + encodeURIComponent(key), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}' },
-            body: body,
-            signal: createController.signal
-        })
-            .then(r => r.json()).then(d => {
-                clearTimeout(createTimeout);
-                if (d.status === 'success') {
-                    btn.innerText = "Done! ✅"; btn.style.background = "var(--accent-color)"; alert(d.message);
-                    // Show Delete button without refresh (collection now has a schedule)
-                    const actionsRow = btn.closest('.playlist-control-section--actions');
-                    if (actionsRow && !actionsRow.querySelector('.btn-delete-inline')) {
-                        const delBtn = document.createElement('button');
-                        delBtn.type = 'button';
-                        delBtn.className = 'btn-delete-inline';
-                        delBtn.title = 'Remove from app and Plex';
-                        delBtn.textContent = 'Delete';
-                        delBtn.onclick = function (ev) { deleteCollection(key, ev); };
-                        actionsRow.appendChild(delBtn);
-                    }
-                } else { btn.innerText = "Error ❌"; btn.style.background = "#e74c3c"; alert(d.message); }
-                setTimeout(() => { btn.innerText = originalText; btn.disabled = false; btn.style.background = "#333"; }, 3000);
-            })
-            .catch(() => {
-                clearTimeout(createTimeout);
-                btn.innerText = originalText; btn.disabled = false; btn.style.background = "#333";
-                alert('Request failed or timed out. Please try again.');
-            });
-    }
-
-    // Save schedule settings (frequency + sync mode). When visibility checkboxes change, also push to Plex so it updates without running the collection again.
-    function saveSettings(key) {
-        const freqEl = document.getElementById('freq-' + key);
-        const syncEl = document.getElementById('sync-' + key);
-        const visHomeEl = document.getElementById('visibility-home-' + key);
-        const visLibEl = document.getElementById('visibility-library-' + key);
-        const visFriendsEl = document.getElementById('visibility-friends-' + key);
-        const libModeEl = document.getElementById('library-mode-' + key);
-        const libSelectEl = document.getElementById('libraries-' + key);
-
-        const freq = freqEl ? freqEl.value : 'manual';
-        const sync = (syncEl && syncEl.value) ? syncEl.value : 'sync';
-        const visibility_home = (visHomeEl && visHomeEl.checked) ? '1' : '0';
-        const visibility_library = (visLibEl && visLibEl.checked) ? '1' : '0';
-        const visibility_friends = (visFriendsEl && visFriendsEl.checked) ? '1' : '0';
-        const visible_home = visHomeEl && visHomeEl.checked;
-        const visible_library = visLibEl && visLibEl.checked;
-        const visible_friends = visFriendsEl && visFriendsEl.checked;
-        
-        // Get library selection
-        const library_mode = libModeEl ? libModeEl.value : 'all';
-        let target_libraries = [];
-        if (libSelectEl && library_mode === 'selected') {
-            const selected = Array.from(libSelectEl.selectedOptions).map(opt => opt.value);
-            target_libraries = selected.filter(v => v !== '__all__');
-        }
-
-        fetch(API_SCHEDULE_COLLECTION, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': '{{ csrf_token() }}' },
-            body: `preset_key=${encodeURIComponent(key)}&frequency=${encodeURIComponent(freq)}&sync_mode=${encodeURIComponent(sync)}&visibility_home=${visibility_home}&visibility_library=${visibility_library}&visibility_friends=${visibility_friends}&target_library_mode=${encodeURIComponent(library_mode)}&target_libraries=${encodeURIComponent(JSON.stringify(target_libraries))}`
-        })
-            .then(r => r.json())
-            .then(data => {
-                const fb = document.getElementById('schedule-save-feedback');
-                if (data.status === 'success' && fb) {
-                    fb.textContent = 'Settings saved';
-                    fb.style.display = 'inline';
-                    setTimeout(() => { fb.style.display = 'none'; }, 2500);
-                } else if (data.message) {
-                    alert(data.message);
-                }
-            })
-            .catch(() => alert('Could not save settings'));
-
-        // push visibility to Plex immediately so the collection's Home/Library/Friends toggles update without running the collection again
-        fetch(API_PLEX_COLLECTION_VISIBILITY, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}' },
-            body: JSON.stringify({ preset_key: key, visible_home: visible_home, visible_library: visible_library, visible_friends: visible_friends })
-        }).then(r => r.json()).then(data => {
-            if (data.status !== 'success' && data.message && !data.message.includes('Collection not found')) {
-                console.warn('Visibility update:', data.message);
-            }
-        }).catch(() => { });
-    }
-
-    document.addEventListener('keydown', function (e) {
-        if (e.key !== 'Escape') return;
-        const preview = document.getElementById('preview-modal');
-        if (preview && preview.style.display === 'block') closePreviewModal();
-    });
-
-
-</script>
 {% endblock %}

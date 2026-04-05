@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 {% block page_title %}Recommendations{% endblock %}
 {% block content %}
 <script>
@@ -16,7 +16,7 @@
 </script>
 
 <div class="results-header" style="margin-bottom: 10px;">
-    <a href="{{ url_for('web_pages.dashboard') }}" class="back-link">← Back to Dashboard</a>
+    <a href="{{ url_for('web_pages.dashboard') }}" class="back-link">&larr; Back to Dashboard</a>
     <h2 class="m-0">Top Picks For You</h2>
     <div class="d-flex gap-10" style="align-items: center;">
         <button class="btn btn-primary" onclick="spinWheel()">Spin Wheel</button>
@@ -28,9 +28,9 @@
     {% if not is_lucky %}
     <div class="card filter-card">
         
-        <div class="top-filters-grid">
-            
-            <div class="filter-col">
+        <div class="filter-row filter-row-two">
+
+            <div class="filter-col filter-col-rating">
                 <label class="input-label" title="Filters based on TheMovieDB User Score">
                     Min. Rating: <span id="rating-val" class="text-accent">{{ min_rating }}</span>/10
                 </label>
@@ -46,6 +46,10 @@
                        onkeyup="filterVisibleCards()">
             </div>
 
+        </div>
+
+        <div class="filter-row filter-row-three mt-15">
+
             <div class="filter-col" style="position:relative;">
                 <label class="input-label" title="Search specific TMDB tags.">
                     TMDB Keywords <span class="text-muted fs-small" style="font-weight: normal;">(Not Genres)</span>
@@ -55,28 +59,24 @@
                 <div id="selected-keywords" class="tag-container mt-5"></div>
             </div>
 
-        </div>
-
-        <div class="filter-side-by-side border-top pt-15">
-            <div class="filter-col" style="min-width: 250px;">
+            <div class="filter-col">
                 <label class="input-label">Max Runtime (minutes)</label>
-                <input type="number" id="filter-runtime" placeholder="e.g. 90" min="0" class="w-100" style="max-width: 250px;"
+                <input type="number" id="filter-runtime" placeholder="e.g. 90" min="0" class="w-100"
                        onkeyup="filterVisibleCards()">
             </div>
 
-            <div class="filter-col-full" style="flex: 2;">
+            <div class="filter-col filter-rating-section">
                 <label class="input-label">Content Rating (US)</label>
                 <div class="rating-grid">
                     {% set saved_ratings = session.get('rating_filter') %}
                     {% set all_ratings = ['G', 'PG', 'PG-13', 'R', 'NC-17', 'TV-Y', 'TV-Y7', 'TV-G', 'TV-PG', 'TV-14', 'TV-MA', 'NR'] %}
                     {% set defaults = ['G', 'PG', 'PG-13', 'R', 'TV-Y', 'TV-Y7', 'TV-G', 'TV-PG', 'TV-14', 'NR'] %}
                     {% set m_type = session.get('media_type', 'movie') %}
-                    
+
                     {% for r in all_ratings %}
-                        {# Skip ratings that don't match the current media type. #}
                         {% set is_tv = 'TV-' in r %}
                         {% set show_box = (m_type == 'tv' and is_tv) or (m_type == 'movie' and not is_tv) or r == 'NR' %}
-                        
+
                         {% if show_box %}
                             {% set is_checked = r in saved_ratings if saved_ratings else r in defaults %}
                             <label class="rating-check {% if is_checked %}checked{% endif %}">
@@ -89,8 +89,9 @@
             </div>
         </div>
 
-        <div class="filter-col-full mt-15">
-            <div class="genre-selector">
+        <div class="filter-row filter-row-full mt-15">
+            <div class="filter-col-full">
+                <div class="genre-selector">
                 <div class="genre-header" style="justify-content: center; position: relative;">
                     <strong style="font-size: 1.1em;">Genre Filter</strong>
                     <a href="javascript:void(0)" onclick="toggleResultsGenres(this)" id="btn-toggle-results-genres" 
@@ -110,9 +111,10 @@
 
                 {% if genres|length > 12 %}
                 <div class="genre-expand expanded" onclick="toggleGenreView(this)" id="genre-expand-btn">
-                    <span id="genre-arrow">▲</span> Show Less
+                    <span id="genre-arrow">&#9650;</span> Show Less
                 </div>
                 {% endif %}
+                </div>
             </div>
         </div>
 
@@ -138,7 +140,7 @@
     </div>
 </div>
 
-<button type="button" id="back-to-top-btn" class="back-to-top-btn" onclick="scrollToTop()" aria-label="Back to top" title="Back to top">↑</button>
+<button type="button" id="back-to-top-btn" class="back-to-top-btn" onclick="scrollToTop()" aria-label="Back to top" title="Back to top">&uarr;</button>
 
 <div id="detail-modal" class="k-modal">
     <div class="k-modal-content">
@@ -182,10 +184,10 @@
         });
         
         if (isExpanded) {
-            btn.innerHTML = '<span id="genre-arrow">▼</span> Show All ({{ genres|length }})';
+            btn.innerHTML = '<span id="genre-arrow">&#9660;</span> Show All ({{ genres|length }})';
             btn.classList.remove('expanded');
         } else {
-            btn.innerHTML = '<span id="genre-arrow">▲</span> Show Less';
+            btn.innerHTML = '<span id="genre-arrow">&#9650;</span> Show Less';
             btn.classList.add('expanded');
         }
     }
@@ -462,7 +464,7 @@
                 document.getElementById('loading').style.display = 'none';
                 if (page === 1) {
                     const grid = document.getElementById('results-grid');
-                    grid.innerHTML = `<div class="empty-state-small"><h3>⚠️ Scan Timeout</h3><p class="empty-state-text">The deep scan is taking longer than expected.</p><button onclick="loadMore()" class="btn btn-primary">Try Again</button></div>`;
+                    grid.innerHTML = `<div class="empty-state-small"><h3>Scan Timeout</h3><p class="empty-state-text">The deep scan is taking longer than expected.</p><button onclick="loadMore()" class="btn btn-primary">Try Again</button></div>`;
                 } else {
                     if(btn) {
                         btn.innerText = "Timeout - Try Again";
@@ -527,14 +529,14 @@
         let scoresHtml = '';
 
         if (rating > 0) {
-            scoresHtml += `<span class="meta-rating tmdb-score" title="TMDB">★ ${parseFloat(rating).toFixed(1)}</span>`;
+            scoresHtml += `<span class="meta-rating tmdb-score" title="TMDB">&#9733; ${parseFloat(rating).toFixed(1)}</span>`;
         }
 
         if (rtScore > 0) {
-            const rtIcon = rtScore >= 60 ? '🍅' : '🤢';
+            const rtLabel = rtScore >= 60 ? 'Fresh' : 'Rotten';
             const rtClass = rtScore >= 60 ? 'rt-fresh' : 'rt-rotten';
             if (scoresHtml) scoresHtml += `<span class="meta-sep">|</span>`;
-            scoresHtml += `<span class="meta-rating ${rtClass}" title="Rotten Tomatoes">${rtIcon} ${rtScore}%</span>`;
+            scoresHtml += `<span class="meta-rating ${rtClass}" title="Rotten Tomatoes">${rtLabel} ${rtScore}%</span>`;
         } else if (imdbRating && imdbRating !== 'N/A') {
             if (scoresHtml) scoresHtml += `<span class="meta-sep">|</span>`;
             scoresHtml += `<span class="meta-rating imdb-score" title="IMDb">IMDb ${imdbRating}</span>`;
@@ -557,12 +559,12 @@
                 
                 <div class="card-icon-overlay">
                     <div class="overlay-top-actions">
-                        <div class="icon-btn icon-btn-danger" title="Block this item" onclick="blockItem(event, '${jsTitle}', '${mediaType}')">🚫</div>
+                        <div class="icon-btn icon-btn-danger" title="Block this item" onclick="blockItem(event, '${jsTitle}', '${mediaType}')">&#128683;</div>
                     </div>
                     <div class="overlay-bottom-row">
-                        <div class="icon-btn btn-request" title="Request" onclick="requestMedia('${mediaType}', ${id}, this); event.stopPropagation();">📥</div>
+                        <div class="icon-btn btn-request" title="Request" onclick="requestMedia('${mediaType}', ${id}, this); event.stopPropagation();">&#128229;</div>
                         <div class="icon-group-right">
-                            <div class="icon-btn" title="View Details" onclick="event.preventDefault(); event.stopPropagation(); openModal(${id}, '${mediaType}');">👁️</div>
+                            <div class="icon-btn" title="View Details" onclick="event.preventDefault(); event.stopPropagation(); openModal(${id}, '${mediaType}');">&#128065;</div>
                             <a href="https://www.themoviedb.org/${mediaType}/${id}" target="_blank" class="icon-btn icon-btn-small" title="TMDB Page" onclick="event.stopPropagation();">TMDB</a>
                         </div>
                     </div>
@@ -616,7 +618,7 @@
                 if(data.trailer_key) {
                     body.innerHTML = `<iframe width="100%" height="100%" src="https://www.youtube.com/embed/${data.trailer_key}?autoplay=1" frameborder="0" allowfullscreen></iframe>`;
                 } else {
-                    body.innerHTML = `<div class="modal-loading-light"><h3>No Trailer Found 😕</h3></div>`;
+                    body.innerHTML = `<div class="modal-loading-light"><h3>No Trailer Found</h3></div>`;
                 }
             });
     }
@@ -644,7 +646,7 @@
                 if(data.error) { body.innerHTML = `<div class="modal-error">Error: ${escapeHtml(String(data.error || ''))}</div>`; return; }
                 
                 const poster = data.poster_path ? `https://image.tmdb.org/t/p/w500${data.poster_path}` : 'https://placehold.co/300x450/333/888?text=No+Poster';
-                const trailerBtn = `<button onclick="playTrailer(${id}, '${mediaType}')" class="btn-secondary modal-trailer-btn">▶ Watch Trailer</button>`;
+                const trailerBtn = `<button onclick="playTrailer(${id}, '${mediaType}')" class="btn-secondary modal-trailer-btn">&#9654; Watch Trailer</button>`;
                 const tmdbLink = `https://www.themoviedb.org/${mediaType}/${id}`;
                 
                 const providersHtml = data.providers && data.providers.length > 0 

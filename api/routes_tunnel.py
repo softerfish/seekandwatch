@@ -102,6 +102,8 @@ def enable_tunnel():
                 settings.tunnel_enabled = True
                 settings.tunnel_provider = 'cloudflare'
                 settings.tunnel_name = 'quick-tunnel'
+                if hasattr(settings, 'tunnel_auto_recovery_enabled'):
+                    settings.tunnel_auto_recovery_enabled = True
                 settings.cloud_sync_owned_enabled = True  # cloud sync requires tunnel
                 db.session.commit()
                 

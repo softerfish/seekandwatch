@@ -1,20 +1,7 @@
-"""
-app context safety - critical safety feature
+"""Helpers for code that may run outside a Flask app context.
 
-ensures all background tasks and threads have proper flask app context,
-prevents "RuntimeError: Working outside of application context" errors
-
-usage:
-    from utils.context_safety import with_app_context, ensure_context
-    
-    # decorator for functions
-    @with_app_context
-    def background_task():
-        settings = Settings.query.first()  # safe!
-    
-    # context manager
-    with ensure_context(app):
-        settings = Settings.query.first()  # safe!
+These are mostly for background work and threads that still need database or
+other Flask-bound access.
 """
 
 import logging

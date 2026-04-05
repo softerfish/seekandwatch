@@ -576,6 +576,19 @@ def _perform_actual_migrations():
                     _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN last_cloud_poll_at DATETIME")
                 if 'last_cloud_poll_ok' not in settings_columns:
                     _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN last_cloud_poll_ok BOOLEAN")
+                try:
+                    cloud_request_columns = [col['name'] for col in inspector.get_columns('cloud_request')]
+                except Exception:
+                    cloud_request_columns = []
+                if 'owner_user_id' not in cloud_request_columns:
+                    print("--- [Migration] Adding 'owner_user_id' column to cloud_request ---")
+                    _alter_add_column(conn, "ALTER TABLE cloud_request ADD COLUMN owner_user_id INTEGER")
+                    try:
+                        settings_rows = conn.execute(sqlalchemy.text("SELECT user_id FROM settings WHERE user_id IS NOT NULL ORDER BY id")).fetchall()
+                        if len(settings_rows) == 1:
+                            conn.execute(sqlalchemy.text("UPDATE cloud_request SET owner_user_id = :user_id WHERE owner_user_id IS NULL"), {'user_id': settings_rows[0][0]})
+                    except Exception:
+                        pass
                 if 'quiet_webhook_logs' not in settings_columns:
                     _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN quiet_webhook_logs BOOLEAN DEFAULT 0")
                 else:
@@ -957,27 +970,18 @@ def scheduled_tasks():
 
 scheduler.add_job(id='master_task', func=scheduled_tasks, trigger='interval', minutes=15)
 
-# blueprint registration
-# order matters! first registered blueprint wins for conflicting routes
-# 
-# registration order:
-# 1. api blueprint (url_prefix='/api') - registered first, won't conflict with web routes
-# 2. auth blueprint - handles /, /login, /logout - must be early to catch root route
-# 3. settings blueprint - handles /settings, /logs, /webhook_logs, /delete_profile
-# 4. pages blueprint - handles /dashboard, /playlists, /builder, etc.
-#
-# why this order:
-# - api blueprint has url_prefix so it's isolated from web routes
-# - auth blueprint must catch '/' before other blueprints
-# - settings and pages blueprints don't conflict (different urls)
-# - later blueprints cannot override earlier ones
+# Register blueprints in a stable order so route ownership stays predictable.
+# API goes first because it lives under /api, then auth grabs '/', and the
+# remaining web blueprints fill in the rest.
 
 # import api blueprint (must be after app creation)
 try:
     from api import api_bp
     app.register_blueprint(api_bp, url_prefix='/api')
-    # exempt webhook from csrf protection
-    csrf.exempt(api_bp)
+    from api.routes_pair import pair_receive_key
+    from api.routes_webhook import receive_webhook
+    csrf.exempt(pair_receive_key)
+    csrf.exempt(receive_webhook)
     import api
     api.limiter = limiter
 except ImportError:
@@ -990,7 +994,7 @@ except ImportError:
 except Exception:
     import traceback
 
-# import web blueprints (phase 3.2 blueprint migration)
+# Register web blueprints.
 try:
     from web.routes_auth import web_auth_bp
     app.register_blueprint(web_auth_bp)
@@ -1035,13 +1039,13 @@ def server_error(e):
     return render_template('error.html', message='Something went wrong. Please try again or check the logs.'), 500
 
 
-# lightweight health endpoint for docker/orchestration (no auth, no heavy work)
+# Simple health endpoint for Docker and other supervisors.
 @app.route('/health')
 def health():
     return jsonify({'status': 'ok', 'version': VERSION}), 200
 
 
-# favicon route (browsers request this automatically)
+# Browsers ask for this on their own.
 @app.route('/favicon.ico')
 def favicon():
     return send_from_directory(
@@ -1051,22 +1055,7 @@ def favicon():
     )
 
 
-# utility and cloud request routes migrated (phase 3.2e & 3.2f)
-# old routes removed, now handled by web_utility_bp and web_requests_bp blueprints
-# routes migrated to web/routes_utility.py:
-#   - /trigger_update (post)
-#   - /api/cloud/test (post)
-#   - /api/settings/autodiscover (post)
-#   - /api/plex/metadata (get)
-# routes migrated to web/routes_requests.py:
-#   - /requests (get)
-#   - /requests/settings (get)
-#   - /approve_request/<int:req_id> (post)
-#   - /deny_request/<int:req_id> (post)
-#   - /delete_request/<int:req_id> (post)
-#   - /save_cloud_settings (post)
-
-# custom poster static file serving (kept in app.py as system-level route)
+# Custom poster files still get served directly from app.py.
 from config import CUSTOM_POSTER_DIR
 
 @app.route('/img/custom_posters/<path:filename>')

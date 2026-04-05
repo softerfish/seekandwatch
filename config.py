@@ -1,7 +1,4 @@
-"""
-centralized configuration for seekandwatch local app
-override via environment variables for non-docker installs and tests
-"""
+"""Central config values, with env vars overriding defaults."""
 import os
 
 # config directory: where db, secret key, backups, and cache files live
@@ -65,14 +62,11 @@ def get_database_path():
     return _default_db_path
 
 
-# optional: comma-separated list of hosts allowed for plex url suggestion (from request)
-# only request.host values in this list are used; avoids trusting spoofed host headers
-# default includes localhost-style values; set PLEX_URL_SUGGESTION_ALLOWED_HOSTS to add more (e.g. my.server.local)
+# Only trust request.host for Plex URL suggestions if it matches this allowlist.
 _allowed_hosts_raw = os.environ.get("PLEX_URL_SUGGESTION_ALLOWED_HOSTS", "localhost,127.0.0.1,0.0.0.0")
 PLEX_URL_SUGGESTION_ALLOWED_HOSTS = [h.strip().lower() for h in _allowed_hosts_raw.split(",") if h.strip()]
 
-# optional: user id whose settings drive the scheduler and cloud worker (no request context)
-# set SCHEDULER_USER_ID to a user id to use that user's settings; leave unset to use first row (legacy)
+# Optional user ID for scheduler/cloud work when there is no request context.
 SCHEDULER_USER_ID = os.environ.get("SEEKANDWATCH_SCHEDULER_USER_ID")
 if SCHEDULER_USER_ID is not None:
     try:
@@ -81,7 +75,7 @@ if SCHEDULER_USER_ID is not None:
         SCHEDULER_USER_ID = None
 
 # app version and update checking
-VERSION = "1.6.6"
+VERSION = "1.6.7"
 
 # shared cache for update checking (prevents duplicate github api calls)
 UPDATE_CACHE = {
@@ -89,7 +83,7 @@ UPDATE_CACHE = {
     'last_check': 0
 }
 
-# tunnel auto-recovery feature flag (phase 1: disabled by default)
+# Tunnel auto-recovery is opt-in.
 ENABLE_AUTO_RECOVERY = os.environ.get("ENABLE_AUTO_RECOVERY", "false").lower() == "true"
 
 # tunnel health check interval (minimum 900 seconds / 15 minutes)

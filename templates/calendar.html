@@ -10,7 +10,7 @@
 
     {% if (not settings.radarr_url or not settings.radarr_api_key) and (not settings.sonarr_url or not settings.sonarr_api_key) %}
     <div class="card setting-card" style="text-align: center; padding: 40px;">
-        <h3>⚠️ Radarr & Sonarr Not Configured</h3>
+        <h3>Radarr & Sonarr Not Configured</h3>
         <p>Add Radarr and/or Sonarr URL and API key in <a href="{{ url_for('web_settings.settings') }}">Settings</a> to see upcoming releases.</p>
     </div>
     {% else %}
@@ -20,7 +20,7 @@
             <button type="button" class="calendar-btn" id="btn-list-view" onclick="setView('list')">List</button>
         </div>
         <div class="calendar-nav">
-            <button type="button" class="calendar-btn" id="btn-prev-month" onclick="prevMonth()">←</button>
+            <button type="button" class="calendar-btn" id="btn-prev-month" onclick="prevMonth()">&larr;</button>
             <h3 class="calendar-month-title" id="calendar-month-title"></h3>
             <button type="button" class="calendar-btn" id="btn-next-month" onclick="nextMonth()">-></button>
         </div>
@@ -41,7 +41,7 @@
                 <span class="legend-item legend-clickable calendar-status-missing" data-status="missing" role="button" tabindex="0" title="click to show/hide"><span class="legend-bar"></span> Missing</span>
                 <span class="legend-item legend-clickable calendar-status-downloading" data-status="downloading" role="button" tabindex="0" title="click to show/hide"><span class="legend-bar"></span> Downloading</span>
                 <span class="legend-item legend-clickable calendar-status-downloaded" data-status="downloaded" role="button" tabindex="0" title="click to show/hide"><span class="legend-bar"></span> Downloaded</span>
-                <span class="legend-helper">★ = season premiere</span>
+                <span class="legend-helper">&starf; = season premiere</span>
             </div>
         </div>
     </div>
@@ -61,7 +61,7 @@
         <div class="calendar-detail-box">
             <div class="calendar-detail-header">
                 <h3 class="calendar-detail-title" id="calendar-detail-title">-</h3>
-                <button type="button" class="calendar-detail-close" onclick="closeCalendarDetail()" aria-label="Close">×</button>
+                <button type="button" class="calendar-detail-close" onclick="closeCalendarDetail()" aria-label="Close">&times;</button>
             </div>
             <div class="calendar-detail-tabs">
                 <button type="button" class="calendar-detail-tab active" data-tab="details">Details</button>
@@ -245,7 +245,7 @@ const CALENDAR_SEARCH_POLL_MAX = 10;
                         pill.title = (ev.type === 'movie' ? (ev.title + (ev.year ? ' (' + ev.year + ')' : '')) : ev.title) + (ev.subtitle ? ' - ' + ev.subtitle : '') + ' (click for details)';
                         const isPremiere = ev.is_premiere === true || ev.status === 'premiere';
                         const displayTitle = ev.type === 'movie' ? (ev.title + (ev.year ? ' (' + ev.year + ')' : '')) : (ev.title + ' ' + (ev.subtitle || '').split(' - ')[0]);
-                        pill.textContent = isPremiere ? '★ ' + displayTitle : displayTitle;
+                        pill.textContent = isPremiere ? '* ' + displayTitle : displayTitle;
                         pill.addEventListener('click', () => openCalendarDetail(ev));
                         cell.appendChild(pill);
                     });
@@ -276,7 +276,7 @@ const CALENDAR_SEARCH_POLL_MAX = 10;
                 const statusClass = 'calendar-status-' + status;
                 li.className = 'calendar-list-item calendar-event-clickable ' + statusClass;
                 let titleText = ev.type === 'movie' && ev.year ? escapeHtml(ev.title) + ' (' + ev.year + ')' : escapeHtml(ev.title);
-                if (ev.is_premiere === true || ev.status === 'premiere') titleText = '★ ' + titleText;
+                if (ev.is_premiere === true || ev.status === 'premiere') titleText = '* ' + titleText;
                 li.innerHTML = '<span class="calendar-list-date">' + dateStr + '</span> ' +
                     '<span class="calendar-list-title">' + titleText + '</span>' +
                     (ev.subtitle ? ' <span class="calendar-list-sub">' + escapeHtml(ev.subtitle) + '</span>' : '');
@@ -369,7 +369,7 @@ const CALENDAR_SEARCH_POLL_MAX = 10;
             const size = file.size ? (Math.round(file.size / 1024 / 1024 * 10) / 10) + ' MiB' : '-';
             const formats = (file.formats && file.formats.length) ? file.formats.join(', ') : '-';
             const cfScore = file.customFormatScore != null ? String(file.customFormatScore) : '-';
-            fileHtml = '<div class="calendar-detail-section"><strong>File</strong><div class="calendar-detail-file"><div class="calendar-detail-file-path">' + escapeHtml(file.path) + '</div><div class="calendar-detail-file-meta">Size: ' + escapeHtml(String(size)) + ' · Languages: ' + escapeHtml(file.languages || '-') + ' · Quality: ' + escapeHtml(file.quality || '-') + (formats !== '-' ? ' · Custom formats: ' + escapeHtml(formats) : '') + (cfScore !== '-' ? ' · Custom format score: ' + escapeHtml(cfScore) : '') + '</div></div></div>';
+            fileHtml = '<div class="calendar-detail-section"><strong>File</strong><div class="calendar-detail-file"><div class="calendar-detail-file-path">' + escapeHtml(file.path) + '</div><div class="calendar-detail-file-meta">Size: ' + escapeHtml(String(size)) + ' | Languages: ' + escapeHtml(file.languages || '-') + ' | Quality: ' + escapeHtml(file.quality || '-') + (formats !== '-' ? ' | Custom formats: ' + escapeHtml(formats) : '') + (cfScore !== '-' ? ' | Custom format score: ' + escapeHtml(cfScore) : '') + '</div></div></div>';
         }
         el.innerHTML = '<div class="calendar-detail-section"><strong>Airs</strong> ' + escapeHtml(air) + '</div>' +
             '<div class="calendar-detail-section"><strong>Quality Profile</strong> <span class="calendar-detail-pill">' + escapeHtml(qp) + '</span></div>' +
@@ -393,7 +393,7 @@ const CALENDAR_SEARCH_POLL_MAX = 10;
         }
         let cfHtml = '';
         if (cfList !== '-' || cfScore !== '-') {
-            cfHtml = '<div class="calendar-detail-section"><strong>Custom formats</strong> ' + (cfList !== '-' ? escapeHtml(cfList) : '-') + (cfScore !== '-' ? ' · <strong>Score</strong> ' + escapeHtml(cfScore) : '') + '</div>';
+            cfHtml = '<div class="calendar-detail-section"><strong>Custom formats</strong> ' + (cfList !== '-' ? escapeHtml(cfList) : '-') + (cfScore !== '-' ? ' | <strong>Score</strong> ' + escapeHtml(cfScore) : '') + '</div>';
         }
         el.innerHTML = '<div class="calendar-detail-section"><strong>Release</strong> ' + escapeHtml(airStr) + '</div>' +
             '<div class="calendar-detail-section"><strong>Quality</strong> <span class="calendar-detail-pill">' + escapeHtml(qp) + '</span></div>' +
@@ -453,7 +453,7 @@ const CALENDAR_SEARCH_POLL_MAX = 10;
                 statusWrap.style.display = 'block';
                 resultsEl.innerHTML = '';
                 statusEl.textContent = 'Radarr is searching indexers and will grab the best match for your quality profile.';
-                setProgress('Checking for queue updates…');
+                setProgress('Checking for queue updates...');
                 fetch(API_RADARR_SEARCH_SCAN_BASE.replace(/\/0$/, '/' + ev.id), { method: 'POST' })
                     .then(r => r.json())
                     .then(res => {
@@ -471,7 +471,7 @@ const CALENDAR_SEARCH_POLL_MAX = 10;
                 statusWrap.style.display = 'block';
                 resultsEl.innerHTML = '';
                 statusEl.textContent = 'Sonarr is searching for this episode and will grab the best match.';
-                setProgress('Checking for queue updates…');
+                setProgress('Checking for queue updates...');
                 fetch(API_SONARR_SEARCH_EPISODE_BASE.replace(/\/0$/, '/' + ev.id), { method: 'POST' })
                     .then(r => r.json())
                     .then(res => {
@@ -498,7 +498,7 @@ const CALENDAR_SEARCH_POLL_MAX = 10;
                 }
                 pollCount += 1;
                 const elapsed = (pollCount * CALENDAR_SEARCH_POLL_MS) / 1000;
-                if (progressEl) progressEl.textContent = 'Checking for queue updates… (' + elapsed + 's)';
+                if (progressEl) progressEl.textContent = 'Checking for queue updates... (' + elapsed + 's)';
                 fetch(API_RADARR_QUEUE_CHECK_BASE.replace(/\/0$/, '/' + movieId))
                     .then(r => r.json())
                     .then(d => {
@@ -518,7 +518,7 @@ const CALENDAR_SEARCH_POLL_MAX = 10;
                         }
                         if (pollCount < CALENDAR_SEARCH_POLL_MAX) setTimeout(doPoll, CALENDAR_SEARCH_POLL_MS);
                     })
-                    .catch(() => { if (progressEl) progressEl.textContent = 'Check failed, retrying…'; if (pollCount < CALENDAR_SEARCH_POLL_MAX) setTimeout(doPoll, CALENDAR_SEARCH_POLL_MS); });
+                    .catch(() => { if (progressEl) progressEl.textContent = 'Check failed, retrying...'; if (pollCount < CALENDAR_SEARCH_POLL_MAX) setTimeout(doPoll, CALENDAR_SEARCH_POLL_MS); });
             }
             setTimeout(doPoll, CALENDAR_SEARCH_POLL_MS);
         }
@@ -535,7 +535,7 @@ const CALENDAR_SEARCH_POLL_MAX = 10;
                 }
                 pollCount += 1;
                 const elapsed = (pollCount * CALENDAR_SEARCH_POLL_MS) / 1000;
-                if (progressEl) progressEl.textContent = 'Checking for queue updates… (' + elapsed + 's)';
+                if (progressEl) progressEl.textContent = 'Checking for queue updates... (' + elapsed + 's)';
                 fetch(API_SONARR_QUEUE_CHECK_BASE.replace(/\/0$/, '/' + seriesId))
                     .then(r => r.json())
                     .then(d => {
@@ -555,7 +555,7 @@ const CALENDAR_SEARCH_POLL_MAX = 10;
                         }
                         if (pollCount < CALENDAR_SEARCH_POLL_MAX) setTimeout(doPoll, CALENDAR_SEARCH_POLL_MS);
                     })
-                    .catch(() => { if (progressEl) progressEl.textContent = 'Check failed, retrying…'; if (pollCount < CALENDAR_SEARCH_POLL_MAX) setTimeout(doPoll, CALENDAR_SEARCH_POLL_MS); });
+                    .catch(() => { if (progressEl) progressEl.textContent = 'Check failed, retrying...'; if (pollCount < CALENDAR_SEARCH_POLL_MAX) setTimeout(doPoll, CALENDAR_SEARCH_POLL_MS); });
             }
             setTimeout(doPoll, CALENDAR_SEARCH_POLL_MS);
         }
@@ -595,7 +595,7 @@ const CALENDAR_SEARCH_POLL_MAX = 10;
                         }
                         const title = r.title || r.releaseTitle || '-';
                         const size = r.size ? (Math.round(r.size / 1024 / 1024 * 10) / 10) + ' MiB' : '-';
-                        html += '<li class="calendar-search-result-item"><span class="calendar-search-result-title">' + escapeHtml(title) + '</span> <span class="calendar-search-result-meta">' + escapeHtml(quality) + ' · ' + escapeHtml(indexer) + ' · ' + size + '</span> <button type="button" class="calendar-btn calendar-btn-small" onclick="window.calendarGrabRadarrRelease(' + i + ')">Grab</button></li>';
+                        html += '<li class="calendar-search-result-item"><span class="calendar-search-result-title">' + escapeHtml(title) + '</span> <span class="calendar-search-result-meta">' + escapeHtml(quality) + ' | ' + escapeHtml(indexer) + ' | ' + size + '</span> <button type="button" class="calendar-btn calendar-btn-small" onclick="window.calendarGrabRadarrRelease(' + i + ')">Grab</button></li>';
                     });
                     html += '</ul>';
                     resultsEl.innerHTML = html;
@@ -635,7 +635,7 @@ const CALENDAR_SEARCH_POLL_MAX = 10;
                         } else indexer = '-';
                         const title = r.title || r.releaseTitle || '-';
                         const size = r.size ? (Math.round(r.size / 1024 / 1024 * 10) / 10) + ' MiB' : '-';
-                        html += '<li class="calendar-search-result-item"><span class="calendar-search-result-title">' + escapeHtml(title) + '</span> <span class="calendar-search-result-meta">' + escapeHtml(quality) + ' · ' + escapeHtml(indexer) + ' · ' + size + '</span> <button type="button" class="calendar-btn calendar-btn-small" onclick="window.calendarGrabSonarrRelease(' + i + ')">Add</button></li>';
+                        html += '<li class="calendar-search-result-item"><span class="calendar-search-result-title">' + escapeHtml(title) + '</span> <span class="calendar-search-result-meta">' + escapeHtml(quality) + ' | ' + escapeHtml(indexer) + ' | ' + size + '</span> <button type="button" class="calendar-btn calendar-btn-small" onclick="window.calendarGrabSonarrRelease(' + i + ')">Add</button></li>';
                     });
                     html += '</ul>';
                     resultsEl.innerHTML = html;
@@ -693,7 +693,7 @@ const CALENDAR_SEARCH_POLL_MAX = 10;
             let html = '<p class="calendar-search-results-title"><strong>Search results (' + data.releases.length + ')</strong></p><ul class="calendar-search-results-list">';
             data.releases.forEach(function (r) {
                 const size = r.size ? (Math.round(r.size / 1024 / 1024 * 10) / 10) + ' MiB' : '-';
-                html += '<li class="calendar-search-result-item"><span class="calendar-search-result-title">' + escapeHtml(r.title || '-') + '</span> <span class="calendar-search-result-meta">' + escapeHtml(r.quality || '') + ' · ' + escapeHtml(r.indexer || '') + ' · ' + size + '</span></li>';
+                html += '<li class="calendar-search-result-item"><span class="calendar-search-result-title">' + escapeHtml(r.title || '-') + '</span> <span class="calendar-search-result-meta">' + escapeHtml(r.quality || '') + ' | ' + escapeHtml(r.indexer || '') + ' | ' + size + '</span></li>';
             });
             html += '</ul>';
             container.innerHTML = html;

@@ -52,7 +52,7 @@
                         <span class="log-badge warning">{{ log.status }}</span>
                     {% endif %}
                 </td>
-                <td style="line-height: 1.4;">{{ log.message or '—' }}</td>
+                <td style="line-height: 1.4;">{{ log.message or '-' }}</td>
                 <td>
                     <button class="btn btn-sm btn-outline-info py-0 px-2" onclick="viewPayload({{ loop.index0 }})" style="font-size: 0.75rem;">View</button>
                     <div id="payload-{{ loop.index0 }}" style="display: none;">{{ log.payload }}</div>
@@ -70,7 +70,7 @@
 <!-- Modal for Payload -->
 <div id="payloadModal" class="custom-modal-overlay">
     <div class="custom-modal-box" style="max-width: 800px; width: 90%;">
-        <div class="modal-icon">📦</div>
+        <div class="modal-icon">Payload</div>
         <h3 class="modal-title">Webhook Payload</h3>
         <pre id="payloadContent" style="background: #111; color: #00bcd4; padding: 15px; border-radius: 8px; text-align: left; overflow-x: auto; font-size: 0.85rem; max-height: 400px;"></pre>
         <button onclick="document.getElementById('payloadModal').style.display='none'" class="modal-btn">Close</button>

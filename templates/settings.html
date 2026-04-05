@@ -8,6 +8,11 @@
         <p class="text-muted">Manage your connections, automation engines, and system preferences.</p>
     </div>
 
+    <div class="ui-status-banner ui-status-banner--info" style="margin-bottom: 20px;">
+        <strong>Recommended setup order</strong>
+        <p>Connect Plex and TMDB first, test your services, then run a library sync. After that, use the scanner and maintenance sections only when you need them.</p>
+    </div>
+
     <div id="save-toast" style="opacity: 0;">
         Saved
     </div>
@@ -43,6 +48,7 @@
 
     <section aria-label="APIs and connections" style="margin-bottom: 0;">
         <div id="tab-apis" class="tab-content active" data-settings-section="apis">
+            <p class="ui-section-intro">This tab covers the services the app talks to every day. The Plex and TMDB fields are the most important starting point for new installs.</p>
             {% if server_host %}
             <div id="auto-fill-banner" class="card"
                 style="margin-bottom: 20px; border-left: 4px solid var(--accent-color); background: rgba(0, 204, 102, 0.1); display: none;">
@@ -59,9 +65,9 @@
                     </div>
                     <div style="display: flex; gap: 10px; margin-left: 15px; flex-shrink: 0;">
                         <button type="button" onclick="acceptAutoFill()" class="btn-primary"
-                            style="padding: 8px 16px; font-size: 0.9em;">Accept ✓</button>
+                            style="padding: 8px 16px; font-size: 0.9em;">Accept</button>
                         <button type="button" onclick="dismissAutoFill()" class="btn-secondary"
-                            style="padding: 8px 16px; font-size: 0.9em;">Dismiss ✕</button>
+                            style="padding: 8px 16px; font-size: 0.9em;">Dismiss</button>
                     </div>
                 </div>
             </div>
@@ -78,17 +84,17 @@
                         app.
                     </p>
 
-                    {% if settings.plex_url and settings.plex_token %}
-                    <p id="plex-link-status"
-                        style="margin: 0 0 16px 0; padding: 10px 14px; background: rgba(0, 204, 102, 0.15); border: 1px solid rgba(0, 204, 102, 0.5); border-radius: 8px; color: var(--accent-color); font-weight: bold;">
-                        ✓ Plex account connected
-                    </p>
-                    {% else %}
-                    <p id="plex-link-status"
-                        style="margin: 0 0 16px 0; padding: 10px 14px; background: rgba(128,128,128,0.15); border: 1px solid rgba(128,128,128,0.4); border-radius: 8px; color: #999; font-size: 0.95em;">
-                        Plex not connected - link below or enter URL &amp; token
-                    </p>
-                    {% endif %}
+                    <div id="plex-link-status"
+                        class="ui-status-banner {% if settings.plex_url and settings.plex_token %}ui-status-banner--success{% else %}ui-status-banner--info{% endif %}"
+                        style="margin-top: 0; margin-bottom: 16px; padding: 10px 14px;">
+                        {% if settings.plex_url and settings.plex_token %}
+                        <strong>Plex account connected</strong>
+                        <p>Your token is saved. You can refresh the server list below or sync the library when you are ready.</p>
+                        {% else %}
+                        <strong>Plex not connected yet</strong>
+                        <p>Use the Plex link flow below, or paste your Plex URL and token manually if you already have them.</p>
+                        {% endif %}
+                    </div>
 
                     <div id="plex-pin-box"
                         style="display: none; margin-bottom: 16px; padding: 14px; background: rgba(0,0,0,0.3); border-radius: 8px; border: 1px solid rgba(255,165,0,0.4);">
@@ -99,7 +105,7 @@
                             <div id="plex-pin-code"
                                 style="font-size: 1.8em; letter-spacing: 0.35em; margin-bottom: 8px; font-weight: bold; color: #fff; background: rgba(0, 204, 102, 0.25); padding: 12px 16px; border-radius: 6px; display: inline-block; min-width: 120px; text-align: center;">
                             </div>
-                            <div id="plex-pin-msg" style="color: #aaa; font-size: 0.9em;">Waiting for you to authorize…
+                            <div id="plex-pin-msg" style="color: #aaa; font-size: 0.9em;">Waiting for you to authorize...
                             </div>
                         </div>
                         <div id="plex-pin-step-server" style="display: none;">
@@ -133,7 +139,7 @@
                         <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                             <select id="plex-server-select-persistent"
                                 style="flex: 1; min-width: 280px; padding: 10px; background: #111; color: #fff; border: 1px solid #444; border-radius: 6px;">
-                                <option value="">{% if settings.plex_token %}Loading…{% else %}-{% endif %}</option>
+                                <option value="">{% if settings.plex_token %}Loading...{% else %}-{% endif %}</option>
                             </select>
                             <button type="button" id="btn-plex-refresh-servers" class="btn-secondary"
                                 style="padding: 8px 14px;">Refresh</button>
@@ -156,13 +162,13 @@
                             <div class="password-wrapper">
                                 <input type="password" id="plex_token" name="plex_token" autocomplete="off"
                                     value="{{ settings.plex_token or '' }}"
-                                    placeholder="{% if settings.plex_token %}••••••••{% else %}Paste token{% endif %}"
+                                    placeholder="{% if settings.plex_token %}********{% else %}Paste token{% endif %}"
                                     {% if settings.plex_token %}data-key-set="1" {% endif %} autocomplete="off"
                                     style="width: 100%; padding-right: 40px;">
                                 {% if settings.plex_token %}<input type="hidden" name="plex_token_unchanged" value="1"
                                     id="plex_token_unchanged_h">{% endif %}
                                 <button type="button" class="toggle-pass"
-                                    onclick="toggleVisibility('plex_token', this)">👁️</button>
+                                    onclick="toggleVisibility('plex_token', this)">Show</button>
                                 <button type="button" class="clear-field-btn"
                                     onclick="clearPasswordField('plex_token', 'plex_token_unchanged_h')">Clear</button>
                             </div>
@@ -190,7 +196,7 @@
 
                     <div id="plex-ignore-panel" class="info-panel"
                         style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 8px; display: none;">
-                        <label class="ignore-label">🛡️ Ignore History From:</label>
+                        <label class="ignore-label">Ignore History From:</label>
                         <div id="plex-users-grid" class="ignore-grid">
                             <span class="text-muted small">Loading users...</span>
                         </div>
@@ -209,12 +215,12 @@
                             <div class="password-wrapper">
                                 <input type="password" id="tmdb_key" name="tmdb_key" autocomplete="off"
                                     value="{{ settings.tmdb_key or '' }}"
-                                    placeholder="{% if settings.tmdb_key %}••••••••{% else %}Paste API key{% endif %}"
+                                    placeholder="{% if settings.tmdb_key %}********{% else %}Paste API key{% endif %}"
                                     {% if settings.tmdb_key %}data-key-set="1" {% endif %}>
                                 {% if settings.tmdb_key %}<input type="hidden" name="tmdb_key_unchanged" value="1"
                                     id="tmdb_key_unchanged_h">{% endif %}
                                 <button type="button" class="toggle-pass"
-                                    onclick="toggleVisibility('tmdb_key', this)">👁️</button>
+                                    onclick="toggleVisibility('tmdb_key', this)">Show</button>
                                 <button type="button" class="clear-field-btn"
                                     onclick="clearPasswordField('tmdb_key', 'tmdb_key_unchanged_h')">Clear</button>
                             </div>
@@ -228,12 +234,12 @@
                             <div class="password-wrapper">
                                 <input type="password" id="omdb_key" name="omdb_key" autocomplete="off"
                                     value="{{ settings.omdb_key or '' }}"
-                                    placeholder="{% if settings.omdb_key %}••••••••{% else %}xxxxxx{% endif %}" {% if
+                                    placeholder="{% if settings.omdb_key %}********{% else %}xxxxxx{% endif %}" {% if
                                     settings.omdb_key %}data-key-set="1" {% endif %}>
                                 {% if settings.omdb_key %}<input type="hidden" name="omdb_key_unchanged" value="1"
                                     id="omdb_key_unchanged_h">{% endif %}
                                 <button type="button" class="toggle-pass"
-                                    onclick="toggleVisibility('omdb_key', this)">👁️</button>
+                                    onclick="toggleVisibility('omdb_key', this)">Show</button>
                                 <button type="button" class="clear-field-btn"
                                     onclick="clearPasswordField('omdb_key', 'omdb_key_unchanged_h')">Clear</button>
                             </div>
@@ -258,12 +264,12 @@
                             <div class="password-wrapper">
                                 <input type="password" id="tautulli_api_key" name="tautulli_api_key" autocomplete="off"
                                     value="{{ settings.tautulli_api_key or '' }}"
-                                    placeholder="{% if settings.tautulli_api_key %}••••••••{% else %}Paste API key{% endif %}"
+                                    placeholder="{% if settings.tautulli_api_key %}********{% else %}Paste API key{% endif %}"
                                     {% if settings.tautulli_api_key %}data-key-set="1" {% endif %}>
                                 {% if settings.tautulli_api_key %}<input type="hidden" name="tautulli_api_key_unchanged"
                                     value="1" id="tautulli_api_key_unchanged_h">{% endif %}
                                 <button type="button" class="toggle-pass"
-                                    onclick="toggleVisibility('tautulli_api_key', this)">👁️</button>
+                                    onclick="toggleVisibility('tautulli_api_key', this)">Show</button>
                                 <button type="button" class="clear-field-btn"
                                     onclick="clearPasswordField('tautulli_api_key', 'tautulli_api_key_unchanged_h')">Clear</button>
                             </div>
@@ -288,13 +294,13 @@
                                     <div class="password-wrapper">
                                         <input type="password" id="radarr_api_key" name="radarr_api_key"
                                             autocomplete="off" value="{{ settings.radarr_api_key or '' }}"
-                                            placeholder="{% if settings.radarr_api_key %}••••••••{% else %}Paste API key{% endif %}"
+                                            placeholder="{% if settings.radarr_api_key %}********{% else %}Paste API key{% endif %}"
                                             {% if settings.radarr_api_key %}data-key-set="1" {% endif %}>
                                         {% if settings.radarr_api_key %}<input type="hidden"
                                             name="radarr_api_key_unchanged" value="1" id="radarr_api_key_unchanged_h">{%
                                         endif %}
                                         <button type="button" class="toggle-pass"
-                                            onclick="toggleVisibility('radarr_api_key', this)">👁️</button>
+                                            onclick="toggleVisibility('radarr_api_key', this)">Show</button>
                                         <button type="button" class="clear-field-btn"
                                             onclick="clearPasswordField('radarr_api_key', 'radarr_api_key_unchanged_h')">Clear</button>
                                     </div>
@@ -316,13 +322,13 @@
                                     <div class="password-wrapper">
                                         <input type="password" id="sonarr_api_key" name="sonarr_api_key"
                                             autocomplete="off" value="{{ settings.sonarr_api_key or '' }}"
-                                            placeholder="{% if settings.sonarr_api_key %}••••••••{% else %}Paste API key{% endif %}"
+                                            placeholder="{% if settings.sonarr_api_key %}********{% else %}Paste API key{% endif %}"
                                             {% if settings.sonarr_api_key %}data-key-set="1" {% endif %}>
                                         {% if settings.sonarr_api_key %}<input type="hidden"
                                             name="sonarr_api_key_unchanged" value="1" id="sonarr_api_key_unchanged_h">{%
                                         endif %}
                                         <button type="button" class="toggle-pass"
-                                            onclick="toggleVisibility('sonarr_api_key', this)">👁️</button>
+                                            onclick="toggleVisibility('sonarr_api_key', this)">Show</button>
                                         <button type="button" class="clear-field-btn"
                                             onclick="clearPasswordField('sonarr_api_key', 'sonarr_api_key_unchanged_h')">Clear</button>
                                     </div>
@@ -339,6 +345,7 @@
 
     <section aria-label="Scanners and memory" style="margin-bottom: 0;">
         <div id="tab-scanners" class="tab-content" data-settings-section="scanners">
+            <p class="ui-section-intro">Use these tools after your main APIs are working. They help the app avoid recommending things you already have and let you refresh cached library data.</p>
             <div class="settings-grid">
                 <div class="card setting-card border-accent">
                     <h3>Library Index</h3>
@@ -378,6 +385,7 @@
 
     <section aria-label="System and maintenance" style="margin-bottom: 0;">
         <div id="tab-system" class="tab-content" data-settings-section="system">
+            <p class="ui-section-intro">This section is for upkeep rather than daily setup. Backups, webhook retention, and account-level maintenance live here.</p>
             <div class="settings-grid">
                 <div class="card setting-card border-accent">
                     <h3>Webhook Logs</h3>
@@ -391,32 +399,31 @@
                     </div>
                 </div>
 
-                <div class="card setting-card border-accent">
+                <div class="card setting-card border-accent span-2">
                     <h3>System Maintenance</h3>
-                    <div style="display:flex; gap:20px; margin-bottom:20px;">
-                        <div class="input-group" style="flex:1;">
+                    <div class="settings-maintenance-fields">
+                        <div class="input-group">
                             <label class="input-label">Backup Interval (Days)</label>
                             <input type="number" name="backup_interval" value="{{ settings.backup_interval or 2 }}">
                         </div>
-                        <div class="input-group" style="flex:1;">
+                        <div class="input-group">
                             <label class="input-label">Retention (Days)</label>
                             <input type="number" name="backup_retention" value="{{ settings.backup_retention or 7 }}">
                         </div>
                     </div>
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div class="settings-maintenance-actions">
                         <button type="button" onclick="createBackup()" class="btn-primary">+ Backup Now</button>
-                        <button type="button" onclick="triggerBackupUpload()" class="btn-secondary">Upload
-                            Backup</button>
+                        <button type="button" onclick="triggerBackupUpload()" class="btn-secondary">Upload Backup</button>
                     </div>
-                    <div id="backup-list" style="margin-top:20px;"></div>
+                    <div id="backup-list" class="backup-list-container" style="margin-top:20px;"></div>
                     <input type="file" id="backup-upload-input" accept=".zip" style="display:none;"
                         onchange="handleBackupUpload(this.files)">
                 </div>
 
                 <div class="card danger-zone span-2">
                     <h3 style="color: var(--error);">Danger Zone</h3>
-                    <button type="button" onclick="document.getElementById('delete-account-form').submit();"
-                        class="btn btn-danger">Delete My Account</button>
+                    <p class="ui-section-intro" style="margin-bottom: 12px;">Account deletion is not wired up in this build yet, so this stays disabled instead of failing unexpectedly.</p>
+                    <button type="button" class="btn btn-danger" disabled title="Account deletion is not available yet">Delete My Account</button>
                 </div>
             </div>
         </div>
@@ -464,8 +471,8 @@
 
     function toggleVisibility(id, btn) {
         const el = document.getElementById(id);
-        if (el.type === "password") { el.type = "text"; btn.innerText = "🔒"; }
-        else { el.type = "password"; btn.innerText = "👁️"; }
+        if (el.type === "password") { el.type = "text"; btn.innerText = "Hide"; }
+        else { el.type = "password"; btn.innerText = "Show"; }
     }
 
     function clearPasswordField(inputId, unchangedId) {
@@ -515,7 +522,7 @@
         fetch(API_TEST_CONNECTION, {
             method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': SETTINGS_CSRF }, body: JSON.stringify(payload)
         }).then(r => r.json()).then(d => {
-            showModal(d.status === 'success' ? '✅' : '❌', d.status === 'success' ? 'Connected!' : 'Failed', d.message, false);
+            showModal(d.status === 'success' ? 'OK' : 'Error', d.status === 'success' ? 'Connected!' : 'Failed', d.message, false);
         });
     }
 
@@ -592,12 +599,12 @@
         fetch(API_BACKUPS).then(r => r.json()).then(data => {
             const div = document.getElementById('backup-list');
             if (!data.length) { div.innerHTML = '<p class="text-muted text-center">No backups found.</p>'; return; }
-            let h = '<table class="logs-table"><tbody>';
+            let h = '<table class="logs-table backup-table"><tbody>';
             data.forEach(b => {
-                h += `<tr><td>${b.date}</td><td>${b.size}</td><td class="text-right">
-                <a href="${BACKUP_DOWNLOAD_URL_PREFIX}${b.filename}">⬇️</a>
-                <span onclick="restoreBackup('${b.filename}')" style="cursor:pointer; margin-left:10px;">♻️</span>
-                <span onclick="deleteBackup('${b.filename}')" style="cursor:pointer; margin-left:10px; color:var(--error);">🗑️</span>
+                h += `<tr><td>${b.date}</td><td>${b.size}</td><td class="backup-actions">
+                <a href="${BACKUP_DOWNLOAD_URL_PREFIX}${b.filename}">Download</a>
+                <span onclick="restoreBackup('${b.filename}')">Restore</span>
+                <span class="backup-delete-action" onclick="deleteBackup('${b.filename}')">Delete</span>
             </td></tr>`;
             });
             div.innerHTML = h + '</tbody></table>';
@@ -971,7 +978,7 @@
                     return;
                 }
 
-                let html = '<table class="logs-table" style="width:100%;"><thead><tr><th>Username</th><th>Role</th><th>Actions</th></tr></thead><tbody>';
+                let html = '<table class="logs-table settings-user-table" style="width:100%;"><thead><tr><th>Username</th><th>Role</th><th>Actions</th></tr></thead><tbody>';
 
                 users.forEach(user => {
                     const roleText = user.is_admin ? 'Admin' : 'User';
@@ -982,19 +989,21 @@
                     html += `<tr>
                     <td>${escapeHtml(user.username)}${isCurrent ? ' <span style="color:var(--accent-color);">(You)</span>' : ''}</td>
                     <td>${roleText}</td>
-                    <td>
+                    <td class="settings-user-actions-cell">
+                        <div class="settings-user-actions">
                         <button onclick="toggleUserRole(${user.id}, '${escapeHtml(user.username)}')" 
                                 ${disabledAttr}
-                                style="margin-right:8px; ${disabledStyle}"
-                                class="btn-secondary">
-                            ${user.is_admin ? 'Demote to User' : 'Promote to Admin'}
+                                style="${disabledStyle}"
+                                class="btn-secondary settings-user-action-btn">
+                            ${user.is_admin ? 'Demote' : 'Promote to Admin'}
                         </button>
                         <button onclick="deleteUser(${user.id}, '${escapeHtml(user.username)}')" 
                                 ${disabledAttr}
                                 style="${disabledStyle}"
-                                class="btn-delete">
+                                class="btn-delete settings-user-action-btn">
                             Delete
                         </button>
+                        </div>
                     </td>
                 </tr>`;
                 });

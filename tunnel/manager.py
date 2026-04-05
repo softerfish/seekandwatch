@@ -1692,10 +1692,14 @@ class TunnelManager:
                 settings.tunnel_url = tunnel_url
                 settings.tunnel_provider = 'cloudflare'
                 settings.tunnel_name = 'quick-tunnel'
+                if hasattr(settings, 'tunnel_auto_recovery_enabled'):
+                    settings.tunnel_auto_recovery_enabled = True
                 settings.tunnel_last_started = datetime.utcnow()
                 settings.tunnel_status = 'connected'
                 settings.tunnel_enabled = True
                 settings.cloud_sync_owned_enabled = True  # cloud sync requires tunnel
+                if not loopback_success:
+                    settings.tunnel_last_error = "Quick Tunnel loopback verification timed out"
                 self.db.session.commit()
             
             # spawn a thread to keep reading output and writing to log so the pipe doesn't fill up

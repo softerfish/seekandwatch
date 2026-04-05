@@ -14,8 +14,8 @@
             <div class="input-group form-col">
                 <label class="input-label">Type</label>
                 <select id="c_type">
-                    <option value="movie">Movies 🎬</option>
-                    <option value="tv">TV Shows 📺</option>
+                    <option value="movie">Movies</option>
+                    <option value="tv">TV Shows</option>
                 </select>
             </div>
             <div class="input-group form-col">
@@ -54,7 +54,7 @@
             <div id="selected-keywords" class="tag-container mb-10"></div>
             
             <div class="text-muted small d-block mt-5">
-                <strong>💡 Pro Tip:</strong> Add multiple similar tags (e.g., "alien" and "aliens").
+                <strong>Pro Tip:</strong> Add multiple similar tags (e.g., "alien" and "aliens").
             </div>
         </div>
 
@@ -74,14 +74,14 @@
             <label class="visibility-check"><input type="checkbox" id="c_visibility_friends"> Friends</label>
         </div>
 
-        <button onclick="previewMatches()" class="btn btn-secondary w-100">🔍 Preview Top 10 Matches</button>
+        <button onclick="previewMatches()" class="btn btn-secondary w-100">Preview Top 10 Matches</button>
         <button onclick="saveCollection()" class="btn btn-save">Create Collection & Schedule</button>
     </div>
 
     <div id="preview-area" class="preview-card d-none mt-20">
         <div class="d-flex flex-between mb-15" style="align-items:center;">
             <h3 class="m-0">Live Preview Results</h3>
-            <button id="request-all-btn" class="btn-request-all d-none w-auto m-0" onclick="requestAllMissing()" style="padding: 5px 15px;">📥 Request All Missing</button>
+            <button id="request-all-btn" class="btn-request-all d-none w-auto m-0" onclick="requestAllMissing()" style="padding: 5px 15px;">Request All Missing</button>
         </div>
         <ul id="preview-list" class="preview-list"></ul>
     </div>
@@ -172,9 +172,9 @@ function previewMatches() {
                 let buttonHtml = '';
                 if (!item.owned) {
                     hasMissing = true;
-                    buttonHtml = `<button class="item-request-btn" data-tmdb-id="${item.tmdb_id}" data-media-type="${item.media_type}" onclick="requestSingle(this)">Request 📥</button>`;
+                    buttonHtml = `<button class="item-request-btn" data-tmdb-id="${item.tmdb_id}" data-media-type="${item.media_type}" onclick="requestSingle(this)">Request</button>`;
                 } else {
-                    buttonHtml = '<span class="owned-badge">Owned ✅</span>';
+                    buttonHtml = '<span class="owned-badge">Owned</span>';
                 }
 
                 li.innerHTML = `
@@ -219,7 +219,7 @@ function requestSingle(btn) {
     // update button when it works
     window.onRequestSuccess = function(modalTmdbId, mediaType) {
         if (btn && modalTmdbId == tmdbId && mediaType == type) {
-            btn.innerText = "Requested ✅";
+            btn.innerText = "Requested";
             btn.style.background = "#2ecc71";
             btn.style.color = "white";
             btn.disabled = true;

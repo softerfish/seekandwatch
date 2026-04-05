@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -163,7 +163,7 @@
 
     <div id="updateConfirmModal" class="custom-modal-overlay">
         <div class="custom-modal-box">
-            <div class="modal-icon">⬆️</div>
+            <div class="modal-icon">&#11014;</div>
             <h3 class="modal-title" id="updateConfirmTitle">Update Available</h3>
             <p class="modal-message" id="updateConfirmMessage"></p>
             <div class="d-flex gap-10 flex-center">
@@ -175,7 +175,7 @@
 
     <div id="settingsModal" class="custom-modal-overlay">
         <div class="custom-modal-box">
-            <div class="modal-icon" id="modalIcon">✅</div>
+            <div class="modal-icon" id="modalIcon">&#9989;</div>
             <h3 class="modal-title" id="modalTitle">Notice</h3>
             <p class="modal-message" id="modalMessage"></p>
             <button id="modalBtn" class="modal-btn">OK</button>
@@ -191,7 +191,7 @@
             modal.className = 'custom-modal-overlay';
             modal.innerHTML = `
                 <div class="custom-modal-box">
-                    <div class="modal-icon" id="modalIcon">✅</div>
+                    <div class="modal-icon" id="modalIcon">&#9989;</div>
                     <h3 class="modal-title" id="modalTitle">Notice</h3>
                     <p class="modal-message" id="modalMessage"></p>
                     <button id="modalBtn" class="modal-btn">OK</button>
@@ -256,7 +256,7 @@
     }
 
     function showUnraidUpdateNotice() {
-        showModal("🧰 Update via Unraid App Store",
+        showModal("Update via Unraid App Store",
             `<div class="text-left">
                 <p>This install was detected as <b>Unraid</b>.</p>
                 <p>Please update via the <b>Unraid App Store</b> (Apps -> SeekAndWatch -> Update).</p>
@@ -309,9 +309,9 @@
                 }
 
                 if (data.action === 'none') {
-                    alert("You are up to date! ✨");
+                    alert("You are up to date!");
                 } else if (data.action === 'unraid_instruction') {
-                    showModal("🧰 Update Available: " + data.version,
+                    showModal("Update Available: " + data.version,
                         `<div class="text-left">
                             <p>This install was detected as <b>Unraid</b>.</p>
                             <p>Please update via the <b>Unraid App Store</b>.</p>
@@ -327,12 +327,12 @@
                     showUpdateConfirm(data.version, 'release');
                 } else if (data.action === 'docker_instruction') {
                     // Give advanced users a manual pull option if they mapped the repo.
-                    showModal("🐳 Update Available: " + data.version,
+                    showModal("Docker Update Available: " + data.version,
                         `<div class="text-left">
                             <p>The app detected Docker but <b>could not find a .git folder</b>.</p>
                             <p>If you mapped your source code volume correctly, you can force the update:</p>
                             <button onclick="smartUpdate(true); document.getElementById('settingsModal').style.display='none';" class="btn btn-primary w-100 mt-10">
-                                Force Git Pull ⬇️
+                                Force Git Pull
                             </button>
                             <hr>
                             <p class="text-muted fs-small mt-10">
@@ -340,9 +340,9 @@
                             </p>
                         </div>`, false);
                 } else if (data.action === 'restart_needed') {
-                    showModal("✅", "Update Complete", "<p>Files updated successfully.</p><p>Please <b>restart the container</b> to apply changes.</p>", false);
+                    showModal("OK", "Update Complete", "<p>Files updated successfully.</p><p>Please <b>restart the container</b> to apply changes.</p>", false);
                 } else if (data.action === 'manual_instruction') {
-                    if (confirm("⬇️ Update Available! Download from GitHub?")) {
+                    if (confirm("Update available. Download from GitHub?")) {
                         window.open('https://github.com/softerfish/seekandwatch/releases', '_blank');
                     }
                 } else {
@@ -593,7 +593,7 @@
 <!-- Request Modal -->
 <div id="request-modal" class="request-modal-overlay" onclick="if(event.target===this) closeRequestModal()">
     <div class="request-modal-box">
-        <button type="button" class="modal-close-btn" onclick="closeRequestModal()" aria-label="Close">×</button>
+        <button type="button" class="modal-close-btn" onclick="closeRequestModal()" aria-label="Close">&times;</button>
         
         <div class="request-modal-header">
             <div class="request-modal-banner" id="request-modal-banner"></div>

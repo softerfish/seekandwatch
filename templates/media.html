@@ -285,7 +285,7 @@
                     const status = (item.status || '').toString().toLowerCase();
                     const statusBarClass = `status-${status.replace(' ', '-')}`;
                     const addedDate = item.added ? formatAddedDate(item.added) : 'N/A';
-                    const mediaTypeIcon = item.media_type === 'tv' ? '📺' : '🎬';
+                    const mediaTypeIcon = item.media_type === 'tv' ? 'TV' : 'Movie';
 
                     html += `<div class="media-poster-card">
                     <div class="media-poster-image-container">
@@ -313,7 +313,7 @@
 
                     // Previous button (only show if not on first page)
                     if (pagination.page > 1) {
-                        html += `<button class="action-btn" onclick="goToRequestedPage(${pagination.page - 1})" style="padding: 8px 16px;">← Previous</button>`;
+                        html += `<button class="action-btn" onclick="goToRequestedPage(${pagination.page - 1})" style="padding: 8px 16px;">Previous</button>`;
                     }
 
                     // Page info (always show)

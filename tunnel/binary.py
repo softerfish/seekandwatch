@@ -1,6 +1,4 @@
-"""
-cloudflared binary management - download, verification, and updates
-"""
+"""Download and manage the local cloudflared binary."""
 
 import os
 import platform
@@ -179,9 +177,8 @@ class BinaryManager:
             BinaryDownloadError: If download fails
         """
         try:
-            # construct download URL
-            # github releases use the pattern: /releases/download/{version}/cloudflared-{platform}
-            # we use a known stable version by default instead of "latest" which doesn't work
+            # GitHub releases use /releases/download/{version}/cloudflared-{platform}.
+            # We pin a known good version here instead of relying on "latest".
             url = f"{self.CLOUDFLARE_DOWNLOAD_BASE}/{version}/cloudflared-{platform_str}"
             
             binary_path = self._get_binary_path()

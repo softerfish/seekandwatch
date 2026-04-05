@@ -487,26 +487,33 @@ class CollectionService:
             friends = _bool_attr(a.get('promotedToSharedHome'))
             return (home, lib, friends)
 
+        def walk(e):
+            if e is None:
+                return None
+            result = _from_elem(e)
+            if result is not None:
+                return result
+            try:
+                for child in list(e) if hasattr(e, '__iter__') and not isinstance(e, (str, bytes)) else []:
+                    result = walk(child)
+                    if result is not None:
+                        return result
+            except Exception:
+                pass
+            return None
+
+        primary_error = None
+        fallback_error = None
+
         try:
             hub_id = 'custom.collection.%s.%s' % (section_id, rating_key)
             path = '/hubs/sections/%s/manage/%s' % (section_id, hub_id)
             data = server.query(path)
             if data is None: return (None, None, None)
-            
-            def walk(e):
-                if e is None: return None
-                r = _from_elem(e)
-                if r is not None: return r
-                try:
-                    for child in list(e) if hasattr(e, '__iter__') and not isinstance(e, (str, bytes)) else []:
-                        r = walk(child)
-                        if r is not None: return r
-                except: pass
-                return None
-            
+
             result = walk(data)
             if result is not None: return result
-            
+
             if hasattr(data, 'find') and callable(data.find):
                 for tag in ('Directory', 'directory', 'Hub', 'hub'):
                     elem = data.find(tag) or data.find('.//' + tag)
@@ -516,9 +523,9 @@ class CollectionService:
             if hasattr(data, 'attrib'):
                 result = _from_elem(data)
                 if result is not None: return result
-        except Exception:
-            log.debug("get_collection_visibility error")
-        
+        except Exception as e:
+            primary_error = e
+
         try:
             path2 = '/hubs/sections/%s/manage?metadataItemId=%s' % (section_id, rating_key)
             data = server.query(path2)
@@ -531,9 +538,33 @@ class CollectionService:
                             result = _from_elem(elem)
                             if result is not None: return result
                 return result or (None, None, None)
-        except Exception:
-            log.debug("get_collection_visibility fallback error")
-            
+        except Exception as e:
+            fallback_error = e
+
+        if primary_error or fallback_error:
+            if primary_error and fallback_error:
+                log.debug(
+                    "get_collection_visibility failed for section %s rating %s; primary=%s; fallback=%s",
+                    section_id,
+                    rating_key,
+                    primary_error,
+                    fallback_error,
+                )
+            elif primary_error:
+                log.debug(
+                    "get_collection_visibility primary lookup failed for section %s rating %s: %s",
+                    section_id,
+                    rating_key,
+                    primary_error,
+                )
+            else:
+                log.debug(
+                    "get_collection_visibility fallback lookup failed for section %s rating %s: %s",
+                    section_id,
+                    rating_key,
+                    fallback_error,
+                )
+
         return (None, None, None)
 
     @staticmethod

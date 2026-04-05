@@ -205,7 +205,7 @@ def image_proxy():
     if not target_url:
         return "Missing URL", 400
 
-    # 1. SSRF Protection & Validation
+    # allow only TMDB and the configured Plex host
     try:
         parsed = urlparse(target_url)
         s = current_user.settings
@@ -222,7 +222,7 @@ def image_proxy():
             write_log("warning", "Security", f"Blocked proxy attempt to untrusted domain: {parsed.netloc}")
             return "Forbidden: Domain not in allowlist", 403
             
-        # Reconstruct URL to prevent SSRF (CodeQL)
+        # rebuild the URL from safe pieces
         if is_tmdb:
             target_url = f"https://image.tmdb.org{parsed.path}"
         elif is_plex:
@@ -235,71 +235,70 @@ def image_proxy():
     except Exception as e:
         return f"Invalid URL: {type(e).__name__}", 400
 
-    # 2. Caching Logic
+    # cache proxied images on disk
     cache_dir = os.path.join('assets', 'cache', 'images')
     if not os.path.exists(cache_dir):
         try: os.makedirs(cache_dir, exist_ok=True)
-        except: pass # fallback to no cache if cannot create dir
+        except: pass # no cache if the directory can't be created
         
     cache_key = hashlib.md5(target_url.encode()).hexdigest()
     cache_path = os.path.join(cache_dir, cache_key)
     
-    # Check if cached and not expired (7 days)
+    # serve the cached file if it's still fresh
     use_cache = False
     if os.path.exists(cache_path):
         mtime = datetime.datetime.fromtimestamp(os.path.getmtime(cache_path))
         if (datetime.datetime.now() - mtime).days < 7:
             use_cache = True
         else:
-            try: os.remove(cache_path) # Expired
+            try: os.remove(cache_path) # stale cache file
             except: pass
 
     if use_cache:
         try:
-            return send_file(cache_path, conditional=True, max_age=86400) # 24h browser cache
-        except: pass # fallback to fetch if file read fails
+            return send_file(cache_path, conditional=True, max_age=86400) # let the browser keep it for a day
+        except: pass # fall back to fetching it again if cache read fails
 
-    # 3. Fetch from source
+    # fetch from the source
     try:
         headers = {'User-Agent': 'SeekAndWatch/1.0'}
         r = requests.get(target_url, headers=headers, stream=True, timeout=5, verify=False)
         
         if not r.ok:
-            # Smart Fallback (TMDB): if Plex 404s, try fetching from TMDB if IDs provided
+            # if Plex 404s and we have IDs, try TMDB instead
             tmdb_id = request.args.get('tmdb_id')
             media_type = request.args.get('media_type', 'movie')
             if is_plex and r.status_code == 404 and tmdb_id and s and s.tmdb_key:
                 try:
-                    # try to find the poster path on TMDB
+                    # look up the poster path on TMDB
                     t_url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}?api_key={s.tmdb_key}"
                     tr = requests.get(t_url, timeout=3)
                     if tr.ok:
                         p_path = tr.json().get('poster_path')
                         if p_path:
-                            # Recurse with TMDB URL
+                            # bounce back through this proxy with the TMDB URL
                             return redirect(url_for('web_utility.image_proxy', url=f"https://image.tmdb.org/t/p/w500{p_path}"))
                 except: pass
             
             return f"Source Error: {r.status_code}", 404
             
-        # Verify Content-Type (Only images)
+        # only proxy actual images
         content_type = r.headers.get('Content-Type', '')
         if not content_type.startswith('image/'):
             return "Forbidden: Not an image", 403
 
-        # 4. Stream and Cache
-        image_data = r.content # Read into memory for caching
+        # read it once so we can return it and cache it
+        image_data = r.content  # read into memory so we can cache it too
         
-        # Check disk space safety (>5MB remaining on disk, simplified)
         try:
             if os.path.exists(cache_dir):
-                # Write to cache
+                # save a copy to cache
                 with open(cache_path, 'wb') as f:
                     f.write(image_data)
         except: pass
         
         res = Response(image_data, content_type=content_type)
-        res.headers['Cache-Control'] = 'public, max-age=86400' # 24h browser cache
+        res.headers['Cache-Control'] = 'public, max-age=86400'  # let the browser cache it for a day
         return res
 
     except Exception as e:

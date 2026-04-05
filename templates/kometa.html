@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 {% block page_title %}Kometa{% endblock %}
 {% block content %}
 
@@ -6,10 +6,10 @@
     <h3>Kometa Config Builder</h3>
     <p>
         This tool generates a <strong>foundational</strong> configuration. For help using this builder, see the 
-        <a href="https://github.com/meisnate12/Plex-Meta-Manager/wiki" target="_blank">Kometa Wiki ↗</a>. 
+        <a href="https://github.com/meisnate12/Plex-Meta-Manager/wiki" target="_blank">Kometa Wiki</a>. 
         For a full list of available collections, customization options, and advanced features, please consult the official 
-        <a href="https://kometa.wiki/en/latest/defaults/collections/" target="_blank">Kometa Defaults (collections) ↗</a> and 
-        <a href="https://kometa.wiki/en/latest/defaults/overlays/" target="_blank">Kometa Overlay Defaults ↗</a>.
+        <a href="https://kometa.wiki/en/latest/defaults/collections/" target="_blank">Kometa Defaults (collections)</a> and 
+        <a href="https://kometa.wiki/en/latest/defaults/overlays/" target="_blank">Kometa Overlay Defaults</a>.
     </p>
     
     <div class="intro-tip-box">
@@ -48,11 +48,11 @@
 <div id="performance-indicator">
     <div class="perf-content">
         <div>
-            <strong class="kometa-performance-text">📊 Performance Estimate: <span class="info-icon" title="Calculation: (Collections × 3s) + (Overlays × 1.5s). Multipliers: Genre=20, Actor=50, Director=30, Streaming=20, Studio=25, Year=30, Decade=10, Franchise=15, Universe=10, Rating=6. Estimates vary by library content.">ℹ️</span></strong>
+            <strong class="kometa-performance-text">Performance Estimate: <span class="info-icon" title="Calculation: (Collections x 3s) + (Overlays x 1.5s). Multipliers: Genre=20, Actor=50, Director=30, Streaming=20, Studio=25, Year=30, Decade=10, Franchise=15, Universe=10, Rating=6. Estimates vary by library content.">i</span></strong>
             <span id="perf-collections" class="perf-text"></span>
             <span id="perf-runtime" class="perf-text"></span>
         </div>
-        <button onclick="document.getElementById('performance-indicator').style.display='none'" class="perf-close-btn">×</button>
+        <button onclick="document.getElementById('performance-indicator').style.display='none'" class="perf-close-btn">&times;</button>
     </div>
 </div>
 
@@ -72,19 +72,19 @@
                 <div class="mb-15 fs-small text-muted border-bottom pb-10">These are mandatory for Kometa to function.</div>
                 
                 <div class="k-input-row">
-                    <label>Plex URL <span class="info-icon" title="Local IP of your Plex Server">ℹ️</span></label>
+                    <label>Plex URL <span class="info-icon" title="Local IP of your Plex Server">i</span></label>
                     <input type="text" id="plex_url" value="{{ settings.plex_url or '' }}" placeholder="http://192.168.1.X:32400" oninput="gen()">
                 </div>
                 <div class="info-text">Example: http://192.168.1.50:32400</div>
 
                 <div class="k-input-row">
-                    <label>Plex Token <span class="info-icon" title="Find this in the XML of any media item in Plex">ℹ️</span></label>
+                    <label>Plex Token <span class="info-icon" title="Find this in the XML of any media item in Plex">i</span></label>
                     <input type="password" id="plex_token" value="{{ settings.plex_token or '' }}" placeholder="X-Plex-Token" oninput="gen()" autocomplete="off">
                 </div>
                 <div class="info-text">The X-Plex-Token used to authenticate.</div>
 
                 <div class="k-input-row">
-                    <label>TMDB Key <span class="info-icon" title="API Key from themoviedb.org">ℹ️</span></label>
+                    <label>TMDB Key <span class="info-icon" title="API Key from themoviedb.org">i</span></label>
                     <input type="password" id="tmdb_key" value="{{ settings.tmdb_key or '' }}" placeholder="API Key" oninput="gen()" autocomplete="off">
                 </div>
                 <div class="info-text">Required to look up metadata and posters.</div>
@@ -96,7 +96,7 @@
                 <h4 class="border-none">System & Caching</h4>
                 
                 <div class="k-input-row">
-                    <label>Cache Enabled <span class="info-icon" title="Speeds up runs by saving TMDB/Plex data locally.">ℹ️</span></label>
+                    <label>Cache Enabled <span class="info-icon" title="Speeds up runs by saving TMDB/Plex data locally.">i</span></label>
                     <select id="s_cache" onchange="gen()">
                         <option value="true" selected>True (Recommended)</option>
                         <option value="false">False</option>
@@ -105,13 +105,13 @@
                 <div class="info-text">Speeds up runs by saving TMDB/Plex data locally.</div>
 
                 <div class="k-input-row">
-                    <label>Cache Expiry (Days) <span class="info-icon" title="Days before each cache mapping expires and must be re-cached.">ℹ️</span></label>
+                    <label>Cache Expiry (Days) <span class="info-icon" title="Days before each cache mapping expires and must be re-cached.">i</span></label>
                     <input type="number" id="s_cache_expiration" value="60" oninput="gen()">
                 </div>
                 <div class="info-text">How long to keep metadata before refreshing it from TMDB.</div>
 
                 <div class="k-input-row">
-                    <label>Run Order <span class="info-icon" title="The order Kometa performs tasks. Default is Operations > Metadata > Collections > Overlays.">ℹ️</span></label>
+                    <label>Run Order <span class="info-icon" title="The order Kometa performs tasks. Default is Operations > Metadata > Collections > Overlays.">i</span></label>
                     <select id="s_run_order" onchange="gen()">
                         <option value="default" selected>Default (Ops > Meta > Coll > Overlays)</option>
                         <option value="collections_first">Collections First</option>
@@ -124,7 +124,7 @@
                 <h4 class="border-none">Assets & Folders</h4>
                 
                 <div class="k-input-row">
-                    <label>Asset Folders <span class="info-icon" title="Expects one folder per item in your assets directory (e.g. Assets/Star Wars/poster.jpg).">ℹ️</span></label>
+                    <label>Asset Folders <span class="info-icon" title="Expects one folder per item in your assets directory (e.g. Assets/Star Wars/poster.jpg).">i</span></label>
                     <select id="s_asset_folders" onchange="gen()">
                         <option value="true" selected>True</option>
                         <option value="false">False</option>
@@ -133,7 +133,7 @@
                 <div class="info-text">Expects one folder per item in your assets directory?</div>
 
                 <div class="k-input-row">
-                    <label>Show Missing Assets <span class="info-icon" title="Logs a warning if an item is missing a custom poster in your assets folder.">ℹ️</span></label>
+                    <label>Show Missing Assets <span class="info-icon" title="Logs a warning if an item is missing a custom poster in your assets folder.">i</span></label>
                     <select id="s_show_missing" onchange="gen()">
                         <option value="true" selected>True</option>
                         <option value="false">False</option>
@@ -146,7 +146,7 @@
                 <h4 class="border-none">Collection Management</h4>
 
                 <div class="k-input-row">
-                    <label>Sync Mode <span class="info-icon" title="'Sync' removes items from collections if they no longer match the rules. 'Append' only adds new items.">ℹ️</span></label>
+                    <label>Sync Mode <span class="info-icon" title="'Sync' removes items from collections if they no longer match the rules. 'Append' only adds new items.">i</span></label>
                     <select id="s_sync_mode" onchange="gen()">
                         <option value="append" selected>Append (Add only)</option>
                         <option value="sync">Sync (Add & Remove)</option>
@@ -155,7 +155,7 @@
                 <div class="info-text">'Sync' will remove items from collections if they no longer match the rules.</div>
 
                 <div class="k-input-row">
-                    <label>Delete Below Min <span class="info-icon" title="Delete the entire collection if it has fewer than the minimum number of items.">ℹ️</span></label>
+                    <label>Delete Below Min <span class="info-icon" title="Delete the entire collection if it has fewer than the minimum number of items.">i</span></label>
                     <select id="s_delete_below_min" onchange="gen()">
                         <option value="false" selected>False</option>
                         <option value="true">True</option>
@@ -164,7 +164,7 @@
                 <div class="info-text">Delete the collection if it has fewer than the minimum items?</div>
                 
                 <div class="k-input-row">
-                    <label>Minimum Items <span class="info-icon" title="Minimum items that must be found to create a collection.">ℹ️</span></label>
+                    <label>Minimum Items <span class="info-icon" title="Minimum items that must be found to create a collection.">i</span></label>
                     <input type="number" id="s_minimum_items" value="1" oninput="gen()">
                 </div>
             </div>
@@ -173,7 +173,7 @@
                 <h4 class="border-none">Overlay Quality</h4>
                 
                 <div class="k-input-row">
-                    <label>Artwork Quality (0-100) <span class="info-icon" title="Compression level for generated posters. Higher = Larger files.">ℹ️</span></label>
+                    <label>Artwork Quality (0-100) <span class="info-icon" title="Compression level for generated posters. Higher = Larger files.">i</span></label>
                     <input type="number" id="s_artwork_quality" value="90" oninput="gen()">
                 </div>
                 <div class="info-text">Compression level for generated posters. Higher = Larger files.</div>
@@ -186,7 +186,7 @@
                 <p class="text-muted fs-normal mb-20 border-bottom pb-10">Configure one or more Plex libraries.</p>
 
                 <div class="k-input-row">
-                    <label>Library <button class="btn-refresh" onclick="fetchLibs()" title="Refresh Libraries">🔄</button></label>
+                    <label>Library <button class="btn-refresh" onclick="fetchLibs()" title="Refresh Libraries">Refresh</button></label>
                     <select id="temp_lib_name" onchange="autoSelectType(); toggleOptions();">
                         <option value="" disabled selected>Loading libraries...</option>
                     </select>
@@ -195,9 +195,9 @@
                 <div class="k-input-row">
                     <label>Type</label>
                     <select id="temp_lib_type" onchange="filterOpts(); gen();">
-                        <option value="movie">Movies 🎬</option>
-                        <option value="tv">TV Shows 📺</option>
-                        <option value="anime">Anime 🏯</option>
+                        <option value="movie">Movies</option>
+                        <option value="tv">TV Shows</option>
+                        <option value="anime">Anime</option>
                     </select>
                 </div>
 
@@ -205,133 +205,133 @@
                     
                     <div class="k-sub-header">Popular Charts (Safe)</div>
                     <div class="k-check-grid" id="opt-container">
-                        <div class="k-check-item type-all"><label title="Generates collections based on TMDb popularity (Trending, Popular, etc)."><input type="checkbox" class="t-opt" value="tmdb" onchange="gen()"> TMDB Popular</label><button class="btn-gear" onclick="editVars('tmdb', event)">⚙️</button></div>
-                        <div class="k-check-item type-all"><label title="Generates the IMDb Top 250 Movies/Shows chart."><input type="checkbox" class="t-opt" value="imdb" onchange="gen()"> IMDb Top 250</label><button class="btn-gear" onclick="editVars('imdb', event)">⚙️</button></div>
-                        <div class="k-check-item type-all"><label title="Generates collections for New Releases, Released Today, and Recently Added items."><input type="checkbox" class="t-opt" value="basic" onchange="gen()"> New Releases</label><button class="btn-gear" onclick="editVars('basic', event)">⚙️</button></div>
-                        <div class="k-check-item type-all"><label title="Top rated and popular anime from AniList."><input type="checkbox" class="t-opt" value="anilist" onchange="gen()"> AniList Charts</label><button class="btn-gear" onclick="editVars('anilist', event)">⚙️</button></div>
-                        <div class="k-check-item type-all"><label title="Popular lists and charts from Letterboxd."><input type="checkbox" class="t-opt" value="letterboxd" onchange="gen()"> Letterboxd Charts</label><button class="btn-gear" onclick="editVars('letterboxd', event)">⚙️</button></div>
-                        <div class="k-check-item type-all"><label title="Top anime lists from MyAnimeList."><input type="checkbox" class="t-opt" value="myanimelist" onchange="gen()"> MyAnimeList Charts</label><button class="btn-gear" onclick="editVars('myanimelist', event)">⚙️</button></div>
-                        <div class="k-check-item type-all"><label title="Various other chart providers and trending lists."><input type="checkbox" class="t-opt" value="other_chart" onchange="gen()"> Other Charts</label><button class="btn-gear" onclick="editVars('other_chart', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Generates collections based on TMDb popularity (Trending, Popular, etc)."><input type="checkbox" class="t-opt" value="tmdb" onchange="gen()"> TMDB Popular</label><button class="btn-gear" onclick="editVars('tmdb', event)">Edit</button></div>
+                        <div class="k-check-item type-all"><label title="Generates the IMDb Top 250 Movies/Shows chart."><input type="checkbox" class="t-opt" value="imdb" onchange="gen()"> IMDb Top 250</label><button class="btn-gear" onclick="editVars('imdb', event)">Edit</button></div>
+                        <div class="k-check-item type-all"><label title="Generates collections for New Releases, Released Today, and Recently Added items."><input type="checkbox" class="t-opt" value="basic" onchange="gen()"> New Releases</label><button class="btn-gear" onclick="editVars('basic', event)">Edit</button></div>
+                        <div class="k-check-item type-all"><label title="Top rated and popular anime from AniList."><input type="checkbox" class="t-opt" value="anilist" onchange="gen()"> AniList Charts</label><button class="btn-gear" onclick="editVars('anilist', event)">Edit</button></div>
+                        <div class="k-check-item type-all"><label title="Popular lists and charts from Letterboxd."><input type="checkbox" class="t-opt" value="letterboxd" onchange="gen()"> Letterboxd Charts</label><button class="btn-gear" onclick="editVars('letterboxd', event)">Edit</button></div>
+                        <div class="k-check-item type-all"><label title="Top anime lists from MyAnimeList."><input type="checkbox" class="t-opt" value="myanimelist" onchange="gen()"> MyAnimeList Charts</label><button class="btn-gear" onclick="editVars('myanimelist', event)">Edit</button></div>
+                        <div class="k-check-item type-all"><label title="Various other chart providers and trending lists."><input type="checkbox" class="t-opt" value="other_chart" onchange="gen()"> Other Charts</label><button class="btn-gear" onclick="editVars('other_chart', event)">Edit</button></div>
                     </div>
 
                     <div class="k-sub-header">Content</div>
                     <div class="k-check-grid">
-                        <div class="k-check-item type-all"><label title="Generates collections for every Genre (Action, Comedy, etc.) found in your library."><input type="checkbox" class="t-opt" value="genre" onchange="gen()"> Genres</label><button class="btn-gear" onclick="editVars('genre', event)">⚙️</button></div>
-                        <div class="k-check-item type-all"><label title="Generates collections for franchises (Star Wars, James Bond, Fast & Furious, etc.)."><input type="checkbox" class="t-opt" value="franchise" onchange="gen()"> Franchises</label><button class="btn-gear" onclick="editVars('franchise', event)">⚙️</button></div>
-                        <div class="k-check-item type-all"><label title="Generates collections for shared universes (MCU, DCEU, Star Trek, etc.)."><input type="checkbox" class="t-opt" value="universe" onchange="gen()"> Universes</label><button class="btn-gear" onclick="editVars('universe', event)">⚙️</button></div>
-                        <div class="k-check-item type-all"><label title="Collections based on source material (Based on Book, Based on Comic, etc.)."><input type="checkbox" class="t-opt" value="based" onchange="gen()"> Based On...</label><button class="btn-gear" onclick="editVars('based', event)">⚙️</button></div>
-                        <div class="k-check-item type-all"><label title="Finds items that are not part of any other collection."><input type="checkbox" class="t-opt" value="collectionless" onchange="gen()"> Collectionless</label><button class="btn-gear" onclick="editVars('collectionless', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Generates collections for every Genre (Action, Comedy, etc.) found in your library."><input type="checkbox" class="t-opt" value="genre" onchange="gen()"> Genres</label><button class="btn-gear" onclick="editVars('genre', event)">Edit</button></div>
+                        <div class="k-check-item type-all"><label title="Generates collections for franchises (Star Wars, James Bond, Fast & Furious, etc.)."><input type="checkbox" class="t-opt" value="franchise" onchange="gen()"> Franchises</label><button class="btn-gear" onclick="editVars('franchise', event)">Edit</button></div>
+                        <div class="k-check-item type-all"><label title="Generates collections for shared universes (MCU, DCEU, Star Trek, etc.)."><input type="checkbox" class="t-opt" value="universe" onchange="gen()"> Universes</label><button class="btn-gear" onclick="editVars('universe', event)">Edit</button></div>
+                        <div class="k-check-item type-all"><label title="Collections based on source material (Based on Book, Based on Comic, etc.)."><input type="checkbox" class="t-opt" value="based" onchange="gen()"> Based On...</label><button class="btn-gear" onclick="editVars('based', event)">Edit</button></div>
+                        <div class="k-check-item type-all"><label title="Finds items that are not part of any other collection."><input type="checkbox" class="t-opt" value="collectionless" onchange="gen()"> Collectionless</label><button class="btn-gear" onclick="editVars('collectionless', event)">Edit</button></div>
                     </div>
 
                     <div class="k-sub-header">People</div>
                     <div class="k-check-grid">
-                        <div class="k-check-item type-all"><label title="Collections for popular Actors."><input type="checkbox" class="t-opt" value="actor" onchange="gen()"> Actors</label><button class="btn-gear" onclick="editVars('actor', event)">⚙️</button></div>
-                        <div class="k-check-item type-tv hidden"><label title="Collections for popular Directors."><input type="checkbox" class="t-opt" value="director" onchange="gen()"> Directors</label><button class="btn-gear" onclick="editVars('director', event)">⚙️</button></div>
-                        <div class="k-check-item type-tv hidden"><label title="Collections for popular Producers."><input type="checkbox" class="t-opt" value="producer" onchange="gen()"> Producers</label><button class="btn-gear" onclick="editVars('producer', event)">⚙️</button></div>
-                        <div class="k-check-item type-tv hidden"><label title="Collections for popular Writers."><input type="checkbox" class="t-opt" value="writer" onchange="gen()"> Writers</label><button class="btn-gear" onclick="editVars('writer', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Collections for popular Actors."><input type="checkbox" class="t-opt" value="actor" onchange="gen()"> Actors</label><button class="btn-gear" onclick="editVars('actor', event)">Edit</button></div>
+                        <div class="k-check-item type-tv hidden"><label title="Collections for popular Directors."><input type="checkbox" class="t-opt" value="director" onchange="gen()"> Directors</label><button class="btn-gear" onclick="editVars('director', event)">Edit</button></div>
+                        <div class="k-check-item type-tv hidden"><label title="Collections for popular Producers."><input type="checkbox" class="t-opt" value="producer" onchange="gen()"> Producers</label><button class="btn-gear" onclick="editVars('producer', event)">Edit</button></div>
+                        <div class="k-check-item type-tv hidden"><label title="Collections for popular Writers."><input type="checkbox" class="t-opt" value="writer" onchange="gen()"> Writers</label><button class="btn-gear" onclick="editVars('writer', event)">Edit</button></div>
                     </div>
 
-                    <div class="k-sub-header">🏭 Production</div>
+                    <div class="k-sub-header">Production</div>
                     <div class="k-check-grid">
-                        <div class="k-check-item type-tv hidden"><label title="Generates collections for TV Networks (HBO, AMC, NBC, etc.)."><input type="checkbox" class="t-opt" value="network" onchange="gen()"> Networks</label><button class="btn-gear" onclick="editVars('network', event)">⚙️</button></div>
-                        <div class="k-check-item type-all"><label title="Generates collections for Streaming Services (Netflix, Disney+, Hulu, etc.)."><input type="checkbox" class="t-opt" value="streaming" onchange="gen()"> Streaming Services</label><button class="btn-gear" onclick="editVars('streaming', event)">⚙️</button></div>
-                        <div class="k-check-item type-all"><label title="Generates collections for major studios (Pixar, A24, Warner Bros, etc.)."><input type="checkbox" class="t-opt" value="studio" onchange="gen()"> Studios</label><button class="btn-gear" onclick="editVars('studio', event)">⚙️</button></div>
+                        <div class="k-check-item type-tv hidden"><label title="Generates collections for TV Networks (HBO, AMC, NBC, etc.)."><input type="checkbox" class="t-opt" value="network" onchange="gen()"> Networks</label><button class="btn-gear" onclick="editVars('network', event)">Edit</button></div>
+                        <div class="k-check-item type-all"><label title="Generates collections for Streaming Services (Netflix, Disney+, Hulu, etc.)."><input type="checkbox" class="t-opt" value="streaming" onchange="gen()"> Streaming Services</label><button class="btn-gear" onclick="editVars('streaming', event)">Edit</button></div>
+                        <div class="k-check-item type-all"><label title="Generates collections for major studios (Pixar, A24, Warner Bros, etc.)."><input type="checkbox" class="t-opt" value="studio" onchange="gen()"> Studios</label><button class="btn-gear" onclick="editVars('studio', event)">Edit</button></div>
                     </div>
 
                     <div class="k-sub-header">Time</div>
                     <div class="k-check-grid">
-                        <div class="k-check-item type-movie"><label title="Generates seasonal collections (Christmas, Halloween) that appear only during specific times of year."><input type="checkbox" class="t-opt" value="seasonal" onchange="gen()"> Seasonal (Holidays)</label><button class="btn-gear" onclick="editVars('seasonal', event)">⚙️</button></div>
-                        <div class="k-check-item type-all"><label title="Generates collections for specific release years."><input type="checkbox" class="t-opt" value="year" onchange="gen()"> Release Year</label><button class="btn-gear" onclick="editVars('year', event)">⚙️</button></div>
-                        <div class="k-check-item type-all"><label title="Generates collections for decades (1980s, 1990s, 2000s, etc.)."><input type="checkbox" class="t-opt" value="decade" onchange="gen()"> Decades</label><button class="btn-gear" onclick="editVars('decade', event)">⚙️</button></div>
-                        <div class="k-check-item type-tv hidden"><label title="Generates collections for 'Ended', 'Returning', or 'Canceled' shows."><input type="checkbox" class="t-opt" value="status" onchange="gen()"> Status (Ended/Running)</label><button class="btn-gear" onclick="editVars('status', event)">⚙️</button></div>
+                        <div class="k-check-item type-movie"><label title="Generates seasonal collections (Christmas, Halloween) that appear only during specific times of year."><input type="checkbox" class="t-opt" value="seasonal" onchange="gen()"> Seasonal (Holidays)</label><button class="btn-gear" onclick="editVars('seasonal', event)">Edit</button></div>
+                        <div class="k-check-item type-all"><label title="Generates collections for specific release years."><input type="checkbox" class="t-opt" value="year" onchange="gen()"> Release Year</label><button class="btn-gear" onclick="editVars('year', event)">Edit</button></div>
+                        <div class="k-check-item type-all"><label title="Generates collections for decades (1980s, 1990s, 2000s, etc.)."><input type="checkbox" class="t-opt" value="decade" onchange="gen()"> Decades</label><button class="btn-gear" onclick="editVars('decade', event)">Edit</button></div>
+                        <div class="k-check-item type-tv hidden"><label title="Generates collections for 'Ended', 'Returning', or 'Canceled' shows."><input type="checkbox" class="t-opt" value="status" onchange="gen()"> Status (Ended/Running)</label><button class="btn-gear" onclick="editVars('status', event)">Edit</button></div>
                     </div>
 
                     <div class="k-sub-header">Content Ratings</div>
                     <div class="k-check-grid">
-                        <div class="k-check-item type-all"><label title="US Ratings (G, PG, PG-13, R / TV-MA, etc)."><input type="checkbox" class="t-opt" value="content_rating_us" onchange="gen()"> US Ratings</label><button class="btn-gear" onclick="editVars('content_rating_us', event)">⚙️</button></div>
-                        <div class="k-check-item type-all"><label title="UK Ratings (U, 12, 15, 18)."><input type="checkbox" class="t-opt" value="content_rating_uk" onchange="gen()"> UK Ratings</label><button class="btn-gear" onclick="editVars('content_rating_uk', event)">⚙️</button></div>
-                        <div class="k-check-item type-all"><label title="German FSK Ratings."><input type="checkbox" class="t-opt" value="content_rating_de" onchange="gen()"> DE Ratings</label><button class="btn-gear" onclick="editVars('content_rating_de', event)">⚙️</button></div>
-                        <div class="k-check-item type-all"><label title="Australian Ratings."><input type="checkbox" class="t-opt" value="content_rating_au" onchange="gen()"> AU Ratings</label><button class="btn-gear" onclick="editVars('content_rating_au', event)">⚙️</button></div>
-                        <div class="k-check-item type-all"><label title="New Zealand Ratings."><input type="checkbox" class="t-opt" value="content_rating_nz" onchange="gen()"> NZ Ratings</label><button class="btn-gear" onclick="editVars('content_rating_nz', event)">⚙️</button></div>
-                        <div class="k-check-item type-all"><label title="MyAnimeList Content Ratings."><input type="checkbox" class="t-opt" value="content_rating_mal" onchange="gen()"> MAL Ratings</label><button class="btn-gear" onclick="editVars('content_rating_mal', event)">⚙️</button></div>
-                        <div class="k-check-item type-all"><label title="Common Sense Media Age Ratings."><input type="checkbox" class="t-opt" value="content_rating_cs" onchange="gen()"> Common Sense</label><button class="btn-gear" onclick="editVars('content_rating_cs', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="US Ratings (G, PG, PG-13, R / TV-MA, etc)."><input type="checkbox" class="t-opt" value="content_rating_us" onchange="gen()"> US Ratings</label><button class="btn-gear" onclick="editVars('content_rating_us', event)">Edit</button></div>
+                        <div class="k-check-item type-all"><label title="UK Ratings (U, 12, 15, 18)."><input type="checkbox" class="t-opt" value="content_rating_uk" onchange="gen()"> UK Ratings</label><button class="btn-gear" onclick="editVars('content_rating_uk', event)">Edit</button></div>
+                        <div class="k-check-item type-all"><label title="German FSK Ratings."><input type="checkbox" class="t-opt" value="content_rating_de" onchange="gen()"> DE Ratings</label><button class="btn-gear" onclick="editVars('content_rating_de', event)">Edit</button></div>
+                        <div class="k-check-item type-all"><label title="Australian Ratings."><input type="checkbox" class="t-opt" value="content_rating_au" onchange="gen()"> AU Ratings</label><button class="btn-gear" onclick="editVars('content_rating_au', event)">Edit</button></div>
+                        <div class="k-check-item type-all"><label title="New Zealand Ratings."><input type="checkbox" class="t-opt" value="content_rating_nz" onchange="gen()"> NZ Ratings</label><button class="btn-gear" onclick="editVars('content_rating_nz', event)">Edit</button></div>
+                        <div class="k-check-item type-all"><label title="MyAnimeList Content Ratings."><input type="checkbox" class="t-opt" value="content_rating_mal" onchange="gen()"> MAL Ratings</label><button class="btn-gear" onclick="editVars('content_rating_mal', event)">Edit</button></div>
+                        <div class="k-check-item type-all"><label title="Common Sense Media Age Ratings."><input type="checkbox" class="t-opt" value="content_rating_cs" onchange="gen()"> Common Sense</label><button class="btn-gear" onclick="editVars('content_rating_cs', event)">Edit</button></div>
                     </div>
 
                     <div class="k-sub-header">Media Attributes</div>
                     <div class="k-check-grid">
-                        <div class="k-check-item type-all"><label title="Group by Aspect Ratio (e.g. 2.35:1, 16:9)."><input type="checkbox" class="t-opt" value="aspect" onchange="gen()"> Aspect Ratios</label><button class="btn-gear" onclick="editVars('aspect', event)">⚙️</button></div>
-                        <div class="k-check-item type-all"><label title="Group by Resolution (4K, 1080p, SD)."><input type="checkbox" class="t-opt" value="resolution" onchange="gen()"> Resolutions</label><button class="btn-gear" onclick="editVars('resolution', event)">⚙️</button></div>
-                        <div class="k-check-item type-all"><label title="Group by Audio Language tracks."><input type="checkbox" class="t-opt" value="audio_language" onchange="gen()"> Audio Languages</label><button class="btn-gear" onclick="editVars('audio_language', event)">⚙️</button></div>
-                        <div class="k-check-item type-all"><label title="Group by Subtitle Language tracks."><input type="checkbox" class="t-opt" value="subtitle_language" onchange="gen()"> Subtitle Languages</label><button class="btn-gear" onclick="editVars('subtitle_language', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Group by Aspect Ratio (e.g. 2.35:1, 16:9)."><input type="checkbox" class="t-opt" value="aspect" onchange="gen()"> Aspect Ratios</label><button class="btn-gear" onclick="editVars('aspect', event)">Edit</button></div>
+                        <div class="k-check-item type-all"><label title="Group by Resolution (4K, 1080p, SD)."><input type="checkbox" class="t-opt" value="resolution" onchange="gen()"> Resolutions</label><button class="btn-gear" onclick="editVars('resolution', event)">Edit</button></div>
+                        <div class="k-check-item type-all"><label title="Group by Audio Language tracks."><input type="checkbox" class="t-opt" value="audio_language" onchange="gen()"> Audio Languages</label><button class="btn-gear" onclick="editVars('audio_language', event)">Edit</button></div>
+                        <div class="k-check-item type-all"><label title="Group by Subtitle Language tracks."><input type="checkbox" class="t-opt" value="subtitle_language" onchange="gen()"> Subtitle Languages</label><button class="btn-gear" onclick="editVars('subtitle_language', event)">Edit</button></div>
                     </div>
 
                     <div class="k-sub-header">Awards</div>
                     <div class="k-check-grid">
-                        <div class="k-check-item type-movie"><label title="Academy Award 'Best Picture' winners."><input type="checkbox" class="t-opt" value="oscars" onchange="gen()"> Oscars (Academy)</label><button class="btn-gear" onclick="editVars('oscars', event)">⚙️</button></div>
-                        <div class="k-check-item type-movie"><label title="Golden Berlin Bear winners."><input type="checkbox" class="t-opt" value="berlinale" onchange="gen()"> Berlin (Berlinale)</label><button class="btn-gear" onclick="editVars('berlinale', event)">⚙️</button></div>
-                        <div class="k-check-item type-movie"><label title="BAFTA Award winners."><input type="checkbox" class="t-opt" value="bafta" onchange="gen()"> BAFTA</label><button class="btn-gear" onclick="editVars('bafta', event)">⚙️</button></div>
-                        <div class="k-check-item type-movie"><label title="Palme d'Or winners."><input type="checkbox" class="t-opt" value="cannes" onchange="gen()"> Cannes Film Festival</label><button class="btn-gear" onclick="editVars('cannes', event)">⚙️</button></div>
-                        <div class="k-check-item type-movie"><label title="César Award winners."><input type="checkbox" class="t-opt" value="cesar" onchange="gen()"> César Awards</label><button class="btn-gear" onclick="editVars('cesar', event)">⚙️</button></div>
-                        <div class="k-check-item type-movie"><label title="Independent Spirit Award winners."><input type="checkbox" class="t-opt" value="spirit" onchange="gen()"> Independent Spirit</label><button class="btn-gear" onclick="editVars('spirit', event)">⚙️</button></div>
-                        <div class="k-check-item type-movie"><label title="National Film Registry inductees."><input type="checkbox" class="t-opt" value="nfr" onchange="gen()"> National Film Registry</label><button class="btn-gear" onclick="editVars('nfr', event)">⚙️</button></div>
-                        <div class="k-check-item type-movie"><label title="Golden Raspberry Award (Razzie) winners."><input type="checkbox" class="t-opt" value="razzie" onchange="gen()"> Razzie Awards</label><button class="btn-gear" onclick="editVars('razzie', event)">⚙️</button></div>
-                        <div class="k-check-item type-movie"><label title="Sundance Film Festival winners."><input type="checkbox" class="t-opt" value="sundance" onchange="gen()"> Sundance</label><button class="btn-gear" onclick="editVars('sundance', event)">⚙️</button></div>
-                        <div class="k-check-item type-movie"><label title="Toronto International Film Festival People's Choice winners."><input type="checkbox" class="t-opt" value="tiff" onchange="gen()"> TIFF (Toronto)</label><button class="btn-gear" onclick="editVars('tiff', event)">⚙️</button></div>
-                        <div class="k-check-item type-movie"><label title="Golden Lion winners."><input type="checkbox" class="t-opt" value="venice" onchange="gen()"> Venice Film Festival</label><button class="btn-gear" onclick="editVars('venice', event)">⚙️</button></div>
+                        <div class="k-check-item type-movie"><label title="Academy Award 'Best Picture' winners."><input type="checkbox" class="t-opt" value="oscars" onchange="gen()"> Oscars (Academy)</label><button class="btn-gear" onclick="editVars('oscars', event)">Edit</button></div>
+                        <div class="k-check-item type-movie"><label title="Golden Berlin Bear winners."><input type="checkbox" class="t-opt" value="berlinale" onchange="gen()"> Berlin (Berlinale)</label><button class="btn-gear" onclick="editVars('berlinale', event)">Edit</button></div>
+                        <div class="k-check-item type-movie"><label title="BAFTA Award winners."><input type="checkbox" class="t-opt" value="bafta" onchange="gen()"> BAFTA</label><button class="btn-gear" onclick="editVars('bafta', event)">Edit</button></div>
+                        <div class="k-check-item type-movie"><label title="Palme d'Or winners."><input type="checkbox" class="t-opt" value="cannes" onchange="gen()"> Cannes Film Festival</label><button class="btn-gear" onclick="editVars('cannes', event)">Edit</button></div>
+                        <div class="k-check-item type-movie"><label title="Cesar Award winners."><input type="checkbox" class="t-opt" value="cesar" onchange="gen()"> Cesar Awards</label><button class="btn-gear" onclick="editVars('cesar', event)">Edit</button></div>
+                        <div class="k-check-item type-movie"><label title="Independent Spirit Award winners."><input type="checkbox" class="t-opt" value="spirit" onchange="gen()"> Independent Spirit</label><button class="btn-gear" onclick="editVars('spirit', event)">Edit</button></div>
+                        <div class="k-check-item type-movie"><label title="National Film Registry inductees."><input type="checkbox" class="t-opt" value="nfr" onchange="gen()"> National Film Registry</label><button class="btn-gear" onclick="editVars('nfr', event)">Edit</button></div>
+                        <div class="k-check-item type-movie"><label title="Golden Raspberry Award (Razzie) winners."><input type="checkbox" class="t-opt" value="razzie" onchange="gen()"> Razzie Awards</label><button class="btn-gear" onclick="editVars('razzie', event)">Edit</button></div>
+                        <div class="k-check-item type-movie"><label title="Sundance Film Festival winners."><input type="checkbox" class="t-opt" value="sundance" onchange="gen()"> Sundance</label><button class="btn-gear" onclick="editVars('sundance', event)">Edit</button></div>
+                        <div class="k-check-item type-movie"><label title="Toronto International Film Festival People's Choice winners."><input type="checkbox" class="t-opt" value="tiff" onchange="gen()"> TIFF (Toronto)</label><button class="btn-gear" onclick="editVars('tiff', event)">Edit</button></div>
+                        <div class="k-check-item type-movie"><label title="Golden Lion winners."><input type="checkbox" class="t-opt" value="venice" onchange="gen()"> Venice Film Festival</label><button class="btn-gear" onclick="editVars('venice', event)">Edit</button></div>
 
-                        <div class="k-check-item type-all"><label title="Emmy Award winners."><input type="checkbox" class="t-opt" value="emmy" onchange="gen()"> Emmys</label><button class="btn-gear" onclick="editVars('emmy', event)">⚙️</button></div>
-                        <div class="k-check-item type-all"><label title="Screen Actors Guild Award winners."><input type="checkbox" class="t-opt" value="sag" onchange="gen()"> SAG Awards</label><button class="btn-gear" onclick="editVars('sag', event)">⚙️</button></div>
-                        <div class="k-check-item type-all"><label title="People's Choice Award winners."><input type="checkbox" class="t-opt" value="pca" onchange="gen()"> People's Choice</label><button class="btn-gear" onclick="editVars('pca', event)">⚙️</button></div>
-                        <div class="k-check-item type-all"><label title="Golden Globe winners."><input type="checkbox" class="t-opt" value="golden" onchange="gen()"> Golden Globes</label><button class="btn-gear" onclick="editVars('golden', event)">⚙️</button></div>
-                        <div class="k-check-item type-all"><label title="Critics' Choice Award winners."><input type="checkbox" class="t-opt" value="choice" onchange="gen()"> Critics' Choice</label><button class="btn-gear" onclick="editVars('choice', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Emmy Award winners."><input type="checkbox" class="t-opt" value="emmy" onchange="gen()"> Emmys</label><button class="btn-gear" onclick="editVars('emmy', event)">Edit</button></div>
+                        <div class="k-check-item type-all"><label title="Screen Actors Guild Award winners."><input type="checkbox" class="t-opt" value="sag" onchange="gen()"> SAG Awards</label><button class="btn-gear" onclick="editVars('sag', event)">Edit</button></div>
+                        <div class="k-check-item type-all"><label title="People's Choice Award winners."><input type="checkbox" class="t-opt" value="pca" onchange="gen()"> People's Choice</label><button class="btn-gear" onclick="editVars('pca', event)">Edit</button></div>
+                        <div class="k-check-item type-all"><label title="Golden Globe winners."><input type="checkbox" class="t-opt" value="golden" onchange="gen()"> Golden Globes</label><button class="btn-gear" onclick="editVars('golden', event)">Edit</button></div>
+                        <div class="k-check-item type-all"><label title="Critics' Choice Award winners."><input type="checkbox" class="t-opt" value="choice" onchange="gen()"> Critics' Choice</label><button class="btn-gear" onclick="editVars('choice', event)">Edit</button></div>
                     </div>
 
                     <div class="k-sub-header">Awards/Charts (Overlay)</div>
                     <div class="k-check-grid">
-                        <div class="k-check-item type-all"><label title="Adds ribbons for IMDb Top 250, Rotten Tomatoes Fresh, Oscars, etc."><input type="checkbox" class="t-opt ovl" value="ribbon" onchange="gen()"> Ribbon</label><button class="btn-gear" onclick="editVars('ribbon', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Adds ribbons for IMDb Top 250, Rotten Tomatoes Fresh, Oscars, etc."><input type="checkbox" class="t-opt ovl" value="ribbon" onchange="gen()"> Ribbon</label><button class="btn-gear" onclick="editVars('ribbon', event)">Edit</button></div>
                     </div>
 
                     <div class="k-sub-header">Content (Overlay)</div>
                     <div class="k-check-grid">
-                        <div class="k-check-item type-tv hidden"><label title="Overlays season/episode counts on TV posters."><input type="checkbox" class="t-opt ovl" value="episode_info" onchange="gen()"> Episode Info</label><button class="btn-gear" onclick="editVars('episode_info', event)">⚙️</button></div>
-                        <div class="k-check-item type-movie"><label title="Overlays a badge if the movie has a post-credit scene."><input type="checkbox" class="t-opt ovl" value="mediastinger" onchange="gen()"> Mediastinger</label><button class="btn-gear" onclick="editVars('mediastinger', event)">⚙️</button></div>
-                        <div class="k-check-item type-all"><label title="Overlay IMDb/TMDb/Rotten Tomatoes ratings on posters."><input type="checkbox" class="t-opt ovl" value="ratings" onchange="gen()"> Ratings</label><button class="btn-gear" onclick="editVars('ratings', event)">⚙️</button></div>
-                        <div class="k-check-item type-tv hidden"><label title="Overlays 'Airing', 'Ended', or 'Canceled' status on show posters."><input type="checkbox" class="t-opt ovl" value="status" onchange="gen()"> Status</label><button class="btn-gear" onclick="editVars('status', event)">⚙️</button></div>
+                        <div class="k-check-item type-tv hidden"><label title="Overlays season/episode counts on TV posters."><input type="checkbox" class="t-opt ovl" value="episode_info" onchange="gen()"> Episode Info</label><button class="btn-gear" onclick="editVars('episode_info', event)">Edit</button></div>
+                        <div class="k-check-item type-movie"><label title="Overlays a badge if the movie has a post-credit scene."><input type="checkbox" class="t-opt ovl" value="mediastinger" onchange="gen()"> Mediastinger</label><button class="btn-gear" onclick="editVars('mediastinger', event)">Edit</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay IMDb/TMDb/Rotten Tomatoes ratings on posters."><input type="checkbox" class="t-opt ovl" value="ratings" onchange="gen()"> Ratings</label><button class="btn-gear" onclick="editVars('ratings', event)">Edit</button></div>
+                        <div class="k-check-item type-tv hidden"><label title="Overlays 'Airing', 'Ended', or 'Canceled' status on show posters."><input type="checkbox" class="t-opt ovl" value="status" onchange="gen()"> Status</label><button class="btn-gear" onclick="editVars('status', event)">Edit</button></div>
                     </div>
 
                     <div class="k-sub-header">Content Ratings (Overlay)</div>
                     <div class="k-check-grid">
-                        <div class="k-check-item type-all"><label title="Overlay Australian classification ratings (G, PG, M, etc.)."><input type="checkbox" class="t-opt ovl" value="content_rating_au" onchange="gen()"> AU Content Ratings</label><button class="btn-gear" onclick="editVars('content_rating_au', event)">⚙️</button></div>
-                        <div class="k-check-item type-all"><label title="Overlay Common Sense Media age-appropriate ratings."><input type="checkbox" class="t-opt ovl" value="commonsense" onchange="gen()"> Common Sense Age Rating</label><button class="btn-gear" onclick="editVars('commonsense', event)">⚙️</button></div>
-                        <div class="k-check-item type-all"><label title="Overlay German FSK classification ratings."><input type="checkbox" class="t-opt ovl" value="content_rating_de" onchange="gen()"> DE Content Ratings</label><button class="btn-gear" onclick="editVars('content_rating_de', event)">⚙️</button></div>
-                        <div class="k-check-item type-all"><label title="Overlay New Zealand classification ratings."><input type="checkbox" class="t-opt ovl" value="content_rating_nz" onchange="gen()"> NZ Content Ratings</label><button class="btn-gear" onclick="editVars('content_rating_nz', event)">⚙️</button></div>
-                        <div class="k-check-item type-all"><label title="Overlay UK BBFC classification ratings."><input type="checkbox" class="t-opt ovl" value="content_rating_uk" onchange="gen()"> UK Content Ratings</label><button class="btn-gear" onclick="editVars('content_rating_uk', event)">⚙️</button></div>
-                        <div class="k-check-item type-movie"><label title="Overlay US MPAA film ratings (G, PG, R, etc.)."><input type="checkbox" class="t-opt ovl" value="content_rating_us_movie" onchange="gen()"> US Content Ratings (Movie)</label><button class="btn-gear" onclick="editVars('content_rating_us_movie', event)">⚙️</button></div>
-                        <div class="k-check-item type-tv hidden"><label title="Overlay US TV Parental Guidelines (TV-14, TV-MA, etc.)."><input type="checkbox" class="t-opt ovl" value="content_rating_us_show" onchange="gen()"> US Content Ratings (Show)</label><button class="btn-gear" onclick="editVars('content_rating_us_show', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay Australian classification ratings (G, PG, M, etc.)."><input type="checkbox" class="t-opt ovl" value="content_rating_au" onchange="gen()"> AU Content Ratings</label><button class="btn-gear" onclick="editVars('content_rating_au', event)">Edit</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay Common Sense Media age-appropriate ratings."><input type="checkbox" class="t-opt ovl" value="commonsense" onchange="gen()"> Common Sense Age Rating</label><button class="btn-gear" onclick="editVars('commonsense', event)">Edit</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay German FSK classification ratings."><input type="checkbox" class="t-opt ovl" value="content_rating_de" onchange="gen()"> DE Content Ratings</label><button class="btn-gear" onclick="editVars('content_rating_de', event)">Edit</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay New Zealand classification ratings."><input type="checkbox" class="t-opt ovl" value="content_rating_nz" onchange="gen()"> NZ Content Ratings</label><button class="btn-gear" onclick="editVars('content_rating_nz', event)">Edit</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay UK BBFC classification ratings."><input type="checkbox" class="t-opt ovl" value="content_rating_uk" onchange="gen()"> UK Content Ratings</label><button class="btn-gear" onclick="editVars('content_rating_uk', event)">Edit</button></div>
+                        <div class="k-check-item type-movie"><label title="Overlay US MPAA film ratings (G, PG, R, etc.)."><input type="checkbox" class="t-opt ovl" value="content_rating_us_movie" onchange="gen()"> US Content Ratings (Movie)</label><button class="btn-gear" onclick="editVars('content_rating_us_movie', event)">Edit</button></div>
+                        <div class="k-check-item type-tv hidden"><label title="Overlay US TV Parental Guidelines (TV-14, TV-MA, etc.)."><input type="checkbox" class="t-opt ovl" value="content_rating_us_show" onchange="gen()"> US Content Ratings (Show)</label><button class="btn-gear" onclick="editVars('content_rating_us_show', event)">Edit</button></div>
                     </div>
 
                     <div class="k-sub-header">Media (Overlay)</div>
                     <div class="k-check-grid">
-                        <div class="k-check-item type-all"><label title="Overlay the video aspect ratio (e.g., 2.35:1)."><input type="checkbox" class="t-opt ovl" value="aspect" onchange="gen()"> Aspect Ratio</label><button class="btn-gear" onclick="editVars('aspect', event)">⚙️</button></div>
-                        <div class="k-check-item type-all"><label title="Overlay badges for audio codecs (Atmos, DTS-X, etc.)."><input type="checkbox" class="t-opt ovl" value="audio_codec" onchange="gen()"> Audio Codec</label><button class="btn-gear" onclick="editVars('audio_codec', event)">⚙️</button></div>
-                        <div class="k-check-item type-all"><label title="Overlay the number of audio/subtitle languages available."><input type="checkbox" class="t-opt ovl" value="language_count" onchange="gen()"> Audio/Subtitle Language Count</label><button class="btn-gear" onclick="editVars('language_count', event)">⚙️</button></div>
-                        <div class="k-check-item type-all"><label title="Overlay flags indicating available audio/subtitle languages."><input type="checkbox" class="t-opt ovl" value="languages" onchange="gen()"> Audio/Subtitle Language Flags</label><button class="btn-gear" onclick="editVars('languages', event)">⚙️</button></div>
-                        <div class="k-check-item type-all"><label title="Overlay resolution (4K, 1080p) and edition info."><input type="checkbox" class="t-opt ovl" value="resolution" onchange="gen()"> Resolution/Editions</label><button class="btn-gear" onclick="editVars('resolution', event)">⚙️</button></div>
-                        <div class="k-check-item type-all"><label title="Overlay the content duration on the poster."><input type="checkbox" class="t-opt ovl" value="runtimes" onchange="gen()"> Runtimes</label><button class="btn-gear" onclick="editVars('runtimes', event)">⚙️</button></div>
-                        <div class="k-check-item type-all"><label title="Overlay a badge if multiple versions of the item exist."><input type="checkbox" class="t-opt ovl" value="versions" onchange="gen()"> Versions</label><button class="btn-gear" onclick="editVars('versions', event)">⚙️</button></div>
-                        <div class="k-check-item type-all"><label title="Overlay source format (REMUX, HDTV, Blu-Ray, DVD, etc.)."><input type="checkbox" class="t-opt ovl" value="video_format" onchange="gen()"> Video Format</label><button class="btn-gear" onclick="editVars('video_format', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay the video aspect ratio (e.g., 2.35:1)."><input type="checkbox" class="t-opt ovl" value="aspect" onchange="gen()"> Aspect Ratio</label><button class="btn-gear" onclick="editVars('aspect', event)">Edit</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay badges for audio codecs (Atmos, DTS-X, etc.)."><input type="checkbox" class="t-opt ovl" value="audio_codec" onchange="gen()"> Audio Codec</label><button class="btn-gear" onclick="editVars('audio_codec', event)">Edit</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay the number of audio/subtitle languages available."><input type="checkbox" class="t-opt ovl" value="language_count" onchange="gen()"> Audio/Subtitle Language Count</label><button class="btn-gear" onclick="editVars('language_count', event)">Edit</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay flags indicating available audio/subtitle languages."><input type="checkbox" class="t-opt ovl" value="languages" onchange="gen()"> Audio/Subtitle Language Flags</label><button class="btn-gear" onclick="editVars('languages', event)">Edit</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay resolution (4K, 1080p) and edition info."><input type="checkbox" class="t-opt ovl" value="resolution" onchange="gen()"> Resolution/Editions</label><button class="btn-gear" onclick="editVars('resolution', event)">Edit</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay the content duration on the poster."><input type="checkbox" class="t-opt ovl" value="runtimes" onchange="gen()"> Runtimes</label><button class="btn-gear" onclick="editVars('runtimes', event)">Edit</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay a badge if multiple versions of the item exist."><input type="checkbox" class="t-opt ovl" value="versions" onchange="gen()"> Versions</label><button class="btn-gear" onclick="editVars('versions', event)">Edit</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay source format (REMUX, HDTV, Blu-Ray, DVD, etc.)."><input type="checkbox" class="t-opt ovl" value="video_format" onchange="gen()"> Video Format</label><button class="btn-gear" onclick="editVars('video_format', event)">Edit</button></div>
                     </div>
 
                     <div class="k-sub-header">Production (Overlay)</div>
                     <div class="k-check-grid">
-                        <div class="k-check-item type-tv hidden"><label title="Overlay the television network logo."><input type="checkbox" class="t-opt ovl" value="network" onchange="gen()"> Network</label><button class="btn-gear" onclick="editVars('network', event)">⚙️</button></div>
-                        <div class="k-check-item type-all"><label title="Overlay the streaming service logo."><input type="checkbox" class="t-opt ovl" value="streaming" onchange="gen()"> Streaming</label><button class="btn-gear" onclick="editVars('streaming', event)">⚙️</button></div>
-                        <div class="k-check-item type-all"><label title="Overlay the production studio logo."><input type="checkbox" class="t-opt ovl" value="studio" onchange="gen()"> Studio</label><button class="btn-gear" onclick="editVars('studio', event)">⚙️</button></div>
+                        <div class="k-check-item type-tv hidden"><label title="Overlay the television network logo."><input type="checkbox" class="t-opt ovl" value="network" onchange="gen()"> Network</label><button class="btn-gear" onclick="editVars('network', event)">Edit</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay the streaming service logo."><input type="checkbox" class="t-opt ovl" value="streaming" onchange="gen()"> Streaming</label><button class="btn-gear" onclick="editVars('streaming', event)">Edit</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay the production studio logo."><input type="checkbox" class="t-opt ovl" value="studio" onchange="gen()"> Studio</label><button class="btn-gear" onclick="editVars('studio', event)">Edit</button></div>
                     </div>
 
                     <div class="k-sub-header">Utility (Overlay)</div>
                     <div class="k-check-grid">
-                        <div class="k-check-item type-all"><label title="Overlay a badge indicating if the item can Direct Play."><input type="checkbox" class="t-opt ovl" value="direct_play" onchange="gen()"> Direct Play</label><button class="btn-gear" onclick="editVars('direct_play', event)">⚙️</button></div>
+                        <div class="k-check-item type-all"><label title="Overlay a badge indicating if the item can Direct Play."><input type="checkbox" class="t-opt ovl" value="direct_play" onchange="gen()"> Direct Play</label><button class="btn-gear" onclick="editVars('direct_play', event)">Edit</button></div>
                     </div>
 
                     <button class="btn-add" onclick="addLibrary()" id="btn-action" disabled>Add/Update Library</button>
@@ -446,106 +446,109 @@
 .overlay-preview-tv-column { display: flex; flex-direction: column; align-items: center; flex: 0 0 auto; }
 </style>
 
-<div id="var-modal" class="modal-overlay">
-    <div class="modal-box">
-        <button type="button" class="modal-close-btn" onclick="closeModal()" aria-label="Close">×</button>
-        <h3 class="mt-0">Customize: <span id="modal-title" class="modal-title-accent"></span></h3>
-        <p class="fs-small text-light mb-15 border-bottom pb-10">
-            See available variables at <a href="https://kometa.wiki/en/latest/defaults/collections/" target="_blank" class="link-accent">Kometa Wiki ↗</a>.<br>
-            <span class="warning-text-red">⚠️ Note: Not all variables work with every collection type. Check the wiki!</span>
-        </p>
-
-        <div class="k-sub-header border-bottom-none mt-5" id="qs-header">⚡ Quick Settings</div>
-        <div class="quick-settings" id="qs-container">
-            <div class="qs-col" id="wrapper-qs-limit">
-                <label>Limit (Items) <span class="info-icon" title="Maximum number of items to keep in this collection.">ℹ️</span></label>
-                <input type="number" id="qs-limit" placeholder="Unlimited">
-            </div>
-            <div class="qs-col" id="wrapper-qs-sort">
-                <label>Sort By <span class="info-icon" title="How the collection items are ordered in Plex.">ℹ️</span></label>
-                <select id="qs-sort">
-                    <option value=""></option>
-                    <option value="release">Release Date (Newest)</option>
-                    <option value="popularity">Popularity</option>
-                    <option value="critic_rating">Critic Rating</option>
-                    <option value="audience_rating">Audience Rating</option>
-                    <option value="random">Random</option>
-                </select>
-            </div>
-            <div class="qs-col" id="wrapper-qs-coll-mode">
-                <label>Collection Mode <span class="info-icon" title="How the collection appears in the library (e.g. Hide items from main library).">ℹ️</span></label>
-                <select id="qs-coll-mode">
-                    <option value=""></option>
-                    <option value="hide">Hide Collection</option>
-                    <option value="hide_items">Hide Items</option>
-                    <option value="show_items">Show Items</option>
-                </select>
-            </div>
-            <div class="qs-col" id="wrapper-qs-sync-mode">
-                <label>Sync Mode <span class="info-icon" title="Sync (remove missing items) or Append (only add new items).">ℹ️</span></label>
-                <select id="qs-sync-mode">
-                    <option value="">Inherit Global Setting</option>
-                    <option value="sync">Sync (Add & Remove)</option>
-                    <option value="append">Append (Add Only)</option>
-                </select>
-            </div>
-            <div class="qs-col" id="wrapper-qs-include">
-                <label>Include (Items) <span class="info-icon" title="Enter items separated by commas. We will format them as a YAML list automatically.">ℹ️</span></label>
-                <input type="text" id="qs-include" placeholder="e.g. Star Wars, Matrix">
-            </div>
-            <div class="qs-col" id="wrapper-qs-exclude">
-                <label>Exclude (Items) <span class="info-icon" title="Enter items separated by commas. We will format them as a YAML list automatically.">ℹ️</span></label>
-                <input type="text" id="qs-exclude" placeholder="e.g. The Room, Cats">
-            </div>
-
-            <div class="qs-col" id="wrapper-qs-builder-level" style="display:none;">
-                <label>Builder Level</label>
-                <select id="qs-builder-level">
-                    <option value=""></option>
-                    <option value="season">Season</option>
-                    <option value="episode">Episode</option>
-                </select>
-            </div>
-            <div class="qs-col" id="wrapper-qs-style" style="display:none;">
-                <label>Style</label>
-                <select id="qs-style">
-                    <option value=""></option>
-                    <option value="compact">Compact</option>
-                    <option value="standard">Standard</option>
-                </select>
-            </div>
-            <div class="qs-col" id="wrapper-qs-minimum" style="display:none;">
-                <label>Minimum</label>
-                <input type="number" id="qs-minimum">
-            </div>
-            <div class="qs-col" id="wrapper-qs-use-subtitles" style="display:none;">
-                <label>Use Subtitles</label>
-                <select id="qs-use-subtitles">
-                    <option value=""></option>
-                    <option value="true">True</option>
-                </select>
-            </div>
-            <div class="qs-col" id="wrapper-qs-addon-position" style="display:none;">
-                <label>Addon Position</label>
-                <select id="qs-addon-position">
-                    <option value=""></option>
-                    <option value="left">Left</option>
-                    <option value="right">Right</option>
-                    <option value="top">Top</option>
-                    <option value="bottom">Bottom</option>
-                </select>
-            </div>
+<div id="var-modal" class="modal-overlay" aria-hidden="true">
+    <div class="modal-box var-modal-box" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <button type="button" class="modal-close-btn" onclick="closeVarModal()" aria-label="Close">&times;</button>
+        <div class="var-modal-header">
+            <h3 class="mt-0">Customize: <span id="modal-title" class="modal-title-accent"></span></h3>
+            <p class="fs-small text-light mb-15 border-bottom pb-10">
+                See available variables at <a href="https://kometa.wiki/en/latest/defaults/collections/" target="_blank" class="link-accent">Kometa Wiki</a>.<br>
+                <span class="warning-text-red">Note: Not all variables work with every collection type. Check the wiki!</span>
+            </p>
         </div>
 
-        <div class="k-sub-header border-bottom-none">Advanced Custom Variables</div>
-        <div id="var-container">
+        <div class="var-modal-body">
+            <div class="k-sub-header border-bottom-none mt-5" id="qs-header">Quick Settings</div>
+            <div class="quick-settings" id="qs-container">
+                <div class="qs-col" id="wrapper-qs-limit">
+                    <label>Limit (Items) <span class="info-icon" title="Maximum number of items to keep in this collection.">i</span></label>
+                    <input type="number" id="qs-limit" placeholder="Unlimited">
+                </div>
+                <div class="qs-col" id="wrapper-qs-sort">
+                    <label>Sort By <span class="info-icon" title="How the collection items are ordered in Plex.">i</span></label>
+                    <select id="qs-sort">
+                        <option value=""></option>
+                        <option value="release">Release Date (Newest)</option>
+                        <option value="popularity">Popularity</option>
+                        <option value="critic_rating">Critic Rating</option>
+                        <option value="audience_rating">Audience Rating</option>
+                        <option value="random">Random</option>
+                    </select>
+                </div>
+                <div class="qs-col" id="wrapper-qs-coll-mode">
+                    <label>Collection Mode <span class="info-icon" title="How the collection appears in the library (e.g. Hide items from main library).">i</span></label>
+                    <select id="qs-coll-mode">
+                        <option value=""></option>
+                        <option value="hide">Hide Collection</option>
+                        <option value="hide_items">Hide Items</option>
+                        <option value="show_items">Show Items</option>
+                    </select>
+                </div>
+                <div class="qs-col" id="wrapper-qs-sync-mode">
+                    <label>Sync Mode <span class="info-icon" title="Sync (remove missing items) or Append (only add new items).">i</span></label>
+                    <select id="qs-sync-mode">
+                        <option value="">Inherit Global Setting</option>
+                        <option value="sync">Sync (Add & Remove)</option>
+                        <option value="append">Append (Add Only)</option>
+                    </select>
+                </div>
+                <div class="qs-col" id="wrapper-qs-include">
+                    <label>Include (Items) <span class="info-icon" title="Enter items separated by commas. We will format them as a YAML list automatically.">i</span></label>
+                    <input type="text" id="qs-include" placeholder="e.g. Star Wars, Matrix">
+                </div>
+                <div class="qs-col" id="wrapper-qs-exclude">
+                    <label>Exclude (Items) <span class="info-icon" title="Enter items separated by commas. We will format them as a YAML list automatically.">i</span></label>
+                    <input type="text" id="qs-exclude" placeholder="e.g. The Room, Cats">
+                </div>
+
+                <div class="qs-col" id="wrapper-qs-builder-level" style="display:none;">
+                    <label>Builder Level</label>
+                    <select id="qs-builder-level">
+                        <option value=""></option>
+                        <option value="season">Season</option>
+                        <option value="episode">Episode</option>
+                    </select>
+                </div>
+                <div class="qs-col" id="wrapper-qs-style" style="display:none;">
+                    <label>Style</label>
+                    <select id="qs-style">
+                        <option value=""></option>
+                        <option value="compact">Compact</option>
+                        <option value="standard">Standard</option>
+                    </select>
+                </div>
+                <div class="qs-col" id="wrapper-qs-minimum" style="display:none;">
+                    <label>Minimum</label>
+                    <input type="number" id="qs-minimum">
+                </div>
+                <div class="qs-col" id="wrapper-qs-use-subtitles" style="display:none;">
+                    <label>Use Subtitles</label>
+                    <select id="qs-use-subtitles">
+                        <option value=""></option>
+                        <option value="true">True</option>
+                    </select>
+                </div>
+                <div class="qs-col" id="wrapper-qs-addon-position" style="display:none;">
+                    <label>Addon Position</label>
+                    <select id="qs-addon-position">
+                        <option value=""></option>
+                        <option value="left">Left</option>
+                        <option value="right">Right</option>
+                        <option value="top">Top</option>
+                        <option value="bottom">Bottom</option>
+                    </select>
+                </div>
             </div>
 
-        <button class="btn-secondary w-100 mb-20" onclick="addVarRow()" style="border:1px dashed #444;">+ Add Variable</button>
+            <div class="k-sub-header border-bottom-none">Advanced Custom Variables</div>
+            <div id="var-container"></div>
 
-        <div class="d-flex gap-10" style="justify-content:flex-end;">
-            <button class="btn-secondary" onclick="closeModal()">Cancel</button>
-            <button class="btn-primary" onclick="saveModal()">Save Variables</button>
+            <button type="button" class="btn-secondary w-100 mb-20" onclick="addVarRow()" style="border:1px dashed #444;">+ Add Variable</button>
+        </div>
+
+        <div class="modal-actions var-modal-actions">
+            <button type="button" id="var-modal-cancel" class="btn-secondary" onclick="closeVarModal()">Cancel</button>
+            <button type="button" id="var-modal-save" class="btn-primary" onclick="saveVarModal()">Save Variables</button>
         </div>
     </div>
 </div>
@@ -553,7 +556,7 @@
 <!-- Import Config Modal -->
 <div id="import-modal" class="modal-overlay">
     <div class="modal-box import-modal">
-        <button type="button" class="modal-close-btn" onclick="closeImportModal()" aria-label="Close">×</button>
+        <button type="button" class="modal-close-btn" onclick="closeImportModal()" aria-label="Close">&times;</button>
         <h3>Import Config</h3>
         <p>
             Import a Kometa config from a URL or paste YAML directly.
@@ -592,7 +595,7 @@
 <!-- Library Templates Modal -->
 <div id="templates-modal" class="modal-overlay" style="display: none;">
     <div class="modal-box" style="max-width: 700px;">
-        <h3 style="margin-top:0;">📚 Library Templates</h3>
+        <h3 style="margin-top:0;">Library Templates</h3>
         <p style="font-size:0.85em; color:#aaa; margin-bottom:15px;">
             Save library configurations as reusable templates. Apply them to other libraries with one click.
         </p>
@@ -603,7 +606,7 @@
                 <label>Template Name</label>
                 <input type="text" id="template-name" placeholder="e.g. Movies - Full Setup" style="width: 100%;">
             </div>
-            <button class="btn-primary" onclick="saveAsTemplate()" style="width: 100%; margin-top: 10px;">💾 Save Template</button>
+            <button class="btn-primary" onclick="saveAsTemplate()" style="width: 100%; margin-top: 10px;">Save Template</button>
         </div>
         
         <div style="border-top: 1px solid #333; padding-top: 20px;">
@@ -622,8 +625,8 @@
 <!-- Comparison Modal -->
 <div id="comparison-modal" class="modal-overlay">
     <div class="modal-box comparison-modal">
-        <button type="button" class="modal-close-btn" onclick="closeComparisonModal()" aria-label="Close">×</button>
-        <h3>🔍 Config Comparison</h3>
+        <button type="button" class="modal-close-btn" onclick="closeComparisonModal()" aria-label="Close">&times;</button>
+        <h3>Config Comparison</h3>
         <p class="comparison-desc">
             Compare your current configuration with the saved version.
         </p>
@@ -643,9 +646,10 @@
     </div>
 </div>
 
+<script src="{{ url_for('static', filename='kometa_preview.js') }}"></script>
 <script>
-const CSRF_TOKEN = "{{ csrf_token() }}";
-const API_SAVE_KOMETA_CONFIG = "{{ url_for('api.save_kometa_config') }}";
+    const CSRF_TOKEN = "{{ csrf_token() }}";
+    const API_SAVE_KOMETA_CONFIG = "{{ url_for('api.save_kometa_config') }}";
 const API_GET_PLEX_LIBRARIES = "{{ url_for('api.get_plex_libraries') }}";
 const API_KOMETA_TEMPLATES = "{{ url_for('api.get_kometa_templates') }}";
 const API_KOMETA_TEMPLATES_SAVE = "{{ url_for('api.save_kometa_template') }}";
@@ -653,9 +657,10 @@ const API_KOMETA_TEMPLATES_DELETE_BASE = "{{ url_for('api.delete_kometa_template
 // load saved config (handles the legacy array format too). Updated in-memory on save so Compare shows latest.
 let savedConfig = JSON.parse({{ settings.kometa_config|tojson if settings.kometa_config else 'null' }});
 let libraries = [];
-let globalSettings = {};
-let templateVars = {}; // stores variables: { 'genre': { limit: 10 }, 'tmdb': { ... } }
-let libraryTemplateVars = {}; // stores per-library vars: { 'Movies': { use_separator: true } }
+    let globalSettings = {};
+    window.templateVars = window.templateVars || {};
+    let templateVars = window.templateVars; // stores variables: { 'genre': { limit: 10 }, 'tmdb': { ... } }
+    let libraryTemplateVars = {}; // stores per-library vars: { 'Movies': { use_separator: true } }
 let inlineComments = {};
 if (savedConfig && !Array.isArray(savedConfig) && savedConfig.inlineComments) {
     inlineComments = savedConfig.inlineComments;
@@ -753,198 +758,27 @@ function updateUndoRedoButtons() {
 // initialize history with current state
 saveToHistory();
 
-// map overlay keys to quick settings fields (per https://kometa.wiki/en/latest/defaults/overlays/)
-// Builder Level (Season/Episode) is only shown when library type is TV/Anime, not Movie
-const overlaySettingsMap = {
-    'content_rating_au': ['builder_level', 'addon_position'],
-    'commonsense': ['builder_level', 'addon_position'],
-    'content_rating_de': ['builder_level', 'addon_position'],
-    'content_rating_nz': ['builder_level', 'addon_position'],
-    'content_rating_uk': ['builder_level', 'addon_position'],
-    'content_rating_us_movie': ['addon_position'],
-    'content_rating_us_show': ['builder_level', 'addon_position'],
-    'aspect': [],
-    'audio_codec': ['builder_level', 'style'],
-    'language_count': ['builder_level', 'minimum', 'style'],
-    'languages': ['builder_level'],
-    'resolution': ['builder_level'],
-    'runtimes': ['builder_level'],
-    'versions': ['builder_level'],
-    'network': ['builder_level'],
-    'studio': ['builder_level'],
-    'direct_play': ['builder_level'],
-    'ratings': ['builder_level'],
-    'video_format': ['builder_level']
-};
-
-// Overlay preview: every position/offset from Kometa wiki "Default Template Variable Values" (ref 1000×1500).
-// bottomPct = (vertical_offset/1500)*100; topPct for top-aligned. Same corner+offset = overlap.
-// https://kometa.wiki/en/latest/defaults/overlays/
-const overlayPreviewSamples = {
-    ribbon: { position: 'br', label: 'TOP 250', class: 'ribbon', bottomPct: 0 },
-    episode_info: { position: 'bl', seasonEpisode: true },
-    mediastinger: { position: 'tr', label: 'Post-Credit', class: 'misc', topPct: 14.33 },
-    status: { position: 'tl', label: 'Ended', class: 'misc', topPct: 22 },
-    content_rating_au: { position: 'bl', label: 'M', class: 'rating', bottomPct: 18 },
-    commonsense: { position: 'bl', label: '8+', class: 'rating', bottomPct: 18 },
-    content_rating_de: { position: 'bl', label: 'FSK 16', class: 'rating', bottomPct: 18 },
-    content_rating_nz: { position: 'bl', label: 'M', class: 'rating', bottomPct: 18 },
-    content_rating_uk: { position: 'bl', label: '15', class: 'rating', bottomPct: 18 },
-    content_rating_us_movie: { position: 'bl', label: 'PG-13', class: 'rating', bottomPct: 18 },
-    content_rating_us_show: { position: 'bl', label: 'TV-MA', class: 'rating', bottomPct: 18 },
-    aspect: { position: 'bc', label: '2.35:1', class: 'media', bottomPct: 0 },
-    audio_codec: { position: 'tc', label: 'Atmos', class: 'media', topPct: 1 },
-    language_count: { position: 'bc', label: 'Dual', class: 'misc', bottomPct: 2 },
-    languages: { position: 'tl', label: 'EN', class: 'misc', topPct: 1 },
-    resolution: { position: 'tl', label: '4K', class: 'media', topPct: 1 },
-    runtimes: { position: 'br', label: '2h 15m', class: 'misc', bottomPct: 2 },
-    versions: { position: 'br', label: '2', class: 'misc', bottomPct: 22 },
-    network: { position: 'bl', label: 'HBO', class: 'misc', bottomPct: 34 },
-    streaming: { position: 'bl', label: 'Netflix', class: 'misc', bottomPct: 26 },
-    studio: { position: 'bl', label: 'Pixar', class: 'misc', bottomPct: 10 },
-    direct_play: { position: 'bc', label: 'Direct Play Only', class: 'media', bottomPct: 10 },
-    ratings: { position: 'tl', label: '8.5', class: 'misc', topPct: 50 },
-    video_format: { position: 'bl', label: 'REMUX', class: 'media', bottomPct: 2 }
-};
-
-function getActiveOverlaysForPreview() {
-    const overlays = [];
-    document.querySelectorAll('.t-opt.ovl:checked').forEach(cb => {
-        const item = cb.closest('.k-check-item');
-        if (item && !item.classList.contains('hidden')) overlays.push(cb.value);
-    });
-    return overlays;
-}
-
-function renderOverlayBadgesInto(container, active, options) {
-    if (!container) return;
-    const { showSeasonBadgeOnly = false, showSeasonEpisodeGroup = false } = options || {};
-    container.innerHTML = '';
-    const hasSeasonEpisode = active.some(key => overlayPreviewSamples[key] && overlayPreviewSamples[key].seasonEpisode);
-    const blOffset = (hasSeasonEpisode && (showSeasonBadgeOnly || showSeasonEpisodeGroup)) ? 22 : 0;
-    if (hasSeasonEpisode && showSeasonBadgeOnly) {
-        const sBadge = document.createElement('span');
-        sBadge.className = 'overlay-preview-badge season-sample pos-bl';
-        sBadge.textContent = 'S3';
-        sBadge.title = 'Season overlay sample';
-        sBadge.style.bottom = '6px';
-        sBadge.style.left = '6px';
-        container.appendChild(sBadge);
-    }
-    if (hasSeasonEpisode && showSeasonEpisodeGroup) {
-        const group = document.createElement('div');
-        group.className = 'overlay-preview-season-episode-group';
-        const sBadge = document.createElement('span');
-        sBadge.className = 'overlay-preview-badge season-sample';
-        sBadge.textContent = 'S3';
-        sBadge.title = 'Season overlay sample';
-        const eBadge = document.createElement('span');
-        eBadge.className = 'overlay-preview-badge episode-sample';
-        eBadge.textContent = 'E10';
-        eBadge.title = 'Episode overlay sample';
-        group.appendChild(sBadge);
-        group.appendChild(eBadge);
-        container.appendChild(group);
-    }
-    const positions = { tl: [], tr: [], bl: [], br: [], bc: [], tc: [] };
-    active.forEach(key => {
-        const sample = overlayPreviewSamples[key] || { position: 'br', label: key.replace(/_/g, ' '), class: 'misc' };
-        if (sample.seasonEpisode) return;
-        const pos = sample.position || 'br';
-        if (!positions[pos]) positions[pos] = [];
-        const customLabel = templateVars[key] && templateVars[key].style;
-        const label = (typeof customLabel === 'string' && customLabel.trim()) ? customLabel.trim() : (sample.label || key);
-        positions[pos].push({ key, label: String(label), class: sample.class || 'misc', bottomPct: sample.bottomPct, topPct: sample.topPct });
-    });
-    Object.keys(positions).forEach(pos => {
-        positions[pos].forEach((item) => {
-            const span = document.createElement('span');
-            span.className = `overlay-preview-badge pos-${pos} ${item.class}`;
-            span.textContent = item.label;
-            if (pos === 'tl' || pos === 'tr' || pos === 'tc') {
-                span.style.top = (item.topPct != null ? item.topPct : 1) + '%';
-            } else if (pos === 'bl' || pos === 'br' || pos === 'bc') {
-                const pct = (item.bottomPct != null ? item.bottomPct : 2);
-                span.style.bottom = blOffset ? `calc(${pct}% + ${blOffset}px)` : (pct + '%');
-            }
-            container.appendChild(span);
-        });
-    });
-}
-
-function updateOverlayPreview() {
-    const container = document.getElementById('overlay-preview-badges');
-    const emptyEl = document.getElementById('overlay-preview-empty');
-    const titleEl = document.getElementById('overlay-preview-title');
-    const wrapSingle = document.getElementById('overlay-preview-wrap-single');
-    const wrapTv = document.getElementById('overlay-preview-wrap-tv');
-    const emptySeason = document.getElementById('overlay-preview-empty-season');
-    const emptyEpisode = document.getElementById('overlay-preview-empty-episode');
-    if (!container) return;
-    const rawLibType = document.getElementById('temp_lib_type')?.value || '';
-    const libType = (rawLibType === 'show') ? 'tv' : rawLibType;
-    if (titleEl) {
-        if (libType === 'movie') titleEl.textContent = 'Sample overlay preview (Movie)';
-        else if (libType === 'tv') titleEl.textContent = 'Sample overlay preview (TV)';
-        else if (libType === 'anime') titleEl.textContent = 'Sample overlay preview (Anime)';
-        else titleEl.textContent = 'Sample overlay preview';
-    }
-    const active = getActiveOverlaysForPreview();
-    // Season/Episode preview only for TV/Anime (Plex may return type "show" for TV libraries)
-    const isTvOrAnime = (libType === 'tv' || libType === 'anime' || libType === 'show');
-
-    if (isTvOrAnime) {
-        if (wrapSingle) wrapSingle.style.display = 'none';
-        if (wrapTv) wrapTv.style.display = 'flex';
-        const seasonContainer = document.getElementById('overlay-preview-badges-season');
-        const episodeContainer = document.getElementById('overlay-preview-badges-episode');
-        if (active.length === 0) {
-            if (emptySeason) emptySeason.style.display = 'flex';
-            if (emptyEpisode) emptyEpisode.style.display = 'flex';
-            return;
-        }
-        if (emptySeason) emptySeason.style.display = 'none';
-        if (emptyEpisode) emptyEpisode.style.display = 'none';
-        renderOverlayBadgesInto(seasonContainer, active, { showSeasonBadgeOnly: true });
-        renderOverlayBadgesInto(episodeContainer, active, { showSeasonEpisodeGroup: true });
-    } else {
-        if (wrapSingle) wrapSingle.style.display = 'block';
-        if (wrapTv) wrapTv.style.display = 'none';
-        container.innerHTML = '';
-        if (active.length === 0) {
-            if (emptyEl) emptyEl.style.display = 'flex';
-            return;
-        }
-        if (emptyEl) emptyEl.style.display = 'none';
-        renderOverlayBadgesInto(container, active, { showSeasonEpisodeGroup: true });
-    }
-}
-
-// tab switching
-function switchTab(t) {
-    document.querySelectorAll('.k-section').forEach(el => el.classList.remove('active'));
-    document.querySelectorAll('.k-tab').forEach(el => el.classList.remove('active'));
-    document.getElementById('tab-' + t).classList.add('active');
-    event.target.classList.add('active');
-}
-
-// lock options until a library is selected
-function toggleOptions() {
-    const libName = document.getElementById('temp_lib_name').value;
-    const wrapper = document.getElementById('options-lock-wrapper');
-    const btn = document.getElementById('btn-action');
-
-    if (!libName || libName === "") {
-        wrapper.classList.add('locked-section');
-        btn.disabled = true;
-    } else {
-        wrapper.classList.remove('locked-section');
-        btn.disabled = false;
-    }
-}
-
 // variable modal
 let currentEditKey = null;
+
+function getVarModal() {
+    return document.getElementById('var-modal');
+}
+
+function isVarModalOpen() {
+    const modal = getVarModal();
+    if (!modal) return false;
+    return modal.classList.contains('is-open') || modal.style.display === 'flex';
+}
+
+function openVarModal() {
+    const modal = getVarModal();
+    if (!modal) return;
+    modal.style.display = '';
+    modal.classList.add('is-open');
+    modal.setAttribute('aria-hidden', 'false');
+    lockBodyScroll();
+}
 
 function editVars(key, e) {
     if(e) e.stopPropagation(); 
@@ -969,9 +803,7 @@ function editVars(key, e) {
 
     currentEditKey = key;
     document.getElementById('modal-title').innerText = key;
-    document.getElementById('var-modal').style.display = 'flex';
-    lockBodyScroll();
-    lockBodyScroll();
+    openVarModal();
     
     // detect overlay vs collection
     const isOverlay = checkbox && checkbox.classList.contains('ovl');
@@ -1059,7 +891,7 @@ function addVarRow(k = '', v = '') {
     document.getElementById('var-container').appendChild(div);
 }
 
-function saveModal() {
+function saveVarModal() {
     let data = {};
 
     // capture quick settings (only when visible)
@@ -1097,14 +929,18 @@ function saveModal() {
         delete templateVars[currentEditKey];
     }
 
-    closeModal();
+    closeVarModal();
     saveToHistory();
         gen(); // regenerate yaml
     updatePerformanceIndicator();
 }
 
-function closeModal() {
-    document.getElementById('var-modal').style.display = 'none';
+function closeVarModal() {
+    const modal = getVarModal();
+    if (!modal) return;
+    modal.classList.remove('is-open');
+    modal.style.display = 'none';
+    modal.setAttribute('aria-hidden', 'true');
     currentEditKey = null;
     unlockBodyScroll();
 }
@@ -1422,7 +1258,7 @@ function editLib(idx) {
     });
 
     document.getElementById('tab-libraries').scrollIntoView({behavior: 'smooth'});
-    document.getElementById('btn-action').innerText = "💾 Update Library";
+    document.getElementById('btn-action').innerText = "Update Library";
 }
 
 function removeLib(idx) {
@@ -1471,7 +1307,7 @@ function copyYaml() {
     };
 
     const showFailed = (msg) => {
-        btn.innerText = "Failed ❌";
+        btn.innerText = "Failed";
         setTimeout(() => { btn.innerText = originalText; }, 2000);
         if (msg) alert(msg);
     };
@@ -1606,7 +1442,7 @@ function renderTemplatesList() {
         html += `<div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; background: rgba(255,255,255,0.05); border: 1px solid #333; border-radius: 4px; margin-bottom: 8px;">
             <div>
                 <strong>${t.name}</strong>
-                <small style="color: #888; display: block;">${t.type} • ${t.cols.length} collections • ${t.ovls.length} overlays</small>
+                <small style="color: #888; display: block;">${t.type} | ${t.cols.length} collections | ${t.ovls.length} overlays</small>
             </div>
             <div style="display: flex; gap: 5px;">
                 <button class="btn-secondary" onclick="applyTemplate(${idx})" style="padding: 5px 10px; font-size: 0.85em;">Apply</button>
@@ -1716,9 +1552,9 @@ function lockBodyScroll() {
 
 function unlockBodyScroll() {
     const hasOpenOverlay = document.querySelector('.modal-overlay.is-open');
-    const varModal = document.getElementById('var-modal');
+    const varModal = getVarModal();
     if (hasOpenOverlay) return;
-    if (varModal && varModal.style.display === 'flex') return;
+    if (varModal && isVarModalOpen()) return;
     document.body.classList.remove('modal-open');
 }
 
@@ -2668,18 +2504,45 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     bindOverlayClose('import-modal', closeImportModal);
-    bindOverlayClose('var-modal', closeModal);
+    bindOverlayClose('var-modal', closeVarModal);
     bindOverlayClose('comparison-modal', closeComparisonModal);
+
+    const varModalCloseBtn = document.querySelector('#var-modal .modal-close-btn');
+    if (varModalCloseBtn) {
+        varModalCloseBtn.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            closeVarModal();
+        });
+    }
+
+    const varModalCancelBtn = document.getElementById('var-modal-cancel');
+    if (varModalCancelBtn) {
+        varModalCancelBtn.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            closeVarModal();
+        });
+    }
+
+    const varModalSaveBtn = document.getElementById('var-modal-save');
+    if (varModalSaveBtn) {
+        varModalSaveBtn.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            saveVarModal();
+        });
+    }
 
     document.addEventListener('keydown', (e) => {
         if (e.key !== 'Escape') return;
         const importModal = document.getElementById('import-modal');
-        const varModal = document.getElementById('var-modal');
         const comparisonModal = document.getElementById('comparison-modal');
         if (importModal && importModal.classList.contains('is-open')) closeImportModal();
-        if (varModal && varModal.style.display === 'flex') closeModal();
+        if (isVarModalOpen()) closeVarModal();
         if (comparisonModal && comparisonModal.classList.contains('is-open')) closeComparisonModal();
     });
 });
 </script>
 {% endblock %}
+

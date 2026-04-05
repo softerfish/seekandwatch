@@ -1,21 +1,7 @@
-"""
-monitoring and metrics system
+"""Small in-process metrics helpers.
 
-tracks performance, errors, and migration progress during refactoring,
-helps spot issues early and measure impact of changes
-
-usage:
-    from utils.monitoring import track_performance, track_error, get_metrics
-    
-    @track_performance("search_tmdb")
-    def search_tmdb(query):
-        # your code here
-        pass
-    
-    # or manual tracking
-    with track_performance("complex_operation"):
-        # your code here
-        pass
+Used to time operations, count errors, and keep an eye on old-vs-new code
+paths while things are being moved around.
 """
 
 import time
@@ -229,7 +215,7 @@ def get_uptime() -> timedelta:
     return get_collector().get_uptime()
 
 
-# migration progress tracking
+# Keep simple counts of old vs new code paths during the migration.
 class MigrationTracker:
     """
     tracks progress of the refactoring migration,

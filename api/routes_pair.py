@@ -1,7 +1,10 @@
 """pairing routes - link local app to cloud account without manual key entry"""
 
 import secrets
+import json
+import base64
 from datetime import datetime, timedelta
+from urllib.parse import urlencode
 from flask import request, jsonify, current_app
 from api import api_bp, rate_limit_decorator
 from models import db, Settings
@@ -25,13 +28,25 @@ def pair_start():
         data = request.get_json() or {}
         ui_provider = data.get('tunnel_provider')
         ui_external_url = data.get('cloud_webhook_url')
+        pairing_mode = ui_provider or (
+            'external'
+            if settings.tunnel_provider == 'external'
+            else 'cloudflare_named'
+            if settings.tunnel_provider == 'cloudflare' and settings.tunnel_name == 'named-tunnel'
+            else 'cloudflare_quick'
+        )
         
         # apply UI state temporarily for the handshake
-        if ui_provider:
-            settings.tunnel_provider = ui_provider
+        if ui_provider == 'external':
+            settings.tunnel_provider = 'external'
+        elif pairing_mode == 'cloudflare_quick':
+            settings.tunnel_provider = 'cloudflare'
+            settings.tunnel_name = 'quick-tunnel'
+        elif pairing_mode == 'cloudflare_named':
+            settings.tunnel_provider = 'cloudflare'
+            settings.tunnel_name = 'named-tunnel'
         if ui_external_url:
             # FUTUREPROOFING: Basic safety validation on inputs
-            from services.Router import Router
             if not ui_external_url.startswith('https://'):
                 return jsonify({'success': False, 'error': 'External URL must be HTTPS.'}), 400
             settings.cloud_webhook_url = ui_external_url
@@ -72,34 +87,40 @@ def pair_start():
                 
             is_public = True
         else:
-            # check if we should even be managing a tunnel
-            needs_new_tunnel = False
-            
-            if not tunnel_url:
-                needs_new_tunnel = True
+            if pairing_mode == 'cloudflare_quick':
+                # quick tunnels change often, so pairing should always use a fresh url
+                current_app.logger.info("[Tunnel Trace] Starting fresh quick tunnel for pairing...")
+                tunnel_url = manager.start_quick_tunnel(user_id)
             else:
-                # validation - only accept public urls for pairing
-                local_ip_patterns = [r'^https?://127\.', r'^https?://192\.168\.', r'^https?://10\.', r'^https?://172\.(1[6-9]|2[0-9]|3[0-1])\.', r'^https?://localhost']
-                import re
-                is_local = any(re.match(p, tunnel_url) for p in local_ip_patterns)
-                is_public = '.' in tunnel_url and not is_local
+                # check if we should even be managing a tunnel
+                needs_new_tunnel = False
                 
-                if not is_public or not manager._is_process_running():
+                if not tunnel_url:
                     needs_new_tunnel = True
-            
-            if needs_new_tunnel:
-                current_app.logger.info("[Tunnel Trace] Starting managed tunnel for pairing...")
+                else:
+                    # validation - only accept public urls for pairing
+                    local_ip_patterns = [r'^https?://127\.', r'^https?://192\.168\.', r'^https?://10\.', r'^https?://172\.(1[6-9]|2[0-9]|3[0-1])\.', r'^https?://localhost']
+                    import re
+                    is_local = any(re.match(p, tunnel_url) for p in local_ip_patterns)
+                    is_public = '.' in tunnel_url and not is_local
+                    
+                    if not is_public or not manager._is_process_running():
+                        needs_new_tunnel = True
                 
-                # if they have a cloudflare token, try to start a named tunnel
-                if hasattr(settings, 'cloudflare_api_token') and settings.cloudflare_api_token:
-                    creds = manager._decrypt_credentials(settings.tunnel_credentials_encrypted)
-                    if creds and 'tunnel_token' in creds:
-                        manager.start_tunnel_with_token(user_id, creds['tunnel_token'])
+                if needs_new_tunnel:
+                    current_app.logger.info("[Tunnel Trace] Starting managed tunnel for pairing...")
+                    
+                    if pairing_mode == 'cloudflare_named':
+                        if not (hasattr(settings, 'cloudflare_api_token') and settings.cloudflare_api_token):
+                            return jsonify({'success': False, 'error': 'Named Tunnel requires a saved Cloudflare token.'}), 400
+
+                        creds = manager._decrypt_credentials(settings.tunnel_credentials_encrypted)
+                        if not (creds and 'tunnel_token' in creds):
+                            return jsonify({'success': False, 'error': 'Named Tunnel credentials are missing. Save your Named Tunnel settings first.'}), 400
+
+                        if not manager.start_tunnel_with_token(user_id, creds['tunnel_token']):
+                            return jsonify({'success': False, 'error': 'Failed to start your Named Tunnel.'}), 500
                         tunnel_url = settings.get_public_url()
-                
-                # fallback to quick tunnel if still no URL
-                if not tunnel_url or not '.' in str(tunnel_url):
-                    tunnel_url = manager.start_quick_tunnel(user_id)
         
         if not tunnel_url:
             return jsonify({'success': False, 'error': 'Could not establish a public tunnel for pairing.'}), 500
@@ -111,8 +132,28 @@ def pair_start():
         cloud_base = settings.cloud_base_url or CLOUD_URL
         pair_base = Router.get_cloud_url(cloud_base, Router.CLOUD_PAIR_PAGE)
         
-        # FUTUREPROOFING: Add protocol version (v1)
-        pair_url = f"{pair_base}?url={tunnel_url}&token={token}&webhook_url={Router.get_local_webhook_url(tunnel_url)}&v=1"
+        pair_payload = {
+            'url': tunnel_url,
+            'local_url': tunnel_url,
+            'token': token,
+            'pairing_token': token,
+            'webhook_url': Router.get_local_webhook_url(tunnel_url),
+            'v': '1',
+        }
+        pair_blob = base64.urlsafe_b64encode(json.dumps(pair_payload).encode('utf-8')).decode('ascii').rstrip('=')
+        pair_query = urlencode({
+            **pair_payload,
+            'pair': pair_blob,
+        })
+        pair_url = f"{pair_base}?{pair_query}"
+        current_app.logger.info(
+            "[Tunnel Trace] Pair URL built base=%s has_url=%s has_token=%s has_pair=%s len=%s",
+            pair_base,
+            'url=' in pair_url,
+            'token=' in pair_url,
+            'pair=' in pair_url,
+            len(pair_url),
+        )
         
         return jsonify({
             'success': True,

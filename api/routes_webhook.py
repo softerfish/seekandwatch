@@ -13,13 +13,18 @@ from config import SCHEDULER_USER_ID
 from utils.helpers import write_log
 
 # webhook processing lock (prevents recovery during webhook processing)
-_webhook_processing = False
+_webhook_processing_count = 0
 _webhook_lock = threading.Lock()
+
+def _set_webhook_processing(delta):
+    global _webhook_processing_count
+    with _webhook_lock:
+        _webhook_processing_count = max(0, _webhook_processing_count + delta)
 
 def is_webhook_processing():
     """Check if webhook is currently being processed (used by recovery logic)"""
     with _webhook_lock:
-        return _webhook_processing
+        return _webhook_processing_count > 0
 
 @api_bp.route(Router.LOCAL_WEBHOOK_PATH.replace('/api', ''), methods=['GET'])
 @rate_limit_decorator("60 per hour")
@@ -41,42 +46,35 @@ def webhook_health_check():
 @rate_limit_decorator("10 per minute")
 def receive_webhook():
     """receive webhook from cloud app"""
-    global _webhook_processing
-    
-    # csrf exempt (webhooks come from external source)
-    try:
-        from app import csrf
-        if csrf and hasattr(csrf, 'exempt'):
-            csrf.exempt(receive_webhook)
-    except:
-        pass
-    
     # set processing flag to prevent recovery during webhook processing
-    with _webhook_lock:
-        _webhook_processing = True
+    _set_webhook_processing(1)
     
     # log incoming request
     ip_address = request.remote_addr
     write_log("info", "Webhook", f"webhook request from {ip_address}")
     
     try:
-        # grab webhook secret from settings
-        if SCHEDULER_USER_ID is not None:
-            settings = Settings.query.filter_by(user_id=SCHEDULER_USER_ID).first()
-        else:
-            settings = Settings.query.first()
-        
-        if not settings:
-            return jsonify({'error': 'configuration error'}), 500
-        
-        webhook_secret = getattr(settings, 'cloud_webhook_secret', None) or ''
-        
-        if not webhook_secret:
-            return jsonify({'error': 'webhook not configured'}), 401
-        
         # verify secret (basic auth)
         provided_secret = request.headers.get('X-Webhook-Secret', '')
-        if not hmac.compare_digest(provided_secret, webhook_secret):
+        if SCHEDULER_USER_ID is not None:
+            settings = Settings.query.filter_by(user_id=SCHEDULER_USER_ID).first()
+            if not settings:
+                return jsonify({'error': 'configuration error'}), 500
+            webhook_secret = getattr(settings, 'cloud_webhook_secret', None) or ''
+            if not webhook_secret:
+                return jsonify({'error': 'webhook not configured'}), 401
+            secret_ok = hmac.compare_digest(provided_secret, webhook_secret)
+        else:
+            secret_ok = False
+            settings = None
+            if provided_secret:
+                for candidate in Settings.query.filter(Settings.cloud_webhook_secret.isnot(None)).all():
+                    candidate_secret = getattr(candidate, 'cloud_webhook_secret', None) or ''
+                    if candidate_secret and hmac.compare_digest(provided_secret, candidate_secret):
+                        settings = candidate
+                        secret_ok = True
+                        break
+        if not secret_ok:
             write_log("error", "Webhook", f"invalid secret from {ip_address}")
             return jsonify({'error': 'invalid secret'}), 401
         
@@ -124,7 +122,7 @@ def receive_webhook():
                 if not tmdb_id: continue
                 
                 # update/save to db immediately so it's tracked
-                existing = CloudRequest.query.filter_by(cloud_id=cloud_id).first() if cloud_id else None
+                existing = CloudService._get_cloud_request_by_cloud_id(settings, cloud_id, claim_unowned=True) if cloud_id else None
                 if existing:
                     req_db = existing
                     req_db.title = title
@@ -136,6 +134,7 @@ def receive_webhook():
                     req_db.status = 'pending'
                 else:
                     req_db = CloudRequest(
+                        owner_user_id=getattr(settings, 'user_id', None),
                         cloud_id=cloud_id,
                         title=title,
                         media_type=media_type,
@@ -155,16 +154,20 @@ def receive_webhook():
 
             # process in background
             def run_async_process(app_obj, ids):
+                _set_webhook_processing(1)
                 with app_obj.app_context():
-                    # re-fetch settings in this thread
-                    s_obj = Settings.query.filter_by(user_id=SCHEDULER_USER_ID).first() if SCHEDULER_USER_ID is not None else Settings.query.first()
-                    for cid in ids:
-                        r = CloudRequest.query.filter_by(cloud_id=cid).first()
-                        if r:
-                            if CloudService.process_item(s_obj, r):
-                                CloudService.log_cloud_import('webhook_approved', r.title, r.media_type, True)
-                            else:
-                                CloudService.log_cloud_import('webhook_approved', r.title, r.media_type, False)
+                    try:
+                        # re-fetch settings in this thread
+                        s_obj = CloudService._get_default_settings()
+                        for cid in ids:
+                            r = CloudService._get_cloud_request_by_cloud_id(s_obj, cid, claim_unowned=True)
+                            if r:
+                                if CloudService.process_item(s_obj, r):
+                                    CloudService.log_cloud_import('webhook_approved', r.title, r.media_type, True, settings=s_obj)
+                                else:
+                                    CloudService.log_cloud_import('webhook_approved', r.title, r.media_type, False, settings=s_obj)
+                    finally:
+                        _set_webhook_processing(-1)
 
             threading.Thread(
                 target=run_async_process, 
@@ -186,9 +189,10 @@ def receive_webhook():
                 title = req_data.get('title', 'unknown')
                 media_type = req_data.get('media_type', 'movie')
                 cloud_id = req_data.get('id', '')
-                existing = CloudRequest.query.filter_by(cloud_id=cloud_id).first() if cloud_id else None
+                existing = CloudService._get_cloud_request_by_cloud_id(settings, cloud_id, claim_unowned=True) if cloud_id else None
                 if not existing:
                     req_db = CloudRequest(
+                        owner_user_id=getattr(settings, 'user_id', None),
                         cloud_id=cloud_id,
                         title=title,
                         media_type=media_type,
@@ -200,7 +204,7 @@ def receive_webhook():
                     )
                     db.session.add(req_db)
                     db.session.commit()
-                    CloudService.log_cloud_import('webhook_pending', title, media_type, True)
+                    CloudService.log_cloud_import('webhook_pending', title, media_type, True, settings=settings)
                     processed_count += 1
 
             CloudService.log_webhook(event, payload, 'success', f'received {processed_count} new pending requests')
@@ -223,8 +227,7 @@ def receive_webhook():
     
     finally:
         # clear processing flag
-        with _webhook_lock:
-            _webhook_processing = False
+        _set_webhook_processing(-1)
 
 @api_bp.route('/webhook/clear_logs', methods=['POST'])
 @login_required

@@ -109,12 +109,12 @@
                 
                 <div class="form-group">
                     <label>Password</label>
-                    <input type="password" name="password" id="password" required placeholder="••••••••" autocomplete="current-password">
+                    <input type="password" name="password" id="password" required placeholder="********" autocomplete="current-password">
                 </div>
 
                 <div class="form-group hidden-field" id="confirm-container">
                     <label>Confirm Password</label>
-                    <input type="password" id="confirm_password" placeholder="••••••••" autocomplete="new-password">
+                    <input type="password" id="confirm_password" placeholder="********" autocomplete="new-password">
                 </div>
                 
                 <button type="submit" class="login-btn" id="submit-btn">
@@ -264,7 +264,7 @@
             const p2 = document.getElementById('confirm_password').value;
             
             if (p1 !== p2) {
-                alert("⚠️ Passwords do not match!");
+                alert("Passwords do not match!");
                 return false; // Stop submission.
             }
         }

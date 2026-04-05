@@ -14,6 +14,16 @@ from config import CLOUD_REQUEST_TIMEOUT
 # Create blueprint
 web_requests_bp = Blueprint('web_requests', __name__)
 
+def _get_current_settings():
+    return current_user.settings
+
+def _get_owned_cloud_request_or_404(req_id):
+    settings = _get_current_settings()
+    query = CloudRequest.query.filter_by(id=req_id)
+    if settings and hasattr(CloudRequest, 'owner_user_id'):
+        query = query.filter_by(owner_user_id=settings.user_id)
+    return query.first_or_404()
+
 @web_requests_bp.route('/requests')
 @login_required
 def requests_page():
@@ -24,15 +34,49 @@ def requests_page():
 @login_required
 def requests_settings_page():
     """Cloud requests settings page"""
-    settings = current_user.settings
-    cloud_import_log = CloudService.get_cloud_import_log(20)
-    return render_template('requests_settings.html', settings=settings, cloud_import_log=cloud_import_log)
+    settings = _get_current_settings()
+    cloud_import_log = CloudService.get_cloud_import_log(20, settings=settings)
+    last_instant_import = next(
+        (entry for entry in cloud_import_log if (entry.get('delivery') or '').strip().lower() in (
+            'quick tunnel', 'named tunnel', 'external', 'cloudflare tunnel', 'ngrok', 'webhook', 'webhook (legacy)'
+        )),
+        None
+    )
+    last_poll_import = next(
+        (entry for entry in cloud_import_log if 'poll' in (entry.get('delivery') or '').strip().lower()),
+        None
+    )
+    sync_mode = 'Instant webhook delivery plus backup polling'
+    if settings.tunnel_provider == 'external':
+        sync_mode = 'External webhook delivery plus backup polling'
+    elif not settings.tunnel_enabled:
+        sync_mode = 'Backup polling only until a tunnel is active'
+    verification_state = 'Waiting for a tunnel to be enabled'
+    if settings.tunnel_enabled and settings.tunnel_status == 'connected':
+        verification_state = 'Tunnel connected and ready for instant imports'
+    elif settings.tunnel_enabled and settings.tunnel_status == 'error':
+        verification_state = f"Tunnel needs attention: {settings.tunnel_last_error or 'Unknown issue'}"
+    elif settings.tunnel_enabled:
+        verification_state = 'Tunnel is starting or being verified'
+    elif settings.tunnel_provider == 'external' and settings.cloud_webhook_url:
+        verification_state = 'Waiting for requests at your saved external webhook URL'
+    return render_template(
+        'requests_settings.html',
+        settings=settings,
+        cloud_import_log=cloud_import_log,
+        last_instant_import=last_instant_import,
+        last_poll_import=last_poll_import,
+        sync_mode=sync_mode,
+        verification_state=verification_state,
+    )
 
 @web_requests_bp.route('/save_cloud_settings', methods=['POST'])
 @login_required
 def save_cloud_settings():
     """Save cloud integration settings"""
-    settings = current_user.settings
+    settings = _get_current_settings()
+    previous_tunnel_provider = getattr(settings, 'tunnel_provider', None)
+    previous_tunnel_name = getattr(settings, 'tunnel_name', None)
     if 'cloud_api_key' in request.form:
         if 'cloud_api_key_unchanged' in request.form:
             pass  # keep existing
@@ -47,12 +91,12 @@ def save_cloud_settings():
     settings.cloud_movie_handler = request.form.get('cloud_movie_handler')
     settings.cloud_tv_handler = request.form.get('cloud_tv_handler')
     
-    # cloud sync logic: enabled if tunnel is active OR if manual external URL is provided
+    # cloud sync is on if the tunnel is up or a manual external URL was given
     tunnel_choice = request.form.get('tunnel_provider_choice')
     if tunnel_choice == 'external':
         settings.tunnel_provider = 'external'
-        settings.tunnel_enabled = False # app itself doesn't "run" the tunnel
-        settings.cloud_sync_owned_enabled = True # but sync is on
+        settings.tunnel_enabled = False # the app isn't running this tunnel
+        settings.cloud_sync_owned_enabled = True # but owned sync still is
     elif tunnel_choice == 'cloudflare_quick':
         settings.tunnel_provider = 'cloudflare'
         settings.tunnel_name = 'quick-tunnel'
@@ -63,10 +107,10 @@ def save_cloud_settings():
             settings.tunnel_name = 'named-tunnel'
         settings.cloud_sync_owned_enabled = settings.tunnel_enabled
     else:
-        # standard auto-enable logic for internal tunnels
+        # normal auto-enable behavior for internal tunnels
         settings.cloud_sync_owned_enabled = settings.tunnel_enabled
     
-    # phase 4: handle auto-recovery toggle (only from tunnel config form)
+    # handle the auto-recovery toggle from the tunnel config form
     if 'from_tunnel_config' in request.form:
         # update provider if changed
         if tunnel_choice:
@@ -75,13 +119,23 @@ def save_cloud_settings():
                 settings.tunnel_name = 'quick-tunnel'
             elif tunnel_choice == 'cloudflare_named':
                 settings.tunnel_provider = 'cloudflare'
-                settings.tunnel_name = 'named-tunnel' # or preserve existing if already named
+                settings.tunnel_name = 'named-tunnel' # unless it's already set that way
             elif tunnel_choice == 'external':
                 settings.tunnel_provider = 'external'
 
         # auto-recovery toggle
         if hasattr(settings, 'tunnel_auto_recovery_enabled'):
-            settings.tunnel_auto_recovery_enabled = 'tunnel_auto_recovery_enabled' in request.form
+            switching_to_quick = (
+                tunnel_choice == 'cloudflare_quick'
+                and not (
+                    previous_tunnel_provider == 'cloudflare'
+                    and previous_tunnel_name == 'quick-tunnel'
+                )
+            )
+            if switching_to_quick and 'tunnel_auto_recovery_enabled' not in request.form:
+                settings.tunnel_auto_recovery_enabled = True
+            else:
+                settings.tunnel_auto_recovery_enabled = 'tunnel_auto_recovery_enabled' in request.form
         
         # circuit breaker reset
         if 'reset_circuit_breaker' in request.form and hasattr(settings, 'tunnel_recovery_disabled'):
@@ -94,12 +148,12 @@ def save_cloud_settings():
     settings.cloudflare_api_token = (request.form.get('cloudflare_api_token') or '').strip() or None
     settings.cloudflare_account_id = (request.form.get('cloudflare_account_id') or '').strip() or None
     
-    # save webhook failsafe poll interval (6, 12, or 24 hours)
+    # save the webhook failsafe interval (6, 12, or 24 hours)
     webhook_failsafe = request.form.get('cloud_webhook_failsafe_hours')
     if webhook_failsafe and webhook_failsafe in ['6', '12', '24']:
         settings.cloud_webhook_failsafe_hours = int(webhook_failsafe)
 
-    # Use the name 'external_tunnel_url' from the form if present (template uses this)
+    # the template sends external_tunnel_url, so prefer that name if it's there
     webhook_url = request.form.get('external_tunnel_url') or request.form.get('cloud_webhook_url')
     webhook_url = (webhook_url or '').strip()
     if 'cloud_webhook_secret' in request.form:
@@ -112,7 +166,7 @@ def save_cloud_settings():
             else:
                 settings.cloud_webhook_secret = None
     settings.cloud_webhook_url = webhook_url or None
-    webhook_secret = (settings.cloud_webhook_secret or '').strip()  # for register_webhook below
+    webhook_secret = (settings.cloud_webhook_secret or '').strip()  # used by register_webhook below
 
     raw_min = (request.form.get('cloud_poll_interval_min') or '').strip()
     raw_max = (request.form.get('cloud_poll_interval_max') or '').strip()
@@ -128,8 +182,8 @@ def save_cloud_settings():
     db.session.commit()
 
     if settings.cloud_api_key and settings.cloud_enabled:
-        # Only call cloud to register/clear webhook when we have a webhook URL or had one (so cloud stays in sync)
-        # If user left webhook blank, skip the API call so we don't show "webhook failed" when they only added the API key
+        # only hit the cloud when we actually have a webhook URL to sync
+        # if the user left it blank, don't show a fake webhook failure
         if webhook_url:
             if CloudService.register_webhook(settings, webhook_url, webhook_secret):
                 flash("Cloud settings updated successfully", "success")
@@ -146,8 +200,8 @@ def save_cloud_settings():
 @login_required
 def approve_request(req_id):
     """Approve a cloud request and send to Radarr/Sonarr"""
-    req = CloudRequest.query.get_or_404(req_id)
-    settings = current_user.settings
+    req = _get_owned_cloud_request_or_404(req_id)
+    settings = _get_current_settings()
 
     # Execute the download logic (sends to Radarr/Sonarr)
     if CloudService.process_item(settings, req):
@@ -161,15 +215,15 @@ def approve_request(req_id):
 @login_required
 def deny_request(req_id):
     """Deny a cloud request"""
-    req = CloudRequest.query.get_or_404(req_id)
+    req = _get_owned_cloud_request_or_404(req_id)
     req.status = 'denied'
     db.session.commit()
 
-    # Tell the cloud so friends see "Denied" and it no longer shows as pending
+    # tell the cloud so it stops showing as pending there too
     deny_cloud_ok = True
     if req.cloud_id:
         try:
-            settings = current_user.settings
+            settings = _get_current_settings()
             if settings and settings.cloud_api_key:
                 base = CloudService.get_cloud_base_url(settings)
                 r = requests.post(
@@ -198,18 +252,18 @@ def deny_request(req_id):
 @login_required
 def delete_request(req_id):
     """Delete a request locally AND tell the Cloud to remove it."""
-    req = CloudRequest.query.get_or_404(req_id)
-    title = req.title # Save for message
+    req = _get_owned_cloud_request_or_404(req_id)
+    title = req.title  # keep for the flash message
     
-    # tell cloud to delete
-    # If this request came from the cloud, we must kill it at the source
+    # tell the cloud to delete it too
+    # if this came from the cloud, delete it there first
     cloud_id_val = (str(req.cloud_id).strip() if req.cloud_id else None) or None
     cloud_delete_ok = True
     cloud_delete_404_id = None
     cloud_delete_error_detail = None  # e.g. "415: Content-Type must be application/json"
     if cloud_id_val:
         try:
-            settings = current_user.settings
+            settings = _get_current_settings()
             if settings and settings.cloud_api_key:
                 base = CloudService.get_cloud_base_url(settings)
                 r = requests.post(

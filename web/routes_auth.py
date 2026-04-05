@@ -90,7 +90,7 @@ def register():
             db.session.add(Settings(user_id=new_user.id))
             db.session.commit()
             
-            # generate recovery codes and show once after registration
+            # generate recovery codes and show them once
             count = 10
             plain_codes = [secrets.token_hex(8) for _ in range(count)]
             for plain in plain_codes:
@@ -110,7 +110,7 @@ def register():
 def logout():
     """logout and redirect to login page"""
     logout_user()
-    # notify other tabs so they reload (logout in one tab = others see login)
+    # let other tabs notice the logout too
     return render_template('logout_redirect.html', login_url=url_for('web_auth.login'))
 
 @web_auth_bp.route('/reset_password', methods=['GET'])
@@ -148,7 +148,7 @@ def get_public_posters():
     """grab a list of trending movie posters for the login background, unauthenticated"""
     import requests
     try:
-        # try to get the first user's tmdb key to fetch fresh trending posters
+        # use the first TMDB key we can find for fresher posters
         s = Settings.query.first()
         if s and s.tmdb_key:
             url = f"https://api.themoviedb.org/3/trending/movie/week?api_key={s.tmdb_key}"
@@ -161,7 +161,7 @@ def get_public_posters():
     except Exception:
         pass
 
-    # fallback high-quality posters if tmdb fails or no key set
+    # fall back to a fixed poster list if TMDB isn't available
     fallbacks = [
         "https://image.tmdb.org/t/p/original/8Gxv0mYmUctXsbS1vD9274asvBf.jpg", # Interstellar
         "https://image.tmdb.org/t/p/original/dfS9q3hlvY6PSwwabyeT6LZJpcS.jpg", # Inception
