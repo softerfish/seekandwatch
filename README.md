@@ -10,6 +10,13 @@ Self-hosted Plex companion: Smart Discovery from your watch history, add movies/
 
 **Documentation:** [Wiki](https://github.com/softerfish/seekandwatch/wiki) - [install](https://github.com/softerfish/seekandwatch/wiki/Installation-&-Update-Guide), [Smart Discovery](https://github.com/softerfish/seekandwatch/wiki/Smart-Discovery), [Plex Collections](https://github.com/softerfish/seekandwatch/wiki/Plex-Collections), [Radarr](https://github.com/softerfish/seekandwatch/wiki/Radarr), [Sonarr](https://github.com/softerfish/seekandwatch/wiki/Sonarr), [Kometa builder](https://github.com/softerfish/seekandwatch/wiki/Kometa-Config-Builder), troubleshooting.
 
+**Important:**
+
+- SeekAndWatch Cloud linking now uses the local app payload plus **One-Click Pair with Cloud** in **Requests Settings**. Existing cloud users may need to re-link after updating.
+- The main app uses the **TMDB API Read Access Token**. Kometa uses its own separate **TMDB API Key** field.
+- Public registration is first-run only by default. After the first account is created, registration stays closed unless you explicitly re-enable it.
+- `/config` must be writable so SeekAndWatch can persist its secret key, or you must provide `SECRET_KEY` yourself.
+
 ---
 
 ## What is SeekAndWatch?
@@ -23,7 +30,7 @@ Goal: spend less time browsing, more time watching. It uses your watch history a
 ## Table of Contents
 
 - [Key Features](#key-features)
-- [SeekAndWatch Cloud (Beta)](#seekandwatch-cloud-beta)
+- [SeekAndWatch Cloud](#seekandwatch-cloud)
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [How to Update](#how-to-update)
@@ -69,8 +76,8 @@ Goal: spend less time browsing, more time watching. It uses your watch history a
 
 - **System Health Bar** - Compact status indicators on the dashboard for Plex, Radarr, Sonarr, and Cloud connections.
 - **One-Click Plex Linking** - No more manual token entry! Link your account via official Plex OAuth and the app automatically discovers your server.
-- **One-Click Cloud Pairing** - Connect your local instance to SeekAndWatch Cloud with a single click.
-- **Quick Tunnels** - Enable instant cloud notifications (webhooks) without opening ports or setting up a reverse proxy.
+- **One-Click Cloud Pairing** - In Requests Settings, import the local app payload from the cloud website's Pairing Bootstrap Secret section, then run one-click pairing.
+- **Quick Tunnels** - Enable instant cloud notifications (webhooks) without opening ports or setting up a reverse proxy. If instant delivery is unavailable, the app falls back to polling.
 
 ### Library quality & requests
 
@@ -86,15 +93,14 @@ Goal: spend less time browsing, more time watching. It uses your watch history a
 
 ---
 
-## SeekAndWatch Cloud (Beta)
+## SeekAndWatch Cloud
 
 **SeekAndWatch Cloud** is a hosted service that lets your friends and family request movies and TV shows from your Plex server without needing access to Plex, Radarr, or Sonarr. Requests land in your Cloud dashboard for you to approve or deny; approved requests sync to Radarr or Sonarr on your self-hosted SeekAndWatch instance.
 
-- **Zero network config** - Your local server polls the Cloud for new requests. No port forwarding, VPNs, or exposing your IP.
-- **You stay in control** - Approve or deny each request; optional master invite codes for registration.
+- **Easy pairing** - Open your local app's **Requests Settings**, import the cloud **Copy local app payload**, then run **One-Click Pair with Cloud**.
+- **Instant sync with fallback** - Requests sync through the local app's tunnel webhook automatically, with polling as a backup if instant delivery is unavailable.
+- **You stay in control** - Approve or deny each request from the cloud dashboard.
 - **Passkey & recovery** - Sign in with passkeys or password; one-time recovery codes for account recovery.
-
-Cloud is currently **in beta**. To request access: [r/SeekAndWatch](https://www.reddit.com/r/SeekAndWatch) - post or send a mod a PM.
 
 ---
 
@@ -107,6 +113,8 @@ Cloud is currently **in beta**. To request access: [r/SeekAndWatch](https://www.
 | **Radarr / Sonarr** | Optional | Add movies/shows from the app; optional scanner for “owned” filtering in Smart Discovery. |
 | **Tautulli** | Optional | Trending on server. |
 | **OMDB API Key** | Optional | Rotten Tomatoes / critic scores in Smart Discovery. |
+
+Kometa is separate from the main app TMDB setup. If you use the Kometa builder, enter its legacy TMDB API key in the Kometa page only.
 
 ---
 
@@ -123,6 +131,8 @@ Full install and troubleshooting: [Wiki  - Install & Troubleshooting](https://gi
 ### Docker (manual)
 
 Replace `/path/to/config` with where you want your database and settings (e.g. `/mnt/user/appdata/seekandwatch`). Then open http://&lt;YOUR_SERVER_IP&gt;:5000
+
+`/config` must be writable so the app can persist its secret key and encrypted settings. If your environment does not allow that, set a stable `SECRET_KEY` yourself.
 
 ```bash
 docker run -d \
