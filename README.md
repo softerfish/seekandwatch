@@ -1,6 +1,6 @@
 # SeekAndWatch
 
-![Version](https://img.shields.io/badge/version-1.6.7-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) ![License](https://img.shields.io/badge/License-MIT-green.svg)
+![Version](https://img.shields.io/badge/version-1.6.8-blue.svg) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg) ![Unraid](https://img.shields.io/badge/Unraid-Template-orange.svg) ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
 **Saved you a scroll or two?** If this app saves you from endless scrolling, a star for the project helps a lot.
 
@@ -154,6 +154,48 @@ docker compose up -d
 
 ## Changelog
 
+v1.6.8
+
+### Security
+
+- tightened local API CORS so only the configured cloud origin, plus optional explicitly allowed origins, receive API CORS headers
+- stopped rendering saved Plex, TMDB, OMDb, Tautulli, Radarr, Sonarr, cloud, Cloudflare, and pairing secrets back into the frontend
+- added transparent at-rest encryption for sensitive settings values, with startup migration so existing installs are encrypted in place without manual re-entry
+- closed public registration by default after first-run setup, while still allowing the first local account to be created normally on new installs
+- added stricter per-route throttling for login and registration attempts to reduce brute-force risk
+- reduced default app logging from debug-level output to info-level output with an environment override
+- removed hostname leakage from the webhook health endpoint
+- restricted public quick and named Cloudflare tunnel traffic to the webhook, pairing receive, and health endpoints
+- upgraded tunnel credential encryption to use a random per-secret salt with backward-compatible legacy decrypt support
+- fixed the Kometa import security flow so redirect targets are revalidated and private/local redirect SSRF is blocked
+- fixed webhook background processing so the matched webhook secret continues processing under the correct user account in multi-user installs
+- clarified service-vs-external URL validation paths to make SSRF-safe call sites harder to misuse
+- cleaned up legacy migration code so SQLAlchemy-safe `text(...)` calls are used consistently, migration column additions are allowlisted, and previously silent failures now emit warnings
+
+### Cloud Pairing
+
+- hardened one-click cloud pairing so the raw pairing token no longer appears in the browser URL and the cloud handoff is bound to the intended owner account
+- added local Requests Settings fields and JSON import support for the cloud owner user ID and pair handoff bootstrap secret
+- preserved saved cloud and Cloudflare credentials when masked settings fields are left untouched
+
+### TMDB And Kometa
+
+- switched the main app to prefer the TMDB API Read Access Token bearer flow while still allowing already-saved legacy API keys to keep working
+- blocked new legacy TMDB API keys from being added in the main app and updated the settings UI to point users to the API Read Access Token instead
+- separated Kometa from the main TMDB credential flow so Kometa can use its own TMDB API key without affecting Smart Discovery and the rest of the app
+- preserved existing legacy TMDB API keys for Kometa automatically on startup for backward compatibility
+
+### Requests Settings And UI
+
+- rewrote the top of Requests Settings to make the cloud pairing flow easier to follow, moved the pairing inputs next to the instructions, and clarified that instant sync works automatically through the tunnel webhook
+- improved pairing setup copy to point users to the cloud website's Pairing Bootstrap Secret section and distinguish JSON import from manual owner ID and secret entry
+- cleaned up webhook logs toolbar styling to match the system logs page
+- fixed collection-card info icon alignment and the playlists schedule time input icon visibility
+- added clearer setup-required warnings for playlists and Smart Discovery when Plex, TMDB, or library sync prerequisites are missing
+
+<details>
+  <summary><b>Past Changelog</b></summary>
+ 
 v1.6.7
 
 - fixed cloud request ownership and sync reliability
@@ -163,9 +205,7 @@ v1.6.7
 - improved settings-page clarity and disabled the unfinished account-deletion action
 - cleaned the install package by removing test and temporary check files
 
-<details>
-  <summary><b>Past Changelog</b></summary>
-  
+
 v1.6.6
 
 - fix to sending Radarr/Sonarr requests to the selected profile
