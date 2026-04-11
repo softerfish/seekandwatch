@@ -161,7 +161,7 @@
                         <div style="display: flex; gap: 10px;">
                             <div class="password-wrapper">
                                 <input type="password" id="plex_token" name="plex_token" autocomplete="off"
-                                    value="{{ settings.plex_token or '' }}"
+                                    value=""
                                     placeholder="{% if settings.plex_token %}********{% else %}Paste token{% endif %}"
                                     {% if settings.plex_token %}data-key-set="1" {% endif %} autocomplete="off"
                                     style="width: 100%; padding-right: 40px;">
@@ -208,14 +208,17 @@
                         style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0;">
                     <h3>Metadata APIs</h3>
                     <div class="input-group">
-                        <label class="input-label">TMDB Key (v3) {% if settings.tmdb_key %}<span
+                        <label class="input-label">TMDB API Read Access Token {% if settings.tmdb_key %}<span
                                 class="key-saved-badge">Saved</span>{% endif %} <span
-                                style="color: var(--error);">*Required</span></label>
+                                style="color: var(--error);">*Required</span>
+                            <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener noreferrer"
+                                class="text-decoration-underline" style="font-size: 0.85em; margin-left: 8px;">get it here</a>
+                        </label>
                         <div class="test-row">
                             <div class="password-wrapper">
                                 <input type="password" id="tmdb_key" name="tmdb_key" autocomplete="off"
-                                    value="{{ settings.tmdb_key or '' }}"
-                                    placeholder="{% if settings.tmdb_key %}********{% else %}Paste API key{% endif %}"
+                                    value=""
+                                    placeholder="{% if settings.tmdb_key %}********{% else %}Paste TMDB API Read Access Token{% endif %}"
                                     {% if settings.tmdb_key %}data-key-set="1" {% endif %}>
                                 {% if settings.tmdb_key %}<input type="hidden" name="tmdb_key_unchanged" value="1"
                                     id="tmdb_key_unchanged_h">{% endif %}
@@ -233,7 +236,7 @@
                         <div class="test-row">
                             <div class="password-wrapper">
                                 <input type="password" id="omdb_key" name="omdb_key" autocomplete="off"
-                                    value="{{ settings.omdb_key or '' }}"
+                                    value=""
                                     placeholder="{% if settings.omdb_key %}********{% else %}xxxxxx{% endif %}" {% if
                                     settings.omdb_key %}data-key-set="1" {% endif %}>
                                 {% if settings.omdb_key %}<input type="hidden" name="omdb_key_unchanged" value="1"
@@ -263,7 +266,7 @@
                         <div style="display: flex; gap: 10px;">
                             <div class="password-wrapper">
                                 <input type="password" id="tautulli_api_key" name="tautulli_api_key" autocomplete="off"
-                                    value="{{ settings.tautulli_api_key or '' }}"
+                                    value=""
                                     placeholder="{% if settings.tautulli_api_key %}********{% else %}Paste API key{% endif %}"
                                     {% if settings.tautulli_api_key %}data-key-set="1" {% endif %}>
                                 {% if settings.tautulli_api_key %}<input type="hidden" name="tautulli_api_key_unchanged"
@@ -293,7 +296,7 @@
                                 <div style="display: flex; gap: 10px;">
                                     <div class="password-wrapper">
                                         <input type="password" id="radarr_api_key" name="radarr_api_key"
-                                            autocomplete="off" value="{{ settings.radarr_api_key or '' }}"
+                                            autocomplete="off" value=""
                                             placeholder="{% if settings.radarr_api_key %}********{% else %}Paste API key{% endif %}"
                                             {% if settings.radarr_api_key %}data-key-set="1" {% endif %}>
                                         {% if settings.radarr_api_key %}<input type="hidden"
@@ -321,7 +324,7 @@
                                 <div style="display: flex; gap: 10px;">
                                     <div class="password-wrapper">
                                         <input type="password" id="sonarr_api_key" name="sonarr_api_key"
-                                            autocomplete="off" value="{{ settings.sonarr_api_key or '' }}"
+                                            autocomplete="off" value=""
                                             placeholder="{% if settings.sonarr_api_key %}********{% else %}Paste API key{% endif %}"
                                             {% if settings.sonarr_api_key %}data-key-set="1" {% endif %}>
                                         {% if settings.sonarr_api_key %}<input type="hidden"
@@ -422,8 +425,8 @@
 
                 <div class="card danger-zone span-2">
                     <h3 style="color: var(--error);">Danger Zone</h3>
-                    <p class="ui-section-intro" style="margin-bottom: 12px;">Account deletion is not wired up in this build yet, so this stays disabled instead of failing unexpectedly.</p>
-                    <button type="button" class="btn btn-danger" disabled title="Account deletion is not available yet">Delete My Account</button>
+                    <p class="ui-section-intro" style="margin-bottom: 12px;">Delete your own account and local settings. This requires your current password and cannot be undone.</p>
+                    <button type="button" class="btn-delete logs-control-btn" onclick="deleteMyAccount()">Delete My Account</button>
                 </div>
             </div>
         </div>
@@ -433,25 +436,61 @@
 <script>
     const SETTINGS_CSRF = "{{ csrf_token() }}";
     const SETTINGS_SAVE_URL = "{{ url_for('web_settings.settings') }}";
-    const API_TEST_CONNECTION = "{{ url_for('api.test_connection') }}";
-    const API_PLEX_PIN_CREATE = "{{ url_for('api.plex_pin_create') }}";
-    const API_PLEX_PIN_POLL = "{{ url_for('api.plex_pin_poll') }}";
-    const API_PLEX_SET_URL = "{{ url_for('api.plex_set_url') }}";
-    const API_PLEX_CONNECTIONS = "{{ url_for('api.plex_connections') }}";
+    const TEST_CONNECTION_CANDIDATES = ["/api/test_connection", "/settings/test_connection"];
+    const API_PLEX_PIN_CREATE = "/api/plex/pin/create";
+    const API_PLEX_PIN_POLL = "/api/plex/pin/poll";
+    const API_PLEX_SET_URL = "/api/plex/set-url";
+    const API_PLEX_CONNECTIONS = "/api/plex/connections";
     const API_PLEX_METADATA = "{{ url_for('web_utility.plex_metadata_api') }}";
-    const API_SCANNER_STATUS = "{{ url_for('api.scanner_status') }}";
-    const API_SCANNER_RESET = "{{ url_for('api.reset_scanner') }}";
-    const API_PLEX_LIBRARY_SYNC = "{{ url_for('api.plex_library_sync') }}";
-    const API_GET_CACHE_STATUS = "{{ url_for('api.get_cache_status_route') }}";
-    const API_GET_RADARR_SONARR_CACHE_STATUS = "{{ url_for('api.get_radarr_sonarr_cache_status_route') }}";
-    const API_FORCE_RADARR_SONARR_CACHE_REFRESH = "{{ url_for('api.force_radarr_sonarr_cache_refresh_route') }}";
-    const API_RADARR_SONARR_SCANNER_SAVE = "{{ url_for('api.save_radarr_sonarr_scanner_settings') }}";
-    const API_BACKUPS = "{{ url_for('api.get_backups_api') }}";
-    const API_BACKUP_CREATE = "{{ url_for('api.trigger_backup') }}";
-    const API_BACKUP_DELETE_BASE = "{{ url_for('api.delete_backup_api', filename='') }}";
-    const API_BACKUP_RESTORE_BASE = "{{ url_for('api.run_restore', filename='') }}";
-    const API_BACKUP_UPLOAD = "{{ url_for('api.upload_backup') }}";
-    const BACKUP_DOWNLOAD_URL_PREFIX = "{{ url_for('api.download_backup', filename='') }}";
+    const API_SCANNER_STATUS = "/api/scanner/status";
+    const API_SCANNER_RESET = "/api/scanner/reset";
+    const API_PLEX_LIBRARY_SYNC = "/api/plex/library/sync";
+    const API_GET_CACHE_STATUS = "/api/get_cache_status";
+    const API_GET_RADARR_SONARR_CACHE_STATUS = "/api/get_radarr_sonarr_cache_status";
+    const API_FORCE_RADARR_SONARR_CACHE_REFRESH = "/api/force_radarr_sonarr_cache_refresh";
+    const API_RADARR_SONARR_SCANNER_SAVE = "/api/radarr_sonarr_scanner/save";
+    const API_BACKUPS = "/api/backups";
+    const API_BACKUP_CREATE = "/api/backup/create";
+    const API_BACKUP_DELETE_BASE = "/api/backup/delete/";
+    const API_BACKUP_RESTORE_BASE = "/api/backup/restore/";
+    const API_BACKUP_UPLOAD = "/api/backup/upload";
+    const BACKUP_DOWNLOAD_URL_PREFIX = "/api/backup/download/";
+    const DELETE_ACCOUNT_CANDIDATES = ["/api/account/delete", "/delete_profile"];
+    const ADMIN_USERS_CANDIDATES = ["/api/admin/users", "/settings/admin/users"];
+    const ADMIN_TOGGLE_ROLE_CANDIDATES = ["/api/admin/toggle_role", "/settings/admin/toggle_role"];
+    const ADMIN_DELETE_USER_CANDIDATES = ["/api/admin/delete_user", "/settings/admin/delete_user"];
+
+    async function fetchJsonWithFallback(urls, options = {}) {
+        let lastError = null;
+
+        for (const url of urls) {
+            try {
+                const response = await fetch(url, options);
+                const contentType = (response.headers.get('content-type') || '').toLowerCase();
+
+                if (response.status === 404) {
+                    lastError = new Error('Not found');
+                    continue;
+                }
+                if (!contentType.includes('application/json')) {
+                    if (!response.ok) {
+                        throw new Error(`Request failed (${response.status})`);
+                    }
+                    throw new Error('Server returned an unexpected response.');
+                }
+
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.message || `Request failed (${response.status})`);
+                }
+                return data;
+            } catch (err) {
+                lastError = err;
+            }
+        }
+
+        throw lastError || new Error('Not found');
+    }
 
     function openTab(evt, tabName) {
         let i, tabcontent, tablinks;
@@ -519,10 +558,14 @@
         else if (service === 'radarr') { payload.url = document.getElementById('radarr_url').value; payload.api_key = document.getElementById('radarr_api_key').value; }
         else if (service === 'sonarr') { payload.url = document.getElementById('sonarr_url').value; payload.api_key = document.getElementById('sonarr_api_key').value; }
 
-        fetch(API_TEST_CONNECTION, {
-            method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': SETTINGS_CSRF }, body: JSON.stringify(payload)
-        }).then(r => r.json()).then(d => {
+        fetchJsonWithFallback(TEST_CONNECTION_CANDIDATES, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': SETTINGS_CSRF, 'Accept': 'application/json' },
+            body: JSON.stringify(payload)
+        }).then(d => {
             showModal(d.status === 'success' ? 'OK' : 'Error', d.status === 'success' ? 'Connected!' : 'Failed', d.message, false);
+        }).catch(err => {
+            showModal('Error', 'Failed', err.message || 'Connection failed', false);
         });
     }
 
@@ -639,7 +682,7 @@
         const formData = new FormData();
         formData.append('backup', file);
 
-        fetch("{{ url_for('api.upload_backup') }}", {
+fetch("/api/backup/upload", {
             method: 'POST',
             headers: { 'X-CSRFToken': SETTINGS_CSRF },
             body: formData
@@ -910,7 +953,7 @@
         const enabled = document.getElementById('radarr-sonarr-toggle').checked;
         const interval = parseInt(document.getElementById('radarr-sonarr-interval').value);
 
-        fetch("{{ url_for('api.save_radarr_sonarr_scanner_settings') }}", {
+fetch("/api/radarr_sonarr_scanner/save", {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -930,7 +973,7 @@
     function forceRadarrSonarrCacheRefresh() {
         if (!confirm('Force refresh Radarr/Sonarr cache now? This may take a few minutes.')) return;
 
-        fetch("{{ url_for('api.force_radarr_sonarr_cache_refresh_route') }}", {
+fetch("/api/force_radarr_sonarr_cache_refresh", {
             method: 'POST',
             headers: { 'X-CSRFToken': SETTINGS_CSRF }
         }).then(r => r.json()).then(d => {
@@ -940,7 +983,7 @@
     }
 
     function loadRadarrSonarrStatus() {
-        fetch("{{ url_for('api.get_radarr_sonarr_cache_status_route') }}").then(r => r.json()).then(d => {
+fetch("/api/get_radarr_sonarr_cache_status").then(r => r.json()).then(d => {
             const lastScan = d.last_scan || 'Never';
             document.getElementById('radarr-sonarr-last-scan').textContent = lastScan;
             document.getElementById('radarr-sonarr-toggle').checked = d.enabled || false;
@@ -968,10 +1011,12 @@
 
         container.innerHTML = '<div class="text-center" style="padding:20px;">Loading users...</div>';
 
-        fetch("{{ url_for('api.get_all_users') }}", {
-            headers: { 'X-CSRFToken': SETTINGS_CSRF }
+        fetchJsonWithFallback(ADMIN_USERS_CANDIDATES, {
+            headers: {
+                'X-CSRFToken': SETTINGS_CSRF,
+                'Accept': 'application/json'
+            }
         })
-            .then(r => r.json())
             .then(users => {
                 if (!users || users.length === 0) {
                     container.innerHTML = '<div class="text-center" style="padding:20px; color:#999;">No users found.</div>';
@@ -1013,22 +1058,22 @@
             })
             .catch(err => {
                 console.error('Failed to load users:', err);
-                container.innerHTML = '<div class="text-center" style="padding:20px; color:#e74c3c;">Failed to load users. Please try again.</div>';
+                container.innerHTML = `<div class="text-center" style="padding:20px; color:#e74c3c;">${escapeHtml(String(err.message || 'Failed to load users. Please try again.'))}</div>`;
             });
     }
 
     function toggleUserRole(userId, username) {
         if (!confirm(`Change role for user "${username}"?`)) return;
 
-        fetch("{{ url_for('api.toggle_user_role') }}", {
+        fetchJsonWithFallback(ADMIN_TOGGLE_ROLE_CANDIDATES, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-CSRFToken': SETTINGS_CSRF
+                'X-CSRFToken': SETTINGS_CSRF,
+                'Accept': 'application/json'
             },
             body: JSON.stringify({ user_id: userId })
         })
-            .then(r => r.json())
             .then(data => {
                 if (data.status === 'success') {
                     loadUsers(); // Reload the list
@@ -1045,15 +1090,15 @@
     function deleteUser(userId, username) {
         if (!confirm(`Are you sure you want to delete user "${username}"? This cannot be undone.`)) return;
 
-        fetch("{{ url_for('api.admin_delete_user') }}", {
+        fetchJsonWithFallback(ADMIN_DELETE_USER_CANDIDATES, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-CSRFToken': SETTINGS_CSRF
+                'X-CSRFToken': SETTINGS_CSRF,
+                'Accept': 'application/json'
             },
             body: JSON.stringify({ user_id: userId })
         })
-            .then(r => r.json())
             .then(data => {
                 if (data.status === 'success') {
                     loadUsers(); // Reload the list
@@ -1071,6 +1116,40 @@
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    async function deleteMyAccount() {
+        const username = prompt('Type your username to confirm account deletion:');
+        if (username === null) return;
+
+        const password = prompt('Enter your current password:');
+        if (password === null) return;
+
+        if (!confirm('Delete your account permanently? This cannot be undone.')) return;
+
+        try {
+            const data = await fetchJsonWithFallback(DELETE_ACCOUNT_CANDIDATES, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': SETTINGS_CSRF,
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({
+                    confirm_username: username,
+                    current_password: password
+                })
+            });
+
+            if (data.status !== 'success') {
+                alert(data.message || 'Failed to delete account.');
+                return;
+            }
+
+            window.location.href = data.redirect_url || '/login';
+        } catch (err) {
+            alert(err.message || 'Failed to delete account.');
+        }
     }
 
     // Add Enter key handling for all input fields in settings

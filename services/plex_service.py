@@ -24,6 +24,7 @@ from plexapi.server import PlexServer
 from models import db, Settings, TmdbAlias
 from utils.helpers import write_log, normalize_title
 from utils.system import is_system_locked, set_system_lock, remove_system_lock
+from utils.tmdb_http import tmdb_get
 from config import get_cache_file
 
 log = logging.getLogger(__name__)
@@ -33,8 +34,6 @@ _TVDB_TMDB_CACHE = {}
 
 # Cache file path
 CACHE_FILE = get_cache_file()
-
-
 class PlexService:
     """Service for Plex library integration and GUID resolution."""
 
@@ -82,8 +81,7 @@ class PlexService:
         if not (tmdb_key and str(tmdb_key).strip()):
             return None
         try:
-            url = f"https://api.themoviedb.org/3/find/{imdb_id.strip()}?external_source=imdb_id&api_key={tmdb_key.strip()}"
-            r = requests.get(url, timeout=10)
+            r = tmdb_get(f"find/{imdb_id.strip()}", tmdb_key, params={'external_source': 'imdb_id'}, timeout=10)
             if not r.ok:
                 return None
             data = r.json()
@@ -114,8 +112,7 @@ class PlexService:
         if key in _TVDB_TMDB_CACHE:
             return _TVDB_TMDB_CACHE[key]
         try:
-            url = f"https://api.themoviedb.org/3/find/{tvdb_id}?external_source=tvdb_id&api_key={tmdb_key.strip()}"
-            r = requests.get(url, timeout=10)
+            r = tmdb_get(f"find/{tvdb_id}", tmdb_key, params={'external_source': 'tvdb_id'}, timeout=10)
             if not r.ok:
                 _TVDB_TMDB_CACHE[key] = None
                 return None
@@ -146,14 +143,13 @@ class PlexService:
         if not title or not (tmdb_key and str(tmdb_key).strip()):
             return None
         mt = 'tv' if media_type in ('tv', 'show') else 'movie'
-        year_param = ''
+        year_params = {}
         if year and re.match(r'^\d{4}$', str(year).strip()):
             y = int(str(year).strip())
-            year_param = f"&year={y}" if mt == 'movie' else f"&first_air_date_year={y}"
+            year_params = {'year': y} if mt == 'movie' else {'first_air_date_year': y}
         try:
             endpoint = 'search/movie' if mt == 'movie' else 'search/tv'
-            url = f"https://api.themoviedb.org/3/{endpoint}?api_key={tmdb_key.strip()}&query={requests.utils.quote(title)}{year_param}&page=1"
-            r = requests.get(url, timeout=10)
+            r = tmdb_get(endpoint, tmdb_key, params={'query': title, **year_params, 'page': 1}, timeout=10)
             if not r.ok:
                 return None
             data = r.json()

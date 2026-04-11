@@ -35,6 +35,9 @@ def requests_page():
 def requests_settings_page():
     """Cloud requests settings page"""
     settings = _get_current_settings()
+    pairing_owner_id = (getattr(settings, 'pair_handoff_owner_user_id', None) or '').strip()
+    pairing_bootstrap_secret = (getattr(settings, 'pair_handoff_bootstrap_secret', None) or '').strip()
+    pairing_ready = bool(pairing_owner_id and pairing_bootstrap_secret)
     cloud_import_log = CloudService.get_cloud_import_log(20, settings=settings)
     last_instant_import = next(
         (entry for entry in cloud_import_log if (entry.get('delivery') or '').strip().lower() in (
@@ -63,6 +66,8 @@ def requests_settings_page():
     return render_template(
         'requests_settings.html',
         settings=settings,
+        pairing_ready=pairing_ready,
+        pairing_owner_id=pairing_owner_id,
         cloud_import_log=cloud_import_log,
         last_instant_import=last_instant_import,
         last_poll_import=last_poll_import,
@@ -88,6 +93,11 @@ def save_cloud_settings():
             else:
                 settings.cloud_api_key = None
                 settings.cloud_enabled = False
+    settings.pair_handoff_owner_user_id = (request.form.get('pair_handoff_owner_user_id') or '').strip() or None
+    if 'pair_handoff_bootstrap_secret_unchanged' in request.form:
+        pass
+    else:
+        settings.pair_handoff_bootstrap_secret = (request.form.get('pair_handoff_bootstrap_secret') or '').strip() or None
     settings.cloud_movie_handler = request.form.get('cloud_movie_handler')
     settings.cloud_tv_handler = request.form.get('cloud_tv_handler')
     
@@ -145,7 +155,10 @@ def save_cloud_settings():
             flash("Auto-recovery has been reset. Try enabling the tunnel again.", "success")
 
     # save cloudflare tunnel settings
-    settings.cloudflare_api_token = (request.form.get('cloudflare_api_token') or '').strip() or None
+    if 'cloudflare_api_token_unchanged' in request.form:
+        pass
+    else:
+        settings.cloudflare_api_token = (request.form.get('cloudflare_api_token') or '').strip() or None
     settings.cloudflare_account_id = (request.form.get('cloudflare_account_id') or '').strip() or None
     
     # save the webhook failsafe interval (6, 12, or 24 hours)

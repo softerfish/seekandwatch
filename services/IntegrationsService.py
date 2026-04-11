@@ -12,6 +12,7 @@ from flask import current_app
 from models import db, RadarrSonarrCache, Settings, TmdbAlias
 from utils.helpers import write_log, normalize_title
 from utils.system import is_system_locked, set_system_lock, remove_system_lock
+from utils.tmdb_http import tmdb_get
 
 log = logging.getLogger(__name__)
 
@@ -315,8 +316,7 @@ class IntegrationsService:
                                     tvdb_id = show.get('tvdbId')
                                     if tvdb_id and settings.tmdb_key:
                                         try:
-                                            find_url = f"https://api.themoviedb.org/3/find/{tvdb_id}?api_key={settings.tmdb_key}&external_source=tvdb_id"
-                                            find_resp = requests.get(find_url, timeout=5)
+                                            find_resp = tmdb_get(f"find/{tvdb_id}", settings.tmdb_key, params={'external_source': 'tvdb_id'}, timeout=5)
                                             if find_resp.ok:
                                                 tv_results = find_resp.json().get('tv_results', [])
                                                 if tv_results: tmdb_id = tv_results[0].get('id')

@@ -202,9 +202,47 @@
 </style>
 
 <script>
-    const API_MEDIA_REQUESTED = "{{ url_for('api.get_requested_media') }}";
+const API_MEDIA_REQUESTED_CANDIDATES = [
+    "/api/media/requested",
+    "/api/get_requested_media",
+    "/api/requested_media",
+    "/media/requested_data"
+];
     const MEDIA_CSRF = "{{ csrf_token() }}";
     let currentTab = 'requested';
+
+    async function fetchRequestedMediaJson(queryString) {
+        let lastError = null;
+
+        for (const baseUrl of API_MEDIA_REQUESTED_CANDIDATES) {
+            try {
+                const response = await fetch(baseUrl + queryString, {
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+                const contentType = (response.headers.get('content-type') || '').toLowerCase();
+
+                if (response.status === 404) {
+                    lastError = new Error(`Request failed (${response.status})`);
+                    continue;
+                }
+
+                if (!response.ok) {
+                    throw new Error(`Request failed (${response.status})`);
+                }
+                if (!contentType.includes('application/json')) {
+                    throw new Error('Server returned an unexpected response. Try refreshing the page.');
+                }
+
+                return await response.json();
+            } catch (err) {
+                lastError = err;
+            }
+        }
+
+        throw lastError || new Error('Request failed (404)');
+    }
 
     function switchMediaTab(evt, tabName) {
         console.log('Switching to tab:', tabName);
@@ -265,8 +303,9 @@
         // Save page size preference to localStorage
         localStorage.setItem('pageSizeRequested', pageSize);
 
-        fetch(API_MEDIA_REQUESTED + '?source=' + encodeURIComponent(source) + '&sort=' + encodeURIComponent(sort) + '&page=' + page + '&page_size=' + pageSize)
-            .then(r => r.json())
+        const queryString = '?source=' + encodeURIComponent(source) + '&sort=' + encodeURIComponent(sort) + '&page=' + page + '&page_size=' + pageSize;
+
+        fetchRequestedMediaJson(queryString)
             .then(data => {
                 if (data.status === 'error') {
                     container.innerHTML = `<div style="text-align: center; padding: 40px; color: #e74c3c;">${escapeHtml(String(data.message || ''))}</div>`;

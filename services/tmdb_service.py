@@ -22,6 +22,7 @@ import concurrent.futures
 
 from models import db, Settings, TmdbAlias, TmdbKeywordCache, TmdbRuntimeCache
 from utils.helpers import write_log
+from utils.tmdb_http import tmdb_get
 
 log = logging.getLogger(__name__)
 
@@ -67,8 +68,7 @@ class TmdbService:
         # Fetch the missing ones from TMDB API (in parallel for speed)
         def fetch_tags(item):
             try:
-                url = f"https://api.themoviedb.org/3/{item['media_type']}/{item['id']}/keywords?api_key={api_key}"
-                r = requests.get(url, timeout=10)
+                r = tmdb_get(f"{item['media_type']}/{item['id']}/keywords", api_key, timeout=10)
                 if r.status_code != 200:
                     return None
                 
@@ -225,13 +225,12 @@ class TmdbService:
         def fetch_runtime(item):
             """Fetch runtime for a single movie with better error handling."""
             try:
-                url = f"https://api.themoviedb.org/3/movie/{item['id']}?api_key={api_key}"
-                response = requests.get(url, timeout=5)
+                response = tmdb_get(f"movie/{item['id']}", api_key, timeout=5)
                 
                 # Handle rate limits (429)
                 if response.status_code == 429:
                     time.sleep(1)  # Wait and retry once
-                    response = requests.get(url, timeout=5)
+                    response = tmdb_get(f"movie/{item['id']}", api_key, timeout=5)
                 
                 if response.status_code != 200:
                     return {'id': item.get('id'), 'runtime': 0}
@@ -319,8 +318,7 @@ class TmdbService:
 
         def fetch_status(item):
             try:
-                url = f"https://api.themoviedb.org/3/tv/{item['id']}?api_key={api_key}"
-                r = requests.get(url, timeout=5)
+                r = tmdb_get(f"tv/{item['id']}", api_key, timeout=5)
                 if r.status_code == 200:
                     data = r.json()
                     return {'id': item['id'], 'status': data.get('status', 'Unknown')}
@@ -349,8 +347,7 @@ class TmdbService:
             try:
                 media_type = item.get('media_type', 'movie')
                 if media_type == 'movie':
-                    url = f"https://api.themoviedb.org/3/movie/{item['id']}/release_dates?api_key={api_key}"
-                    r = requests.get(url, timeout=5)
+                    r = tmdb_get(f"movie/{item['id']}/release_dates", api_key, timeout=5)
                     if r.status_code == 200:
                         data = r.json()
                         # Look for US rating
@@ -361,8 +358,7 @@ class TmdbService:
                                     if cert:
                                         return {'id': item['id'], 'rating': cert}
                 else:  # TV
-                    url = f"https://api.themoviedb.org/3/tv/{item['id']}/content_ratings?api_key={api_key}"
-                    r = requests.get(url, timeout=5)
+                    r = tmdb_get(f"tv/{item['id']}/content_ratings", api_key, timeout=5)
                     if r.status_code == 200:
                         data = r.json()
                         # Look for US rating
@@ -395,8 +391,7 @@ class TmdbService:
             if not settings or not settings.tmdb_key:
                 return []
             
-            url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}?api_key={settings.tmdb_key}"
-            r = requests.get(url, timeout=5)
+            r = tmdb_get(f"{media_type}/{tmdb_id}", settings.tmdb_key, timeout=5)
             if r.status_code == 200:
                 data = r.json()
                 title = data.get('title') if media_type == 'movie' else data.get('name')

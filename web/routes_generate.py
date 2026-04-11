@@ -9,6 +9,7 @@ import json
 import random
 import threading
 import time
+from collections.abc import Mapping
 from urllib.parse import quote_plus
 
 import requests
@@ -27,9 +28,28 @@ from utils import (
     fetch_omdb_ratings,
 )
 from utils.background_tasks import run_in_background
+from utils.tmdb_http import tmdb_get
 
 # create blueprint
 generate_bp = Blueprint('web_generate', __name__, url_prefix='')
+
+
+def _make_json_safe(value):
+    """Convert values into plain JSON-safe data for results template serialization."""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, list):
+        return [_make_json_safe(item) for item in value]
+    if isinstance(value, tuple):
+        return [_make_json_safe(item) for item in value]
+    if isinstance(value, Mapping):
+        return {str(key): _make_json_safe(val) for key, val in value.items()}
+    return str(value)
+
+
+def _results_template_items(items):
+    """Normalize recommendation payloads before Jinja's tojson filter touches them."""
+    return [_make_json_safe(item) for item in (items or [])]
 
 
 @generate_bp.route('/get_local_trending')
@@ -68,15 +88,15 @@ def reset_alias_db():
 def recommend_from_trending():
     """generate recommendations based on tautulli trending"""
     m_type = request.args.get('type', 'movie')
-    
+
     # grab trending stuff from tautulli
     trending = get_tautulli_trending(m_type, settings=current_user.settings)
     if not trending:
         flash("No trending data found to base recommendations on.", "error")
         return redirect(url_for('web_pages.dashboard'))
-        
+
     seed_ids = [str(x['tmdb_id']) for x in trending]
-    
+
     # fetch tmdb recommendations for each trending item (in parallel)
     final_recs = []
     s = current_user.settings
@@ -87,9 +107,8 @@ def recommend_from_trending():
         futures = []
         for tid in seed_ids:
             for p in [1, 2]:  # grab 2 pages per item
-                url = f"https://api.themoviedb.org/3/{m_type}/{tid}/recommendations?api_key={s.tmdb_key}&language=en-US&page={p}"
-                futures.append(executor.submit(requests.get, url))
-            
+                futures.append(executor.submit(tmdb_get, f"{m_type}/{tid}/recommendations", s.tmdb_key, {'language': 'en-US', 'page': p}))
+
         for f in concurrent.futures.as_completed(futures):
             try:
                 data = f.result().json()
@@ -99,7 +118,7 @@ def recommend_from_trending():
     # remove duplicates and filter out stuff we already own
     seen = set()
     unique_recs = []
-    
+
     for r in final_recs:
         if r['id'] not in seen:
             # normalize the year so we don't crash on weird dates
@@ -113,15 +132,18 @@ def recommend_from_trending():
             # check if already owned (improved duplicate detection)
             if is_owned_item(r, m_type):
                 continue
-            
+
             seen.add(r['id'])
             unique_recs.append(r)
-            
+
     random.shuffle(unique_recs)
-    
+
     # fetch runtime in background for trending recommendations (using helper)
-    run_in_background(prefetch_runtime_parallel, unique_recs[:40], s.tmdb_key)
-    
+    try:
+        run_in_background(prefetch_runtime_parallel, unique_recs[:40], s.tmdb_key)
+    except Exception as e:
+        write_log("warning", "Generate", f"Trending runtime prefetch dispatch failed: {type(e).__name__}: {e}")
+
     # save to cache so "load more" works (thread-safe)
     set_results_cache(current_user.id, {
         'candidates': unique_recs,
@@ -129,11 +151,10 @@ def recommend_from_trending():
     })
     genres = []
     try:
-        g_url = f"https://api.themoviedb.org/3/genre/{m_type}/list?api_key={s.tmdb_key}"
-        genres = requests.get(g_url, timeout=10).json().get('genres', [])
+        genres = tmdb_get(f"genre/{m_type}/list", s.tmdb_key, timeout=10).json().get('genres', [])
     except Exception: pass
-            
-    return render_template('results.html', movies=unique_recs[:40], 
+
+    return render_template('results.html', movies=_results_template_items(unique_recs[:40]),
                          genres=genres, current_genre=None, min_year=0, min_rating=0)
 
 
@@ -146,17 +167,17 @@ def review_history():
     if not s:
         flash("No settings found.", "error")
         return redirect(url_for('web_pages.dashboard'))
-    
+
     ignored_libs = [l.strip().lower() for l in request.form.getlist('ignored_libraries')]
-    
+
     media_type = request.form.get('media_type', 'movie')
     manual_query = request.form.get('manual_query')
     limit = max(1, min(500, int(request.form.get('history_limit', 20))))
-    
+
     # save filter preferences to session
     session['critic_filter'] = 'true' if request.form.get('critic_filter') else 'false'
     session['critic_threshold'] = request.form.get('critic_threshold', 70)
-    
+
     candidates = []
     providers = []
     genres = []
@@ -167,8 +188,7 @@ def review_history():
     try:
         # manual search
         if manual_query:
-            url = f"https://api.themoviedb.org/3/search/{media_type}?api_key={s.tmdb_key}&query={manual_query}"
-            res = requests.get(url, timeout=10).json().get('results', [])
+            res = tmdb_get(f"search/{media_type}", s.tmdb_key, params={'query': manual_query}, timeout=10).json().get('results', [])
             if res:
                 item = res[0]
                 candidates.append({
@@ -184,14 +204,14 @@ def review_history():
             # convert library names to ids
             ignored_lib_names = [l.strip().lower() for l in request.form.getlist('ignored_libraries')]
             ignored_lib_ids = []
-            
+
             if ignored_lib_names:
                 try:
                     for section in plex.library.sections():
                         if section.title.lower() in ignored_lib_names:
                             ignored_lib_ids.append(str(section.key))
                 except Exception: pass
-            
+
             # build a map of plex user ids to their display names
             user_map = {}
             try:
@@ -209,7 +229,7 @@ def review_history():
             except Exception: pass
 
             ignored = [u.strip().lower() for u in (s.ignored_users or '').split(',')]
-            
+
             cache_key = f"{current_user.id}:{media_type}:{limit}:{','.join(sorted(ignored))}:{','.join(sorted(ignored_lib_ids))}"
             cached_candidates = get_history_cache(cache_key)
             if cached_candidates:
@@ -220,7 +240,7 @@ def review_history():
                 lib_type = 'movie' if media_type == 'movie' else 'episode'
                 title_stats = {}
                 now_ts = datetime.datetime.now().timestamp()
-                
+
                 for h in history:
                     if h.type != lib_type:
                         continue
@@ -325,15 +345,13 @@ def review_history():
     def _fetch_providers():
         try:
             reg = s.tmdb_region.split(',')[0] if s.tmdb_region else 'US'
-            p_url = f"https://api.themoviedb.org/3/watch/providers/{media_type}?api_key={s.tmdb_key}&watch_region={reg}"
-            p_data = requests.get(p_url, timeout=10).json().get('results', [])
+            p_data = tmdb_get(f"watch/providers/{media_type}", s.tmdb_key, params={'watch_region': reg}, timeout=10).json().get('results', [])
             providers[:] = sorted(p_data, key=lambda x: x.get('display_priority', 999))[:30]
         except Exception:
             write_log("warning", "Review History", "Failed to fetch providers")
     def _fetch_genres():
         try:
-            g_url = f"https://api.themoviedb.org/3/genre/{media_type}/list?api_key={s.tmdb_key}"
-            genres[:] = requests.get(g_url, timeout=10).json().get('genres', [])
+            genres[:] = tmdb_get(f"genre/{media_type}/list", s.tmdb_key, timeout=10).json().get('genres', [])
         except Exception:
             write_log("warning", "Review History", "Failed to fetch genres")
     t_prov = threading.Thread(target=_fetch_providers)
@@ -343,13 +361,15 @@ def review_history():
     t_prov.join()
     t_gen.join()
 
-    return render_template('review.html', 
-                           movies=candidates, 
+    return render_template('review.html',
+                           movies=candidates,
                            media_type=media_type,
                            providers=providers,
                            genres=genres,
                            future_mode=future_mode,
-                           include_obscure=include_obscure)
+                           include_obscure=include_obscure,
+                           has_tmdb_key=bool(s and s.tmdb_key),
+                           has_plex=bool(s and s.plex_url and s.plex_token))
 
 
 
@@ -359,19 +379,19 @@ def generate():
     """core recommendation engine, generates personalized recommendations"""
     s = current_user.settings
     if not s:
-        flash("No settings found. Please complete Settings (e.g. TMDB API key) first.", "error")
+        flash("No settings found. Please complete Settings (for example, add your TMDB API Read Access Token) first.", "error")
         return redirect(url_for('web_pages.dashboard'))
     if not (s.tmdb_key or '').strip():
-        flash("TMDB API key is required for recommendations. Add it in Settings > APIs & Connections.", "error")
+        flash("TMDB API Read Access Token is required for recommendations. Add it in Settings > APIs & Connections.", "error")
         return redirect(url_for('web_pages.dashboard'))
-    
+
     # "I'm feeling lucky" just pulls a few random popular movies
     if request.form.get('lucky_mode') == 'true':
         raw_candidates = handle_lucky_mode(s)
         if not raw_candidates:
              flash("Could not find a lucky pick!", "error")
              return redirect(url_for('web_pages.dashboard'))
-        
+
         lucky_result = []
         # keep going until we find 5 movies the user doesn't already own
         page = 1
@@ -381,8 +401,7 @@ def generate():
             if page > 1 or len(raw_candidates) == 0:
                 try:
                     random_genre = random.choice([28, 35, 18, 878, 27, 53])
-                    url = f"https://api.themoviedb.org/3/discover/movie?api_key={s.tmdb_key}&with_genres={random_genre}&sort_by=popularity.desc&page={page}"
-                    data = requests.get(url, timeout=10).json().get('results', [])
+                    data = tmdb_get('discover/movie', s.tmdb_key, params={'with_genres': random_genre, 'sort_by': 'popularity.desc', 'page': page}, timeout=10).json().get('results', [])
                     raw_candidates = [{'id': p['id'], 'title': p['title'], 'year': (p.get('release_date') or '')[:4], 'poster_path': p.get('poster_path'), 'overview': p.get('overview'), 'vote_average': p.get('vote_average'), 'media_type': 'movie'} for p in data]
                     random.seed(int(time.time() * 1000))
                     random.shuffle(raw_candidates)
@@ -390,35 +409,37 @@ def generate():
                 except Exception as e:
                     write_log("warning", "Generate", f"Lucky mode page fetch failed ({type(e).__name__})")
                     break
-            
+
             for item in raw_candidates:
                 if len(lucky_result) >= 5:
                     break
-                
+
                 # start with 0; the real runtime gets filled in later
                 if not item.get('runtime'):
                     item['runtime'] = 0
-                
+
                 # skip anything the user already owns
                 if is_owned_item(item, 'movie'):
                     continue
-                
+
                 lucky_result.append(item)
-            
+
             page += 1
-            
+
         if not lucky_result:
              flash("You own all the lucky picks! Try again.", "error")
              return redirect(url_for('web_pages.dashboard'))
 
         genres = []
         try:
-            g_url = f"https://api.themoviedb.org/3/genre/movie/list?api_key={s.tmdb_key}"
-            genres = requests.get(g_url, timeout=10).json().get('genres', [])
+            genres = tmdb_get('genre/movie/list', s.tmdb_key, timeout=10).json().get('genres', [])
         except Exception: pass
 
         # fill in runtimes in the background
-        run_in_background(prefetch_runtime_parallel, lucky_result, s.tmdb_key)
+        try:
+            run_in_background(prefetch_runtime_parallel, lucky_result, s.tmdb_key)
+        except Exception as e:
+            write_log("warning", "Generate", f"Lucky runtime prefetch dispatch failed: {type(e).__name__}: {e}")
 
         # frontend expects a title key
         for item in lucky_result:
@@ -426,24 +447,24 @@ def generate():
                 item['title'] = item['name']
 
         set_results_cache(current_user.id, {'candidates': lucky_result, 'next_index': len(lucky_result)})
-        return render_template('results.html', 
-                               movies=lucky_result, 
-                               min_year=0, 
-                               min_rating=0, 
-                               genres=genres, 
-                               current_genre=None, 
+        return render_template('results.html',
+                               movies=_results_template_items(lucky_result),
+                               min_year=0,
+                               min_rating=0,
+                               genres=genres,
+                               current_genre=None,
                                use_critic_filter='false',
                                is_lucky=True)
 
     # standard recommendation mode
     media_type = request.form.get('media_type')
     selected_titles = request.form.getlist('selected_movies')
-    
+
     session['media_type'] = media_type
     session['selected_titles'] = selected_titles
     session['genre_filter'] = request.form.getlist('genre_filter')
     session['keywords'] = request.form.get('keywords', '')
-    
+
     try: session['min_year'] = max(0, min(2100, int(request.form.get('min_year', 0))))
     except Exception: session['min_year'] = 0
     try: session['min_rating'] = float(request.form.get('min_rating', 0))
@@ -453,7 +474,7 @@ def generate():
         session['max_runtime'] = max_runtime if max_runtime > 0 else 9999
     except Exception:
         session['max_runtime'] = 9999
-    
+
     if not selected_titles:
         flash('Please select at least one item.', 'error')
         return redirect(url_for('web_pages.dashboard'))
@@ -466,8 +487,7 @@ def generate():
 
     def resolve_title_to_id(title):
         try:
-            search_url = f"https://api.themoviedb.org/3/search/{media_type}?api_key={s.tmdb_key}&query={title}"
-            r = requests.get(search_url, timeout=10).json()
+            r = tmdb_get(f"search/{media_type}", s.tmdb_key, params={'query': title}, timeout=10).json()
             if r.get('results'):
                 return r['results'][0]['id']
         except Exception:
@@ -483,8 +503,8 @@ def generate():
         write_log("info", "Generate", f"Capping seeds from {len(seed_ids)} to {max_seeds} to reduce timeout risk.")
         seed_ids = seed_ids[:max_seeds]
     if not seed_ids:
-        write_log("warning", "Generate", "No TMDB IDs resolved from selected titles; check TMDB API key and titles.")
-        flash("Could not find any of the selected titles on TMDB. Check your TMDB API key in Settings.", "error")
+        write_log("warning", "Generate", "No TMDB IDs resolved from selected titles; check TMDB API Read Access Token and titles.")
+        flash("Could not find any of the selected titles on TMDB. Check your TMDB API Read Access Token in Settings.", "error")
         return redirect(url_for('web_pages.dashboard'))
 
     future_mode = request.form.get('future_mode') == 'true'
@@ -508,14 +528,11 @@ def generate():
 
         try:
             if future_mode:
-                details_url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}?api_key={s.tmdb_key}"
-                details = requests.get(details_url, timeout=10).json()
+                details = tmdb_get(f"{media_type}/{tmdb_id}", s.tmdb_key, timeout=10).json()
                 genres = [str(g['id']) for g in details.get('genres', [])[:3]]
                 genre_str = "|".join(genres)
 
-                disc_url = f"https://api.themoviedb.org/3/discover/{media_type}"
                 params = {
-                    'api_key': s.tmdb_key,
                     'language': 'en-US',
                     'sort_by': 'popularity.desc',
                     'with_genres': genre_str,
@@ -533,14 +550,13 @@ def generate():
                     params['include_null_first_air_dates'] = 'false'
                     params['with_origin_country'] = 'US'
 
-                data = requests.get(disc_url, params=params).json()
+                data = tmdb_get(f"discover/{media_type}", s.tmdb_key, params=params, timeout=10).json()
                 results = data.get('results', [])
             else:
                 # pull a few pages per seed so the pool isn't tiny
                 results = []
                 for page_num in range(1, 6):
-                    rec_url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}/recommendations?api_key={s.tmdb_key}&language=en-US&page={page_num}"
-                    page_data = requests.get(rec_url, timeout=10).json()
+                    page_data = tmdb_get(f"{media_type}/{tmdb_id}/recommendations", s.tmdb_key, params={'language': 'en-US', 'page': page_num}, timeout=10).json()
                     if page_data.get('status_code'):
                         write_log("warning", "Generate", f"TMDB recommendations error for {media_type} {tmdb_id}: {page_data.get('status_message', page_data.get('status_code'))}")
                         continue  # TMDB errored on this page
@@ -554,8 +570,7 @@ def generate():
                         results = cached_similar
                     else:
                         for page_num in range(1, 6):
-                            sim_url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}/similar?api_key={s.tmdb_key}&language=en-US&page={page_num}"
-                            sim_data = requests.get(sim_url, timeout=10).json()
+                            sim_data = tmdb_get(f"{media_type}/{tmdb_id}/similar", s.tmdb_key, params={'language': 'en-US', 'page': page_num}, timeout=10).json()
                             if sim_data.get('status_code'):
                                 write_log("warning", "Generate", f"TMDB similar error for {media_type} {tmdb_id}: {sim_data.get('status_message', sim_data.get('status_code'))}")
                                 continue
@@ -571,15 +586,12 @@ def generate():
                         results = cached_disc
                     else:
                         try:
-                            details_url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}?api_key={s.tmdb_key}"
-                            details = requests.get(details_url, timeout=10).json()
+                            details = tmdb_get(f"{media_type}/{tmdb_id}", s.tmdb_key, timeout=10).json()
                             if not details.get('status_code'):
                                 genres = details.get('genres', [])[:3]
                                 if genres:
                                     genre_str = "|".join(str(g['id']) for g in genres)
-                                    disc_url = f"https://api.themoviedb.org/3/discover/{media_type}"
                                     params = {
-                                        'api_key': s.tmdb_key,
                                         'language': 'en-US',
                                         'sort_by': 'popularity.desc',
                                         'with_genres': genre_str,
@@ -587,7 +599,7 @@ def generate():
                                     }
                                     if not include_obscure:
                                         params['with_original_language'] = 'en'
-                                    data = requests.get(disc_url, params=params, timeout=10).json()
+                                    data = tmdb_get(f"discover/{media_type}", s.tmdb_key, params=params, timeout=10).json()
                                     if not data.get('status_code'):
                                         results = data.get('results', [])
                                         if results:
@@ -614,8 +626,7 @@ def generate():
     # if every seed came back empty, fall back to plain popular discover results
     if raw_count == 0:
         try:
-            disc_url = f"https://api.themoviedb.org/3/discover/{media_type}"
-            base_params = {'api_key': s.tmdb_key, 'language': 'en-US', 'sort_by': 'popularity.desc'}
+            base_params = {'language': 'en-US', 'sort_by': 'popularity.desc'}
             if not include_obscure:
                 base_params['with_original_language'] = 'en'
             all_results = []
@@ -623,7 +634,7 @@ def generate():
             start_page = random.randint(1, 10)
             for page_num in range(start_page, start_page + 10):
                 params = dict(base_params, page=page_num)
-                data = requests.get(disc_url, params=params, timeout=10).json()
+                data = tmdb_get(f"discover/{media_type}", s.tmdb_key, params=params, timeout=10).json()
                 if data.get('status_code'):
                     break
                 all_results.extend(data.get('results', []))
@@ -637,24 +648,24 @@ def generate():
         write_log("info", "Generate", f"TMDB returned {raw_count} raw recommendations (last-resort discover; seeds had 0).")
     else:
         write_log("info", "Generate", f"TMDB returned {raw_count} raw recommendations from {len(seed_ids)} seeds.")
-    
+
     # shuffle all results once before processing to get variety
     random.shuffle(all_results)
-    
+
     # keep the vote floor low unless we already have a big pool
     vote_min = 10 if raw_count < 100 else 20
     # now filter and process
     for item in all_results:
         if item['id'] in seen_ids: continue
-        
+
         # filter out weak picks unless the user asked for obscure stuff
         if not include_obscure:
             # standard mode stays with English-language picks
             if item.get('original_language') != 'en': continue
-            
+
             # skip titles with barely any votes
             if not future_mode and item.get('vote_count', 0) < vote_min: continue
-        
+
         item['media_type'] = media_type
         date = item.get('release_date') or item.get('first_air_date')
         item['year'] = int(date[:4]) if date else 0
@@ -662,14 +673,14 @@ def generate():
         # start with 0; runtime gets filled in later
         if not item.get('runtime'):
             item['runtime'] = 0 if media_type == 'tv' else 0  # filled in later
-        
+
         if item.get('title', item.get('name')) in blocked: continue
-        
+
         # check if already owned (improved duplicate detection)
         is_owned = is_owned_item(item, media_type)
         if is_owned:
             continue
-        
+
         recommendations.append(item)
         seen_ids.add(item['id'])
     if raw_count and not recommendations:
@@ -685,7 +696,7 @@ def generate():
             year = item.get('year', 0)
             return year // 10
         recommendations = diverse_sample(recommendations, len(recommendations), bucket_fn=bucket_fn)
-    
+
     # one more dedupe pass just to be safe
     unique_recs = []
     seen_final = set()
@@ -693,12 +704,12 @@ def generate():
         if item['id'] not in seen_final:
             unique_recs.append(item)
             seen_final.add(item['id'])
-    
+
     # shuffle results so they're different each time (use timestamp as seed for variety)
     random.seed(int(time.time() * 1000))
     random.shuffle(unique_recs)
     random.seed()  # reset to default random seed
-    
+
     set_results_cache(current_user.id, {
         'candidates': unique_recs,
         'next_index': 0,
@@ -706,7 +717,7 @@ def generate():
         'sorted': False  # mark as not sorted since we shuffled
     })
     save_results_cache()
-    
+
     # apply filters (use form values; session was set earlier)
     min_year, min_rating, genre_filter, critic_enabled, threshold = get_session_filters()
     # "All genres" selected (long list) = no genre filter
@@ -718,40 +729,55 @@ def generate():
     target_keywords = [k.strip() for k in raw_keywords.split('|') if k.strip()]
 
     # use shuffled list for display, not sorted recommendations
-    prefetch_ratings_parallel(unique_recs[:60], s.tmdb_key)
+    try:
+        prefetch_ratings_parallel(unique_recs[:60], s.tmdb_key)
+    except Exception as e:
+        write_log("warning", "Generate", f"Ratings prefetch failed: {type(e).__name__}: {e}")
     # Fetch runtime in background to not block initial render (using helper)
-    run_in_background(prefetch_runtime_parallel, unique_recs[:60], s.tmdb_key)
-    
+    try:
+        run_in_background(prefetch_runtime_parallel, unique_recs[:60], s.tmdb_key)
+    except Exception as e:
+        write_log("warning", "Generate", f"Runtime prefetch dispatch failed: {type(e).__name__}: {e}")
+
     if s.omdb_key:
-        prefetch_omdb_parallel(unique_recs[:80], s.omdb_key)
+        try:
+            prefetch_omdb_parallel(unique_recs[:80], s.omdb_key)
+        except Exception as e:
+            write_log("warning", "Generate", f"OMDb prefetch failed: {type(e).__name__}: {e}")
 
     if target_keywords:
-        prefetch_keywords_parallel(unique_recs, s.tmdb_key)
+        try:
+            prefetch_keywords_parallel(unique_recs, s.tmdb_key)
+        except Exception as e:
+            write_log("warning", "Generate", f"Keyword prefetch failed: {type(e).__name__}: {e}")
     else:
-        run_in_background(prefetch_keywords_parallel, unique_recs, s.tmdb_key)
+        try:
+            run_in_background(prefetch_keywords_parallel, unique_recs, s.tmdb_key)
+        except Exception as e:
+            write_log("warning", "Generate", f"Keyword prefetch dispatch failed: {type(e).__name__}: {e}")
 
     final_list = []
     idx = 0
-    
+
     # use shuffled unique_recs instead of sorted recommendations
     while len(final_list) < 40 and idx < len(unique_recs):
         item = unique_recs[idx]
         idx += 1
-        
+
         if item['year'] < min_year: continue
         # skip rating check in future mode (upcoming movies have 0 rating)
         if not future_mode and item.get('vote_average', 0) < min_rating: continue
-        
+
         # runtime filter (if set in session)
         max_runtime = session.get('max_runtime', 9999)
         if max_runtime and max_runtime < 9999:
             item_runtime = item.get('runtime', 9999)
             if item_runtime > max_runtime: continue
-        
+
         if rating_filter:
             c_rate = item.get('content_rating', 'NR')
             if c_rate not in rating_filter: continue
-        
+
         if genre_filter and genre_filter != 'all':
             try:
                 allowed_ids = [int(g) for g in genre_filter] if isinstance(genre_filter, list) else [int(genre_filter)]
@@ -760,7 +786,7 @@ def generate():
                     continue
             except Exception:
                 pass
-            
+
         # check if it matches the keyword filter
         if target_keywords:
             if not item_matches_keywords(item, target_keywords): continue
@@ -785,7 +811,10 @@ def generate():
         final_list.append(item)
 
     if media_type == 'tv':
-        prefetch_tv_states_parallel(final_list, s.tmdb_key)
+        try:
+            prefetch_tv_states_parallel(final_list, s.tmdb_key)
+        except Exception as e:
+            write_log("warning", "Generate", f"TV state prefetch failed: {type(e).__name__}: {e}")
 
     # Update next_index in cache (thread-safe)
     cache = get_results_cache(current_user.id)
@@ -807,14 +836,13 @@ def generate():
             flash("No recommendations matched your filters. Try lowering min rating/year or enabling International & Obscure.", "error")
         return redirect(url_for('web_pages.dashboard'))
 
-    g_url = f"https://api.themoviedb.org/3/genre/{media_type}/list?api_key={s.tmdb_key}"
-    try: genres = requests.get(g_url, timeout=10).json().get('genres', [])
+    try: genres = tmdb_get(f"genre/{media_type}/list", s.tmdb_key, timeout=10).json().get('genres', [])
     except Exception:
         write_log("warning", "Generate", "Failed to fetch genres")
         genres = []
 
-    return render_template('results.html', 
-                           movies=final_list, 
+    return render_template('results.html',
+                           movies=_results_template_items(final_list),
                            genres=genres,
                            current_genre=genre_filter,
                            min_year=min_year,

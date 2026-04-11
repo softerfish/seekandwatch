@@ -30,14 +30,10 @@ def is_webhook_processing():
 @rate_limit_decorator("60 per hour")
 def webhook_health_check():
     """health check endpoint for webhook connectivity testing (GET only)"""
-    import socket
-    hostname = socket.gethostname()
-    
     return jsonify({
         'status': 'ok',
         'message': 'Webhook endpoint is reachable',
         'methods': ['POST'],
-        'hostname': hostname,
         'app_running': True
     }), 200
 
@@ -48,11 +44,11 @@ def receive_webhook():
     """receive webhook from cloud app"""
     # set processing flag to prevent recovery during webhook processing
     _set_webhook_processing(1)
-    
+
     # log incoming request
     ip_address = request.remote_addr
     write_log("info", "Webhook", f"webhook request from {ip_address}")
-    
+
     try:
         # verify secret (basic auth)
         provided_secret = request.headers.get('X-Webhook-Secret', '')
@@ -77,37 +73,37 @@ def receive_webhook():
         if not secret_ok:
             write_log("error", "Webhook", f"invalid secret from {ip_address}")
             return jsonify({'error': 'invalid secret'}), 401
-        
+
         # parse payload
         payload = request.get_json()
         if not payload:
             return jsonify({'error': 'invalid json'}), 400
-        
+
         event = payload.get('event', '')
         requests_data = payload.get('requests', [])
-        
+
         # also support singular 'request' for robustness
         if not requests_data and 'request' in payload:
             requests_data = [payload['request']]
-        
+
         write_log("info", "Webhook", f"event: {event} ({len(requests_data)} items)")
 
         if event == 'test_connection':
-            CloudService.log_webhook(event, payload, 'success', 'handshake test received')
+            CloudService.log_webhook(event, payload, 'success', 'handshake test received', settings=settings)
             return jsonify({'status': 'success', 'message': 'test received'}), 200
-        
+
         if not isinstance(requests_data, list):
-            CloudService.log_webhook(event, payload, 'error', 'invalid requests format')
+            CloudService.log_webhook(event, payload, 'error', 'invalid requests format', settings=settings)
             return jsonify({'error': 'invalid requests format'}), 400
-        
+
         # notify cloud worker that webhook was received (backs off polling)
         CloudService.set_last_webhook_received()
-        
+
         # process approved requests
         if event == 'approved':
             import threading
             from flask import current_app
-            
+
             # extract data first to avoid thread-safety issues with request object
             requests_to_process = []
             for req_data in requests_data:
@@ -118,9 +114,9 @@ def receive_webhook():
                 year = req_data.get('year')
                 requested_by = req_data.get('requested_by', '')
                 notes = req_data.get('notes', '')
-                
+
                 if not tmdb_id: continue
-                
+
                 # update/save to db immediately so it's tracked
                 existing = CloudService._get_cloud_request_by_cloud_id(settings, cloud_id, claim_unowned=True) if cloud_id else None
                 if existing:
@@ -145,20 +141,23 @@ def receive_webhook():
                         status='pending'
                     )
                     db.session.add(req_db)
-                
+
                 requests_to_process.append(cloud_id)
-            
+
             db.session.commit()
-            
-            CloudService.log_webhook(event, payload, 'success', f'queued {len(requests_to_process)} requests')
+
+            CloudService.log_webhook(event, payload, 'success', f'queued {len(requests_to_process)} requests', settings=settings)
 
             # process in background
-            def run_async_process(app_obj, ids):
+            def run_async_process(app_obj, ids, settings_user_id):
                 _set_webhook_processing(1)
                 with app_obj.app_context():
                     try:
-                        # re-fetch settings in this thread
-                        s_obj = CloudService._get_default_settings()
+                        # Re-fetch the exact settings row whose webhook secret matched.
+                        s_obj = CloudService._get_settings_for_user(settings_user_id)
+                        if not s_obj:
+                            write_log("error", "Webhook", f"matched settings missing for user_id={settings_user_id}")
+                            return
                         for cid in ids:
                             r = CloudService._get_cloud_request_by_cloud_id(s_obj, cid, claim_unowned=True)
                             if r:
@@ -170,16 +169,16 @@ def receive_webhook():
                         _set_webhook_processing(-1)
 
             threading.Thread(
-                target=run_async_process, 
-                args=(current_app._get_current_object(), requests_to_process),
+                target=run_async_process,
+                args=(current_app._get_current_object(), requests_to_process, getattr(settings, 'user_id', None)),
                 daemon=True
             ).start()
-            
+
             return jsonify({
                 'success': True,
                 'message': f'queued {len(requests_to_process)} requests for background processing'
             }), 200
-        
+
         # handle other event types (new_pending, etc)
         elif event == 'new_pending':
             # just acknowledge, don't process (owner needs to approve first)
@@ -207,24 +206,24 @@ def receive_webhook():
                     CloudService.log_cloud_import('webhook_pending', title, media_type, True, settings=settings)
                     processed_count += 1
 
-            CloudService.log_webhook(event, payload, 'success', f'received {processed_count} new pending requests')
+            CloudService.log_webhook(event, payload, 'success', f'received {processed_count} new pending requests', settings=settings)
             CloudService.set_last_webhook_received()
             return jsonify({'success': True, 'message': 'pending request notification received'}), 200
-        
+
         else:
-            CloudService.log_webhook(event, payload, 'filtered', f'unknown event type: {event}')
+            CloudService.log_webhook(event, payload, 'filtered', f'unknown event type: {event}', settings=settings)
             return jsonify({'error': f'unknown event type: {event}'}), 400
-    
+
     except Exception as e:
         import traceback
         err_detail = traceback.format_exc()
         write_log("error", "Webhook", f"webhook error: {str(e)}")
         try:
             # try to log the failure if possible
-            CloudService.log_webhook('error', request.get_data(as_text=True), 'error', str(e))
+            CloudService.log_webhook('error', request.get_data(as_text=True), 'error', str(e), settings=settings if 'settings' in locals() else None)
         except: pass
         return jsonify({'error': 'internal server error'}), 500
-    
+
     finally:
         # clear processing flag
         _set_webhook_processing(-1)
@@ -251,12 +250,12 @@ def toggle_webhook_quiet_mode():
         s = current_user.settings
         if not s:
             return jsonify({'status': 'error', 'message': 'Settings not found'}), 404
-        
+
         # handle case where column might not exist yet (shouldn't happen but be safe)
         current_value = getattr(s, 'quiet_webhook_logs', False)
         s.quiet_webhook_logs = not current_value
         db.session.commit()
-        
+
         return jsonify({
             'status': 'success',
             'quiet_mode': s.quiet_webhook_logs

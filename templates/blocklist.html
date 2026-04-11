@@ -58,9 +58,9 @@
 </div>
 
 <script>
-const API_TMDB_SEARCH_PROXY = "{{ url_for('api.tmdb_search_proxy') }}";
-const API_BLOCK_MOVIE = "{{ url_for('api.block_movie') }}";
-const API_UNBLOCK_MOVIE_BASE = "{{ url_for('api.unblock_movie', id=0) }}";
+const API_TMDB_SEARCH_PROXY = "/api/tmdb_search_proxy";
+const API_BLOCK_MOVIE = "/api/block_movie";
+const API_UNBLOCK_MOVIE_BASE = "/api/unblock_movie/0";
 const CSRF_TOKEN = "{{ csrf_token() }}";
 // UI state
 let currentTab = 'movie';

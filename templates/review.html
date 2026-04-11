@@ -24,6 +24,33 @@
         <h2 class="fw-800">Curate & filter</h2>
     </div>
 
+    {% if not has_tmdb_key or not has_plex %}
+    <div class="card" style="margin: 0 auto 20px; max-width: 100%; border-left: 4px solid var(--error, #e74c3c); background: rgba(231, 76, 60, 0.1);">
+        <div style="display: flex; align-items: flex-start; gap: 15px;">
+            <div style="font-size: 32px; color: var(--error, #e74c3c); font-weight: 700; line-height: 1;">Warning</div>
+            <div style="flex: 1;">
+                <h4 style="margin: 0 0 8px 0; color: var(--error, #e74c3c);">Setup Required</h4>
+                <p style="margin: 0 0 12px 0; color: #ccc; font-size: 0.9em;">
+                    Smart Discovery needs the following to work. Complete these steps in <a href="{{ url_for('web_settings.settings') }}" style="color: var(--accent-color); text-decoration: underline;">Settings</a>:
+                </p>
+                <ul style="margin: 0; padding-left: 20px; color: #ccc; font-size: 0.9em; line-height: 1.6;">
+                    {% if not has_plex %}
+                    <li style="color: var(--error, #e74c3c);">Not set: Link your Plex account and enter Plex URL</li>
+                    {% else %}
+                    <li style="color: #2ecc71;">Ready: Plex connected</li>
+                    {% endif %}
+
+                    {% if not has_tmdb_key %}
+                    <li style="color: var(--error, #e74c3c);">Not set: Add TMDB API Read Access Token</li>
+                    {% else %}
+                    <li style="color: #2ecc71;">Ready: TMDB API Read Access Token added</li>
+                    {% endif %}
+                </ul>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <div class="card filter-card">
         <div class="filter-row filter-row-two">
             <div class="filter-col filter-col-rating">
@@ -115,6 +142,7 @@
 
     <p class="text-muted mt-15 mb-10">Select titles to influence recommendations:</p>
 
+    {% if movies %}
     <div class="selection-grid">
         {% for movie in movies %}
         <div class="selection-card" onclick="toggleSelection(this)">
@@ -141,6 +169,19 @@
         </div>
         {% endfor %}
     </div>
+    {% else %}
+    <div class="card mt-15" style="text-align:center; padding: 28px; color: #ccc;">
+        {% if not has_plex and not has_tmdb_key %}
+        No titles were loaded because Smart Discovery needs both your Plex connection and your TMDB API Read Access Token before it can build recommendations.
+        {% elif not has_plex %}
+        No titles were loaded because Smart Discovery needs your Plex connection before it can build recommendations from your viewing history.
+        {% elif not has_tmdb_key %}
+        No titles were loaded because Smart Discovery needs your TMDB API Read Access Token before it can load genres, keywords, and recommendation data.
+        {% else %}
+        No titles were loaded. Try again after checking your Plex connection and watch history.
+        {% endif %}
+    </div>
+    {% endif %}
 
     <button type="submit" class="btn btn-primary"
         style="display: block; width: auto; min-width: 250px; margin: 25px auto 0 auto; padding: 12px 30px; border-radius: 50px; font-size: 1.1em;">Generate
@@ -155,7 +196,7 @@
 
 <script>
     const RESULTS_CSRF = "{{ csrf_token() }}";
-    const API_BLOCK_MOVIE = "{{ url_for('api.block_movie') }}";
+    const API_BLOCK_MOVIE = "/api/block_movie";
 
     function toggleGenreView(btn) {
         const hidden = document.querySelectorAll('.hidden-genre');
@@ -204,7 +245,7 @@
 
     let selectedKeywords = [];
 
-    const API_TMDB_SEARCH_PROXY = "{{ url_for('api.tmdb_search_proxy') }}";
+    const API_TMDB_SEARCH_PROXY = "/api/tmdb_search_proxy";
     document.getElementById('keyword-search').addEventListener('input', function (e) {
         const q = e.target.value;
         if (q.length < 3) {

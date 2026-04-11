@@ -4,15 +4,15 @@
 
 <script>
     window.playlistsConfig = {
-        availableLibrariesUrl: {{ url_for('api.get_available_libraries') | tojson }},
-        saveScheduleTimeUrl: {{ url_for('api.save_schedule_time') | tojson }},
-        cacheStatusUrl: {{ url_for('api.get_cache_status_route') | tojson }},
-        getPlexCollectionsUrl: {{ url_for('api.get_plex_collections') | tojson }},
-        plexCollectionVisibilityUrl: {{ url_for('api.set_plex_collection_visibility') | tojson }},
-        previewPresetItemsBase: {{ url_for('api.preview_preset_items', key='') | tojson }},
-        createCollectionBase: {{ url_for('api.create_collection', key='') | tojson }},
-        deleteCollectionBase: {{ url_for('api.delete_collection', key='') | tojson }},
-        scheduleCollectionUrl: {{ url_for('api.schedule_collection') | tojson }},
+        availableLibrariesUrl: {{ '/api/get_available_libraries' | tojson }},
+        saveScheduleTimeUrl: {{ '/api/save_schedule_time' | tojson }},
+        cacheStatusUrl: {{ '/api/get_cache_status' | tojson }},
+        getPlexCollectionsUrl: {{ '/api/get_plex_collections' | tojson }},
+        plexCollectionVisibilityUrl: {{ '/api/plex/collection/visibility' | tojson }},
+        previewPresetItemsBase: {{ '/api/preview_preset_items/' | tojson }},
+        createCollectionBase: {{ '/api/create_collection/' | tojson }},
+        deleteCollectionBase: {{ '/api/delete_collection/' | tojson }},
+        scheduleCollectionUrl: {{ '/api/schedule_collection' | tojson }},
         csrfToken: {{ csrf_token() | tojson }},
         setupIncomplete: {{ (not has_tmdb_key or not has_plex or not has_library_scan) | tojson }}
     };
@@ -29,7 +29,7 @@
 {% if not has_tmdb_key or not has_plex or not has_library_scan %}
 <div class="card" style="margin: 0 auto 20px; max-width: 800px; border-left: 4px solid var(--error, #e74c3c); background: rgba(231, 76, 60, 0.1);">
     <div style="display: flex; align-items: flex-start; gap: 15px;">
-        <div style="font-size: 32px;">Warning</div>
+        <div style="font-size: 32px; color: var(--error, #e74c3c); font-weight: 700; line-height: 1;">Warning</div>
         <div style="flex: 1;">
             <h4 style="margin: 0 0 8px 0; color: var(--error, #e74c3c);">Setup Required</h4>
             <p style="margin: 0 0 12px 0; color: #ccc; font-size: 0.9em;">
@@ -43,9 +43,9 @@
                 {% endif %}
                 
                 {% if not has_tmdb_key %}
-                <li style="color: var(--error, #e74c3c);">Not set: Add TMDB API key</li>
+                <li style="color: var(--error, #e74c3c);">Not set: Add TMDB API Read Access Token</li>
                 {% else %}
-                <li style="color: #2ecc71;">Ready: TMDB API key added</li>
+                <li style="color: #2ecc71;">Ready: TMDB API Read Access Token added</li>
                 {% endif %}
                 
                 {% if not has_library_scan %}

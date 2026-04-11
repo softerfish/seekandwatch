@@ -7,7 +7,9 @@ import re
 import sys
 import logging
 
-logging.basicConfig(level=logging.DEBUG)
+_log_level_name = os.environ.get("SEEKANDWATCH_LOG_LEVEL", "INFO").upper()
+_log_level = getattr(logging, _log_level_name, logging.INFO)
+logging.basicConfig(level=_log_level)
 
 # quiet down noisy loggers
 logging.getLogger('urllib3').setLevel(logging.WARNING)
@@ -29,7 +31,7 @@ import concurrent.futures
 import secrets
 import subprocess
 
-from flask import Flask, Blueprint, request, jsonify, session, send_from_directory, render_template, redirect, url_for, flash
+from flask import Flask, Blueprint, request, jsonify, session, send_from_directory, render_template, redirect, url_for, flash, abort
 from flask_login import login_required, current_user, LoginManager, login_user, logout_user
 from auth_decorators import admin_required
 from flask_apscheduler import APScheduler
@@ -37,6 +39,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from flask_wtf.csrf import CSRFProtect, generate_csrf
 from plexapi.server import PlexServer
 from models import db, Blocklist, CollectionSchedule, TmdbAlias, SystemLog, Settings, User, TmdbKeywordCache, TmdbRuntimeCache, RadarrSonarrCache, RecoveryCode, CloudRequest, DeletedCloudId, WebhookLog
+from secure_fields import encrypt_field_value
 from utils.rate_limiter import limiter
 
 # auto-migrate: add cloudflare and webhook columns if they don't exist (runs before tunnel init)
@@ -45,24 +48,24 @@ def ensure_cloudflare_columns():
     try:
         from sqlalchemy import inspect
         inspector = inspect(db.engine)
-        
+
         # Settings table columns (tables should already exist from db.create_all() in startup)
         columns = [col['name'] for col in inspector.get_columns('settings')]
-        
+
         if 'cloudflare_api_token' not in columns:
             print("Adding cloudflare_api_token column...")
             with db.engine.connect() as conn:
                 conn.execute(text('ALTER TABLE settings ADD COLUMN cloudflare_api_token VARCHAR(255)'))
                 conn.commit()
             print("✓ Added cloudflare_api_token")
-        
+
         if 'cloudflare_account_id' not in columns:
             print("Adding cloudflare_account_id column...")
             with db.engine.connect() as conn:
                 conn.execute(text('ALTER TABLE settings ADD COLUMN cloudflare_account_id VARCHAR(100)'))
                 conn.commit()
             print("✓ Added cloudflare_account_id")
-        
+
         if 'cloud_webhook_failsafe_hours' not in columns:
             print("Adding cloud_webhook_failsafe_hours column...")
             with db.engine.connect() as conn:
@@ -83,18 +86,39 @@ def ensure_cloudflare_columns():
                 conn.execute(text('ALTER TABLE settings ADD COLUMN pairing_token_expires DATETIME'))
                 conn.commit()
             print("✓ Added pairing_token_expires")
-        
+
+        if 'pair_handoff_owner_user_id' not in columns:
+            print("Adding pair_handoff_owner_user_id column...")
+            with db.engine.connect() as conn:
+                conn.execute(text('ALTER TABLE settings ADD COLUMN pair_handoff_owner_user_id VARCHAR(100)'))
+                conn.commit()
+            print("✓ Added pair_handoff_owner_user_id")
+
+        if 'pair_handoff_bootstrap_secret' not in columns:
+            print("Adding pair_handoff_bootstrap_secret column...")
+            with db.engine.connect() as conn:
+                conn.execute(text('ALTER TABLE settings ADD COLUMN pair_handoff_bootstrap_secret VARCHAR(255)'))
+                conn.commit()
+            print("✓ Added pair_handoff_bootstrap_secret")
+
+        if 'kometa_tmdb_api_key' not in columns:
+            print("Adding kometa_tmdb_api_key column...")
+            with db.engine.connect() as conn:
+                conn.execute(text('ALTER TABLE settings ADD COLUMN kometa_tmdb_api_key VARCHAR(255)'))
+                conn.commit()
+            print("Added kometa_tmdb_api_key")
+
         # CloudRequest table columns (for future webhook delay feature)
         if 'cloud_request' in inspector.get_table_names():
             cloud_req_columns = [col['name'] for col in inspector.get_columns('cloud_request')]
-            
+
             if 'webhook_received_at' not in cloud_req_columns:
                 print("Adding webhook_received_at column to cloud_request...")
                 with db.engine.connect() as conn:
                     conn.execute(text('ALTER TABLE cloud_request ADD COLUMN webhook_received_at DATETIME'))
                     conn.commit()
                 print("✓ Added webhook_received_at")
-            
+
             if 'webhook_process_after' not in cloud_req_columns:
                 print("Adding webhook_process_after column to cloud_request...")
                 with db.engine.connect() as conn:
@@ -103,6 +127,45 @@ def ensure_cloudflare_columns():
                 print("✓ Added webhook_process_after")
     except Exception as e:
         print(f"Warning: Could not add early migration columns: {e}")
+
+
+def migrate_sensitive_settings_to_encrypted():
+    """Rewrite legacy plaintext secrets to encrypted storage on startup."""
+    try:
+        secret_fields = [
+            'plex_token',
+            'tmdb_key',
+            'kometa_tmdb_api_key',
+            'omdb_key',
+            'tautulli_api_key',
+            'radarr_api_key',
+            'sonarr_api_key',
+            'cloud_api_key',
+            'pair_handoff_bootstrap_secret',
+            'cloud_webhook_secret',
+            'cloudflare_api_token',
+        ]
+
+        updated_rows = 0
+        for settings in Settings.query.all():
+            row_changed = False
+            for field_name in secret_fields:
+                current_value = getattr(settings, field_name, None)
+                encrypted_value = encrypt_field_value(current_value)
+                if encrypted_value != current_value:
+                    setattr(settings, field_name, encrypted_value)
+                    row_changed = True
+            if row_changed:
+                updated_rows += 1
+
+        if updated_rows:
+            db.session.commit()
+            print(f"✓ Encrypted sensitive settings for {updated_rows} user(s)")
+        else:
+            db.session.rollback()
+    except Exception as e:
+        db.session.rollback()
+        print(f"Warning: Could not migrate sensitive settings to encrypted storage: {e}")
 
 
 def migrate_custom_poster_paths():
@@ -134,11 +197,36 @@ def migrate_custom_poster_paths():
     except Exception as e:
         print(f"Warning: custom poster path migration failed: {e}")
 
+
+def migrate_legacy_tmdb_keys_for_kometa():
+    """Preserve existing Kometa setups by copying legacy TMDB v3 keys into the Kometa-only field."""
+    try:
+        from utils.tmdb_http import is_tmdb_read_access_token
+
+        updated_rows = 0
+        for settings in Settings.query.all():
+            legacy_key = (settings.tmdb_key or '').strip()
+            if not legacy_key or is_tmdb_read_access_token(legacy_key):
+                continue
+            if (settings.kometa_tmdb_api_key or '').strip():
+                continue
+            settings.kometa_tmdb_api_key = legacy_key
+            updated_rows += 1
+
+        if updated_rows:
+            db.session.commit()
+            print(f"Preserved legacy TMDB API keys for Kometa in {updated_rows} user(s)")
+        else:
+            db.session.rollback()
+    except Exception as e:
+        db.session.rollback()
+        print(f"Warning: Could not migrate legacy Kometa TMDB keys: {e}")
+
 from utils import (normalize_title, is_duplicate, is_owned_item,
                    sync_plex_library, refresh_radarr_sonarr_cache, get_lock_status, is_system_locked,
                    write_scanner_log, read_scanner_log, prefetch_keywords_parallel,
                    item_matches_keywords, get_session_filters, write_log,
-                   handle_lucky_mode, reset_stuck_locks, 
+                   handle_lucky_mode, reset_stuck_locks,
                    prefetch_tv_states_parallel, prefetch_ratings_parallel, prefetch_omdb_parallel,
                    prefetch_runtime_parallel, save_results_cache, get_history_cache, set_history_cache,
                    score_recommendation, diverse_sample, get_tmdb_rec_cache, set_tmdb_rec_cache,
@@ -149,12 +237,13 @@ from utils.db_helpers import commit_with_retry
 from presets import PLAYLIST_PRESETS
 from sqlalchemy.exc import OperationalError
 from sqlalchemy import text
+from urllib.parse import urlparse
 
 # basic app setup stuff
 # VERSION and UPDATE_CACHE now imported from config.py
 
 def get_persistent_key():
-    """Gets the secret key from env or file, or makes a new one if needed."""
+    """Get a stable secret key from env or disk, or fail fast if persistence is unavailable."""
     env_key = os.environ.get('SECRET_KEY')
     if env_key:
         return env_key
@@ -169,8 +258,10 @@ def get_persistent_key():
             f.write(new_key)
         return new_key
     except OSError as e:
-        print(f"--- WARNING: Could not persist SECRET_KEY to disk ({type(e).__name__}); using temporary key. Set SECRET_KEY env or ensure {CONFIG_DIR!r} is writable. ---", flush=True)
-        return secrets.token_hex(32)
+        raise RuntimeError(
+            f"Could not load or persist SECRET_KEY ({type(e).__name__}). "
+            f"Set the SECRET_KEY environment variable or ensure {CONFIG_DIR!r} is writable."
+        ) from e
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = get_persistent_key()
@@ -204,10 +295,12 @@ with app.app_context():
         print(f"ERROR: Failed to create database tables: {e}")
         import traceback
         traceback.print_exc()
-    
+
     ensure_cloudflare_columns()
+    migrate_sensitive_settings_to_encrypted()
     migrate_custom_poster_paths()
-    
+    migrate_legacy_tmdb_keys_for_kometa()
+
     # Auto-detect tunnel provider for existing users
     try:
         from tunnel.startup_detection import auto_detect_and_set_provider, verify_and_correct_provider
@@ -227,24 +320,24 @@ health_monitor = None
 def init_tunnel_services():
     """Initialize tunnel manager and health monitor on app startup."""
     global tunnel_manager, health_monitor
-    
+
     try:
         from tunnel.manager import TunnelManager
         from tunnel.health import HealthMonitor
         from config import TUNNEL_HEALTH_CHECK_INTERVAL
-        
+
         # create tunnel manager instance
         tunnel_manager = TunnelManager(app, db)
         app.tunnel_manager = tunnel_manager
-        
+
         # create health monitor with configured interval (default 900 seconds / 15 minutes)
         health_monitor = HealthMonitor(tunnel_manager, check_interval=TUNNEL_HEALTH_CHECK_INTERVAL)
-        
+
         # start tunnels for users who have them enabled AND have the required credentials
         with app.app_context():
             from models import Settings
             enabled_users = Settings.query.filter_by(tunnel_enabled=True).all()
-            
+
             for settings in enabled_users:
                 # Skip if using external tunnel (managed by user)
                 if getattr(settings, 'tunnel_provider', None) == 'external':
@@ -255,7 +348,7 @@ def init_tunnel_services():
                 if settings.tunnel_name == 'quick-tunnel' or not hasattr(settings, 'cloudflare_api_token') or not settings.cloudflare_api_token:
                     app.logger.info(f"Starting quick tunnel for user {settings.user_id}")
                     tunnel_url = tunnel_manager.start_quick_tunnel(settings.user_id)
-                    
+
                     if tunnel_url and settings.cloud_enabled and settings.cloud_api_key:
                         # Ensure we have a secret locally
                         if not settings.cloud_webhook_secret:
@@ -280,22 +373,22 @@ def init_tunnel_services():
                 if not hasattr(settings, 'cloudflare_api_token') or not settings.cloudflare_api_token:
                     app.logger.warning(f"Skipping tunnel start for user {settings.user_id}: no Cloudflare API token")
                     continue
-                
+
                 # check if we have encrypted tunnel credentials with token
                 if not settings.tunnel_credentials_encrypted:
                     app.logger.warning(f"Skipping tunnel start for user {settings.user_id}: no tunnel credentials")
                     continue
-                
+
                 try:
                     app.logger.info(f"Starting tunnel for user {settings.user_id}")
-                    
+
                     # decrypt credentials to get tunnel token
                     credentials = tunnel_manager._decrypt_credentials(settings.tunnel_credentials_encrypted)
-                    
+
                     if not credentials or 'tunnel_token' not in credentials:
                         app.logger.error(f"Failed to decrypt tunnel token for user {settings.user_id}")
                         continue
-                    
+
                     if tunnel_manager.start_tunnel_with_token(settings.user_id, credentials['tunnel_token']):
                         # successful start, register webhook if cloud enabled
                         if settings.cloud_enabled and settings.cloud_api_key:
@@ -309,15 +402,15 @@ def init_tunnel_services():
                                 user_id=settings.user_id,
                                 webhook_secret=settings.cloud_webhook_secret
                             )
-                    
+
                 except Exception:
                     app.logger.error(f"Failed to start tunnel for user {settings.user_id}")
-            
+
             # start health monitoring
             if enabled_users:
                 health_monitor.start()
                 app.logger.info("Tunnel health monitor started")
-                
+
                 # Perform startup handshake for all enabled tunnels
                 def perform_handshake(user_ids):
                     time.sleep(15) # Wait for DNS propagation
@@ -341,7 +434,7 @@ def init_tunnel_services():
 
                 enabled_ids = [s.user_id for s in enabled_users]
                 threading.Thread(target=perform_handshake, args=(enabled_ids,), daemon=True).start()
-        
+
     except Exception:
         app.logger.error("Failed to initialize tunnel services")
 
@@ -401,6 +494,46 @@ def ensure_schema():
     _ensure_migrations()
 
 
+@app.before_request
+def restrict_quick_tunnel_surface():
+    host = (request.host or '').split(':', 1)[0].lower()
+    tunnel_suffixes = (
+        '.trycloudflare.com',
+        '.cfargotunnel.com',
+    )
+    if not any(host.endswith(suffix) for suffix in tunnel_suffixes):
+        return None
+
+    allowed_paths = (
+        '/api/webhook',
+        '/api/pair/receive_key',
+        '/api/health',
+    )
+    if any(request.path == path or request.path.startswith(path + '/') for path in allowed_paths):
+        return None
+
+    try:
+        active_managed_tunnels = Settings.query.filter(
+            Settings.tunnel_url.isnot(None),
+            Settings.tunnel_provider == 'cloudflare',
+            Settings.tunnel_name.in_(('quick-tunnel', 'named-tunnel')),
+        ).all()
+    except Exception:
+        app.logger.warning("Failed to load managed tunnel settings for request guard")
+        return abort(404)
+
+    for settings in active_managed_tunnels:
+        tunnel_url = (settings.tunnel_url or '').strip()
+        if not tunnel_url:
+            continue
+        tunnel_host = (urlparse(tunnel_url).hostname or '').lower()
+        if tunnel_host == host:
+            app.logger.warning("Blocked non-webhook request on managed tunnel host: %s %s", host, request.path)
+            return abort(404)
+
+    return None
+
+
 def _valid_url(val):
     """True if value is empty or a safe http(s) URL (no javascript:, data:)."""
     if not val or not str(val).strip():
@@ -417,10 +550,13 @@ CURRENT_SCHEMA_VERSION = 2
 
 def _alter_add_column(conn, sql):
     """Run ALTER TABLE ADD COLUMN; ignore duplicate column (inspector can be stale).
-    
+
     WARNING: This function uses raw SQL and should be replaced with ORM operations.
     Only use for legacy migrations. New migrations should use migration_helpers.
     """
+    match = re.match(r"^ALTER TABLE\s+(user|settings|cloud_request)\s+ADD COLUMN\s+([a-z_]+)\s+(.+)$", sql, re.IGNORECASE)
+    if not match:
+        raise ValueError(f"Unsafe migration SQL rejected: {sql}")
     try:
         conn.execute(sqlalchemy.text(sql))
     except OperationalError as e:
@@ -430,24 +566,24 @@ def _alter_add_column(conn, sql):
 def run_migrations():
     """Adds any missing DB columns and makes sure there's always at least one admin."""
     from utils.migration_helpers import MigrationLock, create_backup_before_migration
-    
+
     # use secure file lock
     with MigrationLock():
         # create backup before migrations (safety net)
         create_backup_before_migration(app)
-        
+
         # run inline migrations (legacy)
         _perform_actual_migrations()
-        
+
         # run versioned migrations (new system)
         try:
             from migrations.migration_manager import get_manager
             from migrations.versions import load_migrations
-            
+
             manager = get_manager(app, db)
             load_migrations(manager)
             applied, failed = manager.run_migrations()
-            
+
             if applied > 0:
                 print(f"✓ Applied {applied} versioned migration(s)")
             if failed > 0:
@@ -469,18 +605,18 @@ def _perform_actual_migrations():
             import traceback
             traceback.print_exc()
             raise  # Don't continue if core tables can't be created
-        
+
         # add any missing columns to existing tables
         try:
             inspector = sqlalchemy.inspect(db.engine)
-            
+
             # check user table
             user_columns = [c['name'] for c in inspector.get_columns('user')]
             with db.engine.connect() as conn:
                 if 'is_admin' not in user_columns:
                     print("--- [Migration] Adding 'is_admin' column to User table ---")
                     _alter_add_column(conn, "ALTER TABLE user ADD COLUMN is_admin BOOLEAN DEFAULT 0")
-            
+
             # Settings table.
             settings_columns = [c['name'] for c in inspector.get_columns('settings')]
             with db.engine.connect() as conn:
@@ -587,21 +723,22 @@ def _perform_actual_migrations():
                         settings_rows = conn.execute(sqlalchemy.text("SELECT user_id FROM settings WHERE user_id IS NOT NULL ORDER BY id")).fetchall()
                         if len(settings_rows) == 1:
                             conn.execute(sqlalchemy.text("UPDATE cloud_request SET owner_user_id = :user_id WHERE owner_user_id IS NULL"), {'user_id': settings_rows[0][0]})
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        print(f"Warning: Could not backfill cloud_request.owner_user_id during migration: {e}", flush=True)
                 if 'quiet_webhook_logs' not in settings_columns:
                     _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN quiet_webhook_logs BOOLEAN DEFAULT 0")
                 else:
                     # flip existing users from quiet (1) to verbose (0) for better debugging
                     try:
-                        conn.execute("UPDATE settings SET quiet_webhook_logs = 0 WHERE quiet_webhook_logs = 1")
+                        conn.execute(sqlalchemy.text("UPDATE settings SET quiet_webhook_logs = 0 WHERE quiet_webhook_logs = 1"))
                         print("--- [Migration] Disabled quiet_webhook_logs for existing users ---", flush=True)
-                    except: pass
+                    except Exception as e:
+                        print(f"Warning: Could not update quiet_webhook_logs during migration: {e}", flush=True)
                 if 'max_webhook_log_size_mb' not in settings_columns:
                     _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN max_webhook_log_size_mb INTEGER DEFAULT 2")
                 if 'max_webhook_logs' not in settings_columns:
                     _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN max_webhook_logs INTEGER DEFAULT 100")
-                
+
                 # Cloudflare Tunnel columns
                 if 'tunnel_enabled' not in settings_columns:
                     print("--- [Migration] Adding 'tunnel_enabled' column ---")
@@ -630,9 +767,9 @@ def _perform_actual_migrations():
                 if 'tunnel_last_health_check' not in settings_columns:
                     print("--- [Migration] Adding 'tunnel_last_health_check' column ---")
                     _alter_add_column(conn, "ALTER TABLE settings ADD COLUMN tunnel_last_health_check DATETIME")
-                
+
                 conn.commit()
-                
+
                 # Check if kometa_template table exists
                 try:
                     conn.execute(sqlalchemy.text("SELECT 1 FROM kometa_template LIMIT 1"))
@@ -651,7 +788,7 @@ def _perform_actual_migrations():
                             FOREIGN KEY (user_id) REFERENCES user(id)
                         )
                     """))
-                    
+
         except Exception as e:
             print(f"--- [Migration] Schema failed: {e} ---", flush=True)
 
@@ -660,10 +797,10 @@ def _perform_actual_migrations():
         try:
             with db.engine.connect() as conn:
                 result = conn.execute(sqlalchemy.text("SELECT COUNT(*) FROM user WHERE is_admin = 1")).scalar()
-                
+
                 if result == 0:
                     user_count = conn.execute(sqlalchemy.text("SELECT COUNT(*) FROM user")).scalar()
-                    
+
                     if user_count > 0:
                         # promote the lowest id user
                         conn.execute(sqlalchemy.text("UPDATE user SET is_admin = 1 WHERE id = (SELECT MIN(id) FROM user)"))
@@ -687,7 +824,7 @@ def _perform_actual_migrations():
                 model.__table__.create(db.engine, checkfirst=True)
             except Exception as e:
                 print(f"--- [Migration] Create table {model_name} failed: {e} ---", flush=True)
-        
+
         # add user_id to app_request so requested media is per-user (security)
         try:
             inspector = sqlalchemy.inspect(db.engine)
@@ -750,7 +887,7 @@ def _perform_actual_migrations():
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
-    
+
 try:
     run_migrations()
 except Exception as e:
@@ -787,12 +924,12 @@ def update_github_stats():
             if r_release.ok:
                 tag = r_release.json().get('tag_name', 'v0.0.0')
                 github_cache['latest_version'] = tag.replace('v', '')
-                
+
             github_cache['last_updated'] = time.time()
-            
+
         except Exception as e:
             print(f"GitHub Update Error: {e}")
-            
+
         time.sleep(3600)
 
 # start background thread
@@ -843,7 +980,7 @@ def inject_pending_requests_count():
 
 # auth routes migrated to web/routes_auth.py (phase 3.2b)
 # old routes removed, now handled by web_auth_bp blueprint
-# routes migrated: /, /login, /register, /logout, /reset_password, 
+# routes migrated: /, /login, /register, /logout, /reset_password,
 #                  /welcome_codes, /welcome_codes_done, /api/csrf-token
 
 # dashboard and main page routes migrated to web/routes_pages.py (phase 3.2d)
@@ -864,7 +1001,7 @@ def scheduled_tasks():
         try:
             if datetime.datetime.now().hour == 4 and datetime.datetime.now().minute == 0:
                 prune_backups()
-                
+
                 # Cleanup image proxy cache (7-day TTL)
                 cache_dir = os.path.join('assets', 'cache', 'images')
                 if os.path.exists(cache_dir):
@@ -874,12 +1011,14 @@ def scheduled_tasks():
                         f_path = os.path.join(cache_dir, f)
                         if os.path.isfile(f_path):
                             if (now_ts - os.path.getmtime(f_path)) > (7 * 86400):
-                                try: os.remove(f_path)
-                                except: pass
+                                try:
+                                    os.remove(f_path)
+                                except OSError as cleanup_err:
+                                    print(f"Warning: failed to remove cached image {f_path}: {cleanup_err}")
                     print("✓ Image proxy cache cleaned")
         except Exception as e:
             print(f"Scheduler Error (Pruning): {e}")
-            
+
         # grab Settings (needed for remaining tasks)
         try:
             if getattr(config, 'SCHEDULER_USER_ID', None) is not None:
@@ -890,7 +1029,7 @@ def scheduled_tasks():
         except Exception as e:
             print(f"Scheduler Error (DB Access): {e}")
             return
-        
+
         # sync Plex library
         try:
             last_sync = s.last_alias_scan or 0
@@ -907,23 +1046,24 @@ def scheduled_tasks():
             target_hour, target_minute = 4, 0
             try:
                 target_hour, target_minute = map(int, (s.schedule_time or "04:00").split(':'))
-            except: pass
-                
+            except Exception as schedule_parse_err:
+                print(f"Warning: invalid schedule_time '{s.schedule_time}': {schedule_parse_err}")
+
             now = datetime.datetime.now()
             for sch in CollectionSchedule.query.all():
                 try:
                     if sch.frequency == 'manual': continue
-                    
+
                     should_run = False
                     last = sch.last_run
-                    
+
                     if sch.frequency == 'daily':
                         run_today = (last and last.date() == now.date())
                         past_target_time = (now.hour > target_hour or (now.hour == target_hour and now.minute >= target_minute))
                         if not run_today and past_target_time: should_run = True
                     elif sch.frequency == 'weekly':
                         if not last or (now - last).days >= 7: should_run = True
-                        
+
                     if should_run:
                         # process collection
                         if sch.preset_key.startswith('custom_'):
@@ -932,9 +1072,11 @@ def scheduled_tasks():
                         else:
                              preset_data = PLAYLIST_PRESETS.get(sch.preset_key, {}).copy()
                              if sch.configuration and preset_data:
-                                 try: preset_data.update(json.loads(sch.configuration))
-                                 except: pass
-                        
+                                 try:
+                                     preset_data.update(json.loads(sch.configuration))
+                                 except Exception as preset_update_err:
+                                     print(f"Warning: failed to merge schedule config for {sch.preset_key}: {preset_update_err}")
+
                         if not preset_data:
                             print(f"Scheduler: ⚠️ Deleting missing or invalid collection '{sch.preset_key}' from database.")
                             db.session.delete(sch)
@@ -978,7 +1120,7 @@ scheduler.add_job(id='master_task', func=scheduled_tasks, trigger='interval', mi
 try:
     from api import api_bp
     app.register_blueprint(api_bp, url_prefix='/api')
-    from api.routes_pair import pair_receive_key
+    from api.routes_pair import pair_start, pair_status, pair_receive_key
     from api.routes_webhook import receive_webhook
     csrf.exempt(pair_receive_key)
     csrf.exempt(receive_webhook)
@@ -994,25 +1136,46 @@ except ImportError:
 except Exception:
     import traceback
 
+
+def _route_exists(rule_path):
+    try:
+        return any(rule.rule == rule_path for rule in app.url_map.iter_rules())
+    except Exception:
+        return False
+
+
+try:
+    from api.routes_pair import pair_start, pair_status, pair_receive_key
+
+    if not _route_exists('/api/pair/start'):
+        app.add_url_rule('/api/pair/start', 'pair_start_fallback', pair_start, methods=['POST'])
+    if not _route_exists('/api/pair/status'):
+        app.add_url_rule('/api/pair/status', 'pair_status_fallback', pair_status, methods=['GET'])
+    if not _route_exists('/api/pair/receive_key'):
+        app.add_url_rule('/api/pair/receive_key', 'pair_receive_key_fallback', pair_receive_key, methods=['POST'])
+        csrf.exempt(pair_receive_key)
+except Exception as pair_route_err:
+    print(f"Warning: Could not register pair route fallbacks: {pair_route_err}")
+
 # Register web blueprints.
 try:
     from web.routes_auth import web_auth_bp
     app.register_blueprint(web_auth_bp)
-    
+
     from web.routes_settings import web_settings_bp
     app.register_blueprint(web_settings_bp)
-    
+
     from web.routes_pages import web_pages_bp
     app.register_blueprint(web_pages_bp)
-    
+
     # phase 3.2e - utility routes (trigger_update, api/cloud/test, api/settings/autodiscover, api/plex/metadata)
     from web.routes_utility import web_utility_bp
     app.register_blueprint(web_utility_bp)
-    
+
     # phase 3.2f - cloud request routes (requests, approve/deny/delete, save_cloud_settings)
     from web.routes_requests import web_requests_bp
     app.register_blueprint(web_requests_bp)
-    
+
     # phase 3.2g - generate flow routes (trending, history, generate, reset_alias_db)
     from web.routes_generate import generate_bp
     app.register_blueprint(generate_bp)
@@ -1031,11 +1194,15 @@ except Exception:
 # global error handlers so users see a friendly page instead of a crash
 @app.errorhandler(404)
 def not_found(e):
+    if request.path.startswith('/api/'):
+        return jsonify({'status': 'error', 'message': 'Not found'}), 404
     return render_template('error.html', message='Page not found.'), 404
 
 
 @app.errorhandler(500)
 def server_error(e):
+    if request.path.startswith('/api/'):
+        return jsonify({'status': 'error', 'message': 'Something went wrong. Please try again or check the logs.'}), 500
     return render_template('error.html', message='Something went wrong. Please try again or check the logs.'), 500
 
 

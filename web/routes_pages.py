@@ -12,10 +12,11 @@ from flask import Blueprint, request, jsonify, redirect, url_for, render_templat
 from flask_login import login_required, current_user
 from auth_decorators import admin_required
 
-from models import db, Settings, Blocklist, CollectionSchedule, TmdbAlias
+from models import db, Settings, Blocklist, CollectionSchedule, TmdbAlias, AppRequest, User
 from plexapi.server import PlexServer
 from presets import PLAYLIST_PRESETS
 from config import VERSION, UPDATE_CACHE
+from utils.tmdb_http import tmdb_get
 
 # create blueprint
 web_pages_bp = Blueprint('web_pages', __name__)
@@ -36,6 +37,15 @@ def _get_plex_collection_titles(settings):
         return collections
     except Exception:
         return None
+
+def _requested_media_query():
+    """Restrict NULL-scoped legacy rows to single-user installs only."""
+    total_users = User.query.count()
+    if total_users <= 1:
+        return AppRequest.query.filter(
+            (AppRequest.user_id == current_user.id) | (AppRequest.user_id == None)
+        )
+    return AppRequest.query.filter(AppRequest.user_id == current_user.id)
 
 def _get_test_description(test_file):
     """extract description from test file docstring"""
@@ -71,6 +81,86 @@ def media():
     """media management page (radarr/sonarr)"""
     s = current_user.settings
     return render_template('media.html', settings=s)
+
+@web_pages_bp.route('/media/requested_data')
+@login_required
+def media_requested_data():
+    """Compatibility JSON endpoint for the media page."""
+    s = current_user.settings
+    items = []
+
+    try:
+        app_requests = _requested_media_query().order_by(AppRequest.requested_at.desc()).limit(500).all()
+
+        for ar in app_requests:
+            poster_url = None
+            if s and s.tmdb_key and ar.tmdb_id:
+                try:
+                    r = tmdb_get(f"{'movie' if ar.media_type == 'movie' else 'tv'}/{ar.tmdb_id}", s.tmdb_key, timeout=3)
+                    if r.ok:
+                        data = r.json()
+                        poster_path = data.get('poster_path')
+                        if poster_path:
+                            poster_url = f"https://image.tmdb.org/t/p/w500{poster_path}"
+                except Exception:
+                    pass
+
+            items.append({
+                'title': ar.title or 'Unknown',
+                'year': None,
+                'status': 'Requested',
+                'requested_via': ar.requested_via or 'Radarr',
+                'requested_by': 'SeekAndWatch',
+                'poster_url': poster_url,
+                'added': ar.requested_at.isoformat() if ar.requested_at else '',
+                'media_type': ar.media_type or 'movie'
+            })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': f'Could not load requested media: {type(e).__name__}', 'items': []})
+
+    try:
+        status_filter = request.args.get('status', '').lower()
+        source_filter = request.args.get('source', '').lower()
+
+        if status_filter:
+            items = [i for i in items if i['status'].lower() == status_filter]
+        if source_filter:
+            items = [i for i in items if i['requested_via'].lower() == source_filter]
+
+        sort_by = request.args.get('sort', 'added_desc')
+        if sort_by == 'title_asc':
+            items.sort(key=lambda x: (x.get('title') or '').lower())
+        elif sort_by == 'year_desc':
+            items.sort(key=lambda x: str(x.get('year') or '0'), reverse=True)
+        else:
+            items.sort(key=lambda x: x.get('added') or '', reverse=True)
+
+        try:
+            page = int(request.args.get('page', 1))
+        except Exception:
+            page = 1
+
+        try:
+            page_size = int(request.args.get('page_size', 200))
+        except Exception:
+            page_size = 200
+        page_size = max(1, min(page_size, 200))
+
+        total_items = len(items)
+        start_idx = (page - 1) * page_size
+
+        return jsonify({
+            'status': 'success',
+            'items': items[start_idx:start_idx + page_size],
+            'pagination': {
+                'page': page,
+                'page_size': page_size,
+                'total_items': total_items,
+                'total_pages': (total_items + page_size - 1) // page_size
+            }
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': f'Could not process requested media: {type(e).__name__}', 'items': []})
 
 @web_pages_bp.route('/manage_blocklist')
 @login_required

@@ -4,6 +4,8 @@ handles login, logout, registration, password reset, and recovery codes
 """
 
 import secrets
+import os
+import time
 from flask import Blueprint, request, jsonify, redirect, url_for, render_template, session, flash, current_app
 from flask_login import login_required, current_user, login_user, logout_user
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -11,9 +13,16 @@ from flask_wtf.csrf import generate_csrf
 
 from models import db, User, Settings, RecoveryCode
 from utils.message_helpers import flash_success, flash_error
+from utils.tmdb_http import tmdb_get
+from utils.rate_limiter import limiter
 
 # create blueprint
 web_auth_bp = Blueprint('web_auth', __name__)
+_public_posters_cache = {
+    'posters': None,
+    'cached_at': 0,
+}
+PUBLIC_POSTERS_CACHE_TTL = 6 * 60 * 60
 
 def _no_users_exist():
     """check if no users exist, used to exempt first registration/login from rate limiting"""
@@ -21,6 +30,14 @@ def _no_users_exist():
         return User.query.count() == 0
     except Exception:
         return False
+
+
+def _public_registration_enabled():
+    """Allow public registration only for first-run setup unless explicitly re-enabled."""
+    if _no_users_exist():
+        return True
+    env_value = os.environ.get('SEEKANDWATCH_OPEN_REGISTRATION', '').strip().lower()
+    return env_value in ('1', 'true', 'yes', 'on')
 
 # get limiter from app after registration
 def get_limiter():
@@ -35,38 +52,44 @@ def index():
     return redirect(url_for('web_auth.login'))
 
 @web_auth_bp.route('/login', methods=['GET', 'POST'])
+@limiter.limit("5 per minute; 20 per hour", methods=["POST"])
 def login():
     """login page and form submission"""
     if current_user.is_authenticated:
         return redirect(url_for('web_pages.dashboard'))
-    
+
     # check if no users exist, redirect to register
     if User.query.count() == 0:
         flash('No accounts exist. Please register to create the first admin account.')
         return redirect(url_for('web_auth.register'))
-    
+
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
-        
+
         user = User.query.filter_by(username=username).first()
-        
+
         if user and check_password_hash(user.password_hash, password):
             login_user(user)
             session['notify_tabs_login'] = True
             return redirect(url_for('web_pages.dashboard'))
         else:
             flash('Invalid credentials')
-            
+
     return render_template('login.html')
 
 
 @web_auth_bp.route('/register', methods=['GET', 'POST'])
+@limiter.limit("3 per hour", methods=["POST"])
 def register():
     """registration page and form submission"""
     if current_user.is_authenticated:
         return redirect(url_for('web_pages.dashboard'))
-    
+
+    if not _public_registration_enabled():
+        flash('Registration is closed. Ask an admin to create an account or temporarily re-enable registration.')
+        return redirect(url_for('web_auth.login'))
+
     if request.method == 'POST':
         username = (request.form.get('username') or '').strip()
         password = (request.form.get('password') or '')
@@ -79,17 +102,17 @@ def register():
         else:
             hashed_pw = generate_password_hash(password, method='pbkdf2:sha256')
             new_user = User(username=username, password_hash=hashed_pw)
-            
+
             db.session.add(new_user)
             db.session.commit()
-            
+
             if User.query.count() == 1:
                 new_user.is_admin = True
                 db.session.commit()
-            
+
             db.session.add(Settings(user_id=new_user.id))
             db.session.commit()
-            
+
             # generate recovery codes and show them once
             count = 10
             plain_codes = [secrets.token_hex(8) for _ in range(count)]
@@ -98,12 +121,12 @@ def register():
                 db.session.add(rec)
             db.session.commit()
             session['show_recovery_codes'] = plain_codes
-            
+
             login_user(new_user)
             session['notify_tabs_login'] = True
             return redirect(url_for('web_auth.welcome_codes'))
-            
-    return render_template('login.html', register=True)
+
+    return render_template('login.html', register=True, is_register=True)
 
 @web_auth_bp.route('/logout')
 @login_required
@@ -146,17 +169,23 @@ def csrf_token_route():
 @web_auth_bp.route('/api/public/posters')
 def get_public_posters():
     """grab a list of trending movie posters for the login background, unauthenticated"""
-    import requests
+    now = time.time()
+    cached_posters = _public_posters_cache.get('posters')
+    cached_at = _public_posters_cache.get('cached_at', 0)
+    if cached_posters and (now - cached_at) < PUBLIC_POSTERS_CACHE_TTL:
+        return jsonify({'posters': cached_posters})
+
     try:
         # use the first TMDB key we can find for fresher posters
         s = Settings.query.first()
         if s and s.tmdb_key:
-            url = f"https://api.themoviedb.org/3/trending/movie/week?api_key={s.tmdb_key}"
-            r = requests.get(url, timeout=5)
+            r = tmdb_get('trending/movie/week', s.tmdb_key, timeout=5)
             if r.status_code == 200:
                 data = r.json()
                 posters = [f"https://image.tmdb.org/t/p/original{m['poster_path']}" for m in data.get('results', []) if m.get('poster_path')]
                 if posters:
+                    _public_posters_cache['posters'] = posters
+                    _public_posters_cache['cached_at'] = now
                     return jsonify({'posters': posters})
     except Exception:
         pass
@@ -170,4 +199,6 @@ def get_public_posters():
         "https://image.tmdb.org/t/p/original/v9X97AnSntmYvOnmQUv99m6YpEq.jpg", # Oppenheimer
         "https://image.tmdb.org/t/p/original/6FfCtvT2mno1mSpmEQsF61oKEXi.jpg", # Star Wars
     ]
+    _public_posters_cache['posters'] = fallbacks
+    _public_posters_cache['cached_at'] = now
     return jsonify({'posters': fallbacks})

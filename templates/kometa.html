@@ -1,25 +1,25 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
 {% block page_title %}Kometa{% endblock %}
 {% block content %}
 
 <div class="intro-box">
     <h3>Kometa Config Builder</h3>
     <p>
-        This tool generates a <strong>foundational</strong> configuration. For help using this builder, see the 
-        <a href="https://github.com/meisnate12/Plex-Meta-Manager/wiki" target="_blank">Kometa Wiki</a>. 
-        For a full list of available collections, customization options, and advanced features, please consult the official 
-        <a href="https://kometa.wiki/en/latest/defaults/collections/" target="_blank">Kometa Defaults (collections)</a> and 
+        This tool generates a <strong>foundational</strong> configuration. For help using this builder, see the
+        <a href="https://github.com/meisnate12/Plex-Meta-Manager/wiki" target="_blank">Kometa Wiki</a>.
+        For a full list of available collections, customization options, and advanced features, please consult the official
+        <a href="https://kometa.wiki/en/latest/defaults/collections/" target="_blank">Kometa Defaults (collections)</a> and
         <a href="https://kometa.wiki/en/latest/defaults/overlays/" target="_blank">Kometa Overlay Defaults</a>.
     </p>
-    
+
     <div class="intro-tip-box">
         <h4>How to use this tool:</h4>
         <ol>
-            <li><strong>Connect:</strong> Enter your Plex & TMDb details in Tab 1 to enable scanning.</li>
+            <li><strong>Connect:</strong> Enter your Plex details and Kometa TMDb API key in Tab 1 to enable scanning.</li>
             <li><strong>Select:</strong> Toggle the collections you want in Tab 3.</li>
             <li><strong>Customize:</strong> Click the gear button next to any item to refine it.</li>
         </ol>
-        
+
         <p>
             <strong>Power Tip:</strong> Use the gear button to filter huge lists.<br>
             <em>Example:</em> Enable <strong>Streaming Services</strong>, click the gear, and add <code>Netflix, Disney+</code> to the <strong>Include</strong> field. Instead of generating 100+ collections for every service under the sun, Kometa will now only create two! <br><br>
@@ -57,9 +57,9 @@
 </div>
 
 <div class="k-container">
-    
+
     <div class="k-panel">
-        
+
         <div class="k-tabs">
             <button class="k-tab active" onclick="switchTab('config')">1. Core Config</button>
             <button class="k-tab" onclick="switchTab('global')">2. Global Settings</button>
@@ -70,7 +70,7 @@
             <form class="k-group" style="border-left: 4px solid var(--accent-color);" onsubmit="return false;" aria-label="Required connections">
                 <h4 class="mb-10" style="border-bottom:none;">Required Connections</h4>
                 <div class="mb-15 fs-small text-muted border-bottom pb-10">These are mandatory for Kometa to function.</div>
-                
+
                 <div class="k-input-row">
                     <label>Plex URL <span class="info-icon" title="Local IP of your Plex Server">i</span></label>
                     <input type="text" id="plex_url" value="{{ settings.plex_url or '' }}" placeholder="http://192.168.1.X:32400" oninput="gen()">
@@ -79,22 +79,22 @@
 
                 <div class="k-input-row">
                     <label>Plex Token <span class="info-icon" title="Find this in the XML of any media item in Plex">i</span></label>
-                    <input type="password" id="plex_token" value="{{ settings.plex_token or '' }}" placeholder="X-Plex-Token" oninput="gen()" autocomplete="off">
+                    <input type="password" id="plex_token" value="" placeholder="{% if settings.plex_token %}********{% else %}X-Plex-Token{% endif %}" oninput="gen()" autocomplete="off">
                 </div>
                 <div class="info-text">The X-Plex-Token used to authenticate.</div>
 
                 <div class="k-input-row">
-                    <label>TMDB Key <span class="info-icon" title="API Key from themoviedb.org">i</span></label>
-                    <input type="password" id="tmdb_key" value="{{ settings.tmdb_key or '' }}" placeholder="API Key" oninput="gen()" autocomplete="off">
+                    <label>TMDB API Key (Kometa only) <span class="info-icon" title="Legacy TMDB v3 API key used only for Kometa config output">i</span> <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener noreferrer" class="text-decoration-underline" style="font-size: 0.85em; margin-left: 8px;">get it here</a></label>
+                    <input type="password" id="tmdb_key" value="" placeholder="{% if settings.kometa_tmdb_api_key %}********{% else %}Legacy v3 API key{% endif %}" oninput="gen()" autocomplete="off">
                 </div>
-                <div class="info-text">Required to look up metadata and posters.</div>
+                <div class="info-text">Used only for Kometa's generated <code>config.yml</code>. The main app still uses the TMDB API Read Access Token in Settings.</div>
             </form>
         </div>
 
         <div id="tab-global" class="k-section">
             <div class="k-group">
                 <h4 class="border-none">System & Caching</h4>
-                
+
                 <div class="k-input-row">
                     <label>Cache Enabled <span class="info-icon" title="Speeds up runs by saving TMDB/Plex data locally.">i</span></label>
                     <select id="s_cache" onchange="gen()">
@@ -122,7 +122,7 @@
 
             <div class="k-group">
                 <h4 class="border-none">Assets & Folders</h4>
-                
+
                 <div class="k-input-row">
                     <label>Asset Folders <span class="info-icon" title="Expects one folder per item in your assets directory (e.g. Assets/Star Wars/poster.jpg).">i</span></label>
                     <select id="s_asset_folders" onchange="gen()">
@@ -162,7 +162,7 @@
                     </select>
                 </div>
                 <div class="info-text">Delete the collection if it has fewer than the minimum items?</div>
-                
+
                 <div class="k-input-row">
                     <label>Minimum Items <span class="info-icon" title="Minimum items that must be found to create a collection.">i</span></label>
                     <input type="number" id="s_minimum_items" value="1" oninput="gen()">
@@ -171,7 +171,7 @@
 
             <div class="k-group">
                 <h4 class="border-none">Overlay Quality</h4>
-                
+
                 <div class="k-input-row">
                     <label>Artwork Quality (0-100) <span class="info-icon" title="Compression level for generated posters. Higher = Larger files.">i</span></label>
                     <input type="number" id="s_artwork_quality" value="90" oninput="gen()">
@@ -191,7 +191,7 @@
                         <option value="" disabled selected>Loading libraries...</option>
                     </select>
                 </div>
-                
+
                 <div class="k-input-row">
                     <label>Type</label>
                     <select id="temp_lib_type" onchange="filterOpts(); gen();">
@@ -202,7 +202,7 @@
                 </div>
 
                 <div id="options-lock-wrapper" class="locked-section">
-                    
+
                     <div class="k-sub-header">Popular Charts (Safe)</div>
                     <div class="k-check-grid" id="opt-container">
                         <div class="k-check-item type-all"><label title="Generates collections based on TMDb popularity (Trending, Popular, etc)."><input type="checkbox" class="t-opt" value="tmdb" onchange="gen()"> TMDB Popular</label><button class="btn-gear" onclick="editVars('tmdb', event)">Edit</button></div>
@@ -335,7 +335,7 @@
                     </div>
 
                     <button class="btn-add" onclick="addLibrary()" id="btn-action" disabled>Add/Update Library</button>
-                
+
                 </div> </div>
 
             <h4 class="mt-30 mb-10">Added Libraries:</h4>
@@ -561,13 +561,13 @@
         <p>
             Import a Kometa config from a URL or paste YAML directly.
         </p>
-        
+
         <!-- Tabs for URL vs Paste -->
         <div class="import-tab-container">
             <button id="import-tab-url" class="import-tab-btn active" onclick="switchImportTab('url')">From URL</button>
             <button id="import-tab-paste" class="import-tab-btn" onclick="switchImportTab('paste')">Paste YAML</button>
         </div>
-        
+
         <!-- URL Import -->
         <div id="import-url-section" class="import-section active">
             <div class="k-input-row">
@@ -576,7 +576,7 @@
             </div>
             <div class="info-text">For GitHub files, use the raw URL. On GitHub, open the file and click the "Raw" button (top right), then copy that URL. Many community configs only contain templates and collections, which will be merged with your existing settings.</div>
         </div>
-        
+
         <!-- Paste Import -->
         <div id="import-paste-section" class="import-section">
             <div class="k-input-row">
@@ -584,7 +584,7 @@
                 <textarea id="import-paste" placeholder="Paste your YAML config here..."></textarea>
             </div>
         </div>
-        
+
         <div class="modal-actions">
             <button class="btn-secondary" onclick="closeImportModal()">Cancel</button>
             <button class="btn-primary" onclick="importConfig()">Import</button>
@@ -599,7 +599,7 @@
         <p style="font-size:0.85em; color:#aaa; margin-bottom:15px;">
             Save library configurations as reusable templates. Apply them to other libraries with one click.
         </p>
-        
+
         <div style="margin-bottom: 20px;">
             <h4 style="margin-bottom: 10px;">Save Current Library as Template</h4>
             <div class="k-input-row">
@@ -608,14 +608,14 @@
             </div>
             <button class="btn-primary" onclick="saveAsTemplate()" style="width: 100%; margin-top: 10px;">Save Template</button>
         </div>
-        
+
         <div style="border-top: 1px solid #333; padding-top: 20px;">
             <h4 style="margin-bottom: 10px;">Saved Templates</h4>
             <div id="templates-list" style="max-height: 300px; overflow-y: auto;">
                 <div style="text-align: center; color: #555; padding: 20px;">No templates saved yet.</div>
             </div>
         </div>
-        
+
         <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
             <button class="btn-secondary" onclick="document.getElementById('templates-modal').style.display='none'">Close</button>
         </div>
@@ -649,11 +649,11 @@
 <script src="{{ url_for('static', filename='kometa_preview.js') }}"></script>
 <script>
     const CSRF_TOKEN = "{{ csrf_token() }}";
-    const API_SAVE_KOMETA_CONFIG = "{{ url_for('api.save_kometa_config') }}";
-const API_GET_PLEX_LIBRARIES = "{{ url_for('api.get_plex_libraries') }}";
-const API_KOMETA_TEMPLATES = "{{ url_for('api.get_kometa_templates') }}";
-const API_KOMETA_TEMPLATES_SAVE = "{{ url_for('api.save_kometa_template') }}";
-const API_KOMETA_TEMPLATES_DELETE_BASE = "{{ url_for('api.delete_kometa_template', template_id=0) }}";
+    const API_SAVE_KOMETA_CONFIG = "/api/save_kometa_config";
+const API_GET_PLEX_LIBRARIES = "/api/get_plex_libraries";
+const API_KOMETA_TEMPLATES = "/api/kometa_templates";
+const API_KOMETA_TEMPLATES_SAVE = "/api/kometa_templates";
+const API_KOMETA_TEMPLATES_DELETE_BASE = "/api/kometa_templates/0";
 // load saved config (handles the legacy array format too). Updated in-memory on save so Compare shows latest.
 let savedConfig = JSON.parse({{ settings.kometa_config|tojson if settings.kometa_config else 'null' }});
 let libraries = [];
@@ -705,31 +705,31 @@ function saveToHistory() {
         globalSettings: JSON.parse(JSON.stringify(globalSettings)),
         templateVars: JSON.parse(JSON.stringify(templateVars))
     };
-    
+
     // remove any future history if we're not at the end
     if (historyIndex < historyStack.length - 1) {
         historyStack = historyStack.slice(0, historyIndex + 1);
     }
-    
+
     historyStack.push(state);
     if (historyStack.length > MAX_HISTORY) {
         historyStack.shift();
     } else {
         historyIndex++;
     }
-    
+
     updateUndoRedoButtons();
 }
 
 // restore state from history
 function restoreFromHistory(index) {
     if (index < 0 || index >= historyStack.length) return;
-    
+
     const state = historyStack[index];
     libraries = JSON.parse(JSON.stringify(state.libraries));
     globalSettings = JSON.parse(JSON.stringify(state.globalSettings));
     templateVars = JSON.parse(JSON.stringify(state.templateVars));
-    
+
     // reload ui
     renderLibs();
     gen();
@@ -781,8 +781,8 @@ function openVarModal() {
 }
 
 function editVars(key, e) {
-    if(e) e.stopPropagation(); 
-    
+    if(e) e.stopPropagation();
+
     // prefer the checkbox next to the clicked gear icon to avoid duplicates
     let checkbox = null;
     if (e && e.target) {
@@ -804,10 +804,10 @@ function editVars(key, e) {
     currentEditKey = key;
     document.getElementById('modal-title').innerText = key;
     openVarModal();
-    
+
     // detect overlay vs collection
     const isOverlay = checkbox && checkbox.classList.contains('ovl');
-    
+
     const qsHeader = document.getElementById('qs-header');
     const qsContainer = document.getElementById('qs-container');
 
@@ -821,7 +821,7 @@ function editVars(key, e) {
         const libType = document.getElementById('temp_lib_type')?.value || '';
         const isMovie = (libType === 'movie');
         const allowedFields = overlaySettingsMap[key];
-        
+
         if (allowedFields && allowedFields.length > 0) {
             allowedFields.forEach(field => {
                 // Builder Level (Season/Episode) only applies to TV/Anime libraries, not Movie
@@ -842,10 +842,10 @@ function editVars(key, e) {
              if(el) el.style.display = 'block';
         });
     }
-    
+
     // load existing vars (or empty)
     const vars = templateVars[key] || {};
-    
+
     // populate values
     const setVal = (id, val) => { if(document.getElementById(id)) document.getElementById(id).value = val || ''; };
     setVal('qs-limit', vars.limit);
@@ -865,16 +865,16 @@ function editVars(key, e) {
     // populate custom vars
     const container = document.getElementById('var-container');
     container.innerHTML = '';
-    
+
     const excludedKeys = [
-        'limit', 'sort_by', 'collection_mode', 'sync_mode', 'include', 'exclude', 
+        'limit', 'sort_by', 'collection_mode', 'sync_mode', 'include', 'exclude',
         'builder_level', 'addon_position', 'style', 'minimum', 'use_subtitles'
     ];
-    
+
     const customEntries = Object.entries(vars).filter(([k, v]) => !excludedKeys.includes(k));
 
     if (customEntries.length === 0) {
-        addVarRow(); 
+        addVarRow();
     } else {
         customEntries.forEach(([k, v]) => addVarRow(k, v));
     }
@@ -970,7 +970,7 @@ function gen() {
     y += `  minimum_items: ${val('s_minimum_items')}${formatInlineComment(inlineComments.settings?.minimum_items)}\n`;
     y += `  delete_below_minimum: ${val('s_delete_below_min')}${formatInlineComment(inlineComments.settings?.delete_below_minimum || inlineComments.settings?.delete_below_min)}\n`;
     y += `  overlay_artwork_quality: ${val('s_artwork_quality')}${formatInlineComment(inlineComments.settings?.overlay_artwork_quality || inlineComments.settings?.artwork_quality)}\n`;
-    
+
     // defaults that kometa expects
     y += `  asset_directory: config/assets\n  run_order:\n`;
     if(val('s_run_order') === 'collections_first') {
@@ -981,9 +981,9 @@ function gen() {
 
     // libraries
     y += `libraries:\n`;
-    
+
     // merge saved libs with current preview
-    let allLibs = JSON.parse(JSON.stringify(libraries)); 
+    let allLibs = JSON.parse(JSON.stringify(libraries));
     const currentName = document.getElementById('temp_lib_name')?.value;
 
     if (currentName) {
@@ -1047,15 +1047,15 @@ function gen() {
         });
     }
 
-    document.getElementById('output').innerHTML = y;
+    document.getElementById('output').textContent = y;
     updateOverlayPreview();
 }
 
 // small helpers
 function esc(str) { return str ? str : "INSERT_HERE"; }
-function val(id) { 
+function val(id) {
     const el = document.getElementById(id);
-    return el ? el.value : ''; 
+    return el ? el.value : '';
 }
 
 function hasOption(value) {
@@ -1159,7 +1159,7 @@ function saveProgress() {
 function fetchLibs() {
     const select = document.getElementById('temp_lib_name');
     select.innerHTML = '<option disabled selected>Loading...</option>';
-    
+
     fetch(API_GET_PLEX_LIBRARIES)
         .then(r => r.json())
         .then(data => {
@@ -1172,7 +1172,7 @@ function fetchLibs() {
             } else {
                 select.innerHTML = '<option disabled>Error: ' + escapeHtml(String(data.message || '')) + '</option>';
             }
-            toggleOptions(); 
+            toggleOptions();
         })
         .catch(e => {
             select.innerHTML = '<option disabled>Connection Failed</option>';
@@ -1186,7 +1186,7 @@ function autoSelectType() {
     const type = selectedOption.getAttribute('data-type');
     if (type) {
         document.getElementById('temp_lib_type').value = type;
-        filterOpts(); 
+        filterOpts();
         gen();
     }
 }
@@ -1204,7 +1204,7 @@ function filterOpts() {
 function addLibrary() {
     const name = document.getElementById('temp_lib_name').value || "Library";
     const type = document.getElementById('temp_lib_type').value;
-    
+
     let cols = [];
     let ovls = [];
     document.querySelectorAll('.t-opt:checked').forEach(cb => {
@@ -1227,7 +1227,7 @@ function addLibrary() {
     renderLibs();
     gen();
     updatePerformanceIndicator();
-    
+
     document.getElementById('temp_lib_name').value = "";
     document.querySelectorAll('.t-opt').forEach(cb => cb.checked = false);
     toggleOptions();
@@ -1236,7 +1236,7 @@ function addLibrary() {
 function editLib(idx) {
     const lib = libraries[idx];
     const select = document.getElementById('temp_lib_name');
-    
+
     select.value = lib.name;
     if(select.selectedIndex === -1) {
        const opt = document.createElement('option');
@@ -1246,9 +1246,9 @@ function editLib(idx) {
        select.add(opt);
        select.value = lib.name;
     }
-    
+
     document.getElementById('temp_lib_type').value = (lib.type === 'show') ? 'tv' : lib.type;
-    toggleOptions(); 
+    toggleOptions();
     filterOpts();
 
     document.querySelectorAll('.t-opt').forEach(cb => cb.checked = false);
@@ -1362,13 +1362,13 @@ function saveAsTemplate() {
         alert('Please enter a template name');
         return;
     }
-    
+
     const currentName = document.getElementById('temp_lib_name')?.value;
     if (!currentName) {
         alert('Please select a library first');
         return;
     }
-    
+
     let cols = [];
     let ovls = [];
     document.querySelectorAll('.t-opt:checked').forEach(cb => {
@@ -1377,7 +1377,7 @@ function saveAsTemplate() {
             else cols.push(cb.value);
         }
     });
-    
+
     // get template vars for this library's collections/overlays
     const libTemplateVars = {};
     [...cols, ...ovls].forEach(key => {
@@ -1385,7 +1385,7 @@ function saveAsTemplate() {
             libTemplateVars[key] = templateVars[key];
         }
     });
-    
+
     const templateData = {
         name: name,
         type: document.getElementById('temp_lib_type').value,
@@ -1393,7 +1393,7 @@ function saveAsTemplate() {
         ovls: ovls,
         templateVars: libTemplateVars
     };
-    
+
     fetch(API_KOMETA_TEMPLATES_SAVE, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
@@ -1436,7 +1436,7 @@ function renderTemplatesList() {
         container.innerHTML = '<div style="text-align: center; color: #555; padding: 20px;">No templates saved yet.</div>';
         return;
     }
-    
+
     let html = '';
     libraryTemplates.forEach((t, idx) => {
         html += `<div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; background: rgba(255,255,255,0.05); border: 1px solid #333; border-radius: 4px; margin-bottom: 8px;">
@@ -1457,21 +1457,21 @@ function applyTemplate(idx) {
     const template = libraryTemplates[idx];
     document.getElementById('temp_lib_type').value = (template.type === 'show') ? 'tv' : template.type;
     filterOpts();
-    
+
     // uncheck all first
     document.querySelectorAll('.t-opt').forEach(cb => cb.checked = false);
-    
+
     // check template's collections and overlays
     [...template.cols, ...template.ovls].forEach(val => {
         const cb = document.querySelector(`.t-opt[value="${val}"]`);
         if (cb) cb.checked = true;
     });
-    
+
     // apply template vars
     Object.keys(template.templateVars || {}).forEach(key => {
         templateVars[key] = template.templateVars[key];
     });
-    
+
     saveToHistory();
     gen();
     updatePerformanceIndicator();
@@ -1480,7 +1480,7 @@ function applyTemplate(idx) {
 
 function deleteTemplate(templateId) {
     if (!confirm('Delete this template?')) return;
-    
+
     fetch(API_KOMETA_TEMPLATES_DELETE_BASE.replace(/\/0$/, '/' + templateId), {
         method: 'DELETE'
     })
@@ -1518,7 +1518,7 @@ function switchImportTab(tab) {
     // update button active states
     document.getElementById('import-tab-url').classList.toggle('active', tab === 'url');
     document.getElementById('import-tab-paste').classList.toggle('active', tab === 'paste');
-    
+
     // show/hide sections
     document.getElementById('import-url-section').classList.toggle('active', tab === 'url');
     document.getElementById('import-paste-section').classList.toggle('active', tab === 'paste');
@@ -1595,7 +1595,7 @@ function validateYamlSecurity(yamlText) {
     if (yamlText.length > maxSize) {
         throw new Error('Config file is too large (max 500KB)');
     }
-    
+
     // block dangerous command execution patterns (but allow yaml structure)
     const dangerousPatterns = [
         // command execution attempts (in actual values, not yaml structure)
@@ -1609,53 +1609,53 @@ function validateYamlSecurity(yamlText) {
         /\bproc_open\s*\(/i,
         /\bpopen\s*\(/i,
         /\bexec\s*\(/i,
-        
+
         // sql injection patterns (in string values)
         /['"]\s*(union|select|insert|update|delete|drop|create|alter|exec|execute)\s+.*from/i,
         /;\s*(drop|delete|truncate)\s*['"]/i,
-        
+
         // file system manipulation commands
         /\brm\s+-rf/i,
         /\bdel\s+\/s/i,
         /\bformat\s+[a-z]:/i,
         /\brmdir\s+\/s/i,
-        
+
         // path traversal attempts (but allow normal paths)
         /\.\.\/\.\.\/\.\.\/\.\.\//,  // multiple parent directory traversals
         /\.\.\\\.\.\\\.\.\\/,  // windows path traversal
-        
+
         // script injection
         /<script[^>]*>/i,
         /javascript\s*:/i,
         /on\w+\s*=\s*["']/i,  // event handlers in strings
-        
+
         // database operations (in string values)
         /['"]\s*db\.(drop|delete|remove)/i,
         /['"]\s*database\.(drop|delete)/i,
-        
+
         // shell command injection
         /\$\s*\(/,
         /`[^`]*\$\{/,
         /`[^`]*\$\(/,
     ];
-    
+
     // check for dangerous patterns in content (not in yaml structure)
     const lines = yamlText.split('\n');
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         const trimmed = line.trim();
-        
+
         if (!trimmed) continue;
         const { value: safeLine } = splitInlineComment(trimmed);
         if (!safeLine) continue;
-        
+
         // extract the value part (after the colon for key-value pairs)
         let valuePart = safeLine;
         const colonIndex = safeLine.indexOf(':');
         if (colonIndex > 0) {
             valuePart = safeLine.substring(colonIndex + 1).trim();
         }
-        
+
         // check for dangerous patterns in the value part
         for (const pattern of dangerousPatterns) {
             if (pattern.test(valuePart)) {
@@ -1663,12 +1663,12 @@ function validateYamlSecurity(yamlText) {
             }
         }
     }
-    
+
     // validate it looks like yaml (must have at least one key-value pair or list)
     if (!yamlText.match(/^\s*\w+:/m) && !yamlText.match(/^\s*-\s+/m)) {
         throw new Error('Invalid YAML format: File does not appear to be valid YAML');
     }
-    
+
     // block if it contains executable code patterns (at start of lines, indicating code files)
     const codePatterns = [
         /^import\s+\w+/m,
@@ -1680,13 +1680,13 @@ function validateYamlSecurity(yamlText) {
         /^class\s+\w+/m,
         /^#!\s*\/bin\//m,  // shebang
     ];
-    
+
     for (const pattern of codePatterns) {
         if (pattern.test(yamlText)) {
             throw new Error('Security validation failed: Code execution patterns detected');
         }
     }
-    
+
     // block if it contains suspicious file operations
     const fileOps = [
         /\bfs\.(unlink|rmdir|rm)/i,
@@ -1694,13 +1694,13 @@ function validateYamlSecurity(yamlText) {
         /\bfwrite\s*\(/i,
         /\bfopen\s*\([^)]*['"]w/i,
     ];
-    
+
     for (const pattern of fileOps) {
         if (pattern.test(yamlText)) {
             throw new Error('Security validation failed: Suspicious file operations detected');
         }
     }
-    
+
     return true;
 }
 
@@ -1708,28 +1708,22 @@ function validateUrl(url) {
     // basic url validation to prevent malicious urls
     try {
         const urlObj = new URL(url);
-        
-        // only allow http and https
-        if (!['http:', 'https:'].includes(urlObj.protocol)) {
-            throw new Error('Only HTTP and HTTPS URLs are allowed');
+
+        // only allow https imports
+        if (urlObj.protocol !== 'https:') {
+            throw new Error('Only HTTPS URLs are allowed');
         }
-        
+
         // block localhost and private IPs (basic check)
         const hostname = urlObj.hostname.toLowerCase();
         if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '0.0.0.0') {
             throw new Error('Local URLs are not allowed for security');
         }
-        
+
         // block private IP ranges (basic regex check)
         if (/^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)/.test(hostname)) {
             throw new Error('Private IP addresses are not allowed');
         }
-        
-        // block file:// and other dangerous protocols
-        if (urlObj.protocol === 'file:' || urlObj.protocol === 'javascript:') {
-            throw new Error('Dangerous URL protocol detected');
-        }
-        
         return true;
     } catch (e) {
         if (e instanceof TypeError) {
@@ -1742,16 +1736,16 @@ function validateUrl(url) {
 async function importConfig() {
     const urlSection = document.getElementById('import-url-section');
     const isUrlMode = urlSection.classList.contains('active');
-    
+
     let yamlText = '';
-    
+
     if (isUrlMode) {
         const url = document.getElementById('import-url').value.trim();
         if (!url) {
             alert('Please enter a URL');
             return;
         }
-        
+
         // validate url format and security
         try {
             validateUrl(url);
@@ -1759,7 +1753,7 @@ async function importConfig() {
             alert('URL validation failed: ' + error.message);
             return;
         }
-        
+
         // fetch through backend proxy to avoid CORS issues
         try {
             const response = await fetch('/api/import_kometa_config', {
@@ -1770,15 +1764,15 @@ async function importConfig() {
                 },
                 body: JSON.stringify({ url: url })
             });
-            
+
             const result = await response.json();
-            
+
             if (!response.ok || result.status === 'error') {
                 throw new Error(result.message || `HTTP ${response.status}: ${response.statusText}`);
             }
-            
+
             yamlText = result.yaml;
-            
+
             if (!yamlText || yamlText.length === 0) {
                 throw new Error('Empty response from server');
             }
@@ -1793,7 +1787,7 @@ async function importConfig() {
             return;
         }
     }
-    
+
     // security validation
     try {
         validateYamlSecurity(yamlText);
@@ -1801,12 +1795,12 @@ async function importConfig() {
         alert('Security validation failed: ' + error.message);
         return;
     }
-    
+
     // parse and import
     try {
         const result = parseYamlConfig(yamlText);
         closeImportModal();
-        
+
         // Show helpful message based on what was imported
         if (result.isPartial) {
             let msg = 'Partial config imported! ';
@@ -1829,13 +1823,13 @@ async function importConfig() {
 function parseYamlConfig(yamlText) {
     // parse yaml and map the bits this builder supports
     const lines = yamlText.split('\n');
-    
+
     // Track what we find for better user feedback
     const sectionsFound = [];
     let hasConnectionSettings = false;
     let standaloneCollections = [];  // Collections found outside libraries section
     let standaloneTemplates = {};     // Templates found at root level
-    
+
     libraries = [];
     templateVars = {};
     libraryTemplateVars = {};
@@ -1847,12 +1841,12 @@ function parseYamlConfig(yamlText) {
         libraryTemplateVars: {},
         libraryDefaults: {}
     };
-    
+
     const parsedPlex = {};
     const parsedTmdb = {};
     const parsedSettings = {};
     let parsedRunOrder = [];
-    
+
     let section = null;
     let currentLib = null;
     let currentCollection = null;
@@ -1866,7 +1860,7 @@ function parseYamlConfig(yamlText) {
     let collectionIndent = null;
     let overlayIndent = null;
     let currentListSection = null;
-    
+
     const parseValue = (raw) => {
         if (raw === undefined || raw === null) return '';
         let val = raw.trim();
@@ -1880,31 +1874,31 @@ function parseYamlConfig(yamlText) {
         if (!isNaN(val) && val !== '') return Number(val);
         return val;
     };
-    
+
     const setField = (id, value) => {
         const el = document.getElementById(id);
         if (el && value !== undefined && value !== null && value !== '') {
             el.value = String(value);
         }
     };
-    
+
     lines.forEach((line) => {
         const trimmed = line.trim();
         if (!trimmed) return;
         const { value: cleaned, comment: lineComment } = splitInlineComment(trimmed);
         if (!cleaned) return;
-        
+
         const indent = line.length - line.trimStart().length;
-        
+
         if (indent === 0 && cleaned.endsWith(':')) {
             section = cleaned.replace(':', '');
             sectionsFound.push(section);
-            
+
             // Track if we have connection settings
             if (section === 'plex' || section === 'tmdb') {
                 hasConnectionSettings = true;
             }
-            
+
             if (section !== 'libraries') {
                 currentLib = null;
                 currentCollection = null;
@@ -1916,7 +1910,7 @@ function parseYamlConfig(yamlText) {
             }
             return;
         }
-        
+
         if (section === 'plex' && indent === 2) {
             const [k, ...rest] = cleaned.split(':');
             const rawVal = rest.join(':');
@@ -1924,7 +1918,7 @@ function parseYamlConfig(yamlText) {
             if (lineComment) inlineComments.plex[k] = lineComment;
             return;
         }
-        
+
         if (section === 'tmdb' && indent === 2) {
             const [k, ...rest] = cleaned.split(':');
             const rawVal = rest.join(':');
@@ -1932,7 +1926,7 @@ function parseYamlConfig(yamlText) {
             if (lineComment) inlineComments.tmdb[k] = lineComment;
             return;
         }
-        
+
         if (section === 'settings') {
             if (indent === 2 && cleaned.endsWith(':')) {
                 const key = cleaned.replace(':', '');
@@ -1945,7 +1939,7 @@ function parseYamlConfig(yamlText) {
                 }
                 return;
             }
-            
+
             if (indent === 2 && cleaned.includes(':')) {
                 const [k, ...rest] = cleaned.split(':');
                 const rawVal = rest.join(':');
@@ -1954,13 +1948,13 @@ function parseYamlConfig(yamlText) {
                 currentSettingsListVar = null;
                 return;
             }
-            
+
             if (currentSettingsListVar === 'run_order' && cleaned.startsWith('- ') && indent >= 2) {
                 parsedRunOrder.push(cleaned.substring(2).trim());
                 return;
             }
         }
-        
+
         // Handle standalone collections section (not inside libraries)
         if (section === 'collections' && indent >= 2) {
             const colMatch = cleaned.match(/^(.+):\s*$/);
@@ -1970,7 +1964,7 @@ function parseYamlConfig(yamlText) {
                 return;
             }
         }
-        
+
         // Handle standalone templates section
         if (section === 'templates' && indent >= 2) {
             const templateMatch = cleaned.match(/^(.+):\s*$/);
@@ -1980,7 +1974,7 @@ function parseYamlConfig(yamlText) {
                 return;
             }
         }
-        
+
         if (section === 'libraries') {
             const libMatch = cleaned.match(/^(.+):\s*$/);
             if (libMatch && indent === 2) {
@@ -1995,9 +1989,9 @@ function parseYamlConfig(yamlText) {
                 overlayIndent = null;
                 return;
             }
-            
+
             if (!currentLib) return;
-            
+
             if (cleaned === 'template_variables:' && indent === 4) {
                 inLibraryTemplateVars = true;
                 libraryTemplateIndent = indent;
@@ -2007,7 +2001,7 @@ function parseYamlConfig(yamlText) {
                 currentLibraryListVar = null;
                 return;
             }
-            
+
             if (inLibraryTemplateVars && indent > libraryTemplateIndent) {
                 if (cleaned.startsWith('- ') && currentLibraryListVar) {
                     const listItem = cleaned.substring(2).trim().replace(/^["']|["']$/g, '');
@@ -2017,7 +2011,7 @@ function parseYamlConfig(yamlText) {
                     libraryTemplateVars[currentLib.name][currentLibraryListVar].push(listItem);
                     return;
                 }
-                
+
                 if (cleaned.includes(':')) {
                     const [k, ...rest] = cleaned.split(':');
                     const rawVal = rest.join(':');
@@ -2039,12 +2033,12 @@ function parseYamlConfig(yamlText) {
                     return;
                 }
             }
-            
+
             if (inLibraryTemplateVars && indent <= libraryTemplateIndent) {
                 inLibraryTemplateVars = false;
                 currentLibraryListVar = null;
             }
-            
+
             if (cleaned.includes('collection_files:') && indent === 4) {
                 collectionIndent = indent;
                 overlayIndent = null;
@@ -2053,7 +2047,7 @@ function parseYamlConfig(yamlText) {
                 inTemplateVars = false;
                 return;
             }
-            
+
             if (cleaned.includes('overlay_files:') && indent === 4) {
                 overlayIndent = indent;
                 collectionIndent = null;
@@ -2062,13 +2056,13 @@ function parseYamlConfig(yamlText) {
                 inTemplateVars = false;
                 return;
             }
-            
+
             const defaultMatch = cleaned.match(/^- default:\s*(.+)$/);
             if (defaultMatch && (indent === 4 || indent === 6)) {
                 const val = defaultMatch[1].trim().replace(/^["']|["']$/g, '');
                 currentCollection = val;
                 inTemplateVars = false;
-                
+
                 if (currentListSection === 'overlays' || Object.keys(overlaySettingsMap).includes(val)) {
                     if (!currentLib.ovls.includes(val)) {
                         currentLib.ovls.push(val);
@@ -2088,7 +2082,7 @@ function parseYamlConfig(yamlText) {
                 }
                 return;
             }
-            
+
             if (cleaned === 'template_variables:' && indent >= 6) {
                 inTemplateVars = true;
                 templateVarIndent = indent;
@@ -2098,7 +2092,7 @@ function parseYamlConfig(yamlText) {
                 currentTemplateListVar = null;
                 return;
             }
-            
+
             if (inTemplateVars && currentCollection && indent > templateVarIndent) {
                 if (cleaned.startsWith('- ') && indent >= templateVarIndent + 2 && currentTemplateListVar) {
                     const listItem = cleaned.substring(2).trim();
@@ -2109,12 +2103,12 @@ function parseYamlConfig(yamlText) {
                     templateVars[currentCollection][currentTemplateListVar].push(cleanItem);
                     return;
                 }
-                
+
                 const varMatch = cleaned.match(/^([^\s:]+):\s*(.*)$/);
                 if (varMatch) {
                     const varName = varMatch[1];
                     let varValue = varMatch[2];
-                    
+
                     if (varName === 'include' || varName === 'exclude') {
                         templateVars[currentCollection][varName] = [];
                         currentTemplateListVar = varName;
@@ -2140,18 +2134,18 @@ function parseYamlConfig(yamlText) {
                     return;
                 }
             }
-            
+
             if (inTemplateVars && indent <= templateVarIndent) {
                 inTemplateVars = false;
                 currentTemplateListVar = null;
             }
         }
     });
-    
+
     if (currentLib) {
         libraries.push(currentLib);
     }
-    
+
     // If we found standalone collections (not in a library), create an "Imported" library for them
     if (standaloneCollections.length > 0) {
         const importedLib = {
@@ -2161,7 +2155,7 @@ function parseYamlConfig(yamlText) {
             ovls: []
         };
         libraries.push(importedLib);
-        
+
         // Add template vars for these collections if any exist
         standaloneCollections.forEach(col => {
             if (col.props && Object.keys(col.props).length > 0) {
@@ -2169,7 +2163,7 @@ function parseYamlConfig(yamlText) {
             }
         });
     }
-    
+
     Object.keys(templateVars).forEach(key => {
         Object.keys(templateVars[key]).forEach(varKey => {
             if ((varKey === 'include' || varKey === 'exclude') && Array.isArray(templateVars[key][varKey])) {
@@ -2177,11 +2171,11 @@ function parseYamlConfig(yamlText) {
             }
         });
     });
-    
+
     if (parsedPlex.url) setField('plex_url', parsedPlex.url);
     if (parsedPlex.token) setField('plex_token', parsedPlex.token);
     if (parsedTmdb.apikey) setField('tmdb_key', parsedTmdb.apikey);
-    
+
     if (parsedSettings.cache !== undefined) setField('s_cache', parsedSettings.cache);
     if (parsedSettings.cache_expiration !== undefined) setField('s_cache_expiration', parsedSettings.cache_expiration);
     if (parsedSettings.asset_folders !== undefined) setField('s_asset_folders', parsedSettings.asset_folders);
@@ -2191,15 +2185,15 @@ function parseYamlConfig(yamlText) {
     if (parsedSettings.minimum_items !== undefined) setField('s_minimum_items', parsedSettings.minimum_items);
     if (parsedSettings.delete_below_minimum !== undefined) setField('s_delete_below_min', parsedSettings.delete_below_minimum);
     if (parsedSettings.overlay_artwork_quality !== undefined) setField('s_artwork_quality', parsedSettings.overlay_artwork_quality);
-    
+
     if (parsedRunOrder.length > 0) {
         const first = parsedRunOrder[0];
         setField('s_run_order', first === 'collections' ? 'collections_first' : 'operations_first');
     }
-    
+
     saveToHistory();
     renderLibs();
-    
+
     if (libraries.length > 0) {
         const firstLib = libraries[0];
         const select = document.getElementById('temp_lib_name');
@@ -2219,10 +2213,10 @@ function parseYamlConfig(yamlText) {
         }
         editLib(0);
     }
-    
+
     gen();
     updatePerformanceIndicator();
-    
+
     // Return info about what was imported
     return {
         sectionsFound: sectionsFound,
@@ -2237,14 +2231,14 @@ function parseYamlConfig(yamlText) {
 function showComparison() {
     // regenerate current output to ensure it's up to date
     gen();
-    
+
     // get the current yaml from the output box (what's shown right now)
     const currentYaml = document.getElementById('output').innerText;
     const savedYaml = generateYamlFromSaved();
-    
+
     // build aligned diffs (so lines stay together unless they diverge)
     const diff = buildComparisonDiff(currentYaml, savedYaml);
-    
+
     document.getElementById('comparison-current').innerHTML = diff.leftHtml;
     document.getElementById('comparison-saved').innerHTML = diff.rightHtml;
     document.getElementById('comparison-modal').classList.add('is-open');
@@ -2262,10 +2256,10 @@ function buildComparisonDiff(leftText, rightText) {
     const leftLines = leftText.split('\n');
     const rightLines = rightText.split('\n');
     const ops = diffLines(leftLines, rightLines);
-    
+
     const leftRows = [];
     const rightRows = [];
-    
+
     ops.forEach(op => {
         if (op.type === 'equal') {
             leftRows.push({ line: leftLines[op.a], className: 'diff-unchanged' });
@@ -2278,7 +2272,7 @@ function buildComparisonDiff(leftText, rightText) {
             rightRows.push({ line: rightLines[op.b], className: 'diff-removed' });
         }
     });
-    
+
     return {
         leftHtml: renderDiffLines(leftRows),
         rightHtml: renderDiffLines(rightRows)
@@ -2289,7 +2283,7 @@ function diffLines(leftLines, rightLines) {
     const n = leftLines.length;
     const m = rightLines.length;
     const dp = Array.from({ length: n + 1 }, () => Array(m + 1).fill(0));
-    
+
     for (let i = n - 1; i >= 0; i--) {
         for (let j = m - 1; j >= 0; j--) {
             if (leftLines[i] === rightLines[j]) {
@@ -2299,11 +2293,11 @@ function diffLines(leftLines, rightLines) {
             }
         }
     }
-    
+
     const ops = [];
     let i = 0;
     let j = 0;
-    
+
     while (i < n && j < m) {
         if (leftLines[i] === rightLines[j]) {
             ops.push({ type: 'equal', a: i, b: j });
@@ -2317,17 +2311,17 @@ function diffLines(leftLines, rightLines) {
             j++;
         }
     }
-    
+
     while (i < n) {
         ops.push({ type: 'delete', a: i });
         i++;
     }
-    
+
     while (j < m) {
         ops.push({ type: 'add', b: j });
         j++;
     }
-    
+
     return ops;
 }
 
@@ -2348,22 +2342,22 @@ function escapeHtml(text) {
 function generateYamlFromSaved() {
     // generate yaml from saved config (similar to gen() but using saved data)
     if (!savedConfig || Array.isArray(savedConfig)) return '# No saved config';
-    
+
     const savedSettings = savedConfig.settings || {};
     const savedTemplateVars = savedConfig.templateVars || {};
     const savedLibraryTemplateVars = savedConfig.libraryTemplateVars || {};
     const savedComments = savedConfig.inlineComments || {};
-    
+
     let y = "";
     y += `plex:\n`;
     y += `  url: ${savedConfig.plex_url || 'INSERT_HERE'}${formatInlineComment(savedComments.plex?.url)}\n`;
     y += `  token: ${savedConfig.plex_token || 'INSERT_HERE'}${formatInlineComment(savedComments.plex?.token)}\n`;
     y += `  timeout: 60\n  clean_bundles: false\n  empty_trash: false\n  optimize: false\n\n`;
-    
+
     y += `tmdb:\n`;
     y += `  apikey: ${savedConfig.tmdb_key || 'INSERT_HERE'}${formatInlineComment(savedComments.tmdb?.apikey)}\n`;
     y += `  language: en\n  cache_expiration: 60\n  region: US\n\n`;
-    
+
     y += `settings:\n`;
     y += `  cache: ${savedSettings.cache ?? true}${formatInlineComment(savedComments.settings?.cache)}\n`;
     y += `  cache_expiration: ${savedSettings.cache_expiration ?? 60}${formatInlineComment(savedComments.settings?.cache_expiration)}\n`;
@@ -2373,14 +2367,14 @@ function generateYamlFromSaved() {
     y += `  minimum_items: ${savedSettings.minimum_items ?? 1}${formatInlineComment(savedComments.settings?.minimum_items)}\n`;
     y += `  delete_below_minimum: ${savedSettings.delete_below_min ?? false}${formatInlineComment(savedComments.settings?.delete_below_minimum || savedComments.settings?.delete_below_min)}\n`;
     y += `  overlay_artwork_quality: ${savedSettings.artwork_quality ?? 90}${formatInlineComment(savedComments.settings?.overlay_artwork_quality || savedComments.settings?.artwork_quality)}\n`;
-    
+
     y += `  asset_directory: config/assets\n  run_order:\n`;
     if ((savedSettings.run_order ?? '') === 'collections_first') {
         y += `  - collections\n  - overlays\n  - metadata\n  - operations\n\n`;
     } else {
         y += `  - operations\n  - metadata\n  - collections\n  - overlays\n\n`;
     }
-    
+
     const savedLibs = savedConfig.libraries || [];
     y += `libraries:\n`;
     if (savedLibs.length === 0) {
@@ -2421,7 +2415,7 @@ function generateYamlFromSaved() {
             }
         });
     }
-    
+
     return y;
 }
 
@@ -2429,47 +2423,47 @@ function generateYamlFromSaved() {
 function updatePerformanceIndicator() {
     let totalCollections = 0;
     let totalOverlays = 0;
-    
+
     libraries.forEach(lib => {
         totalCollections += lib.cols ? lib.cols.length : 0;
         totalOverlays += lib.ovls ? lib.ovls.length : 0;
     });
-    
+
     // estimate collections (some options create multiple collections)
     const collectionMultipliers = {
         'genre': 20, 'franchise': 15, 'universe': 10, 'actor': 50, 'director': 30,
         'streaming': 20, 'studio': 25, 'year': 30, 'decade': 10, 'content_rating_us': 6
     };
-    
+
     let estimatedCollections = 0;
     libraries.forEach(lib => {
         lib.cols.forEach(col => {
             estimatedCollections += collectionMultipliers[col] || 1;
         });
     });
-    
+
     // estimate runtime (rough: 1 collection = ~2-5 seconds, 1 overlay = ~1-2 seconds)
     const estimatedSeconds = (estimatedCollections * 3) + (totalOverlays * 1.5);
     const minutes = Math.floor(estimatedSeconds / 60);
     const seconds = Math.floor(estimatedSeconds % 60);
-    
+
     const indicator = document.getElementById('performance-indicator');
-    document.getElementById('perf-collections').innerHTML = 
+    document.getElementById('perf-collections').innerHTML =
         `<strong>Estimated Collections:</strong> ${estimatedCollections.toLocaleString()} (${totalCollections} types selected)`;
-    document.getElementById('perf-runtime').innerHTML = 
+    document.getElementById('perf-runtime').innerHTML =
         `<strong>Est. Runtime:</strong> ${minutes}m ${seconds}s`;
-    
+
     if (totalCollections > 0 || totalOverlays > 0) {
         indicator.style.display = 'block';
     }
 }
 
 // bootstrapping
-document.addEventListener('DOMContentLoaded', () => { 
+document.addEventListener('DOMContentLoaded', () => {
     // populate settings from saved state
     if (globalSettings) {
         const setVal = (id, v) => { if(document.getElementById(id) && v !== undefined) document.getElementById(id).value = v; };
-        
+
         setVal('s_cache', globalSettings.cache);
         setVal('s_cache_expiration', globalSettings.cache_expiration);
         setVal('s_asset_folders', globalSettings.asset_folders);
@@ -2481,13 +2475,13 @@ document.addEventListener('DOMContentLoaded', () => {
         setVal('s_run_order', globalSettings.run_order);
     }
 
-    fetchLibs(); 
+    fetchLibs();
     renderLibs();
     gen();
     toggleOptions();
     updatePerformanceIndicator();
     loadTemplates(); // load templates from database
-    
+
     // watch for changes to update performance indicator
     document.querySelectorAll('.t-opt, #temp_lib_type').forEach(el => {
         el.addEventListener('change', () => {

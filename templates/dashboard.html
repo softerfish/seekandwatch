@@ -234,13 +234,13 @@
 
 <script>
     window.dashboardConfig = {
-        tmdbSearchProxyUrl: {{ url_for('api.tmdb_search_proxy') | tojson }},
+        tmdbSearchProxyUrl: "/api/tmdb_search_proxy",
         localTrendingUrl: {{ url_for('web_generate.get_local_trending') | tojson }},
         recommendFromTrendingUrl: {{ url_for('web_generate.recommend_from_trending') | tojson }},
-        healthStatusUrl: {{ url_for('api.health_status_api') | tojson }},
+        healthStatusUrls: ["/api/health/status", "/dashboard/health"],
         reviewHistoryUrl: {{ url_for('web_generate.review_history') | tojson }},
         csrfToken: {{ csrf_token() | tojson }}
     };
 </script>
-<script src="{{ url_for('static', filename='dashboard.js') }}"></script>
+<script src="{{ url_for('static', filename='dashboard.js') }}?v={{ version }}"></script>
 {% endblock %}

@@ -120,6 +120,63 @@
         /* Purple check */
         cursor: pointer;
     }
+
+    .pairing-guide {
+        background: linear-gradient(180deg, rgba(124, 93, 250, 0.14), rgba(124, 93, 250, 0.05));
+        border: 1px solid rgba(124, 93, 250, 0.35);
+        border-radius: 12px;
+        padding: 18px;
+    }
+
+    .pairing-step-list {
+        display: grid;
+        gap: 10px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+    }
+
+    .pairing-step {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 10px;
+        padding: 12px 14px;
+    }
+
+    .pairing-step-badge {
+        width: 28px;
+        height: 28px;
+        border-radius: 999px;
+        flex: 0 0 28px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        color: #000;
+        background: #7c5dfa;
+    }
+
+    .pairing-step-title {
+        font-weight: 700;
+        color: #fff;
+        margin-bottom: 2px;
+    }
+
+    .pairing-callout {
+        margin-top: 14px;
+        padding: 12px 14px;
+        border-radius: 10px;
+        background: rgba(255, 193, 7, 0.08);
+        border: 1px solid rgba(255, 193, 7, 0.3);
+        color: #f8f9fa;
+    }
+
+    .pairing-callout strong {
+        color: #fff;
+    }
 </style>
 
 <div class="container mt-4">
@@ -172,16 +229,109 @@
                 <h5 class="mb-0">SeekAndWatch Cloud</h5>
             </div>
             <div class="card-body bg-dark text-white">
-                <!-- Pairing Section (Zero Config) -->
                 {% if not settings.cloud_api_key %}
-                <div id="pairing-section" class="mb-4 text-center p-4"
-                    style="background: rgba(124, 93, 250, 0.1); border: 2px dashed #7c5dfa; border-radius: 8px;">
-                    <h6 class="text-white mb-3">Connect to SeekAndWatch Cloud</h6>
-                    <p class="text-muted small">The easiest way to sync your requests. No manual key entry required.</p>
-                    <button type="button" class="btn btn-test-connection" id="btnPairStart" onclick="startPairing()">
-                        <i class="fas fa-link me-2"></i>One-Click Pair with Cloud
-                    </button>
-                    <div id="pairingStatus" class="mt-2 small d-none"></div>
+                <div class="pairing-guide mb-4">
+                    <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-3">
+                        <div>
+                            <h6 class="text-white mb-2">Connect to SeekAndWatch Cloud</h6>
+                            <p class="text-muted small mb-0">One-click pairing is the fastest option, but first you need to copy a one-time setup payload from the <strong>Pairing Bootstrap Secret</strong> section in your SeekAndWatch Cloud account.</p>
+                        </div>
+                        {% if pairing_ready %}
+                        <span class="badge bg-success">Pairing identity ready</span>
+                        {% else %}
+                        <span class="badge bg-warning text-dark">Needs cloud pairing payload</span>
+                        {% endif %}
+                    </div>
+
+                    <ol class="pairing-step-list mb-0">
+                        <li class="pairing-step">
+                            <span class="pairing-step-badge">1</span>
+                            <div>
+                                <div class="pairing-step-title">Copy the setup payload from the cloud website</div>
+                                <div class="text-muted small">On the <strong>SeekAndWatch Cloud website</strong>, open <strong>Settings</strong>, find the <strong>Pairing Bootstrap Secret</strong> section, and click <strong>Copy local app payload</strong>.</div>
+                            </div>
+                        </li>
+                        <li class="pairing-step">
+                            <span class="pairing-step-badge">2</span>
+                            <div>
+                                <div class="pairing-step-title">Paste or import it below</div>
+                                <div class="text-muted small">Paste the combined JSON from <strong>Copy local app payload</strong> into the import box below and click <strong>Import</strong>. If you used <strong>Copy owner ID</strong> or copied the bootstrap secret by itself, paste those into the two manual fields below instead.</div>
+                            </div>
+                        </li>
+                        <li class="pairing-step">
+                            <span class="pairing-step-badge">3</span>
+                            <div>
+                                <div class="pairing-step-title">Run one-click pairing</div>
+                                <div class="text-muted small">This opens the secure cloud handoff and finishes setup automatically, so you do not need to paste the cloud API key manually.</div>
+                            </div>
+                        </li>
+                    </ol>
+
+                    {% if not pairing_ready %}
+                    <div class="pairing-callout">
+                        <strong>Why the button may fail right now:</strong> this local app still needs the imported cloud setup payload below before one-click pairing can start.
+                    </div>
+                    {% endif %}
+
+                    <div class="mt-4">
+                        <h6 class="text-white mb-3">Paste The Cloud Setup Payload Here</h6>
+                        <div class="text-muted small mb-3" style="font-size: 0.85em;">
+                            On the <strong>SeekAndWatch Cloud website</strong>, open <strong>Settings</strong>, find the <strong>Pairing Bootstrap Secret</strong> section, and click <strong>Copy local app payload</strong>. Paste that combined JSON here and click <strong>Import</strong>. If you copied <strong>owner ID</strong> and <strong>bootstrap secret</strong> separately, enter them in the two fields below instead.
+                        </div>
+
+                        <div class="form-group mb-3">
+                            <label for="pairImportPayload" class="text-white small mb-1">Cloud Setup Payload (JSON only)</label>
+                            <div class="d-flex gap-2 align-items-start flex-wrap">
+                                <textarea class="form-control form-control-sm" id="pairImportPayload" rows="3"
+                                    placeholder='Paste {"owner_user_id":"...","pair_handoff_bootstrap_secret":"..."} here'
+                                    style="max-width: 600px;"></textarea>
+                                <button type="button" class="btn btn-sm btn-outline-info" onclick="importPairingPayload()">Import</button>
+                            </div>
+                        </div>
+
+                        <div class="text-center text-muted small mb-3" style="font-weight: 700; letter-spacing: 0.08em;">
+                            OR
+                        </div>
+
+                        <div class="form-group mb-3">
+                            <label for="pairHandoffOwnerUserId" class="text-white small mb-1">Cloud Owner User ID</label>
+                            <input type="text" class="form-control form-control-sm" name="pair_handoff_owner_user_id"
+                                id="pairHandoffOwnerUserId" value="{{ settings.pair_handoff_owner_user_id or '' }}"
+                                placeholder="Filled automatically when you import the cloud setup payload" style="max-width: 600px;">
+                        </div>
+
+                        <div class="form-group mb-3">
+                            <label for="pairHandoffBootstrapSecret" class="text-white small mb-1">Pair Handoff Bootstrap Secret {% if settings.pair_handoff_bootstrap_secret %}<span
+                                    class="badge bg-success ms-2" style="font-size: 0.7em; font-weight: normal;">Saved</span>{% endif %}</label>
+                            <div class="d-flex gap-2 align-items-center flex-wrap">
+                                <div class="input-group" style="max-width: 600px;">
+                                    <input type="password" class="form-control form-control-sm" name="pair_handoff_bootstrap_secret"
+                                        id="pairHandoffBootstrapSecret" value=""
+                                        placeholder="{% if settings.pair_handoff_bootstrap_secret %}Saved bootstrap secret{% else %}Filled automatically when you import the cloud setup payload{% endif %}"
+                                        {% if settings.pair_handoff_bootstrap_secret %}data-key-set="1" {% endif %} autocomplete="off">
+                                    <button type="button" class="btn btn-sm btn-outline-secondary"
+                                        onclick="togglePasswordVisibility('pairHandoffBootstrapSecret', this)" title="Show/hide key">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                </div>
+                                {% if settings.pair_handoff_bootstrap_secret %}
+                                <button type="button" class="btn btn-sm btn-outline-danger" onclick="clearPairBootstrapSecret()">Clear</button>
+                                {% endif %}
+                            </div>
+                            {% if settings.pair_handoff_bootstrap_secret %}<input type="hidden" name="pair_handoff_bootstrap_secret_unchanged" value="1"
+                                id="pairHandoffBootstrapSecret_unchanged_h">{% endif %}
+                        </div>
+                    </div>
+
+                    <div id="pairing-section" class="mt-4 text-center p-4"
+                        style="background: rgba(124, 93, 250, 0.1); border: 2px dashed #7c5dfa; border-radius: 8px;">
+                        <h6 class="text-white mb-2">One-Click Pair with Cloud</h6>
+                        <p class="text-muted small mb-3">{% if pairing_ready %}Your pairing identity is ready. Start the secure handshake below.{% else %}Complete the one-time cloud payload step below first, then come back here.{% endif %}</p>
+                        <button type="button" class="btn btn-test-connection" id="btnPairStart" onclick="startPairing()">
+                            <i class="fas fa-link me-2"></i>One-Click Pair with Cloud
+                        </button>
+                        <div id="pairingStatus" class="mt-2 small d-none"></div>
+                    </div>
                 </div>
                 {% endif %}
 
@@ -210,17 +360,16 @@
 
                 <hr style="border-color: #444; margin: 24px 0;">
 
-                <h6 class="text-white mb-3">SeekAndWatch Cloud API Key</h6>
+                <h6 class="text-white mb-3">Manual Cloud API Key</h6>
                 <div class="form-group">
                     <label for="cloudApiKey" class="text-white small mb-1">API Key {% if settings.cloud_api_key %}<span
                             class="badge bg-success ms-2" style="font-size: 0.7em; font-weight: normal;">Saved</span>{%
                         endif %}</label>
-                    <div class="text-muted small mb-2" style="font-size: 0.85em;">Only required for manual setup if
-                        One-Click pairing does not work.</div>
+                    <div class="text-muted small mb-2" style="font-size: 0.85em;">Optional fallback only. Most users should use the one-click flow above instead.</div>
                     <div class="d-flex gap-2 align-items-center flex-wrap">
                         <div class="input-group" style="max-width: 400px;">
                             <input type="password" class="form-control form-control-sm" name="cloud_api_key"
-                                id="cloudApiKey" value="{{ settings.cloud_api_key or '' }}"
+                                id="cloudApiKey" value=""
                                 placeholder="{% if settings.cloud_api_key %}Saved API key{% else %}Paste your key here (e.g. 8f9a...){% endif %}"
                                 {% if settings.cloud_api_key %}data-key-set="1" {% endif %} autocomplete="off">
                             <button type="button" class="btn btn-sm btn-outline-secondary"
@@ -242,16 +391,65 @@
 
                 <hr style="border-color: #444; margin: 24px 0;">
 
+                {% if settings.cloud_api_key %}
+                <h6 class="text-white mb-3">One-Click Pairing Identity</h6>
+                <div class="text-muted small mb-3" style="font-size: 0.85em;">
+                    These saved values are only needed if you want to re-run one-click pairing later. Most users can leave them alone after setup.
+                </div>
+
+                <div class="form-group mb-3">
+                    <label for="pairImportPayload" class="text-white small mb-1">Cloud Setup Payload</label>
+                    <div class="d-flex gap-2 align-items-start flex-wrap">
+                        <textarea class="form-control form-control-sm" id="pairImportPayload" rows="3"
+                            placeholder='Paste {"owner_user_id":"...","pair_handoff_bootstrap_secret":"..."} here'
+                            style="max-width: 600px;"></textarea>
+                        <button type="button" class="btn btn-sm btn-outline-info" onclick="importPairingPayload()">Import</button>
+                    </div>
+                </div>
+
+                <div class="form-group mb-3">
+                    <label for="pairHandoffOwnerUserId" class="text-white small mb-1">Cloud Owner User ID</label>
+                    <div class="text-muted small mb-1">Use this field if you copied the owner ID separately from the cloud website.</div>
+                    <input type="text" class="form-control form-control-sm" name="pair_handoff_owner_user_id"
+                        id="pairHandoffOwnerUserId" value="{{ settings.pair_handoff_owner_user_id or '' }}"
+                        placeholder="Filled automatically when you import the cloud setup payload" style="max-width: 600px;">
+                </div>
+
+                <div class="form-group mb-3">
+                    <label for="pairHandoffBootstrapSecret" class="text-white small mb-1">Pair Handoff Bootstrap Secret {% if settings.pair_handoff_bootstrap_secret %}<span
+                            class="badge bg-success ms-2" style="font-size: 0.7em; font-weight: normal;">Saved</span>{% endif %}</label>
+                    <div class="text-muted small mb-1">Use this field if you copied the bootstrap secret separately from the cloud website.</div>
+                    <div class="d-flex gap-2 align-items-center flex-wrap">
+                        <div class="input-group" style="max-width: 600px;">
+                            <input type="password" class="form-control form-control-sm" name="pair_handoff_bootstrap_secret"
+                                id="pairHandoffBootstrapSecret" value=""
+                                placeholder="{% if settings.pair_handoff_bootstrap_secret %}Saved bootstrap secret{% else %}Filled automatically when you import the cloud setup payload{% endif %}"
+                                {% if settings.pair_handoff_bootstrap_secret %}data-key-set="1" {% endif %} autocomplete="off">
+                            <button type="button" class="btn btn-sm btn-outline-secondary"
+                                onclick="togglePasswordVisibility('pairHandoffBootstrapSecret', this)" title="Show/hide key">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                        </div>
+                        {% if settings.pair_handoff_bootstrap_secret %}
+                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="clearPairBootstrapSecret()">Clear</button>
+                        {% endif %}
+                    </div>
+                    {% if settings.pair_handoff_bootstrap_secret %}<input type="hidden" name="pair_handoff_bootstrap_secret_unchanged" value="1"
+                        id="pairHandoffBootstrapSecret_unchanged_h">{% endif %}
+                </div>
+                {% endif %}
+
+                <hr style="border-color: #444; margin: 24px 0;">
+
                 <h6 class="text-white mb-3">Cloud Sync</h6>
-                <p class="ui-section-intro">Instant sync uses webhooks through your tunnel. If a webhook is missed, the
-                    app does a slower backup poll so approved requests still arrive.</p>
+                <p class="ui-section-intro">Instant sync works automatically through your tunnel webhook. You do not need to enable a separate webhook switch. If instant delivery is unavailable or a webhook is missed, the app falls back to a slower backup poll so approved requests still arrive.</p>
 
                 <div class="ui-status-banner {% if settings.tunnel_enabled or settings.tunnel_provider == 'external' %}ui-status-banner--success{% else %}ui-status-banner--info{% endif %}">
                     {% if settings.tunnel_enabled or settings.tunnel_provider == 'external' %}
                     <strong><i class="fas fa-check-circle text-success me-1"></i> Cloud sync is active</strong>
                     <p>
                         {% if settings.tunnel_provider == 'external' %}
-                        Approved requests sync instantly through your external webhook URL at {{ settings.cloud_webhook_url or 'your domain' }}.
+                        Approved requests sync instantly through your external tunnel webhook URL at {{ settings.cloud_webhook_url or 'your domain' }}.
                         {% else %}
                         Your tunnel is connected. New approved requests should arrive right away,
                         {% endif %}
@@ -259,7 +457,7 @@
                     </p>
                     {% else %}
                     <strong><i class="fas fa-info-circle text-warning me-1"></i> Tunnel required for cloud sync</strong>
-                    <p>Choose a tunnel below to turn on instant cloud sync. The easiest option is
+                    <p>Choose a tunnel below to turn on instant cloud sync. Once a tunnel is running, webhook delivery works automatically. The easiest option is
                         Cloudflare Quick Tunnel, which is free and does not require a Cloudflare account.</p>
                     {% endif %}
                 </div>
@@ -268,7 +466,7 @@
                     <div class="ui-summary-card">
                         <div class="ui-summary-label">Current Sync Mode</div>
                         <div class="ui-summary-value">{{ sync_mode }}</div>
-                        <div class="ui-summary-note">Webhooks handle fast delivery. Backup polling catches anything that was missed.</div>
+                        <div class="ui-summary-note">Fast delivery happens automatically through the tunnel webhook. Backup polling catches anything that was missed.</div>
                     </div>
                     <div class="ui-summary-card">
                         <div class="ui-summary-label">Tunnel Verification</div>
@@ -301,8 +499,7 @@
 
                 <div class="form-group mt-3">
                     <label for="webhookFailsafe" class="text-white small mb-1">Webhook Failsafe Poll Interval</label>
-                    <div class="text-muted small mb-2" style="font-size: 0.85em;">If an instant webhook is ever missed,
-                        this is how often the app will do a slower backup check.</div>
+                    <div class="text-muted small mb-2" style="font-size: 0.85em;">If instant webhook delivery is ever missed, this is how often the app will do a slower backup check.</div>
                     <select class="form-control form-control-sm" name="cloud_webhook_failsafe_hours"
                         id="webhookFailsafe" style="max-width: 300px;">
                         <option value="6" {% if settings.cloud_webhook_failsafe_hours==6 %}selected{% endif %}>Every 6
@@ -383,7 +580,8 @@
                                     <input type="password" class="form-control form-control-sm"
                                         name="cloudflare_api_token" id="cloudflareApiToken"
                                         placeholder="Paste your Cloudflare API token here"
-                                        value="{{ settings.cloudflare_api_token or '' }}" autocomplete="off">
+                                        value="" autocomplete="off" {% if settings.cloudflare_api_token %}data-key-set="1"{% endif %}>
+                                    {% if settings.cloudflare_api_token %}<input type="hidden" name="cloudflare_api_token_unchanged" value="1" id="cloudflare_api_token_unchanged_h">{% endif %}
                                     <button type="button" class="btn btn-sm btn-outline-secondary"
                                         onclick="togglePasswordVisibility('cloudflareApiToken', this)"
                                         title="Show/hide token">
@@ -726,7 +924,7 @@
         if (csrf && csrf.value) headers['X-CSRFToken'] = csrf.value;
         if (btn) { btn.disabled = true; btn.textContent = 'Testing...'; }
         if (resultEl) { resultEl.style.display = 'none'; resultEl.className = 'small ms-2'; }
-        fetch('{{ url_for("api.test_cloud_connection") }}', { method: 'POST', headers: headers, body: JSON.stringify(payload) })
+        fetch('/api/cloud/test', { method: 'POST', headers: headers, body: JSON.stringify(payload) })
             .then(function (r) { return r.json(); })
             .then(function (d) {
                 if (resultEl) {
@@ -775,6 +973,80 @@
         input.form.submit();
     }
 
+    function clearPairBootstrapSecret() {
+        if (!confirm("Are you sure you want to clear the saved pairing bootstrap secret?")) return;
+        const input = document.getElementById('pairHandoffBootstrapSecret');
+        const hidden = document.getElementById('pairHandoffBootstrapSecret_unchanged_h');
+        if (input) {
+            input.value = '';
+            input.placeholder = 'Paste the owner-specific pairing bootstrap secret';
+            input.removeAttribute('data-key-set');
+        }
+        if (hidden) hidden.remove();
+    }
+
+    function importPairingPayload() {
+        const textarea = document.getElementById('pairImportPayload');
+        const ownerField = document.getElementById('pairHandoffOwnerUserId');
+        const secretField = document.getElementById('pairHandoffBootstrapSecret');
+        const secretHidden = document.getElementById('pairHandoffBootstrapSecret_unchanged_h');
+        if (!textarea || !ownerField || !secretField) return;
+
+        try {
+            const payload = JSON.parse(textarea.value || '{}');
+            if (payload.owner_user_id) {
+                ownerField.value = String(payload.owner_user_id);
+            }
+            if (payload.pair_handoff_bootstrap_secret) {
+                secretField.value = String(payload.pair_handoff_bootstrap_secret);
+                secretField.setAttribute('data-key-set', '1');
+                if (secretHidden) secretHidden.remove();
+            }
+            if (!payload.owner_user_id || !payload.pair_handoff_bootstrap_secret) {
+                alert('That JSON is missing owner_user_id or pair_handoff_bootstrap_secret. Use Copy local app payload for the import box, or paste the owner ID and bootstrap secret into the manual fields below.');
+                return;
+            }
+            textarea.value = '';
+        } catch (err) {
+            alert('The import box only accepts the JSON from Copy local app payload. If you copied owner ID or bootstrap secret separately, paste them into the two fields below instead.');
+        }
+    }
+
+      [
+        ['cloudApiKey', 'cloudApiKey_unchanged_h'],
+        ['cloudflareApiToken', 'cloudflare_api_token_unchanged_h'],
+        ['pairHandoffBootstrapSecret', 'pairHandoffBootstrapSecret_unchanged_h']
+      ].forEach(function (entry) {
+          const input = document.getElementById(entry[0]);
+          if (!input) return;
+          input.addEventListener('input', function () {
+              const hidden = document.getElementById(entry[1]);
+            if (hidden) hidden.remove();
+        });
+    });
+
+    async function parseJsonResponse(response) {
+        const rawText = await response.text();
+        let data = null;
+
+        try {
+            data = rawText ? JSON.parse(rawText) : {};
+        } catch (err) {
+            const snippet = (rawText || '').replace(/\s+/g, ' ').trim().slice(0, 180);
+            throw new Error(
+                snippet
+                    ? `Server returned ${response.status} instead of JSON: ${snippet}`
+                    : `Server returned ${response.status} with an empty response`
+            );
+        }
+
+        if (!response.ok && data && !data.error) {
+            data.error = `Request failed (${response.status})`;
+        }
+
+        return data || {};
+    }
+
     function startPairing() {
         const btn = document.getElementById('btnPairStart');
         const status = document.getElementById('pairingStatus');
@@ -801,6 +1073,41 @@
             }
         }
 
+        // Scrape current form data to pass "unsaved" state to backend
+        const currentProvider = document.querySelector('input[name="tunnel_provider_choice"]:checked')?.value || 'cloudflare_quick';
+        const currentExternalUrl = document.getElementById('cloudWebhookUrl')?.value || '';
+        let currentOwnerUserId = (document.getElementById('pairHandoffOwnerUserId')?.value || '').trim();
+        let currentBootstrapSecret = (document.getElementById('pairHandoffBootstrapSecret')?.value || '').trim();
+        const importPayload = (document.getElementById('pairImportPayload')?.value || '').trim();
+
+        if ((!currentOwnerUserId || !currentBootstrapSecret) && importPayload) {
+            try {
+                const payload = JSON.parse(importPayload);
+                if (!currentOwnerUserId && payload.owner_user_id) {
+                    currentOwnerUserId = String(payload.owner_user_id).trim();
+                }
+                if (!currentBootstrapSecret && payload.pair_handoff_bootstrap_secret) {
+                    currentBootstrapSecret = String(payload.pair_handoff_bootstrap_secret).trim();
+                }
+            } catch (e) {
+                // Ignore here; import button already validates the payload explicitly.
+            }
+        }
+
+        if (!currentOwnerUserId) {
+            status.className = 'mt-2 small text-danger';
+            status.textContent = 'Cloud Owner User ID is required for one-click pairing.';
+            status.classList.remove('d-none');
+            return;
+        }
+
+        if (!currentBootstrapSecret) {
+            status.className = 'mt-2 small text-danger';
+            status.innerHTML = 'Pair Handoff Bootstrap Secret is required. In SeekAndWatch Cloud, open <strong>Settings > Library</strong>, copy the local app payload, then import or paste it here.';
+            status.classList.remove('d-none');
+            return;
+        }
+
         // Open a blank window immediately to satisfy popup blockers
         const popup = window.open('about:blank', 'seekandwatch_pair', 'width=600,height=700');
         if (!popup || popup.closed || typeof popup.closed == 'undefined') {
@@ -818,10 +1125,6 @@
         status.textContent = 'Establishing secure connection... this can take 30-60 seconds.';
         status.classList.remove('d-none');
 
-        // Scrape current form data to pass "unsaved" state to backend
-        const currentProvider = document.querySelector('input[name="tunnel_provider_choice"]:checked')?.value || 'cloudflare_quick';
-        const currentExternalUrl = document.getElementById('cloudWebhookUrl')?.value || '';
-
         fetch('/api/pair/start', {
             method: 'POST',
             headers: {
@@ -830,10 +1133,12 @@
             },
             body: JSON.stringify({
                 tunnel_provider: currentProvider,
-                cloud_webhook_url: currentExternalUrl
+                cloud_webhook_url: currentExternalUrl,
+                pair_handoff_owner_user_id: currentOwnerUserId,
+                pair_handoff_bootstrap_secret: currentBootstrapSecret
             })
         })
-            .then(r => r.json())
+            .then(parseJsonResponse)
 
             .then(data => {
                 if (data.success) {
@@ -845,11 +1150,11 @@
 
                     // Start polling for success
                     const checkPair = setInterval(() => {
-                        fetch('{{ url_for("api.pair_status") }}', {
+        fetch('/api/pair/status', {
                             method: 'GET',
                             headers: { 'X-CSRFToken': document.querySelector('input[name="csrf_token"]').value }
                         })
-                            .then(r => r.json())
+                            .then(parseJsonResponse)
                             .then(d => {
                                 if (d.paired) {
                                     clearInterval(checkPair);
@@ -866,7 +1171,7 @@
                     popup.close();
                     status.className = 'mt-2 small text-danger';
                     
-                    let errorMsg = data.error || 'Unknown error';
+                    let errorMsg = data.error || data.message || 'Pairing failed, but the server did not include an error message.';
                     if (errorMsg.includes('reach your external URL')) {
                         errorMsg = '<strong>Reachability Error:</strong> ' + errorMsg + '<br><span class="mt-1 d-block">Tip: Make sure your tunnel is pointing to <code>http://localhost:5000</code> and is publicly accessible.</span>';
                     }
@@ -879,14 +1184,14 @@
             .catch(err => {
                 popup.close();
                 status.className = 'mt-2 small text-danger';
-                status.textContent = 'Request failed. Please check your logs.';
+                status.textContent = err && err.message ? err.message : 'Request failed. Please check your logs.';
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fas fa-link me-2"></i>One-Click Pair with Cloud';
             });
     }
 
     document.addEventListener('DOMContentLoaded', function () {
-        ['cloudApiKey', 'cloudWebhookSecret'].forEach(function (id) {
+        ['cloudApiKey', 'cloudWebhookSecret', 'pairHandoffBootstrapSecret'].forEach(function (id) {
             var el = document.getElementById(id);
             if (el) el.addEventListener('input', function () {
                 var h = document.getElementById(id + '_unchanged_h');

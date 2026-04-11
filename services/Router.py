@@ -21,6 +21,7 @@ class Router:
     CLOUD_TEST_WEBHOOK = "/api/test_webhook.php"
     CLOUD_REGISTER_WEBHOOK = "/api/save_webhook.php" # consolidated with save_webhook
     CLOUD_PAIR_PAGE = "/pair.php"
+    CLOUD_PAIR_HANDOFF_CREATE = "/api/pair_handoff_create.php"
 
     @staticmethod
     def get_cloud_url(cloud_base, endpoint_path):

@@ -20,10 +20,11 @@ from utils.system import check_for_updates, is_docker, is_unraid, is_git_repo, i
 from utils.rate_limiter import limiter
 from services.CloudService import CloudService
 from config import VERSION, CLOUD_REQUEST_TIMEOUT
+from utils.tmdb_http import tmdb_get
+from utils.validators import should_verify_tls
 
 # Create blueprint
 web_utility_bp = Blueprint('web_utility', __name__)
-
 @web_utility_bp.route('/trigger_update', methods=['POST'])
 @limiter.limit("10 per hour")
 @login_required
@@ -147,7 +148,8 @@ def settings_autodiscover():
                             url = f"{proto}://{ip}:{info['port']}"
                             for path in info['paths']:
                                 try:
-                                    r = requests.get(f"{url}{path}", timeout=0.8, verify=False)
+                                    candidate_url = f"{url}{path}"
+                                    r = requests.get(candidate_url, timeout=0.8, verify=should_verify_tls(candidate_url))
                                     if r.status_code in [200, 401, 302, 403]: # 403 can also mean it's there but blocked
                                         found[info['key']] = url
                                         break
@@ -262,7 +264,7 @@ def image_proxy():
     # fetch from the source
     try:
         headers = {'User-Agent': 'SeekAndWatch/1.0'}
-        r = requests.get(target_url, headers=headers, stream=True, timeout=5, verify=False)
+        r = requests.get(target_url, headers=headers, stream=True, timeout=5, verify=should_verify_tls(target_url))
         
         if not r.ok:
             # if Plex 404s and we have IDs, try TMDB instead
@@ -271,8 +273,7 @@ def image_proxy():
             if is_plex and r.status_code == 404 and tmdb_id and s and s.tmdb_key:
                 try:
                     # look up the poster path on TMDB
-                    t_url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}?api_key={s.tmdb_key}"
-                    tr = requests.get(t_url, timeout=3)
+                    tr = tmdb_get(f"{media_type}/{tmdb_id}", s.tmdb_key, timeout=3)
                     if tr.ok:
                         p_path = tr.json().get('poster_path')
                         if p_path:

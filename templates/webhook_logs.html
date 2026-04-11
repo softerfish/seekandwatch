@@ -6,17 +6,17 @@
     <div class="logs-header-row">
         <h2>Webhook Logs</h2>
         <div class="logs-actions">
-            <button onclick="filterLogs('all')" class="btn-secondary" style="padding: 8px 15px; font-size:0.9em;" id="filter-all-btn">
+            <button onclick="filterLogs('all')" class="btn-secondary logs-control-btn" id="filter-all-btn">
                 All Events
             </button>
-            <button onclick="filterLogs('tunnel')" class="btn-secondary" style="padding: 8px 15px; font-size:0.9em;" id="filter-tunnel-btn">
+            <button onclick="filterLogs('tunnel')" class="btn-secondary logs-control-btn" id="filter-tunnel-btn">
                 Tunnel Only
             </button>
-            <button onclick="toggleQuietMode()" class="btn-secondary" style="padding: 8px 15px; font-size:0.9em;" id="quiet-mode-btn">
+            <button onclick="toggleQuietMode()" class="btn-secondary logs-control-btn" id="quiet-mode-btn">
                 {% if quiet_mode %}Quiet Mode ON{% else %}Quiet Mode OFF{% endif %}
             </button>
-            <button onclick="clearWebhookLogs()" class="btn-delete" style="padding: 8px 15px; font-size:0.9em;">Clear Logs</button>
-            <button onclick="location.reload()" class="btn-preview" style="padding: 8px 15px; font-size:0.9em;">Refresh</button>
+            <button onclick="clearWebhookLogs()" class="btn-delete logs-control-btn">Clear Logs</button>
+            <button onclick="location.reload()" class="btn-preview logs-control-btn">Refresh</button>
         </div>
     </div>
     <p class="media-sub">Debug incoming webhook traffic from SeekAndWatch Cloud and tunnel events.</p>
@@ -54,7 +54,7 @@
                 </td>
                 <td style="line-height: 1.4;">{{ log.message or '-' }}</td>
                 <td>
-                    <button class="btn btn-sm btn-outline-info py-0 px-2" onclick="viewPayload({{ loop.index0 }})" style="font-size: 0.75rem;">View</button>
+                    <button class="btn-secondary logs-table-btn" onclick="viewPayload({{ loop.index0 }})">View</button>
                     <div id="payload-{{ loop.index0 }}" style="display: none;">{{ log.payload }}</div>
                 </td>
             </tr>
@@ -84,7 +84,7 @@ function toggleQuietMode() {
     btn.disabled = true;
     btn.textContent = 'Updating...';
     
-    fetch("{{ url_for('api.toggle_webhook_quiet_mode') }}", {
+    fetch("/api/webhook/toggle_quiet_mode", {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -122,7 +122,7 @@ function viewPayload(index) {
 function clearWebhookLogs() {
     if(!confirm("Are you sure you want to clear the webhook history?")) return;
     
-    fetch("{{ url_for('api.clear_webhook_logs') }}", {
+    fetch("/api/webhook/clear_logs", {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',

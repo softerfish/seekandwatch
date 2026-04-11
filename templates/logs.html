@@ -8,24 +8,24 @@
         
         <div class="logs-actions">
             
-            <label class="switch-container">
+            <label class="switch-container logs-toggle-chip">
                 <input type="checkbox" id="log-toggle" {% if settings.logging_enabled %}checked{% endif %} onchange="toggleLogging()">
                 <span class="switch-label">
                     {% if settings.logging_enabled %}Recording ON{% else %}Recording OFF{% endif %}
                 </span>
             </label>
 
-            <label class="switch-container">
+            <label class="switch-container logs-toggle-chip">
                 <input type="checkbox" id="hide-errors-toggle" onchange="filterLogs()">
                 <span class="switch-label" id="hide-errors-label">Hide Errors</span>
             </label>
-            <label class="switch-container">
+            <label class="switch-container logs-toggle-chip">
                 <input type="checkbox" id="show-only-errors-toggle" onchange="filterLogs()">
                 <span class="switch-label" id="errors-only-label">Errors Only</span>
             </label>
 
-            <button onclick="clearLogs()" class="btn-delete" style="padding: 8px 15px; font-size:0.9em;">Clear Logs</button>
-            <button onclick="location.reload()" class="btn-preview" style="padding: 8px 15px; font-size:0.9em;">Refresh</button>
+            <button onclick="clearLogs()" class="btn-delete logs-control-btn">Clear Logs</button>
+            <button onclick="location.reload()" class="btn-preview logs-control-btn">Refresh</button>
         </div>
     </div>
     <p class="media-sub">Track collection syncs, cache updates, and system errors.</p>
@@ -97,8 +97,8 @@
 
 <script>
 const CSRF_TOKEN = "{{ csrf_token() }}";
-const API_TOGGLE_LOGGING = "{{ url_for('api.toggle_logging') }}";
-const API_CLEAR_LOGS = "{{ url_for('api.clear_logs') }}";
+const API_TOGGLE_LOGGING = "/api/toggle_logging";
+const API_CLEAR_LOGS = "/api/clear_logs";
 function toggleLogging() {
     const enabled = document.getElementById('log-toggle').checked;
     fetch(API_TOGGLE_LOGGING, {

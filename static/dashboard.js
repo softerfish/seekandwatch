@@ -19,12 +19,27 @@
     }
 
     function fetchSystemHealth() {
-        if (!config.healthStatusUrl) {
+        const healthUrls = Array.isArray(config.healthStatusUrls)
+            ? config.healthStatusUrls
+            : (config.healthStatusUrl ? [config.healthStatusUrl] : []);
+        if (!healthUrls.length) {
             return;
         }
-        fetch(config.healthStatusUrl)
-            .then((response) => response.json())
-            .then((data) => {
+
+        let attempt = Promise.reject(new Error('No health URL configured'));
+        healthUrls.forEach((url) => {
+            attempt = attempt.catch(() =>
+                fetch(url, { headers: { 'Accept': 'application/json' } })
+                    .then((response) => {
+                        if (!response.ok) {
+                            throw new Error(`Health request failed (${response.status})`);
+                        }
+                        return response.json();
+                    })
+            );
+        });
+
+        attempt.then((data) => {
                 Object.keys(data).forEach((service) => {
                     const el = document.getElementById(`health-${service}`);
                     if (!el) {
@@ -41,8 +56,23 @@
                         status.innerText = info.message || 'Unknown';
                     }
                 });
-            })
-            .catch((err) => console.error('Health check failed:', err));
+            }).catch((err) => {
+                console.error('Health check failed:', err);
+                ['plex', 'radarr', 'sonarr', 'cloud'].forEach((service) => {
+                    const el = document.getElementById(`health-${service}`);
+                    if (!el) {
+                        return;
+                    }
+                    const dot = el.querySelector('.health-dot');
+                    const status = el.querySelector('.health-status');
+                    if (dot) {
+                        dot.className = 'health-dot status-offline';
+                    }
+                    if (status) {
+                        status.innerText = 'Unavailable';
+                    }
+                });
+            });
     }
 
     function submitManualQuery(title) {

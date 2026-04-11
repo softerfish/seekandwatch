@@ -16,6 +16,7 @@ from models import db, CollectionSchedule, TmdbAlias
 from presets import TMDB_GENRE_MAP, TMDB_STUDIO_MAP, PLAYLIST_PRESETS
 from utils.helpers import write_log, normalize_title
 from utils.system import is_system_locked, set_system_lock, remove_system_lock
+from utils.tmdb_http import tmdb_get
 
 log = logging.getLogger(__name__)
 
@@ -157,8 +158,7 @@ class CollectionService:
         list_id = preset.get('tmdb_list_id')
         if list_id:
             try:
-                list_url = f"https://api.themoviedb.org/3/list/{list_id}?api_key={settings.tmdb_key}&language=en-US"
-                resp = requests.get(list_url, timeout=15)
+                resp = tmdb_get(f"list/{list_id}", settings.tmdb_key, params={'language': 'en-US'}, timeout=15)
                 if not resp.ok:
                     write_log("error", "Sync", f"TMDB list API returned {resp.status_code}: {resp.text[:200]}", app_obj=app_obj)
                     return None
@@ -184,7 +184,6 @@ class CollectionService:
                 return None
         else:
             params = (preset.get('tmdb_params') or {}).copy()
-            params['api_key'] = settings.tmdb_key
             if 'language' not in params:
                 params['language'] = 'en-US'
 
@@ -200,8 +199,7 @@ class CollectionService:
 
             if 'with_collection_id' in params:
                 col_id = params.pop('with_collection_id')
-                url = f"https://api.themoviedb.org/3/collection/{col_id}?api_key={settings.tmdb_key}&language=en-US"
-                data = requests.get(url, timeout=10).json()
+                data = tmdb_get(f"collection/{col_id}", settings.tmdb_key, params={'language': 'en-US'}, timeout=10).json()
                 tmdb_items = data.get('parts', [])
             else:
                 endpoint = preset.get('tmdb_endpoint')
@@ -211,7 +209,7 @@ class CollectionService:
                     try:
                         p_params = params.copy()
                         p_params['page'] = p
-                        resp = requests.get(url, params=p_params, timeout=10)
+                        resp = tmdb_get(url, settings.tmdb_key, params=p_params, timeout=10)
                         if not resp.ok:
                             write_log("warning", "Sync", f"TMDB API page {p} returned {resp.status_code}", app_obj=app_obj)
                             return []

@@ -36,7 +36,15 @@ from utils.cache import (
     get_cache_stats,
     RESULTS_CACHE
 )
-from utils.validators import validate_url, validate_path, get_session_filters
+from utils.validators import (
+    validate_url,
+    validate_service_url,
+    validate_url_safety,
+    validate_external_fetch_url,
+    validate_path,
+    get_session_filters,
+    should_verify_tls,
+)
 from utils.backup import create_backup, list_backups, restore_backup, prune_backups, BACKUP_DIR
 
 # import phase 3 helper modules (for blueprint migration)
@@ -133,8 +141,12 @@ __all__ = [
     'RESULTS_CACHE',
     # from utils.validators
     'validate_url',
+    'validate_service_url',
+    'validate_url_safety',
+    'validate_external_fetch_url',
     'validate_path',
     'get_session_filters',
+    'should_verify_tls',
     # from utils.backup
     'create_backup',
     'list_backups',

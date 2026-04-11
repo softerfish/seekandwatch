@@ -158,12 +158,12 @@
 <div id="server-data" class="d-none">{{ movies|tojson if movies else '[]' }}</div>
 
 <script>
-    const API_TMDB_SEARCH_PROXY = "{{ url_for('api.tmdb_search_proxy') }}";
-    const API_UPDATE_FILTERS = "{{ url_for('api.update_filters') }}";
-    const API_LOAD_MORE_RECS = "{{ url_for('api.load_more_recs') }}";
-    const API_BLOCK_MOVIE = "{{ url_for('api.block_movie') }}";
-    const API_GET_METADATA_MOVIE_BASE = "{{ url_for('api.get_metadata', media_type='movie', tmdb_id=0) }}";
-    const API_GET_METADATA_TV_BASE = "{{ url_for('api.get_metadata', media_type='tv', tmdb_id=0) }}";
+    const API_TMDB_SEARCH_PROXY = "/api/tmdb_search_proxy";
+    const API_UPDATE_FILTERS = "/api/update_filters";
+    const API_LOAD_MORE_RECS = "/api/load_more_recs";
+    const API_BLOCK_MOVIE = "/api/block_movie";
+    const API_GET_METADATA_MOVIE_BASE = "/api/get_metadata/movie/0";
+    const API_GET_METADATA_TV_BASE = "/api/get_metadata/tv/0";
     const RESULTS_CSRF = "{{ csrf_token() }}";
     let page = 1;
     const useCriticFilter = "{{ use_critic_filter|lower }}"; 
@@ -519,69 +519,156 @@
         
         const posterUrl = item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : 'https://placehold.co/500x750/222/888?text=No+Poster';
         
-        // Safe string handling for UI + onclick.
-        const safeTitle = escapeHtml(title);
-        const jsTitle = safeTitle.replace(/'/g, "\\'");
-        
-        const searchableText = `<span style="display:none;">${safeTitle} ${escapeHtml(item.overview || '')}</span>`;
+        const safeMediaType = mediaType === 'tv' ? 'tv' : 'movie';
 
-        let ratingsHtml = `<span class="meta-year">${displayDate}</span>`;
-        let scoresHtml = '';
+        const posterWrapper = document.createElement('div');
+        posterWrapper.className = 'poster-wrapper';
+
+        const img = document.createElement('img');
+        img.src = posterUrl;
+        img.loading = 'lazy';
+        img.alt = title;
+        posterWrapper.appendChild(img);
+
+        if (safeMediaType === 'tv' && item.status) {
+            const statusOverlay = document.createElement('div');
+            const slug = String(item.status).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+            statusOverlay.className = `status-overlay ${slug}`;
+            statusOverlay.textContent = item.status;
+            posterWrapper.appendChild(statusOverlay);
+        }
+
+        const overlay = document.createElement('div');
+        overlay.className = 'card-icon-overlay';
+
+        const topActions = document.createElement('div');
+        topActions.className = 'overlay-top-actions';
+        const blockBtn = document.createElement('div');
+        blockBtn.className = 'icon-btn icon-btn-danger';
+        blockBtn.title = 'Block this item';
+        blockBtn.textContent = '🚫';
+        blockBtn.addEventListener('click', (event) => blockItem(event, title, safeMediaType));
+        topActions.appendChild(blockBtn);
+        overlay.appendChild(topActions);
+
+        const bottomRow = document.createElement('div');
+        bottomRow.className = 'overlay-bottom-row';
+
+        const requestBtn = document.createElement('div');
+        requestBtn.className = 'icon-btn btn-request';
+        requestBtn.title = 'Request';
+        requestBtn.textContent = '📥';
+        requestBtn.addEventListener('click', (event) => {
+            event.stopPropagation();
+            requestMedia(safeMediaType, id, requestBtn);
+        });
+        bottomRow.appendChild(requestBtn);
+
+        const iconGroupRight = document.createElement('div');
+        iconGroupRight.className = 'icon-group-right';
+
+        const detailsBtn = document.createElement('div');
+        detailsBtn.className = 'icon-btn';
+        detailsBtn.title = 'View Details';
+        detailsBtn.textContent = '👁';
+        detailsBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            openModal(id, safeMediaType);
+        });
+        iconGroupRight.appendChild(detailsBtn);
+
+        const tmdbLink = document.createElement('a');
+        tmdbLink.href = `https://www.themoviedb.org/${safeMediaType}/${encodeURIComponent(String(id))}`;
+        tmdbLink.target = '_blank';
+        tmdbLink.rel = 'noopener noreferrer';
+        tmdbLink.className = 'icon-btn icon-btn-small';
+        tmdbLink.title = 'TMDB Page';
+        tmdbLink.textContent = 'TMDB';
+        tmdbLink.addEventListener('click', (event) => event.stopPropagation());
+        iconGroupRight.appendChild(tmdbLink);
+
+        bottomRow.appendChild(iconGroupRight);
+        overlay.appendChild(bottomRow);
+        posterWrapper.appendChild(overlay);
+
+        const cardInfo = document.createElement('div');
+        cardInfo.className = 'card-info';
+
+        const titleDiv = document.createElement('div');
+        titleDiv.className = 'movie-title';
+        titleDiv.title = title;
+        titleDiv.textContent = title;
+        cardInfo.appendChild(titleDiv);
+
+        const metaRow = document.createElement('div');
+        metaRow.className = 'movie-meta-row';
+
+        const yearSpan = document.createElement('span');
+        yearSpan.className = 'meta-year';
+        yearSpan.textContent = displayDate;
+        metaRow.appendChild(yearSpan);
+
+        const metaRight = document.createElement('div');
+        metaRight.className = 'meta-right';
+        let hasScore = false;
 
         if (rating > 0) {
-            scoresHtml += `<span class="meta-rating tmdb-score" title="TMDB">&#9733; ${parseFloat(rating).toFixed(1)}</span>`;
+            const tmdbScore = document.createElement('span');
+            tmdbScore.className = 'meta-rating tmdb-score';
+            tmdbScore.title = 'TMDB';
+            tmdbScore.textContent = `★ ${parseFloat(rating).toFixed(1)}`;
+            metaRight.appendChild(tmdbScore);
+            hasScore = true;
         }
 
         if (rtScore > 0) {
             const rtLabel = rtScore >= 60 ? 'Fresh' : 'Rotten';
             const rtClass = rtScore >= 60 ? 'rt-fresh' : 'rt-rotten';
-            if (scoresHtml) scoresHtml += `<span class="meta-sep">|</span>`;
-            scoresHtml += `<span class="meta-rating ${rtClass}" title="Rotten Tomatoes">${rtLabel} ${rtScore}%</span>`;
+            if (hasScore) {
+                const sep = document.createElement('span');
+                sep.className = 'meta-sep';
+                sep.textContent = '|';
+                metaRight.appendChild(sep);
+            }
+            const rtSpan = document.createElement('span');
+            rtSpan.className = `meta-rating ${rtClass}`;
+            rtSpan.title = 'Rotten Tomatoes';
+            rtSpan.textContent = `${rtLabel} ${rtScore}%`;
+            metaRight.appendChild(rtSpan);
+            hasScore = true;
         } else if (imdbRating && imdbRating !== 'N/A') {
-            if (scoresHtml) scoresHtml += `<span class="meta-sep">|</span>`;
-            scoresHtml += `<span class="meta-rating imdb-score" title="IMDb">IMDb ${imdbRating}</span>`;
+            if (hasScore) {
+                const sep = document.createElement('span');
+                sep.className = 'meta-sep';
+                sep.textContent = '|';
+                metaRight.appendChild(sep);
+            }
+            const imdbSpan = document.createElement('span');
+            imdbSpan.className = 'meta-rating imdb-score';
+            imdbSpan.title = 'IMDb';
+            imdbSpan.textContent = `IMDb ${imdbRating}`;
+            metaRight.appendChild(imdbSpan);
+            hasScore = true;
         }
 
-        if (scoresHtml) {
-            ratingsHtml += `<div class="meta-right">${scoresHtml}</div>`;
+        if (hasScore) {
+            metaRow.appendChild(metaRight);
         }
 
-        let statusHtml = '';
-        if (mediaType === 'tv' && item.status) {
-            const slug = item.status.toLowerCase().replace(/ /g, '-');
-            statusHtml = `<div class="status-overlay ${slug}">${item.status}</div>`;
-        }
-        
-        card.innerHTML = `
-            <div class="poster-wrapper">
-                <img src="${posterUrl}" loading="lazy" alt="${safeTitle}">
-                ${statusHtml}
-                
-                <div class="card-icon-overlay">
-                    <div class="overlay-top-actions">
-                        <div class="icon-btn icon-btn-danger" title="Block this item" onclick="blockItem(event, '${jsTitle}', '${mediaType}')">&#128683;</div>
-                    </div>
-                    <div class="overlay-bottom-row">
-                        <div class="icon-btn btn-request" title="Request" onclick="requestMedia('${mediaType}', ${id}, this); event.stopPropagation();">&#128229;</div>
-                        <div class="icon-group-right">
-                            <div class="icon-btn" title="View Details" onclick="event.preventDefault(); event.stopPropagation(); openModal(${id}, '${mediaType}');">&#128065;</div>
-                            <a href="https://www.themoviedb.org/${mediaType}/${id}" target="_blank" class="icon-btn icon-btn-small" title="TMDB Page" onclick="event.stopPropagation();">TMDB</a>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="card-info">
-                <div class="movie-title" title="${safeTitle}">${safeTitle}</div>
-                <div class="movie-meta-row">
-                    ${ratingsHtml}
-                    <span class="content-rating-badge">
-                        ${item.content_rating || 'NR'}
-                    </span>
-                </div>
-                ${searchableText}
-            </div>
-        `;
+        const contentRating = document.createElement('span');
+        contentRating.className = 'content-rating-badge';
+        contentRating.textContent = item.content_rating || 'NR';
+        metaRow.appendChild(contentRating);
+        cardInfo.appendChild(metaRow);
+
+        const searchableSpan = document.createElement('span');
+        searchableSpan.style.display = 'none';
+        searchableSpan.textContent = `${title} ${item.overview || ''}`;
+        cardInfo.appendChild(searchableSpan);
+
+        card.appendChild(posterWrapper);
+        card.appendChild(cardInfo);
         return card;
     }
 

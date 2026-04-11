@@ -8,6 +8,14 @@ CONFIG_DIR = os.environ.get("SEEKANDWATCH_CONFIG", "/config")
 # seekandwatch cloud base url; set SEEKANDWATCH_CLOUD_URL for custom or staging
 CLOUD_URL = os.environ.get("SEEKANDWATCH_CLOUD_URL", "https://seekandwatch.com").rstrip("/")
 
+# shared bootstrap secret for creating cloud pairing handoffs
+# this must match PAIR_HANDOFF_BOOTSTRAP_SECRET on the cloud app
+PAIR_HANDOFF_BOOTSTRAP_SECRET = os.environ.get("PAIR_HANDOFF_BOOTSTRAP_SECRET", "").strip()
+
+# exact cloud owner/admin account id that is allowed to complete one-click pairing
+# this must match the owner account on the cloud side that owns the bootstrap secret
+PAIR_HANDOFF_OWNER_USER_ID = os.environ.get("PAIR_HANDOFF_OWNER_USER_ID", "").strip()
+
 # timeout in seconds for http requests to the cloud (poll, sync, acknowledge); set SEEKANDWATCH_CLOUD_TIMEOUT to override
 _def = os.environ.get("SEEKANDWATCH_CLOUD_TIMEOUT")
 CLOUD_REQUEST_TIMEOUT = int(_def) if (_def and _def.isdigit()) else 25
@@ -75,7 +83,7 @@ if SCHEDULER_USER_ID is not None:
         SCHEDULER_USER_ID = None
 
 # app version and update checking
-VERSION = "1.6.7"
+VERSION = "1.6.8"
 
 # shared cache for update checking (prevents duplicate github api calls)
 UPDATE_CACHE = {

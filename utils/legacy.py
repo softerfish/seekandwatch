@@ -39,6 +39,7 @@ import ipaddress
 import datetime
 
 from config import CONFIG_DIR, get_cache_file
+from utils.tmdb_http import tmdb_get
 SCANNER_LOG_FILE = os.path.join(CONFIG_DIR, 'scanner.log')
 
 # Cache file path (for Plex sync)
@@ -181,8 +182,7 @@ def _plex_imdb_to_tmdb(imdb_id, media_type, tmdb_key):
     if not (tmdb_key and str(tmdb_key).strip()):
         return None
     try:
-        url = f"https://api.themoviedb.org/3/find/{imdb_id.strip()}?external_source=imdb_id&api_key={tmdb_key.strip()}"
-        r = requests.get(url, timeout=10)
+        r = tmdb_get(f"find/{imdb_id.strip()}", tmdb_key, params={'external_source': 'imdb_id'}, timeout=10)
         if not r.ok:
             return None
         data = r.json()
@@ -211,14 +211,13 @@ def _plex_title_year_to_tmdb(title, year, media_type, tmdb_key):
     if not title or not (tmdb_key and str(tmdb_key).strip()):
         return None
     mt = 'tv' if media_type in ('tv', 'show') else 'movie'
-    year_param = ''
+    year_params = {}
     if year and re.match(r'^\d{4}$', str(year).strip()):
         y = int(str(year).strip())
-        year_param = f"&year={y}" if mt == 'movie' else f"&first_air_date_year={y}"
+        year_params = {'year': y} if mt == 'movie' else {'first_air_date_year': y}
     try:
         endpoint = 'search/movie' if mt == 'movie' else 'search/tv'
-        url = f"https://api.themoviedb.org/3/{endpoint}?api_key={tmdb_key.strip()}&query={requests.utils.quote(title)}{year_param}&page=1"
-        r = requests.get(url, timeout=10)
+        r = tmdb_get(endpoint, tmdb_key, params={'query': title, **year_params, 'page': 1}, timeout=10)
         if not r.ok:
             return None
         data = r.json()
@@ -240,8 +239,7 @@ def _plex_tvdb_to_tmdb(tvdb_id, media_type, tmdb_key):
     if key in _TVDB_TMDB_CACHE:
         return _TVDB_TMDB_CACHE[key]
     try:
-        url = f"https://api.themoviedb.org/3/find/{tvdb_id}?external_source=tvdb_id&api_key={tmdb_key.strip()}"
-        r = requests.get(url, timeout=10)
+        r = tmdb_get(f"find/{tvdb_id}", tmdb_key, params={'external_source': 'tvdb_id'}, timeout=10)
         if not r.ok:
             _TVDB_TMDB_CACHE[key] = None
             return None
@@ -379,7 +377,7 @@ def get_tautulli_trending(media_type='movie', days=30, settings=None):
                                 break
                         
                         if tmdb_id:
-                            tmdb_resp = requests.get(f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}?api_key={s.tmdb_key}", timeout=10).json()
+                            tmdb_resp = tmdb_get(f"{media_type}/{tmdb_id}", s.tmdb_key, timeout=10).json()
                             trending_items.append({
                                 'title': row.get('title'),
                                 'poster_path': tmdb_resp.get('poster_path'),
@@ -410,8 +408,7 @@ def get_tmdb_aliases(tmdb_id, media_type, settings):
         pass
 
     try:
-        url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}/alternative_titles?api_key={settings.tmdb_key}"
-        data = requests.get(url, timeout=3).json()
+        data = tmdb_get(f"{media_type}/{tmdb_id}/alternative_titles", settings.tmdb_key, timeout=3).json()
         
         key = 'titles' if 'titles' in data else 'results'
         aliases = [normalize_title(x['title']) for x in data.get(key, [])]
@@ -428,8 +425,7 @@ def get_tmdb_aliases(tmdb_id, media_type, settings):
 def handle_lucky_mode(settings):
     try:
         random_genre = random.choice([28, 35, 18, 878, 27, 53]) 
-        url = f"https://api.themoviedb.org/3/discover/movie?api_key={settings.tmdb_key}&with_genres={random_genre}&page={random.randint(1, 10)}"
-        data = requests.get(url, timeout=10).json().get('results', [])
+        data = tmdb_get('discover/movie', settings.tmdb_key, params={'with_genres': random_genre, 'page': random.randint(1, 10)}, timeout=10).json().get('results', [])
         
         random.shuffle(data)
         
@@ -575,9 +571,7 @@ def prefetch_keywords_parallel(items, api_key):
         try:
             # TMDB endpoint is different for movies vs TV, but both use /keywords
             ep = 'keywords'  # default endpoint
-            url = f"https://api.themoviedb.org/3/{item['media_type']}/{item['id']}/keywords?api_key={api_key}"
-            
-            r = requests.get(url, timeout=10)
+            r = tmdb_get(f"{item['media_type']}/{item['id']}/keywords", api_key, timeout=10)
             if r.status_code != 200: return None
             
             data = r.json()
@@ -650,9 +644,7 @@ def prefetch_ratings_parallel(items, api_key):
         try:
             m_type = item.get('media_type', 'movie')
             subset = 'release_dates' if m_type == 'movie' else 'content_ratings'
-            url = f"https://api.themoviedb.org/3/{m_type}/{item['id']}/{subset}?api_key={api_key}"
-            
-            data = requests.get(url, timeout=2).json()
+            data = tmdb_get(f"{m_type}/{item['id']}/{subset}", api_key, timeout=2).json()
             results = data.get('results', [])
             
             rating = "NR"
@@ -728,13 +720,12 @@ def prefetch_runtime_parallel(items, api_key):
     def fetch_runtime(item):
         """Fetch runtime for a single movie with better error handling."""
         try:
-            url = f"https://api.themoviedb.org/3/movie/{item['id']}?api_key={api_key}"
-            response = requests.get(url, timeout=5)
+            response = tmdb_get(f"movie/{item['id']}", api_key, timeout=5)
             
             # Handle rate limits (429)
             if response.status_code == 429:
                 time.sleep(1)  # Wait and retry once
-                response = requests.get(url, timeout=5)
+                response = tmdb_get(f"movie/{item['id']}", api_key, timeout=5)
             
             if response.status_code != 200:
                 return {'id': item.get('id'), 'runtime': 0}
@@ -816,8 +807,7 @@ def prefetch_tv_states_parallel(items, api_key):
 
     def fetch_status(item):
         try:
-            url = f"https://api.themoviedb.org/3/tv/{item['id']}?api_key={api_key}"
-            data = requests.get(url, timeout=2).json()
+            data = tmdb_get(f"tv/{item['id']}", api_key, timeout=2).json()
             return {'id': item['id'], 'status': data.get('status', 'Unknown')}
         except Exception:
             write_log("warning", "Utils", "TV status fetch failed")
@@ -878,7 +868,7 @@ def sync_plex_library(app_obj):
         if not settings or not settings.plex_url or not settings.plex_token:
             return False, "Plex not configured."
         if not (getattr(settings, 'tmdb_key', None) and str(settings.tmdb_key).strip()):
-            return False, "TMDB API key required to sync library (Settings -> APIs)."
+            return False, "TMDB API Read Access Token required to sync library (Settings -> APIs)."
 
         write_log("info", "Plex", "Started Plex library sync (TMDB index).", app_obj=app_obj)
         set_system_lock("Syncing Plex library...")

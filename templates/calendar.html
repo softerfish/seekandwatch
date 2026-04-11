@@ -84,18 +84,18 @@
 </div>
 
 <script>
-const API_CALENDAR = "{{ url_for('api.get_calendar') }}";
-const API_CALENDAR_EPISODE_BASE = "{{ url_for('api.get_calendar_episode_detail', episode_id=0) }}";
-const API_RADARR_MOVIE_BASE = "{{ url_for('api.get_radarr_movie_detail', movie_id=0) }}";
-const API_SONARR_SEARCH_EPISODE_BASE = "{{ url_for('api.sonarr_search_episode', episode_id=0) }}";
-const API_RADARR_SEARCH_SCAN_BASE = "{{ url_for('api.radarr_search_scan', movie_id=0) }}";
-const API_RADARR_QUEUE_CHECK_BASE = "{{ url_for('api.radarr_queue_check', movie_id=0) }}";
-const API_SONARR_QUEUE_CHECK_BASE = "{{ url_for('api.sonarr_queue_check', series_id=0) }}";
-const API_RADARR_SEARCH = "{{ url_for('api.radarr_search') }}";
-const API_RADARR_DOWNLOAD = "{{ url_for('api.radarr_download') }}";
-const API_SONARR_DOWNLOAD = "{{ url_for('api.sonarr_download') }}";
-const API_CALENDAR_EPISODE_RELEASES_BASE = "{{ url_for('api.get_calendar_episode_releases', episode_id=0) }}";
-const API_SONARR_SEARCH = "{{ url_for('api.sonarr_search') }}";
+const API_CALENDAR = "/api/calendar";
+const API_CALENDAR_EPISODE_BASE = "/api/calendar/episode/0";
+const API_RADARR_MOVIE_BASE = "/api/radarr/movie/0";
+const API_SONARR_SEARCH_EPISODE_BASE = "/api/sonarr/search-episode/0";
+const API_RADARR_SEARCH_SCAN_BASE = "/api/radarr/search-scan/0";
+const API_RADARR_QUEUE_CHECK_BASE = "/api/radarr/queue-check/0";
+const API_SONARR_QUEUE_CHECK_BASE = "/api/sonarr/queue-check/0";
+const API_RADARR_SEARCH = "/api/radarr/search";
+const API_RADARR_DOWNLOAD = "/api/radarr/download-release";
+const API_SONARR_DOWNLOAD = "/api/sonarr/download";
+const API_CALENDAR_EPISODE_RELEASES_BASE = "/api/calendar/episode/0/releases";
+const API_SONARR_SEARCH = "/api/sonarr/search";
 const CALENDAR_CSRF = "{{ csrf_token() }}";
 
 const CALENDAR_SEARCH_POLL_MS = 1500;

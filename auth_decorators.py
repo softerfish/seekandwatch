@@ -10,7 +10,13 @@ def admin_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         if not current_user.is_admin:
-            if request.is_json or (request.accept_mimetypes.best and 'application/json' in str(request.accept_mimetypes.best)):
+            wants_json = (
+                request.path.startswith('/api/')
+                or request.is_json
+                or request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+                or (request.accept_mimetypes.best and 'application/json' in str(request.accept_mimetypes.best))
+            )
+            if wants_json:
                 return jsonify({'status': 'error', 'message': 'Unauthorized'}), 403
             flash('Only admins can access this page.', 'error')
             return redirect(url_for('web_pages.dashboard'))

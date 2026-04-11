@@ -3111,6 +3111,16 @@ small {
     width: auto;
 }
 
+.schedule-time-input::-webkit-calendar-picker-indicator {
+    filter: invert(1) brightness(1.2);
+    opacity: 0.9;
+    cursor: pointer;
+}
+
+.schedule-time-input::-webkit-clear-button {
+    filter: invert(1) brightness(1.2);
+}
+
 .schedule-save-btn {
     background: var(--accent-color);
     color: #000000;
@@ -3261,7 +3271,16 @@ small {
 
 .control-label-with-tip {
     display: inline-flex;
-    align-items: center;
+    align-items: flex-start;
+    gap: 6px;
+    line-height: 1.2;
+}
+
+.control-label-with-tip .tooltip-container {
+    margin-left: 0;
+    flex: 0 0 auto;
+    align-self: flex-start;
+    transform: translateY(1px);
 }
 
 .visibility-label-block {
@@ -5731,6 +5750,35 @@ details.help-box code {
     display: flex;
     gap: 15px;
     align-items: center;
+    flex-wrap: nowrap;
+}
+
+.logs-control-btn {
+    width: auto !important;
+    flex: 0 0 auto;
+    min-height: 42px;
+    padding: 8px 16px !important;
+    font-size: 0.95rem !important;
+    line-height: 1.2;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    white-space: nowrap;
+}
+
+.logs-actions .btn-preview,
+.logs-actions .btn-delete,
+.logs-actions .btn-secondary,
+.logs-actions .logs-toggle-chip {
+    width: auto !important;
+    flex: 0 0 auto;
+}
+
+.logs-table-btn {
+    min-width: 64px;
+    padding: 4px 10px;
+    font-size: 0.8rem;
+    line-height: 1.2;
 }
 
 /* log table styles */
@@ -5859,6 +5907,49 @@ details.help-box code {
     margin-left: 10px;
     font-weight: bold;
     font-size: 0.9em;
+}
+
+.logs-toggle-chip {
+    min-height: 42px;
+    padding: 8px 16px;
+    border: 1px solid var(--accent-color);
+    border-radius: 12px;
+    background: rgba(124, 93, 250, 0.08);
+    transition: background-color 0.2s, border-color 0.2s, opacity 0.2s;
+}
+
+.logs-toggle-chip:hover {
+    background: rgba(124, 93, 250, 0.16);
+}
+
+.logs-toggle-chip .switch-label {
+    margin-left: 0;
+    white-space: nowrap;
+}
+
+.logs-toggle-chip input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.logs-toggle-chip:has(input:checked) {
+    background: rgba(124, 93, 250, 0.24);
+    border-color: #9a7cff;
+}
+
+@media (max-width: 900px) {
+    .logs-header-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .logs-actions {
+        width: 100%;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
 }
 
 /* global utilities & polish */

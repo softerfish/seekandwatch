@@ -183,30 +183,74 @@
     </div>
 
 <script>
-    function showModal(icon, title, message, isSuccess) {
+    function showModal(iconOrTitle, titleOrMessage, messageOrSuccess, isSuccess) {
         let modal = document.getElementById('settingsModal');
         if (!modal) {
             modal = document.createElement('div');
             modal.id = 'settingsModal';
             modal.className = 'custom-modal-overlay';
-            modal.innerHTML = `
-                <div class="custom-modal-box">
-                    <div class="modal-icon" id="modalIcon">&#9989;</div>
-                    <h3 class="modal-title" id="modalTitle">Notice</h3>
-                    <p class="modal-message" id="modalMessage"></p>
-                    <button id="modalBtn" class="modal-btn">OK</button>
-                </div>
-            `;
+            const box = document.createElement('div');
+            box.className = 'custom-modal-box';
+
+            const icon = document.createElement('div');
+            icon.className = 'modal-icon';
+            icon.id = 'modalIcon';
+            icon.textContent = 'OK';
+
+            const title = document.createElement('h3');
+            title.className = 'modal-title';
+            title.id = 'modalTitle';
+            title.textContent = 'Notice';
+
+            const message = document.createElement('div');
+            message.className = 'modal-message';
+            message.id = 'modalMessage';
+
+            const button = document.createElement('button');
+            button.id = 'modalBtn';
+            button.className = 'modal-btn';
+            button.textContent = 'OK';
+
+            box.appendChild(icon);
+            box.appendChild(title);
+            box.appendChild(message);
+            box.appendChild(button);
+            modal.appendChild(box);
             document.body.appendChild(modal);
         }
+
+        let icon = '';
+        let title = '';
+        let message = '';
+
+        if (typeof messageOrSuccess === 'boolean' && typeof isSuccess === 'undefined') {
+            title = iconOrTitle || '';
+            message = titleOrMessage || '';
+            isSuccess = messageOrSuccess;
+        } else {
+            icon = iconOrTitle || '';
+            title = titleOrMessage || '';
+            message = messageOrSuccess || '';
+        }
+
         const iconEl = document.getElementById('modalIcon');
         const titleEl = document.getElementById('modalTitle');
         const messageEl = document.getElementById('modalMessage');
         const btn = document.getElementById('modalBtn');
 
-        if (iconEl) iconEl.innerText = icon || '';
+        if (iconEl) {
+            iconEl.style.display = icon ? '' : 'none';
+            iconEl.textContent = icon || '';
+        }
         if (titleEl) titleEl.innerText = title || '';
-        if (messageEl) messageEl.innerHTML = message || '';
+        if (messageEl) {
+            messageEl.replaceChildren();
+            if (typeof message === 'string') {
+                messageEl.textContent = message;
+            } else if (message instanceof Node) {
+                messageEl.appendChild(message);
+            }
+        }
         if (btn) {
             btn.onclick = function() {
                 modal.style.display = 'none';
@@ -221,6 +265,48 @@
         if (modal) {
             modal.style.display = 'none';
         }
+    }
+
+    function buildModalContent(parts) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'text-left';
+
+        parts.forEach(part => {
+            if (part.type === 'hr') {
+                wrapper.appendChild(document.createElement('hr'));
+                return;
+            }
+
+            if (part.type === 'button') {
+                const button = document.createElement('button');
+                button.className = part.className || 'btn btn-primary w-100 mt-15';
+                button.textContent = part.text || 'OK';
+                button.onclick = part.onClick || closeModal;
+                wrapper.appendChild(button);
+                return;
+            }
+
+            const paragraph = document.createElement('p');
+            if (part.className) paragraph.className = part.className;
+
+            if (Array.isArray(part.segments)) {
+                part.segments.forEach(segment => {
+                    if (segment.bold) {
+                        const bold = document.createElement('b');
+                        bold.textContent = segment.text || '';
+                        paragraph.appendChild(bold);
+                    } else {
+                        paragraph.appendChild(document.createTextNode(segment.text || ''));
+                    }
+                });
+            } else {
+                paragraph.textContent = part.text || '';
+            }
+
+            wrapper.appendChild(paragraph);
+        });
+
+        return wrapper;
     }
 
     function showUpdateConfirm(version, source = 'git') {
@@ -256,16 +342,17 @@
     }
 
     function showUnraidUpdateNotice() {
-        showModal("Update via Unraid App Store",
-            `<div class="text-left">
-                <p>This install was detected as <b>Unraid</b>.</p>
-                <p>Please update via the <b>Unraid App Store</b> (Apps -> SeekAndWatch -> Update).</p>
-                <hr>
-                <p class="text-muted fs-small mt-10">
-                    One-click updates are disabled on Unraid to avoid breaking installs.
-                </p>
-                <button onclick="closeModal()" class="btn btn-primary w-100 mt-15">Close</button>
-            </div>`, false);
+        showModal(
+            "Update via Unraid App Store",
+            buildModalContent([
+                { segments: [{ text: 'This install was detected as ' }, { text: 'Unraid', bold: true }, { text: '.' }] },
+                { segments: [{ text: 'Please update via the ' }, { text: 'Unraid App Store', bold: true }, { text: ' (Apps -> SeekAndWatch -> Update).' }] },
+                { type: 'hr' },
+                { text: 'One-click updates are disabled on Unraid to avoid breaking installs.', className: 'text-muted fs-small mt-10' },
+                { type: 'button', text: 'Close', className: 'btn btn-primary w-100 mt-15', onClick: closeModal }
+            ]),
+            false
+        );
     }
 
     function smartUpdate(forceGit = false) {
@@ -311,36 +398,44 @@
                 if (data.action === 'none') {
                     alert("You are up to date!");
                 } else if (data.action === 'unraid_instruction') {
-                    showModal("Update Available: " + data.version,
-                        `<div class="text-left">
-                            <p>This install was detected as <b>Unraid</b>.</p>
-                            <p>Please update via the <b>Unraid App Store</b>.</p>
-                            <hr>
-                            <p class="text-muted fs-small mt-10">
-                                One-click updates are disabled on Unraid to avoid breaking installs.
-                            </p>
-                            <button onclick="closeModal()" class="btn btn-primary w-100 mt-15">Close</button>
-                        </div>`, false);
+                    showModal(
+                        "Update Available: " + data.version,
+                        buildModalContent([
+                            { segments: [{ text: 'This install was detected as ' }, { text: 'Unraid', bold: true }, { text: '.' }] },
+                            { segments: [{ text: 'Please update via the ' }, { text: 'Unraid App Store', bold: true }, { text: '.' }] },
+                            { type: 'hr' },
+                            { text: 'One-click updates are disabled on Unraid to avoid breaking installs.', className: 'text-muted fs-small mt-10' },
+                            { type: 'button', text: 'Close', className: 'btn btn-primary w-100 mt-15', onClick: closeModal }
+                        ]),
+                        false
+                    );
                 } else if (data.action === 'git_update_available') {
                     showUpdateConfirm(data.version, 'git');
                 } else if (data.action === 'release_update_available') {
                     showUpdateConfirm(data.version, 'release');
                 } else if (data.action === 'docker_instruction') {
                     // Give advanced users a manual pull option if they mapped the repo.
-                    showModal("Docker Update Available: " + data.version,
-                        `<div class="text-left">
-                            <p>The app detected Docker but <b>could not find a .git folder</b>.</p>
-                            <p>If you mapped your source code volume correctly, you can force the update:</p>
-                            <button onclick="smartUpdate(true); document.getElementById('settingsModal').style.display='none';" class="btn btn-primary w-100 mt-10">
-                                Force Git Pull
-                            </button>
-                            <hr>
-                            <p class="text-muted fs-small mt-10">
-                                Otherwise, please update the image via your Docker UI.
-                            </p>
-                        </div>`, false);
+                    showModal(
+                        "Docker Update Available: " + data.version,
+                        buildModalContent([
+                            { segments: [{ text: 'The app detected Docker but ' }, { text: 'could not find a .git folder', bold: true }, { text: '.' }] },
+                            { text: 'If you mapped your source code volume correctly, you can force the update:' },
+                            { type: 'button', text: 'Force Git Pull', className: 'btn btn-primary w-100 mt-10', onClick: () => { smartUpdate(true); closeModal(); } },
+                            { type: 'hr' },
+                            { text: 'Otherwise, please update the image via your Docker UI.', className: 'text-muted fs-small mt-10' }
+                        ]),
+                        false
+                    );
                 } else if (data.action === 'restart_needed') {
-                    showModal("OK", "Update Complete", "<p>Files updated successfully.</p><p>Please <b>restart the container</b> to apply changes.</p>", false);
+                    showModal(
+                        "OK",
+                        "Update Complete",
+                        buildModalContent([
+                            { text: 'Files updated successfully.' },
+                            { segments: [{ text: 'Please ' }, { text: 'restart the container', bold: true }, { text: ' to apply changes.' }] }
+                        ]),
+                        false
+                    );
                 } else if (data.action === 'manual_instruction') {
                     if (confirm("Update available. Download from GitHub?")) {
                         window.open('https://github.com/softerfish/seekandwatch/releases', '_blank');
@@ -639,15 +734,15 @@
 
 <script>
 {% if current_user.is_authenticated %}
-const API_REQUEST_MEDIA = "{{ url_for('api.get_requested_media') }}";
-const API_RADARR_ADD = "{{ url_for('api.add_to_radarr') }}";
-const API_SONARR_ADD = "{{ url_for('api.add_to_sonarr') }}";
-const API_RADARR_QUALITY_PROFILES = "{{ url_for('api.get_radarr_quality_profiles') }}";
-const API_SONARR_QUALITY_PROFILES = "{{ url_for('api.get_sonarr_quality_profiles') }}";
+const API_REQUEST_MEDIA = "/api/media/requested";
+const API_RADARR_ADD = "/api/radarr/add";
+const API_SONARR_ADD = "/api/sonarr/add";
+const API_RADARR_QUALITY_PROFILES = "/api/radarr/quality-profiles";
+const API_SONARR_QUALITY_PROFILES = "/api/sonarr/quality-profiles";
 
 // integration status
-const HAS_RADARR = {% if current_user.settings.radarr_url and current_user.settings.radarr_api_key %}true{% else %}false{% endif %};
-const HAS_SONARR = {% if current_user.settings.sonarr_url and current_user.settings.sonarr_api_key %}true{% else %}false{% endif %};
+const HAS_RADARR = {% if current_user.settings and current_user.settings.radarr_url and current_user.settings.radarr_api_key %}true{% else %}false{% endif %};
+const HAS_SONARR = {% if current_user.settings and current_user.settings.sonarr_url and current_user.settings.sonarr_api_key %}true{% else %}false{% endif %};
 {% else %}
 // API endpoints not available when not authenticated
 const API_REQUEST_MEDIA = "";

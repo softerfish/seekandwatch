@@ -35,6 +35,12 @@ class CloudService:
         return Settings.query.first()
 
     @staticmethod
+    def _get_settings_for_user(user_id):
+        if user_id is None:
+            return None
+        return Settings.query.filter_by(user_id=user_id).first()
+
+    @staticmethod
     def _get_cloud_request_query(settings):
         query = CloudRequest.query
         owner_user_id = getattr(settings, 'user_id', None) if settings else None
@@ -97,12 +103,12 @@ class CloudService:
             _backoff_remaining = 0
 
     @staticmethod
-    def log_webhook(event, payload, status, message=None):
+    def log_webhook(event, payload, status, message=None, settings=None):
         try:
             from models import WebhookLog, Settings
             from config import SCHEDULER_USER_ID
             
-            settings = CloudService._get_default_settings()
+            settings = settings or CloudService._get_default_settings()
             
             if settings and getattr(settings, 'quiet_webhook_logs', False) and status == 'success':
                 return

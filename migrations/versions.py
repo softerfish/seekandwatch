@@ -13,10 +13,27 @@ version numbering:
 
 import logging
 import sqlite3
+import re
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 
 log = logging.getLogger(__name__)
+
+
+def _safe_add_settings_column(cursor, column_name, column_type):
+    """Allowlist settings migration columns so future refactors cannot inject SQL here."""
+    allowed_types = {
+        "TEXT",
+        "BOOLEAN DEFAULT 1",
+        "BOOLEAN DEFAULT 0",
+        "INTEGER DEFAULT 0",
+        "TIMESTAMP",
+    }
+    if not re.match(r'^[a-z_]+$', column_name):
+        raise ValueError(f"Unsafe settings column name: {column_name}")
+    if column_type not in allowed_types:
+        raise ValueError(f"Unsafe settings column type: {column_type}")
+    cursor.execute(f"ALTER TABLE settings ADD COLUMN {column_name} {column_type}")
 
 
 def load_migrations(manager):
@@ -89,7 +106,7 @@ def upgrade_2_tunnel_recovery(app: Flask, db: SQLAlchemy):
         
         for column_name, column_type in new_columns:
             if column_name not in columns:
-                cursor.execute(f"ALTER TABLE settings ADD COLUMN {column_name} {column_type}")
+                _safe_add_settings_column(cursor, column_name, column_type)
                 log.info(f"Added {column_name} column to settings")
             else:
                 log.info(f"{column_name} column already exists")

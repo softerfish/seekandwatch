@@ -52,6 +52,7 @@ Goal: spend less time browsing, more time watching. It uses your watch history a
 ### Kometa Config Builder (no YAML needed)
 
 - Visual builder for Kometa overlays and collections with toggles.
+- Uses a Kometa-only TMDB v3 API key inside the builder. The rest of SeekAndWatch uses the TMDB API Read Access Token.
 - Live preview for overlays, ratings, codecs, content badges.
 - Library templates, undo/redo, comparison (current vs saved), performance estimates.
 - Import configs (paste or URL); generates clean configs you can refine later.
@@ -102,7 +103,7 @@ Cloud is currently **in beta**. To request access: [r/SeekAndWatch](https://www.
 | Service | Status | Why |
 | :--- | :--- | :--- |
 | **Plex** | Recommended | Library access and watch history; ownership filtering in Smart Discovery. |
-| **TMDB API Key** | **Required** | Posters, metadata, recommendations. Free at [themoviedb.org](https://www.themoviedb.org/settings/api). |
+| **TMDB API Read Access Token** | **Required** | Posters, metadata, recommendations. Free at [themoviedb.org](https://www.themoviedb.org/settings/api). |
 | **Radarr / Sonarr** | Optional | Add movies/shows from the app; optional scanner for “owned” filtering in Smart Discovery. |
 | **Tautulli** | Optional | Trending on server. |
 | **OMDB API Key** | Optional | Rotten Tomatoes / critic scores in Smart Discovery. |

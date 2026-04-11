@@ -4,6 +4,7 @@
 
 import datetime
 import difflib
+import ipaddress
 import json
 import os
 import random
@@ -15,14 +16,15 @@ from datetime import timedelta
 
 import requests
 import socket
-from urllib.parse import urlparse, quote, quote_plus
+from urllib.parse import urlparse, urljoin, quote, quote_plus
 from flask import request, jsonify, session, send_from_directory, current_app
-from flask_login import login_required, current_user
+from flask_login import login_required, current_user, logout_user
 from plexapi.server import PlexServer
 from markupsafe import escape
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 import secrets
+from utils.tmdb_http import tmdb_get, is_tmdb_read_access_token
 
 from config import CLOUD_REQUEST_TIMEOUT
 from api import api_bp, rate_limit_decorator
@@ -53,13 +55,14 @@ from utils import (
     item_matches_keywords,
     save_results_cache,
     get_session_filters,
-    validate_url,
+    validate_service_url,
+    should_verify_tls,
     prefetch_tv_states_parallel,
     prefetch_ratings_parallel,
     prefetch_omdb_parallel,
     score_recommendation,
     get_owned_tmdb_ids_for_cloud,
-    validate_url_safety,
+    validate_external_fetch_url,
     get_results_cache,
     set_results_cache,
     fetch_omdb_ratings,
@@ -76,6 +79,15 @@ from presets import PLAYLIST_PRESETS
 _poster_cache = {'posters': [], 'updated_at': 0}
 POSTER_CACHE_TTL = 6 * 60 * 60  # 6 hours
 
+def _requested_media_query():
+    """Restrict NULL-scoped legacy rows to single-user installs only."""
+    total_users = User.query.count()
+    if total_users <= 1:
+        return AppRequest.query.filter(
+            (AppRequest.user_id == current_user.id) | (AppRequest.user_id == None)
+        )
+    return AppRequest.query.filter(AppRequest.user_id == current_user.id)
+
 @api_bp.route('/public/posters', methods=['GET'])
 def get_public_posters():
     """returns tmdb popular movie poster urls for the login background, no auth needed"""
@@ -90,9 +102,10 @@ def get_public_posters():
         if not settings or not settings.tmdb_key:
             return jsonify({'posters': []})
 
-        resp = requests.get(
-            'https://api.themoviedb.org/3/movie/popular',
-            params={'api_key': settings.tmdb_key, 'language': 'en-US', 'page': 1},
+        resp = tmdb_get(
+            'movie/popular',
+            settings.tmdb_key,
+            params={'language': 'en-US', 'page': 1},
             timeout=8
         )
         if not resp.ok:
@@ -122,7 +135,7 @@ def upload_artwork():
         preset_id = request.form.get('preset_id')
         if not preset_id:
             return _error_response("Missing preset ID")
-            
+
         # Security: Whitelist validation for preset_id
         # Must be in PLAYLIST_PRESETS OR be a known custom collection in DB
         # Since custom collections aren't in presets.py, we check the DB too.
@@ -134,7 +147,7 @@ def upload_artwork():
             # (Assuming CollectionSchedule covers all tracked collections)
             sched = CollectionSchedule.query.filter_by(preset_key=preset_id).first()
             if sched: is_valid_preset = True
-            
+
         if not is_valid_preset:
             # If it's a "new" imported list that hasn't been saved to DB yet, this might fail.
             # But artwork is usually added AFTER creation.
@@ -144,7 +157,7 @@ def upload_artwork():
 
         # Create assets/custom_posters if it doesn't exist
         os.makedirs(CUSTOM_POSTER_DIR, exist_ok=True)
-        
+
         # Cleanup old artwork for this preset
         base_name = secure_filename(preset_id)
         for ext in ['.jpg', '.jpeg', '.png']:
@@ -163,15 +176,15 @@ def upload_artwork():
             ext = os.path.splitext(file.filename)[1].lower()
             if ext not in ['.jpg', '.jpeg', '.png']:
                 return _error_response("Invalid file type. Only JPG, JPEG, and PNG allowed.")
-            
+
             # Normalize .jpeg to .jpg for simplicity
             if ext == '.jpeg': ext = '.jpg'
-            
+
             # Verify file content (magic numbers) to prevent renaming attacks
             # Read first 32 bytes
             header = file.read(32)
             file.seek(0) # Reset pointer
-            
+
             is_valid = False
             if ext == '.jpg':
                 # JPEG magic: FF D8 FF
@@ -179,13 +192,13 @@ def upload_artwork():
             elif ext == '.png':
                 # PNG magic: 89 50 4E 47 0D 0A 1A 0A
                 if header.startswith(b'\x89PNG\r\n\x1a\n'): is_valid = True
-                
+
             if not is_valid:
                 return _error_response("Invalid file content. The file extension does not match the file type.")
-            
+
             save_path = os.path.join(CUSTOM_POSTER_DIR, f"{base_name}{ext}")
             file.save(save_path)
-            
+
             # Save reference in presets.json (or separate config)
             # For now, we'll use a sidecar config or update the preset directly if possible.
             # Since presets.py is code, we should store this metadata in the DB or a separate JSON.
@@ -194,21 +207,21 @@ def upload_artwork():
             if not schedule:
                 schedule = CollectionSchedule(preset_key=preset_id, frequency='manual')
                 db.session.add(schedule)
-            
+
             config = json.loads(schedule.configuration or '{}')
             config['custom_poster'] = save_path
             config['force_poster_update'] = True
             schedule.configuration = json.dumps(config)
             db.session.commit()
-            
+
             return jsonify({'status': 'success', 'message': 'Artwork uploaded successfully'})
 
         elif url:
             # Handle URL - Download it locally
             if not url.startswith(('http://', 'https://')):
                 return _error_response("Invalid URL scheme")
-                
-            is_safe, resolved_ip = validate_url_safety(url)
+
+            is_safe, resolved_ip = validate_external_fetch_url(url)
             if not is_safe or not resolved_ip:
                 return _error_response("URL blocked for security reasons (private IP or localhost)")
 
@@ -218,7 +231,7 @@ def upload_artwork():
                 # Construct safe URL using the IP directly
                 safe_url = f"{parsed.scheme}://{resolved_ip}{parsed.path}"
                 if parsed.query: safe_url += f"?{parsed.query}"
-                
+
                 # Use a specific user agent, strict timeout, and original Host header
                 headers = {
                     'User-Agent': 'SeekAndWatch/1.0',
@@ -235,12 +248,12 @@ def upload_artwork():
                         # Fallback based on URL or default to jpg
                         if url.lower().endswith('.png'): ext = '.png'
                         else: ext = '.jpg'
-                    
+
                     save_path = os.path.join(CUSTOM_POSTER_DIR, f"{base_name}{ext}")
                     with open(save_path, 'wb') as f:
                         for chunk in resp.iter_content(1024):
                             f.write(chunk)
-                            
+
                     # Verify downloaded file content
                     is_valid = False
                     try:
@@ -249,22 +262,24 @@ def upload_artwork():
                             if ext == '.jpg' and header.startswith(b'\xff\xd8\xff'): is_valid = True
                             elif ext == '.png' and header.startswith(b'\x89PNG\r\n\x1a\n'): is_valid = True
                     except Exception:
-                        pass
-                        
+                        current_app.logger.warning("Artwork validation failed for downloaded file: %s", save_path)
+
                     if not is_valid:
-                        try: os.remove(save_path)
-                        except: pass
+                        try:
+                            os.remove(save_path)
+                        except OSError as cleanup_err:
+                            current_app.logger.warning("Failed to remove invalid artwork file %s: %s", save_path, cleanup_err)
                         return _error_response("Invalid file content from URL.")
-                            
+
                     schedule = CollectionSchedule.query.filter_by(preset_key=preset_id).first()
                     if not schedule:
                         schedule = CollectionSchedule(preset_key=preset_id, frequency='manual')
                         db.session.add(schedule)
-                    
+
                     schedule.custom_poster = save_path
                     schedule.force_poster_update = True
                     db.session.commit()
-                    
+
                     return jsonify({'status': 'success', 'message': 'Artwork downloaded successfully'})
                 else:
                     return _error_response("Failed to download image from URL")
@@ -293,7 +308,7 @@ def load_more_recs():
     cache = get_results_cache(current_user.id)
     if not cache:
         return jsonify([])
-    
+
     candidates = cache.get('candidates', [])
     start_idx = cache.get('next_index', 0)
     # only sort if not already sorted and not shuffled
@@ -305,29 +320,29 @@ def load_more_recs():
         candidates.sort(key=lambda x: x.get('score', 0), reverse=True)
         cache['sorted'] = True
         save_results_cache()
-    
+
     s = current_user.settings
     min_year, min_rating, genre_filter, critic_enabled, threshold = get_session_filters()
     if isinstance(genre_filter, list) and len(genre_filter) >= 15:
         genre_filter = None
-    
+
     # get content rating filter from session (G, PG, etc)
     allowed_ratings = session.get('rating_filter', [])
     # if empty or 'all', don't filter by rating
     if not allowed_ratings or 'all' in allowed_ratings: allowed_ratings = None
-    
+
     # parse keywords (pipe-separated)
     raw_keywords = session.get('keywords', '')
     target_keywords = [k.strip() for k in raw_keywords.split('|') if k.strip()]
-    
+
     batch_end = min(start_idx + 100, len(candidates))
-    
+
     batch_items = candidates[start_idx:batch_end]
     # prefetch ratings so the UI doesn't lag when rendering
     prefetch_ratings_parallel(batch_items, s.tmdb_key)
     if s.omdb_key and critic_enabled:
         prefetch_omdb_parallel(batch_items, s.omdb_key)
-    
+
     # Fetch runtime for movies (TV shows have episode runtime, not series runtime)
     def fetch_runtime(item):
         """Fetch runtime from TMDB for a single item."""
@@ -337,19 +352,18 @@ def load_more_recs():
             item['runtime'] = 0  # TV shows use episode runtime
             return
         try:
-            url = f"https://api.themoviedb.org/3/movie/{item['id']}?api_key={s.tmdb_key}"
-            data = requests.get(url, timeout=5).json()
+            data = tmdb_get(f"movie/{item['id']}", s.tmdb_key, timeout=5).json()
             item['runtime'] = data.get('runtime', 0)  # Runtime in minutes
         except Exception:
             # Runtime fetch failures are non-critical, log as warning
             write_log("warning", "API", "Failed to fetch runtime for item")
             item['runtime'] = 0
-    
+
     # Fetch runtime in parallel for movies
     import concurrent.futures
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
         executor.map(fetch_runtime, batch_items)
-    
+
     if target_keywords:
         prefetch_keywords_parallel(batch_items, s.tmdb_key)
     else:
@@ -358,37 +372,37 @@ def load_more_recs():
         def async_prefetch(app_obj, items, key):
             with app_obj.app_context():
                 prefetch_keywords_parallel(items, key)
-                
-        threading.Thread(target=async_prefetch, 
+
+        threading.Thread(target=async_prefetch,
                          args=(current_app._get_current_object(), batch_items, s.tmdb_key)).start()
-    
+
     final_list = []
     idx = start_idx
-    
+
     # Get runtime filter from session
     max_runtime = session.get('max_runtime', 9999)
     if not max_runtime or max_runtime >= 9999:
         max_runtime = 9999
-    
+
     # keep filtering until we have 30 items or run out
     while len(final_list) < 30 and idx < len(candidates):
         item = candidates[idx]
         idx += 1
-        
+
         # basic filters
         if item['year'] < min_year: continue
         if item.get('vote_average', 0) < min_rating: continue
-        
+
         # runtime filter
         if max_runtime < 9999:
             item_runtime = item.get('runtime', 9999)
             if item_runtime > max_runtime: continue
-        
+
         # content rating filter (for kid-friendly mode)
         if allowed_ratings:
             c_rate = item.get('content_rating', 'NR')
             if str(c_rate) not in allowed_ratings: continue
-            
+
         if genre_filter and genre_filter != 'all':
             try:
                 allowed_ids = [int(g) for g in genre_filter] if isinstance(genre_filter, list) else [int(genre_filter)]
@@ -397,7 +411,7 @@ def load_more_recs():
                     continue
             except Exception:
                 pass
-            
+
         if target_keywords:
             if not item_matches_keywords(item, target_keywords):
                 continue
@@ -417,7 +431,7 @@ def load_more_recs():
             rt = item.get('rt_score') or 0
             if critic_enabled and rt > 0 and rt < threshold:
                 continue
-            
+
         final_list.append(item)
 
     # TV shows need status (ended/returning) for display.
@@ -443,17 +457,17 @@ def update_filters():
     data = request.json
     try: session['min_year'] = int(data.get('min_year', 0))
     except Exception: session['min_year'] = 0
-        
+
     try: session['min_rating'] = float(data.get('min_rating', 0))
     except Exception: session['min_rating'] = 0
-    
+
     # Runtime filter
-    try: 
+    try:
         max_runtime = int(data.get('max_runtime', 9999))
         session['max_runtime'] = max_runtime if max_runtime > 0 else 9999
     except (ValueError, TypeError, KeyError):
         session['max_runtime'] = 9999
-        
+
     genre_filter = data.get('genre_filter')
     if isinstance(genre_filter, list):
         safe_genres = []
@@ -480,13 +494,13 @@ def update_filters():
         session['rating_filter'] = safe_ratings
     else:
         session['rating_filter'] = []
-    
+
     # Reset pagination when filters change (thread-safe)
     cache = get_results_cache(current_user.id)
     if cache:
         cache['next_index'] = 0
         set_results_cache(current_user.id, cache)
-        
+
     return jsonify({'status': 'success'})
 
 @api_bp.route('/tmdb_search_proxy')
@@ -501,24 +515,21 @@ def tmdb_search_proxy():
         return jsonify({'results': []})
     if search_type not in ['movie', 'tv', 'keyword']:
         return jsonify({'results': []})
-    
+
     if search_type == 'keyword':
         # URL encode query to prevent injection
-        safe_query = quote(q[:100])  # Limit length and encode
-        url = f"https://api.themoviedb.org/3/search/keyword?query={safe_query}&api_key={s.tmdb_key}"
         try:
-            res = requests.get(url, timeout=5).json().get('results', [])[:10]
+            res = tmdb_get('search/keyword', s.tmdb_key, params={'query': q[:100]}, timeout=5).json().get('results', [])[:10]
             # Return as JSON (jsonify automatically escapes for JSON safety)
             return jsonify({'results': [{'id': k['id'], 'name': str(k.get('name', ''))} for k in res]})
         except Exception:
             _log_api_exception("tmdb_keyword_search")
             return jsonify({'results': []})
-        
+
     ep = 'search/tv' if search_type == 'tv' else 'search/movie'
     # URL encode query to prevent injection
-    safe_query = quote(q[:100])  # Limit length and encode
-    res = requests.get(f"https://api.themoviedb.org/3/{ep}?query={safe_query}&api_key={s.tmdb_key}", timeout=5).json().get('results', [])[:5]
-    
+    res = tmdb_get(ep, s.tmdb_key, params={'query': q[:100]}, timeout=5).json().get('results', [])[:5]
+
     # Normalize response format for frontend (validate search_type to prevent XSS)
     # Return as JSON (jsonify automatically escapes for JSON safety)
     safe_type = 'tv' if search_type == 'tv' else 'movie'
@@ -536,52 +547,59 @@ def get_metadata(media_type, tmdb_id):
     s = current_user.settings
     if not s or not s.tmdb_key:
         print("DEBUG: get_metadata failed - TMDB key missing in settings", flush=True)
-        return _error_payload("TMDB API key required")
-        
+        return _error_payload("TMDB API Read Access Token required")
+
     try:
         # get everything in one API call (faster)
         # include_video_language helps get trailers in multiple languages (en, null for international)
-        url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}?api_key={s.tmdb_key}&append_to_response=credits,videos,watch/providers&include_video_language=en,null"
-        resp = requests.get(url, timeout=5)
+        resp = tmdb_get(
+            f"{media_type}/{tmdb_id}",
+            s.tmdb_key,
+            params={
+                'append_to_response': 'credits,videos,watch/providers',
+                'include_video_language': 'en,null',
+            },
+            timeout=5,
+        )
         print(f"DEBUG: get_metadata TMDB status: {resp.status_code}", flush=True)
         data = resp.json()
-        
+
         if resp.status_code != 200:
             print(f"DEBUG: get_metadata TMDB error: {data}", flush=True)
             return _error_payload(f"TMDB Error: {resp.status_code}")
-        
+
         # just grab top 5 cast members
         cast = [c['name'] for c in data.get('credits', {}).get('cast', [])[:5]]
-        
+
         # find a trailer (prefer official ones)
         trailer = None
         results = data.get('videos', {}).get('results', [])
         print(f"DEBUG: TMDB Videos results for {media_type} {tmdb_id}: {results}", flush=True)
-        
+
         # first pass: look for official trailers
         for v in results:
             if v.get('type') == 'Trailer' and v.get('site') == 'YouTube' and v.get('official'):
                 trailer = v['key']
                 break
-        
+
         # second pass: any trailer
         if not trailer:
             for v in results:
                 if v.get('type') == 'Trailer' and v.get('site') == 'YouTube':
                     trailer = v['key']
                     break
-        
+
         # third pass: any youtube video
         if not trailer:
              for v in results:
                 if v.get('site') == 'YouTube':
                     trailer = v['key']
                     break
-                
+
         # streaming providers (default to US region)
         reg = (s.tmdb_region or 'US').split(',')[0]
         prov = data.get('watch/providers', {}).get('results', {}).get(reg, {}).get('flatrate', [])
-        
+
         return jsonify({
             'title': data.get('title', data.get('name')),
             'year': (data.get('release_date') or data.get('first_air_date') or '')[:4],
@@ -604,25 +622,24 @@ def get_trailer(media_type, tmdb_id):
     s = current_user.settings
     if not s or not s.tmdb_key:
         print("DEBUG: get_trailer failed - TMDB key missing in settings", flush=True)
-        return _error_response("TMDB API key required")
-        
+        return _error_response("TMDB API Read Access Token required")
+
     try:
-        url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}/videos?api_key={s.tmdb_key}&language=en-US"
-        resp = requests.get(url, timeout=5)
+        resp = tmdb_get(f"{media_type}/{tmdb_id}/videos", s.tmdb_key, params={'language': 'en-US'}, timeout=5)
         print(f"DEBUG: get_trailer response status: {resp.status_code}", flush=True)
         results = resp.json().get('results', [])
         print(f"DEBUG: get_trailer results: {results}", flush=True)
-        
+
         # look for official trailers first
         for vid in results:
             if vid['site'] == 'YouTube' and vid['type'] == 'Trailer':
                 return jsonify({'status': 'success', 'key': vid['key']})
-        
+
         # fallback to any youtube video
         for vid in results:
             if vid['site'] == 'YouTube':
                 return jsonify({'status': 'success', 'key': vid['key']})
-                
+
         return jsonify({'status': 'error', 'message': 'No trailer found'})
     except Exception:
         import traceback
@@ -639,7 +656,7 @@ def block_movie():
     title = request.json['title']
     media_type = request.json.get('media_type', 'movie')
     year = request.json.get('year')  # get year from request
-    
+
     # Avoid duplicates.
     exists = Blocklist.query.filter_by(user_id=current_user.id, title=title, media_type=media_type).first()
     if not exists:
@@ -682,30 +699,30 @@ def get_available_libraries():
     try:
         plex = PlexServer(s.plex_url, s.plex_token)
         libraries_by_type = {'movie': [], 'show': []}
-        
+
         for sec in plex.library.sections():
             if sec.type == 'movie':
                 libraries_by_type['movie'].append(sec.title)
             elif sec.type == 'show':
                 libraries_by_type['show'].append(sec.title)
-        
+
         return jsonify({'status': 'success', 'libraries': libraries_by_type})
     except Exception:
         _log_api_exception("get_available_libraries")
         return _error_response("Could not connect to Plex. Check that the server is running and the URL and token in Settings are correct.")
-        
+
 @api_bp.route('/get_plex_collections')
 @login_required
 def get_plex_collections():
     s = current_user.settings
     if not s.plex_url or not s.plex_token:
         return jsonify({'status': 'error', 'message': 'Plex is not set up. Add your Plex server URL and token in Settings.'})
-    
+
     try:
         plex = PlexServer(s.plex_url, s.plex_token, timeout=10)
         collections = []
         seen_keys = set()
-        
+
         for section in plex.library.sections():
             if section.type not in ['movie', 'show']:
                 continue
@@ -804,11 +821,11 @@ def get_plex_collections():
                     'visible_library': visible_library,
                     'visible_friends': visible_friends,
                 })
-        
+
         collections.sort(key=lambda x: (x['title'] or '').lower())
-        
+
         return jsonify({'status': 'success', 'collections': collections})
-        
+
     except Exception as e:
         print(f"Error fetching collections: {e}")
         _log_api_exception("get_plex_collections")
@@ -914,7 +931,7 @@ def set_plex_collection_visibility():
 def preview_preset_items(key):
     s = current_user.settings
     preset = {}
-    
+
     if key.startswith('custom_'):
         job = CollectionSchedule.query.filter_by(preset_key=key).first()
         if job and job.configuration:
@@ -923,9 +940,9 @@ def preview_preset_items(key):
             preset = {'media_type': config.get('media_type', 'movie'), 'tmdb_params': params}
     else:
         preset = PLAYLIST_PRESETS.get(key)
-        
+
     if not preset: return jsonify({'status': 'error', 'message': 'Preset not found'})
-    
+
     try:
         items = []
         media_type = preset.get('media_type', 'movie')
@@ -933,8 +950,7 @@ def preview_preset_items(key):
         # list-based preset (curated list from TMDB)
         list_id = preset.get('tmdb_list_id')
         if list_id:
-            list_url = f"https://api.themoviedb.org/3/list/{list_id}?api_key={s.tmdb_key}&language=en-US"
-            r = requests.get(list_url, timeout=10).json()
+            r = tmdb_get(f"list/{list_id}", s.tmdb_key, params={'language': 'en-US'}, timeout=10).json()
             raw = r.get('items', [])
             for i in raw:
                 if (i.get('media_type') or media_type) != media_type:
@@ -957,28 +973,27 @@ def preview_preset_items(key):
             return jsonify({'status': 'success', 'items': items})
 
         params = preset.get('tmdb_params', {}).copy()
-        params['api_key'] = s.tmdb_key
         if 'language' not in params:
             params['language'] = 'en-US'
-            
+
         endpoint = preset.get('tmdb_endpoint')
         if endpoint:
             url = f"https://api.themoviedb.org/3/{endpoint}"
         else:
             url = f"https://api.themoviedb.org/3/discover/{preset['media_type']}"
-            
+
         page = 1
         max_pages = 5
         # Horror TV: exclude Animation/Kids/Family (same post-filter as run_collection_logic)
         exclude_horror_genres = {16, 10762, 10751} if key == 'genre_horror_tv' and media_type == 'tv' else None
-        
+
         limit = preset.get('limit', 12)
         # If no explicit limit (like 100 or 10), default to 12 for grid view.
         # But if the preset has a limit (e.g. Top 10), we should respect it in preview so user sees exactly what they get.
-        
+
         while len(items) < limit and page <= max_pages:
             params['page'] = page
-            r = requests.get(url, params=params, timeout=5).json()
+            r = tmdb_get(url, s.tmdb_key, params=params, timeout=5).json()
             results = r.get('results', [])
             if not results:
                 break
@@ -1000,7 +1015,7 @@ def preview_preset_items(key):
                 if len(items) >= limit:
                     break
             page += 1
-        
+
         return jsonify({'status': 'success', 'items': items})
     except Exception:
         _log_api_exception("preview_preset_items")
@@ -1024,7 +1039,7 @@ def create_collection(key):
         # Merge user overrides (sync mode, visibility, etc.).
         job = CollectionSchedule.query.filter_by(preset_key=key).first()
         if job and job.configuration:
-            try: 
+            try:
                 user_config = json.loads(job.configuration)
 
                 if 'sync_mode' in user_config:
@@ -1033,8 +1048,9 @@ def create_collection(key):
                 for vk in ('visibility_home', 'visibility_library', 'visibility_friends'):
                     if vk in user_config:
                         preset[vk] = user_config[vk]
-            except Exception: pass
-    
+            except Exception as config_err:
+                current_app.logger.warning("Failed to parse collection configuration for %s: %s", key, config_err)
+
     # Run Now sends current visibility checkboxes so first run (or any run) uses them
     data = request.get_json(silent=True) or {}
     # This is the correct location for the Run Now sort override
@@ -1043,10 +1059,10 @@ def create_collection(key):
         if vk in data:
             preset[vk] = bool(data[vk])
 
-            
+
     from flask import current_app
     success, msg = CollectionService.run_collection_logic(s, preset, key, app_obj=current_app._get_current_object())
-    
+
     if success:
         # Update last run time and persist default visibility so options show after first run
         job = CollectionSchedule.query.filter_by(preset_key=key).first()
@@ -1075,7 +1091,7 @@ def create_collection(key):
         job.configuration = json.dumps(current_config)
         db.session.commit()
         return jsonify({'status': 'success', 'message': msg})
-        
+
     return jsonify({'status': 'error', 'message': msg})
 
 @api_bp.route('/schedule_collection', methods=['POST'])
@@ -1088,52 +1104,52 @@ def schedule_collection():
     visibility_home = request.form.get('visibility_home', '1') in ('1', 'true', 'yes')
     visibility_library = request.form.get('visibility_library', '0') in ('1', 'true', 'yes')
     visibility_friends = request.form.get('visibility_friends', '0') in ('1', 'true', 'yes')
-    
+
     # Multi-library support with validation
     target_library_mode = request.form.get('target_library_mode', 'all')
     target_libraries_json = request.form.get('target_libraries', '[]')
-    
+
     # Validate library mode
     VALID_MODES = ['all', 'first', 'selected']
     if target_library_mode not in VALID_MODES:
         return jsonify({
-            'status': 'error', 
+            'status': 'error',
             'message': f'Invalid library mode. Must be one of: {", ".join(VALID_MODES)}'
         }), 400
-    
+
     # Parse and validate target libraries
     try:
         target_libraries = json.loads(target_libraries_json) if target_libraries_json else []
-        
+
         # Validate type
         if not isinstance(target_libraries, list):
             return jsonify({
-                'status': 'error', 
+                'status': 'error',
                 'message': 'target_libraries must be an array'
             }), 400
-        
+
         # Validate all items are strings
         if not all(isinstance(lib, str) for lib in target_libraries):
             return jsonify({
-                'status': 'error', 
+                'status': 'error',
                 'message': 'All library names must be strings'
             }), 400
-        
+
         # Validate selected mode has libraries
         if target_library_mode == 'selected' and not target_libraries:
             return jsonify({
-                'status': 'error', 
+                'status': 'error',
                 'message': 'Selected mode requires at least one library'
             }), 400
-            
+
     except json.JSONDecodeError:
         return jsonify({
-            'status': 'error', 
+            'status': 'error',
             'message': 'Invalid JSON in target_libraries'
         }), 400
     except Exception:
         return jsonify({
-            'status': 'error', 
+            'status': 'error',
             'message': 'Error parsing target_libraries'
         }), 400
 
@@ -1141,33 +1157,33 @@ def schedule_collection():
     if not job:
         job = CollectionSchedule(preset_key=preset_key)
         db.session.add(job)
-    
+
     # Keep existing config, update only what changed.
     current_config = {}
     if job.configuration:
         try: current_config = json.loads(job.configuration)
         except Exception: current_config = {}
-    
+
     # Log configuration changes
     old_mode = current_config.get('target_library_mode', 'all')
     old_libraries = current_config.get('target_libraries', [])
-    
+
     if target_library_mode != old_mode:
         write_log("info", "Collections", f"Collection '{preset_key}' library mode changed: {old_mode} -> {target_library_mode}")
-    
+
     if target_libraries != old_libraries:
         write_log("info", "Collections", f"Collection '{preset_key}' target libraries changed: {old_libraries} -> {target_libraries}")
-            
+
     current_config['sync_mode'] = sync_mode
     current_config['visibility_home'] = visibility_home
     current_config['visibility_library'] = visibility_library
     current_config['visibility_friends'] = visibility_friends
     current_config['target_library_mode'] = target_library_mode
     current_config['target_libraries'] = target_libraries
-    
+
     job.frequency = frequency
     job.configuration = json.dumps(current_config)
-    
+
     db.session.commit()
     return jsonify({'status': 'success', 'message': 'Schedule updated.'})
 
@@ -1269,7 +1285,7 @@ def test_connection():
             t = (s.plex_token or '').strip() if use_stored and s else (data.get('token') or '').strip()
             if not u or not t:
                 return jsonify({'status': 'error', 'message': 'Enter your Plex server URL and token to test the connection.', 'msg': 'URL and token required'})
-            is_safe, msg = validate_url(u)
+            is_safe, msg = validate_service_url(u)
             if not is_safe:
                 return jsonify({'status': 'error', 'message': f"Security Block: {msg}", 'msg': f"Security Block: {msg}"})
             p = PlexServer(u, t, timeout=5)
@@ -1278,8 +1294,14 @@ def test_connection():
         elif service == 'tmdb':
             clean_key = (s.tmdb_key or '').strip() if use_stored and s else (data.get('api_key') or '').strip()
             if not clean_key:
-                return jsonify({'status': 'error', 'message': 'API key required', 'msg': 'API key required'})
-            r = requests.get(f"https://api.themoviedb.org/3/configuration?api_key={clean_key}", timeout=10)
+                return jsonify({'status': 'error', 'message': 'TMDB read access token required', 'msg': 'TMDB read access token required'})
+            if not use_stored and not is_tmdb_read_access_token(clean_key):
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Use the TMDB API Read Access Token, not the legacy API key',
+                    'msg': 'Use the TMDB API Read Access Token, not the legacy API key'
+                })
+            r = tmdb_get('configuration', clean_key, timeout=10)
             if r.status_code == 200:
                 return jsonify({'status': 'success', 'message': 'TMDB Connected!', 'msg': 'TMDB Connected!'})
             return jsonify({'status': 'error', 'message': 'Invalid Key', 'msg': 'Invalid Key'})
@@ -1299,7 +1321,7 @@ def test_connection():
             if not u or not k:
                 return jsonify({'status': 'error', 'message': 'URL and API key required', 'msg': 'URL and API key required'})
             u = _clean_url(u)
-            is_safe, msg = validate_url(u)
+            is_safe, msg = validate_service_url(u)
             if not is_safe:
                 return jsonify({'status': 'error', 'message': f"Security Block: {msg}", 'msg': f"Security Block: {msg}"})
             r = requests.get(f"{u}/api/v2?apikey={k}&cmd=get_server_info", timeout=5)
@@ -1313,7 +1335,7 @@ def test_connection():
             if not u or not k:
                 return jsonify({'status': 'error', 'message': 'URL and API key required', 'msg': 'URL and API key required'})
             u = _clean_url(u)
-            is_safe, msg = validate_url(u)
+            is_safe, msg = validate_service_url(u)
             if not is_safe:
                 return jsonify({'status': 'error', 'message': f"Security Block: {msg}", 'msg': f"Security Block: {msg}"})
             try:
@@ -1330,7 +1352,7 @@ def test_connection():
             if not u or not k:
                 return jsonify({'status': 'error', 'message': 'URL and API key required', 'msg': 'URL and API key required'})
             u = _clean_url(u)
-            is_safe, msg = validate_url(u)
+            is_safe, msg = validate_service_url(u)
             if not is_safe:
                 return jsonify({'status': 'error', 'message': f"Security Block: {msg}", 'msg': f"Security Block: {msg}"})
             try:
@@ -1346,8 +1368,8 @@ def test_connection():
     except Exception:
         _log_api_exception("test_connection")
         return jsonify({'status': 'error', 'message': 'Connection failed', 'msg': 'Connection failed'})
-        
-        
+
+
 @api_bp.route('/toggle_logging', methods=['POST'])
 @login_required
 def toggle_logging():
@@ -1651,17 +1673,17 @@ def plex_pin_poll():
         # Then fetch user + connections for the server dropdown (optional)
         user_info, connections = _plex_get_user_and_connections(poll['authToken'])
         username = (user_info.get('username') or 'Plex') if user_info else 'Plex'
-        
+
         # Smart Auto-Selection logic
         best_server = None
         if connections:
             # 1. Identify the 'active' IP the user is using to talk to THIS app
             # If accessed via IP, this is the LAN IP. If via tunnel, it might be localhost.
             current_host = request.host.split(':')[0].strip().lower()
-            
+
             # Filter to owned servers only for auto-selection (avoids friend servers)
             owned_conns = [c for c in connections if c.get('owned')]
-            
+
             # 2. PRIORITY 1: Exact IP match with the user's current address bar
             # (Matches if user is on http://192.168.1.50 and Plex connection is also 192.168.1.50)
             if not best_server:
@@ -1669,7 +1691,7 @@ def plex_pin_poll():
                     if current_host in c.get('uri', '').lower():
                         best_server = c
                         break
-            
+
             # 3. PRIORITY 2: Matching subnet (e.g. both are 192.168.1.x)
             if not best_server and '.' in current_host:
                 subnet = '.'.join(current_host.split('.')[:3])
@@ -1684,22 +1706,22 @@ def plex_pin_poll():
                     if "[local IP]" in c.get('label', ''):
                         best_server = c
                         break
-            
+
             # 5. Fallback to any local connection on an owned server
             if not best_server:
                 for c in owned_conns:
                     if c.get('local'):
                         best_server = c
                         break
-            
+
             # 6. Last resort: first connection in the (sorted) list
             if not best_server and connections:
                 best_server = connections[0]
 
         return jsonify({
-            'done': True, 
-            'username': username, 
-            'connections': connections or [], 
+            'done': True,
+            'username': username,
+            'connections': connections or [],
             'token': poll['authToken'],
             'best_server': best_server
         })
@@ -1767,17 +1789,17 @@ def health_status_api():
         'sonarr': {'status': 'unknown', 'message': 'Not configured'},
         'cloud': {'status': 'unknown', 'message': 'Not configured'}
     }
-    
+
     import concurrent.futures
 
     def check_plex():
         if not (s.plex_url and s.plex_token): return None
         try:
             url = f"{s.plex_url}/identity?X-Plex-Token={s.plex_token}"
-            r = requests.get(url, timeout=3, verify=False)
+            r = requests.get(url, timeout=3, verify=should_verify_tls(url))
             if r.status_code == 200: return 'plex', {'status': 'online', 'message': 'Connected'}
             url_alt = f"{s.plex_url}/?X-Plex-Token={s.plex_token}"
-            r_alt = requests.get(url_alt, timeout=3, verify=False)
+            r_alt = requests.get(url_alt, timeout=3, verify=should_verify_tls(url_alt))
             if r_alt.status_code == 200: return 'plex', {'status': 'online', 'message': 'Connected'}
             return 'plex', {'status': 'offline', 'message': f'HTTP {r.status_code}'}
         except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
@@ -1792,7 +1814,8 @@ def health_status_api():
         try:
             from services.IntegrationsService import IntegrationsService
             base = IntegrationsService._get_clean_base_url(s.radarr_url)
-            r = requests.get(f"{base}/api/v3/system/status", headers={'X-Api-Key': s.radarr_api_key}, timeout=3, verify=False)
+            status_url = f"{base}/api/v3/system/status"
+            r = requests.get(status_url, headers={'X-Api-Key': s.radarr_api_key}, timeout=3, verify=should_verify_tls(status_url))
             if r.status_code == 200: return 'radarr', {'status': 'online', 'message': 'Connected'}
             return 'radarr', {'status': 'offline', 'message': f'HTTP {r.status_code}'}
         except: return 'radarr', {'status': 'offline', 'message': 'Offline'}
@@ -1802,7 +1825,8 @@ def health_status_api():
         try:
             from services.IntegrationsService import IntegrationsService
             base = IntegrationsService._get_clean_base_url(s.sonarr_url)
-            r = requests.get(f"{base}/api/v3/system/status", headers={'X-Api-Key': s.sonarr_api_key}, timeout=3, verify=False)
+            status_url = f"{base}/api/v3/system/status"
+            r = requests.get(status_url, headers={'X-Api-Key': s.sonarr_api_key}, timeout=3, verify=should_verify_tls(status_url))
             if r.status_code == 200: return 'sonarr', {'status': 'online', 'message': 'Connected'}
             return 'sonarr', {'status': 'offline', 'message': f'HTTP {r.status_code}'}
         except: return 'sonarr', {'status': 'offline', 'message': 'Offline'}
@@ -1824,9 +1848,13 @@ def health_status_api():
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
         futures = [executor.submit(f) for f in [check_plex, check_radarr, check_sonarr, check_cloud]]
         for future in concurrent.futures.as_completed(futures):
-            res = future.result()
-            if res: results[res[0]] = res[1]
-            
+            try:
+                res = future.result()
+                if res:
+                    results[res[0]] = res[1]
+            except Exception as e:
+                current_app.logger.warning(f"Health status check failed: {type(e).__name__}: {e}")
+
     return jsonify(results)
 
 @api_bp.route('/get_radarr_sonarr_cache_status')
@@ -1835,14 +1863,14 @@ def get_radarr_sonarr_cache_status_route():
     s = current_user.settings
     cache_count = 0
     last_scan = "Never"
-    
+
     try:
         from models import RadarrSonarrCache
         cache_count = RadarrSonarrCache.query.count()
     except Exception:
         _log_api_exception("Radarr/Sonarr count")
         pass
-    
+
     if s.last_radarr_sonarr_scan:
         try:
             import datetime
@@ -1851,7 +1879,7 @@ def get_radarr_sonarr_cache_status_route():
         except Exception:
             _log_api_exception("Last scan timestamp")
             pass
-    
+
     return jsonify({
         'count': cache_count,
         'last_scan': last_scan,
@@ -1878,7 +1906,7 @@ def scanner_status():
         last = s.last_alias_scan or 0
         interval_sec = (s.scanner_interval or 15) * 60
         next_ts = last + interval_sec
-        
+
     return jsonify({
         'enabled': s.scanner_enabled,
         'interval': s.scanner_interval,
@@ -1896,36 +1924,36 @@ def get_aliases():
     tmdb_id = request.args.get('tmdb_id', type=int)
     media_type = request.args.get('media_type', '').strip()
     limit = request.args.get('limit', type=int) or 100
-    
+
     # Security: Cap limit to prevent resource exhaustion
     max_limit = 500
     if limit > max_limit:
         limit = max_limit
-    
+
     # Security: Validate media_type to prevent injection
     if media_type and media_type not in ['movie', 'tv']:
         return jsonify({'status': 'error', 'message': 'Invalid media_type'}), 400
-    
+
     # Security: Limit search length to prevent DoS
     if len(search) > 100:
         search = search[:100]
-    
+
     query = TmdbAlias.query
-    
+
     # Filter by TMDB ID if provided
     if tmdb_id:
         query = query.filter_by(tmdb_id=tmdb_id)
-    
+
     # Filter by media type if provided
     if media_type:
         query = query.filter_by(media_type=media_type)
-    
+
     # Filter by search term (searches in plex_title and original_title)
     # Using word-boundary matching to avoid false positives (e.g., "dune" matching "disparition")
     if search:
         # Split search into words and match each word separately
         search_words = [w for w in search.split() if len(w) >= 3]  # Only words 3+ chars
-        
+
         if search_words:
             # Build conditions for each word (all words must match - AND logic)
             for word in search_words:
@@ -1946,12 +1974,12 @@ def get_aliases():
                     TmdbAlias.original_title == word
                 )
                 query = query.filter(word_conditions)
-    
+
     # Only show valid entries (not placeholders)
     query = query.filter(TmdbAlias.tmdb_id > 0)
-    
+
     aliases = query.order_by(TmdbAlias.plex_title).limit(limit).all()
-    
+
     results = []
     for alias in aliases:
         results.append({
@@ -1962,11 +1990,11 @@ def get_aliases():
             'original_title': alias.original_title,
             'match_year': alias.match_year
         })
-    
+
     # Also include some stats
     total_count = TmdbAlias.query.filter(TmdbAlias.tmdb_id > 0).count()
     placeholder_count = TmdbAlias.query.filter(TmdbAlias.tmdb_id == -1).count()
-    
+
     return jsonify({
         'status': 'success',
         'count': len(results),
@@ -2011,12 +2039,12 @@ def reset_scanner():
     s = current_user.settings
     s.last_alias_scan = 0
     db.session.commit()
-    
+
     write_scanner_log("Database Wiped by User.")
     write_log("info", "Scanner", "Alias Database wiped by user.")
-    
+
     return jsonify({'status': 'success', 'message': 'Database wiped.'})
-    
+
 @api_bp.route('/scanner/logs_stream')
 @login_required
 def stream_scanner_logs():
@@ -2028,14 +2056,14 @@ def stream_scanner_logs():
 def save_kometa_config():
     s = current_user.settings
     data = request.json
-    
+
     if not data:
         return jsonify({'status': 'error', 'message': 'No data provided'}), 400
-    
+
     # validate data structure - ensure it's a dict and has expected keys
     if not isinstance(data, dict):
         return jsonify({'status': 'error', 'message': 'Invalid data format'}), 400
-    
+
     # validate and sanitize libraries array
     if 'libraries' in data:
         if not isinstance(data['libraries'], list):
@@ -2060,22 +2088,22 @@ def save_kometa_config():
             # limit collection/overlay counts per library
             if len(lib.get('cols', [])) > 500 or len(lib.get('ovls', [])) > 500:
                 return jsonify({'status': 'error', 'message': 'Too many collections/overlays per library'}), 400
-    
+
     # validate templateVars structure
     if 'templateVars' in data and not isinstance(data['templateVars'], dict):
         data['templateVars'] = {}
-    
+
     if 'libraryTemplateVars' in data and not isinstance(data['libraryTemplateVars'], dict):
         data['libraryTemplateVars'] = {}
-    
+
     # validate inlineComments structure
     if 'inlineComments' in data and not isinstance(data['inlineComments'], dict):
         data['inlineComments'] = {}
-    
+
     # validate settings structure
     if 'settings' in data and not isinstance(data['settings'], dict):
         data['settings'] = {}
-    
+
     # sanitize string fields (limit length, basic validation)
     string_fields = ['plex_url', 'plex_token', 'tmdb_key']
     for field in string_fields:
@@ -2085,23 +2113,24 @@ def save_kometa_config():
             # limit length
             if len(data[field]) > 1000:
                 return jsonify({'status': 'error', 'message': f'{field} is too long'}), 400
-    
+
     # limit total config size (prevent huge payloads)
     config_json = json.dumps(data)
     if len(config_json) > 2 * 1024 * 1024:  # 2MB max
         return jsonify({'status': 'error', 'message': 'Config too large (max 2MB)'}), 400
-    
+
     # Include templateVars in saved config (ensure it exists)
     if 'templateVars' not in data:
         data['templateVars'] = {}
-    
+
     s.kometa_config = config_json
-    
-    # Sync these settings with main config if user changed them here.
+
+    # Sync shared Plex settings and the Kometa-only TMDB API key.
     if data.get('plex_url'): s.plex_url = data['plex_url']
     if data.get('plex_token'): s.plex_token = data['plex_token']
-    if data.get('tmdb_key'): s.tmdb_key = data['tmdb_key']
-    
+    if 'tmdb_key' in data:
+        s.kometa_tmdb_api_key = (str(data['tmdb_key']).strip() or None)
+
     db.session.commit()
     return jsonify({'status': 'success'})
 
@@ -2130,21 +2159,21 @@ def save_kometa_template():
     """Save a Kometa template."""
     from models import KometaTemplate
     data = request.json
-    
+
     if not data.get('name') or not data.get('name').strip():
         return jsonify({'status': 'error', 'message': 'Template name is required'}), 400
-    
+
     # Validate and sanitize input
     name = data['name'].strip()[:200]  # Limit length
     template_type = data.get('type', 'movie')
     cols = data.get('cols', [])
     ovls = data.get('ovls', [])
     template_vars = data.get('templateVars', {})
-    
+
     # Validate type
     if template_type not in ['movie', 'tv', 'anime']:
         template_type = 'movie'
-    
+
     # Validate cols/ovls are arrays
     if not isinstance(cols, list):
         cols = []
@@ -2152,7 +2181,7 @@ def save_kometa_template():
         ovls = []
     if not isinstance(template_vars, dict):
         template_vars = {}
-    
+
     template = KometaTemplate(
         user_id=current_user.id,
         name=name,
@@ -2161,10 +2190,10 @@ def save_kometa_template():
         ovls=json.dumps(ovls),
         template_vars=json.dumps(template_vars)
     )
-    
+
     db.session.add(template)
     db.session.commit()
-    
+
     return jsonify({'status': 'success', 'id': template.id})
 
 @api_bp.route('/kometa_templates/<int:template_id>', methods=['DELETE'])
@@ -2173,13 +2202,13 @@ def delete_kometa_template(template_id):
     """Delete a Kometa template."""
     from models import KometaTemplate
     template = KometaTemplate.query.filter_by(id=template_id, user_id=current_user.id).first()
-    
+
     if not template:
         return jsonify({'status': 'error', 'message': 'Template not found'}), 404
-    
+
     db.session.delete(template)
     db.session.commit()
-    
+
     return jsonify({'status': 'success'})
 
 @api_bp.route('/import_kometa_config', methods=['POST'])
@@ -2189,91 +2218,115 @@ def import_kometa_config():
     """Securely import Kometa config from URL."""
     import re
     from requests.exceptions import RequestException, Timeout
-    
+
     data = request.json
     url = data.get('url', '').strip()
-    
+
     if not url:
         return jsonify({'status': 'error', 'message': 'URL is required'}), 400
-    
-    # Validate URL format
-    try:
-        parsed = urlparse(url)
-        if not parsed.scheme or not parsed.netloc:
-            return jsonify({'status': 'error', 'message': 'Invalid URL format'}), 400
-        
-        # Only allow http/https
-        if parsed.scheme not in ['http', 'https']:
-            return jsonify({'status': 'error', 'message': 'Only HTTP and HTTPS URLs are allowed'}), 400
-        
-        # Block local/private IPs and localhost
-        hostname = parsed.hostname.lower()
-        if hostname in ['localhost', '127.0.0.1', '0.0.0.0']:
-            return jsonify({'status': 'error', 'message': 'Local URLs are not allowed'}), 400
-        
-        # Block private IP ranges in hostname
-        if re.match(r'^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)', hostname):
-            return jsonify({'status': 'error', 'message': 'Private IP addresses are not allowed'}), 400
-        
-        # Block IPv6 localhost variants
-        if hostname in ['::1', '[::1]', 'ip6-localhost', 'ip6-loopback']:
-            return jsonify({'status': 'error', 'message': 'Local URLs are not allowed'}), 400
-        
-    except Exception:
-        _log_api_exception("import_kometa_config_url_validation")
-        return jsonify({'status': 'error', 'message': 'Invalid URL'}), 400
-    
-    # Resolve DNS and check actual IP to prevent DNS rebinding attacks
-    try:
-        resolved_ip = socket.gethostbyname(parsed.hostname)
-        # Block private/local IPs at resolved IP level
-        if resolved_ip in ['127.0.0.1', '0.0.0.0']:
-            return jsonify({'status': 'error', 'message': 'Local URLs are not allowed'}), 400
-        # Block private IP ranges (10.x, 172.16-31.x, 192.168.x)
-        if re.match(r'^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)', resolved_ip):
-            return jsonify({'status': 'error', 'message': 'Private IP addresses are not allowed'}), 400
-    except (socket.gaierror, socket.herror, OSError):
-        _log_api_exception("import_kometa_config_dns_resolution")
-        return jsonify({'status': 'error', 'message': 'Could not resolve hostname'}), 400
-    
-    # Reconstruct URL from validated components to prevent SSRF via malformed URL
-    safe_url = f"{parsed.scheme}://{parsed.netloc}"
-    if parsed.path:
-        safe_url += parsed.path
-    if parsed.query:
-        safe_url += f"?{parsed.query}"
-    if parsed.fragment:
-        safe_url += f"#{parsed.fragment}"
-    
+
+    def _validate_fetch_url(candidate_url):
+        try:
+            parsed_candidate = urlparse(candidate_url)
+            if not parsed_candidate.scheme or not parsed_candidate.netloc:
+                return None, 'Invalid URL format'
+            if parsed_candidate.scheme not in ['http', 'https']:
+                return None, 'Only HTTP and HTTPS URLs are allowed'
+
+            hostname = (parsed_candidate.hostname or '').strip().lower()
+            if not hostname:
+                return None, 'Invalid URL format'
+            if hostname in ['localhost', '127.0.0.1', '0.0.0.0', '::1', '[::1]', 'ip6-localhost', 'ip6-loopback']:
+                return None, 'Local URLs are not allowed'
+
+            try:
+                host_ip = ipaddress.ip_address(hostname)
+                if (
+                    host_ip.is_private or host_ip.is_loopback or host_ip.is_link_local or
+                    host_ip.is_reserved or host_ip.is_multicast or host_ip.is_unspecified
+                ):
+                    return None, 'Private IP addresses are not allowed'
+            except ValueError:
+                pass
+
+            resolved = socket.getaddrinfo(hostname, parsed_candidate.port or (443 if parsed_candidate.scheme == 'https' else 80))
+            if not resolved:
+                return None, 'Could not resolve hostname'
+            for entry in resolved:
+                resolved_ip = entry[4][0]
+                resolved_obj = ipaddress.ip_address(resolved_ip)
+                if (
+                    resolved_obj.is_private or resolved_obj.is_loopback or resolved_obj.is_link_local or
+                    resolved_obj.is_reserved or resolved_obj.is_multicast or resolved_obj.is_unspecified
+                ):
+                    return None, 'Private IP addresses are not allowed'
+        except (socket.gaierror, socket.herror, OSError):
+            _log_api_exception("import_kometa_config_dns_resolution")
+            return None, 'Could not resolve hostname'
+        except Exception:
+            _log_api_exception("import_kometa_config_url_validation")
+            return None, 'Invalid URL'
+
+        safe_candidate_url = f"{parsed_candidate.scheme}://{parsed_candidate.netloc}"
+        if parsed_candidate.path:
+            safe_candidate_url += parsed_candidate.path
+        if parsed_candidate.query:
+            safe_candidate_url += f"?{parsed_candidate.query}"
+        if parsed_candidate.fragment:
+            safe_candidate_url += f"#{parsed_candidate.fragment}"
+        return safe_candidate_url, None
+
+    safe_url, validation_error = _validate_fetch_url(url)
+    if validation_error:
+        return jsonify({'status': 'error', 'message': validation_error}), 400
+
     # Fetch the file with security measures
     try:
-        response = requests.get(
-            safe_url,
-            timeout=10,  # 10 second timeout
-            allow_redirects=True,
-            headers={'User-Agent': 'SeekAndWatch/1.0'}
-        )
+        headers = {'User-Agent': 'SeekAndWatch/1.0'}
+        current_url = safe_url
+        response = None
+        for _ in range(4):
+            response = requests.get(
+                current_url,
+                timeout=10,  # 10 second timeout
+                allow_redirects=False,
+                headers=headers
+            )
+            if response.is_redirect or response.is_permanent_redirect:
+                location = response.headers.get('location')
+                if not location:
+                    return jsonify({'status': 'error', 'message': 'Redirect response missing location'}), 400
+                next_url, redirect_error = _validate_fetch_url(urljoin(current_url, location))
+                if redirect_error:
+                    return jsonify({'status': 'error', 'message': redirect_error}), 400
+                current_url = next_url
+                continue
+            break
+
+        if response is not None and (response.is_redirect or response.is_permanent_redirect):
+            return jsonify({'status': 'error', 'message': 'Too many redirects'}), 400
+
         response.raise_for_status()
-        
+
         # Check content size (max 1MB)
         if len(response.content) > 1024 * 1024:
             return jsonify({'status': 'error', 'message': 'File too large (max 1MB)'}), 400
-        
+
         # Check content type (should be text)
         content_type = response.headers.get('content-type', '').lower()
         if 'text' not in content_type and 'yaml' not in content_type and 'yml' not in content_type:
             # Warn but don't block - some servers don't set content-type correctly
             pass
-        
+
         yaml_text = response.text
-        
+
         # Basic validation - check if it looks like YAML
         if not yaml_text.strip():
             return jsonify({'status': 'error', 'message': 'Empty file'}), 400
-        
+
         # Return the YAML text for client-side parsing
         return jsonify({'status': 'success', 'yaml': yaml_text})
-        
+
     except Timeout:
         _log_api_exception("import_kometa_config_timeout")
         return jsonify({'status': 'error', 'message': 'Request timed out'}), 408
@@ -2321,17 +2374,17 @@ def get_all_users():
 def toggle_user_role():
     data = request.json
     target_id = data.get('user_id')
-    
+
     if target_id == current_user.id:
         return jsonify({'status': 'error', 'message': 'You cannot remove your own admin status.'})
-        
+
     user = User.query.get(target_id)
     if not user:
         return jsonify({'status': 'error', 'message': 'User not found'})
-        
+
     user.is_admin = not user.is_admin
     db.session.commit()
-    
+
     status_str = "Admin" if user.is_admin else "User"
     return jsonify({'status': 'success', 'message': f"User {user.username} is now: {status_str}"})
 
@@ -2342,11 +2395,11 @@ def toggle_user_role():
 def admin_delete_user():
     data = request.json
     target_id = data.get('user_id')
-    
+
     # can't delete yourself (obviously)
     if target_id == current_user.id:
         return jsonify({'status': 'error', 'message': 'Cannot delete yourself.'})
-        
+
     user = User.query.get(target_id)
     if user:
         # delete their settings and blocklist too (cleanup)
@@ -2355,7 +2408,7 @@ def admin_delete_user():
         db.session.delete(user)
         db.session.commit()
         return jsonify({'status': 'success', 'message': 'User deleted.'})
-        
+
     return jsonify({'status': 'error', 'message': 'User not found'})
 
 @api_bp.route('/account/change_password', methods=['POST'])
@@ -2375,6 +2428,67 @@ def change_my_password():
     current_user.password_hash = generate_password_hash(new_password, method='pbkdf2:sha256')
     db.session.commit()
     return jsonify({'status': 'success', 'message': 'Password updated. Use your new password next time you log in.'})
+
+@api_bp.route('/account/delete', methods=['POST'])
+@rate_limit_decorator("3 per hour")
+@login_required
+def delete_my_account():
+    """Delete the current user's account after password confirmation."""
+    data = request.json or {}
+    current_password = (data.get('current_password') or '').strip()
+    confirm_username = (data.get('confirm_username') or '').strip()
+
+    if not current_password or not confirm_username:
+        return jsonify({'status': 'error', 'message': 'Current password and username confirmation are required.'}), 400
+    if confirm_username != current_user.username:
+        return jsonify({'status': 'error', 'message': 'Username confirmation does not match your account.'}), 400
+    if not check_password_hash(current_user.password_hash, current_password):
+        return jsonify({'status': 'error', 'message': 'Current password is incorrect.'}), 400
+
+    user = User.query.get(current_user.id)
+    if not user:
+        return jsonify({'status': 'error', 'message': 'User not found.'}), 404
+
+    total_users = User.query.count()
+    if user.is_admin:
+        other_admins = User.query.filter(User.is_admin.is_(True), User.id != user.id).count()
+        if total_users > 1 and other_admins == 0:
+            return jsonify({
+                'status': 'error',
+                'message': 'Promote another admin before deleting this account.'
+            }), 400
+
+    user_id = user.id
+    remaining_users_after_delete = max(total_users - 1, 0)
+
+    try:
+        Settings.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+        Blocklist.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+        AppRequest.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+        CloudRequest.query.filter_by(owner_user_id=user_id).delete(synchronize_session=False)
+        KometaTemplate.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+        RecoveryCode.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+
+        db.session.delete(user)
+        db.session.commit()
+
+        try:
+            logout_user()
+        except Exception:
+            pass
+        session.clear()
+
+        redirect_url = '/register' if remaining_users_after_delete == 0 else '/login'
+        return jsonify({
+            'status': 'success',
+            'message': 'Your account has been deleted.',
+            'redirect_url': redirect_url
+        })
+    except Exception as e:
+        db.session.rollback()
+        _log_api_exception("delete_my_account")
+        current_app.logger.error(f"delete_my_account failed for user_id={user_id}: {type(e).__name__}: {e}")
+        return jsonify({'status': 'error', 'message': f'Failed to delete account: {type(e).__name__}'}), 500
 
 @api_bp.route('/admin/reset_password', methods=['POST'])
 @rate_limit_decorator("10 per hour")
@@ -2432,13 +2546,13 @@ def use_recovery_code():
             db.session.commit()
             return jsonify({'status': 'success', 'message': 'Password updated. You can log in with your new password.'})
     return jsonify({'status': 'error', 'message': 'Invalid code or username.'})
-    
+
 @api_bp.route('/save_schedule_time', methods=['POST'])
 @login_required
 def save_schedule_time():
     s = current_user.settings
     new_time = request.form.get('time', '04:00')
-    
+
     # Quick validation.
     if ':' in new_time and len(new_time) == 5:
         s.schedule_time = new_time
@@ -2449,25 +2563,24 @@ def save_schedule_time():
 # Radarr/Sonarr integration endpoints (duplicates removed - see lines ~2011+ for actual implementations)
 
 @api_bp.route('/media/requested')
+@api_bp.route('/get_requested_media')
+@api_bp.route('/requested_media')
 @login_required
 def get_requested_media():
     """Grab requested items from local app history."""
     s = current_user.settings
     items = []
-    
+
     # grab local requests made directly from this app
     try:
-        app_requests = AppRequest.query.filter(
-            (AppRequest.user_id == current_user.id) | (AppRequest.user_id == None)
-        ).order_by(AppRequest.requested_at.desc()).limit(500).all()
-        
+        app_requests = _requested_media_query().order_by(AppRequest.requested_at.desc()).limit(500).all()
+
         for ar in app_requests:
             # fetch poster from TMDB if we have a key
             poster_url = None
             if s and s.tmdb_key and ar.tmdb_id:
                 try:
-                    tmdb_url = f"https://api.themoviedb.org/3/{'movie' if ar.media_type == 'movie' else 'tv'}/{ar.tmdb_id}?api_key={s.tmdb_key}"
-                    r = requests.get(tmdb_url, timeout=3)
+                    r = tmdb_get(f"{'movie' if ar.media_type == 'movie' else 'tv'}/{ar.tmdb_id}", s.tmdb_key, timeout=3)
                     if r.ok:
                         data = r.json()
                         poster_path = data.get('poster_path')
@@ -2475,7 +2588,7 @@ def get_requested_media():
                             poster_url = f"https://image.tmdb.org/t/p/w500{poster_path}"
                 except Exception as e:
                     print(f"Failed to fetch poster for TMDB ID {ar.tmdb_id}: {e}", flush=True)
-            
+
             items.append({
                 'title': ar.title or 'Unknown',
                 'year': None,
@@ -2494,7 +2607,7 @@ def get_requested_media():
         # apply filters
         status_filter = request.args.get('status', '').lower()
         source_filter = request.args.get('source', '').lower()
-        
+
         if status_filter:
             items = [i for i in items if i['status'].lower() == status_filter]
         if source_filter:
@@ -2508,17 +2621,24 @@ def get_requested_media():
             items.sort(key=lambda x: str(x.get('year') or '0'), reverse=True)
         else: # added_desc
             items.sort(key=lambda x: x.get('added') or '', reverse=True)
-        
+
         # apply simple pagination
-        try: page = int(request.args.get('page', 1))
-        except: page = 1
-        
-        page_size = 200
+        try:
+            page = int(request.args.get('page', 1))
+        except Exception:
+            page = 1
+        page = max(page, 1)
+
+        try:
+            page_size = int(request.args.get('page_size', 200))
+        except Exception:
+            page_size = 200
+        page_size = max(1, min(page_size, 200))
         total_items = len(items)
         start_idx = (page - 1) * page_size
-        
+
         return jsonify({
-            'status': 'success', 
+            'status': 'success',
             'items': items[start_idx : start_idx + page_size],
             'pagination': {
                 'page': page,
@@ -2549,15 +2669,13 @@ def get_media_overview():
         'size_min': request.args.get('size_min', type=int),
         'size_max': request.args.get('size_max', type=int),
     }
-    
+
     result = {'requested': [], 'movies': [], 'shows': []}
-    
+
     if media_type in ['all', 'requested']:
         # show requests made from the app (Radarr/Sonarr)
         try:
-            app_requests = AppRequest.query.filter(
-                    (AppRequest.user_id == current_user.id) | (AppRequest.user_id == None)
-                ).order_by(AppRequest.requested_at.desc()).limit(500).all()
+            app_requests = _requested_media_query().order_by(AppRequest.requested_at.desc()).limit(500).all()
             for ar in app_requests:
                 result['requested'].append({
                     'id': f"app-{ar.id}",
@@ -2574,7 +2692,7 @@ def get_media_overview():
                 })
         except Exception:
             pass
-    
+
     # Fetch Radarr movies
     if media_type in ['all', 'movies'] and s.radarr_url and s.radarr_api_key:
         try:
@@ -2589,7 +2707,7 @@ def get_media_overview():
                     has_file = bool(file_info)
                     size = file_info.get('size', 0) if file_info else 0
                     quality = file_info.get('quality', {}).get('quality', {}).get('name', 'Unknown') if file_info else movie.get('qualityProfile', {}).get('name', 'Unknown')
-                    
+
                     result['movies'].append({
                         'id': movie.get('id'),
                         'tmdb_id': movie.get('tmdbId'),
@@ -2606,7 +2724,7 @@ def get_media_overview():
                     })
         except Exception:
             _log_api_exception("get_media_overview_radarr")
-    
+
     # Fetch Sonarr shows
     if media_type in ['all', 'shows'] and s.sonarr_url and s.sonarr_api_key:
         try:
@@ -2634,8 +2752,9 @@ def get_media_overview():
                                     file_info = ep.get('episodeFile') if isinstance(ep.get('episodeFile'), dict) else {}
                                     if file_info:
                                         total_size += file_info.get('size', 0)
-                    except Exception: pass
-                    
+                    except Exception as episode_err:
+                        current_app.logger.warning("Failed to fetch Sonarr episode details for series %s: %s", show.get('id'), episode_err)
+
                     result['shows'].append({
                         'id': show.get('id'),
                         'tvdb_id': show.get('tvdbId'),
@@ -2653,7 +2772,7 @@ def get_media_overview():
                     })
         except Exception:
             _log_api_exception("get_media_overview_sonarr")
-    
+
     # Apply filters and sorting
     def apply_filters_and_sort(items):
         filtered = items
@@ -2675,7 +2794,7 @@ def get_media_overview():
             filtered = [i for i in filtered if i.get('size', 0) >= filters['size_min']]
         if filters['size_max']:
             filtered = [i for i in filtered if i.get('size', 0) <= filters['size_max']]
-        
+
         # Sorting
         if sort_by == 'added_desc':
             filtered.sort(key=lambda x: x.get('added', ''), reverse=True)
@@ -2693,13 +2812,13 @@ def get_media_overview():
             filtered.sort(key=lambda x: int(str(x.get('year', 0))), reverse=True)
         elif sort_by == 'year_asc':
             filtered.sort(key=lambda x: int(str(x.get('year', 0))))
-        
+
         return filtered
-    
+
     result['requested'] = apply_filters_and_sort(result['requested'])
     result['movies'] = apply_filters_and_sort(result['movies'])
     result['shows'] = apply_filters_and_sort(result['shows'])
-    
+
     return jsonify({'status': 'success', 'data': result})
 
 @api_bp.route('/radarr/add', methods=['POST'])
@@ -2708,44 +2827,44 @@ def add_to_radarr():
     """Add a movie to Radarr."""
     s = current_user.settings
     if not s: return _error_response('Settings not found')
-    
+
     data = request.json or {}
     tmdb_id = data.get('tmdb_id')
     if not tmdb_id: return _error_response('TMDB ID required')
-    
+
     try:
         tmdb_id = int(tmdb_id)
         if tmdb_id <= 0: raise ValueError
     except:
         return _error_response('Invalid TMDB ID')
-        
+
     quality_profile_id = data.get('quality_profile_id')
     if quality_profile_id:
         try:
             quality_profile_id = int(quality_profile_id)
         except:
             quality_profile_id = None # fall back if weird data
-    
+
     from services.IntegrationsService import IntegrationsService
     success, msg = IntegrationsService.send_to_radarr_sonarr(s, 'movie', tmdb_id, quality_profile_id=quality_profile_id)
-    
+
     if success:
         # Log to history immediately (not in background thread to avoid context issues)
         try:
             title = "Movie Request"
             if s.tmdb_key:
                 try:
-                    r = requests.get(f"https://api.themoviedb.org/3/movie/{tmdb_id}?api_key={s.tmdb_key}", timeout=5)
-                    if r.ok: 
+                    r = tmdb_get(f"movie/{tmdb_id}", s.tmdb_key, timeout=5)
+                    if r.ok:
                         title = r.json().get('title', title)
                 except:
                     pass
-            
+
             app_request = AppRequest(
-                user_id=current_user.id, 
-                tmdb_id=int(tmdb_id), 
-                media_type='movie', 
-                title=title, 
+                user_id=current_user.id,
+                tmdb_id=int(tmdb_id),
+                media_type='movie',
+                title=title,
                 requested_via='Radarr',
                 requested_at=datetime.datetime.now()
             )
@@ -2755,7 +2874,7 @@ def add_to_radarr():
             print(f"Failed to log AppRequest: {e}", flush=True)
             # Don't fail the whole request if logging fails
             pass
-        
+
         return jsonify({'status': 'success', 'message': msg})
     return _error_response(msg)
 
@@ -2833,44 +2952,44 @@ def add_to_sonarr():
     """Add a show to Sonarr."""
     s = current_user.settings
     if not s: return _error_response('Settings not found')
-    
+
     data = request.json or {}
     tmdb_id = data.get('tmdb_id')
     if not tmdb_id: return _error_response('TMDB ID required')
-    
+
     try:
         tmdb_id = int(tmdb_id)
         if tmdb_id <= 0: raise ValueError
     except:
         return _error_response('Invalid TMDB ID')
-        
+
     quality_profile_id = data.get('quality_profile_id')
     if quality_profile_id:
         try:
             quality_profile_id = int(quality_profile_id)
         except:
             quality_profile_id = None # fall back if weird data
-            
+
     from services.IntegrationsService import IntegrationsService
     success, msg = IntegrationsService.send_to_radarr_sonarr(s, 'tv', tmdb_id, quality_profile_id=quality_profile_id)
-    
+
     if success:
         # Log to history immediately (not in background thread to avoid context issues)
         try:
             title = "TV Request"
             if s.tmdb_key:
                 try:
-                    r = requests.get(f"https://api.themoviedb.org/3/tv/{tmdb_id}?api_key={s.tmdb_key}", timeout=5)
-                    if r.ok: 
+                    r = tmdb_get(f"tv/{tmdb_id}", s.tmdb_key, timeout=5)
+                    if r.ok:
                         title = r.json().get('name', title)
                 except:
                     pass
-            
+
             app_request = AppRequest(
-                user_id=current_user.id, 
-                tmdb_id=int(tmdb_id), 
-                media_type='tv', 
-                title=title, 
+                user_id=current_user.id,
+                tmdb_id=int(tmdb_id),
+                media_type='tv',
+                title=title,
                 requested_via='Sonarr',
                 requested_at=datetime.datetime.now()
             )
@@ -2880,7 +2999,7 @@ def add_to_sonarr():
             print(f"Failed to log AppRequest: {e}", flush=True)
             # Don't fail the whole request if logging fails
             pass
-        
+
         return jsonify({'status': 'success', 'message': msg})
     return _error_response(msg)
 
@@ -2898,7 +3017,7 @@ def get_artwork_path():
         # Ensure name only contains safe characters and isn't a path itself (CodeQL)
         safe_filename = secure_filename(f"{preset_id}{ext}")
         if not safe_filename: continue # should not happen given the regex above but safer
-        
+
         path = os.path.join(CUSTOM_POSTER_DIR, safe_filename)
         # Final safety check: ensure the resulting path is within our target directory
         if not os.path.abspath(path).startswith(os.path.abspath(CUSTOM_POSTER_DIR)):
@@ -2978,7 +3097,7 @@ def get_radarr_movie_detail(movie_id):
     s = current_user.settings
     if not s.radarr_url or not s.radarr_api_key:
         return jsonify({'status': 'error', 'message': 'Radarr not configured'})
-    
+
     try:
         headers = {'X-Api-Key': s.radarr_api_key}
         base_url = s.radarr_url.rstrip('/')
@@ -2986,7 +3105,7 @@ def get_radarr_movie_detail(movie_id):
             base_url = base_url[:-4]
         if base_url.endswith('/api/v3'):
             base_url = base_url[:-7]
-        
+
         # Get movie details
         movie_url = f"{base_url}/api/v3/movie/{movie_id}"
         movie_resp = requests.get(movie_url, headers=headers, timeout=10)
@@ -2994,9 +3113,9 @@ def get_radarr_movie_detail(movie_id):
             return jsonify({'status': 'error', 'message': 'Movie not found - it may have been deleted from Radarr', 'deleted': True})
         if movie_resp.status_code != 200:
             return jsonify({'status': 'error', 'message': f'Failed to fetch movie (Status: {movie_resp.status_code})'})
-        
+
         movie = movie_resp.json()
-        
+
         # Get queue to check for paused/active downloads
         queue_info = None
         try:
@@ -3014,29 +3133,29 @@ def get_radarr_movie_detail(movie_id):
                             movie_obj = item.get('movie')
                             if isinstance(movie_obj, dict):
                                 item_movie_id = movie_obj.get('id')
-                        
+
                         # Check if this queue item matches our movie
                         if item_movie_id == movie_id:
                             # Check if paused or downloading
                             status = item.get('status', '').lower()
                             tracked_state = item.get('trackedDownloadState', '').lower()
                             tracked_status = item.get('trackedDownloadStatus', '').lower()
-                            
+
                             # Determine if paused
                             is_paused = (
-                                'paused' in status or 
-                                'paused' in tracked_state or 
+                                'paused' in status or
+                                'paused' in tracked_state or
                                 'paused' in tracked_status or
                                 tracked_state == 'paused'
                             )
-                            
+
                             # Determine if downloading
                             is_downloading = (
-                                'downloading' in status or 
+                                'downloading' in status or
                                 'downloading' in tracked_state or
                                 tracked_state == 'downloading'
                             )
-                            
+
                             queue_info = {
                                 'paused': is_paused,
                                 'downloading': is_downloading,
@@ -3053,7 +3172,7 @@ def get_radarr_movie_detail(movie_id):
                 write_log("warning", "Radarr", f"Failed to check queue: {e}")
             except Exception:
                 pass
-        
+
         # Get movie files
         files = []
         if movie.get('movieFile'):
@@ -3070,7 +3189,7 @@ def get_radarr_movie_detail(movie_id):
                         quality_name = quality_inner
                 elif isinstance(quality_obj, str):
                     quality_name = quality_obj
-            
+
             # Safely extract mediaInfo
             media_info = {}
             if movie_file.get('mediaInfo'):
@@ -3082,7 +3201,7 @@ def get_radarr_movie_detail(movie_id):
                         'audioChannels': media_info_obj.get('audioChannels', ''),
                         'resolution': media_info_obj.get('resolution', ''),
                     }
-            
+
             # Safely extract languages
             languages = []
             if movie_file.get('languages'):
@@ -3091,20 +3210,20 @@ def get_radarr_movie_detail(movie_id):
                     languages = [lang.get('name', '') if isinstance(lang, dict) else str(lang) for lang in langs]
                 elif isinstance(langs, str):
                     languages = [langs]
-            
+
             # Extract custom formats (for scoring/profile matching)
             custom_formats = []
             custom_format_score = 0
-            
+
             # try to get custom formats from embedded movieFile first
             # check multiple possible field names (radarr versions vary)
-            cf_list = (movie_file.get('customFormats') or 
-                      movie_file.get('customFormat') or 
-                      movie_file.get('custom_formats') or 
-                      movie_file.get('custom_format') or 
-                      movie_file.get('formats') or 
+            cf_list = (movie_file.get('customFormats') or
+                      movie_file.get('customFormat') or
+                      movie_file.get('custom_formats') or
+                      movie_file.get('custom_format') or
+                      movie_file.get('formats') or
                       [])
-            
+
             if cf_list:
                 if isinstance(cf_list, list):
                     # Extract format names - handle both dict format {name: "...", score: X} and string format
@@ -3112,11 +3231,11 @@ def get_radarr_movie_detail(movie_id):
                         if cf:
                             if isinstance(cf, dict):
                                 # try different possible field names
-                                cf_name = (cf.get('name') or cf.get('label') or cf.get('title') or 
+                                cf_name = (cf.get('name') or cf.get('label') or cf.get('title') or
                                           cf.get('id') or cf.get('format') or '')
                                 if cf_name:
                                     custom_formats.append(str(cf_name))
-                                
+
                                 # also check if score is stored per-format (some radarr versions)
                                 if cf.get('score') is not None:
                                     try:
@@ -3132,7 +3251,7 @@ def get_radarr_movie_detail(movie_id):
                             elif isinstance(cf, str):
                                 if cf:
                                     custom_formats.append(cf)
-            
+
             # try fetching the file separately to get complete custom format data
             # (some radarr versions don't include full custom format data/score in the movie response)
             if movie_file.get('id'):
@@ -3143,11 +3262,11 @@ def get_radarr_movie_detail(movie_id):
                     if movie_file_resp.status_code == 200:
                         full_movie_file = movie_file_resp.json()
                         # extract formats from the full movie file response - check multiple field names
-                        cf_list = (full_movie_file.get('customFormats') or 
-                                  full_movie_file.get('customFormat') or 
-                                  full_movie_file.get('custom_formats') or 
-                                  full_movie_file.get('custom_format') or 
-                                  full_movie_file.get('formats') or 
+                        cf_list = (full_movie_file.get('customFormats') or
+                                  full_movie_file.get('customFormat') or
+                                  full_movie_file.get('custom_formats') or
+                                  full_movie_file.get('custom_format') or
+                                  full_movie_file.get('formats') or
                                   [])
                         if cf_list and isinstance(cf_list, list):
                             # use formats from separately fetched file if we found any (more complete)
@@ -3156,11 +3275,11 @@ def get_radarr_movie_detail(movie_id):
                                 for cf in cf_list:
                                     if cf:
                                         if isinstance(cf, dict):
-                                            cf_name = (cf.get('name') or cf.get('label') or cf.get('title') or 
+                                            cf_name = (cf.get('name') or cf.get('label') or cf.get('title') or
                                                       cf.get('id') or cf.get('format') or '')
                                             if cf_name:
                                                 custom_formats.append(str(cf_name))
-                                            
+
                                             # also check if score is stored per-format
                                             if cf.get('score') is not None:
                                                 try:
@@ -3175,7 +3294,7 @@ def get_radarr_movie_detail(movie_id):
                                         elif isinstance(cf, str):
                                             if cf:
                                                 custom_formats.append(cf)
-                        
+
                         # also extract score from separately fetched file - check multiple field names
                         score_fields = ['customFormatScore', 'custom_format_score', 'formatScore', 'score']
                         for field in score_fields:
@@ -3188,7 +3307,7 @@ def get_radarr_movie_detail(movie_id):
                                     pass
                 except Exception as e:
                     write_log("warning", "Radarr", f"Failed to fetch movieFile separately: {e}")
-            
+
             # Get custom format score - check multiple possible locations and field names
             score_fields = ['customFormatScore', 'custom_format_score', 'formatScore', 'score']
             custom_format_score = 0
@@ -3207,7 +3326,7 @@ def get_radarr_movie_detail(movie_id):
                             break
                         except (ValueError, TypeError):
                             pass
-            
+
             files.append({
                 'path': movie_file.get('relativePath', '') if isinstance(movie_file.get('relativePath'), str) else '',
                 'size': movie_file.get('size', 0) if isinstance(movie_file.get('size'), (int, float)) else 0,
@@ -3220,7 +3339,7 @@ def get_radarr_movie_detail(movie_id):
                 'customFormats': custom_formats,
                 'customFormatScore': custom_format_score,
             })
-        
+
         # Extract images - safely handle images array
         poster_url = None
         fanart_url = None
@@ -3235,7 +3354,7 @@ def get_radarr_movie_detail(movie_id):
                             poster_url = url
                         elif cover_type == 'fanart' and url and not fanart_url:
                             fanart_url = url
-        
+
         # Convert relative URLs to absolute URLs
         if poster_url and not poster_url.startswith('http'):
             if poster_url.startswith('/'):
@@ -3247,14 +3366,18 @@ def get_radarr_movie_detail(movie_id):
                 fanart_url = f"{base_url}{fanart_url}"
             else:
                 fanart_url = f"{base_url}/{fanart_url}"
-        
+
         # Get cast and crew from TMDB if available
         cast = []
         crew = []
         if s.tmdb_key and movie.get('tmdbId'):
             try:
-                tmdb_url = f"https://api.themoviedb.org/3/movie/{movie['tmdbId']}?api_key={s.tmdb_key}&append_to_response=credits"
-                tmdb_resp = requests.get(tmdb_url, timeout=5)
+                tmdb_resp = tmdb_get(
+                    f"movie/{movie['tmdbId']}",
+                    s.tmdb_key,
+                    params={'append_to_response': 'credits'},
+                    timeout=5,
+                )
                 if tmdb_resp.status_code == 200:
                     tmdb_data = tmdb_resp.json()
                     credits = tmdb_data.get('credits', {})
@@ -3276,7 +3399,7 @@ def get_radarr_movie_detail(movie_id):
                             } for c in crew_list[:30] if isinstance(c, dict)]
             except Exception as e:
                 write_log("warning", "Radarr", f"Failed to fetch TMDB credits: {e}")
-        
+
         # Alternative titles - safely handle list
         alternative_titles = []
         if movie.get('alternateTitles'):
@@ -3286,13 +3409,13 @@ def get_radarr_movie_detail(movie_id):
                     'title': alt.get('title', '') if isinstance(alt, dict) else str(alt),
                     'sourceType': alt.get('sourceType', '') if isinstance(alt, dict) else ''
                 } for alt in alt_titles if alt]
-        
+
         import time
         # Construct Radarr URL - use same logic as list endpoint
         # Get the actual movie ID from the response (not the parameter)
         actual_movie_id = movie.get('id')
         tmdb_id = movie.get('tmdbId')
-        
+
         # Use same logic as list endpoint: if ID seems wrong (low number), try TMDB ID
         try:
             if tmdb_id is not None and actual_movie_id and actual_movie_id < 10000 and tmdb_id != actual_movie_id:
@@ -3305,7 +3428,7 @@ def get_radarr_movie_detail(movie_id):
             # Fallback to using the API ID if there's any error
             write_log("warning", "Radarr", f"Error constructing URL for movie '{movie.get('title')}': {e}")
             radarr_url = f"{base_url}/movie/{actual_movie_id}"
-        
+
         radarr_interactive_search_url = f"{base_url}/movie/{actual_movie_id}/search"
         history_list = []
         try:
@@ -3321,31 +3444,31 @@ def get_radarr_movie_detail(movie_id):
                         history_list.append({'date': date_utc[:19] if isinstance(date_utc, str) else '', 'eventType': evt})
         except Exception:
             pass
-        
+
         # also check movie-level custom formats (some radarr versions store them here)
         movie_level_formats = []
         movie_level_score = 0
-        
+
         # check multiple possible field names for movie-level formats
-        movie_cf_list = (movie.get('customFormats') or 
-                         movie.get('customFormat') or 
-                         movie.get('custom_formats') or 
-                         movie.get('custom_format') or 
-                         movie.get('formats') or 
+        movie_cf_list = (movie.get('customFormats') or
+                         movie.get('customFormat') or
+                         movie.get('custom_formats') or
+                         movie.get('custom_format') or
+                         movie.get('formats') or
                          [])
-        
+
         if movie_cf_list and isinstance(movie_cf_list, list):
             for cf in movie_cf_list:
                 if cf:
                     if isinstance(cf, dict):
-                        cf_name = (cf.get('name') or cf.get('label') or cf.get('title') or 
+                        cf_name = (cf.get('name') or cf.get('label') or cf.get('title') or
                                   cf.get('id') or cf.get('format') or '')
                         if cf_name:
                             movie_level_formats.append(str(cf_name))
                     elif isinstance(cf, str):
                         if cf:
                             movie_level_formats.append(cf)
-        
+
         # check multiple possible field names for movie-level score
         score_fields = ['customFormatScore', 'custom_format_score', 'formatScore', 'score']
         for field in score_fields:
@@ -3355,8 +3478,8 @@ def get_radarr_movie_detail(movie_id):
                     break
                 except (ValueError, TypeError):
                     pass
-        
-        
+
+
         # Build result dictionary first
         result = {
             'status': 'success',
@@ -3395,7 +3518,7 @@ def get_radarr_movie_detail(movie_id):
             },
             'history': history_list,
         }
-        
+
         # Add queue status if movie is in queue
         if queue_info:
             if queue_info.get('paused'):
@@ -3407,7 +3530,7 @@ def get_radarr_movie_detail(movie_id):
             result['movie']['queueTitle'] = queue_info.get('title', '')
             result['movie']['queueSize'] = queue_info.get('size', 0)
             result['movie']['queueSizeLeft'] = queue_info.get('sizeleft', 0)
-        
+
         return jsonify(result)
     except Exception:
         _log_api_exception("get_radarr_movie_detail")
@@ -3420,14 +3543,14 @@ def radarr_search():
     s = current_user.settings
     if not s.radarr_url or not s.radarr_api_key:
         return jsonify({'status': 'error', 'message': 'Radarr not configured'})
-    
+
     data = request.json
     if not data:
         return jsonify({'status': 'error', 'message': 'No data provided'})
-    
+
     movie_id = data.get('movie_id')
     search_type = data.get('type', 'auto')  # 'auto' or 'interactive'
-    
+
     # Validate movie_id
     if not movie_id:
         return jsonify({'status': 'error', 'message': 'Movie ID required'})
@@ -3437,15 +3560,15 @@ def radarr_search():
             return jsonify({'status': 'error', 'message': 'Invalid movie ID'})
     except (ValueError, TypeError):
         return jsonify({'status': 'error', 'message': 'Invalid movie ID format'})
-    
+
     # Validate search_type
     if search_type not in ['auto', 'interactive']:
         return jsonify({'status': 'error', 'message': 'Invalid search type'})
-    
+
     try:
         headers = {'X-Api-Key': s.radarr_api_key}
         base_url = s.radarr_url.rstrip('/')
-        
+
         if search_type == 'auto':
             # Auto search using command
             command_url = f"{base_url}/api/v3/command"
@@ -3458,7 +3581,7 @@ def radarr_search():
                 return jsonify({'status': 'success', 'message': 'Search started'})
             else:
                 return jsonify({'status': 'error', 'message': 'Failed to start search'})
-        
+
         elif search_type == 'interactive':
             # Get releases for interactive search
             releases_url = f"{base_url}/api/v3/release?movieId={movie_id}"
@@ -3494,7 +3617,7 @@ def radarr_search():
             except Exception as e:
                 write_log("warning", "Radarr", f"Could not fetch current file for downloaded icon: {e}")
             return jsonify({'status': 'success', 'releases': releases, 'current_file': current_file})
-        
+
         return jsonify({'status': 'error', 'message': 'Invalid search type'})
     except Exception:
         _log_api_exception("radarr_search")
@@ -3507,7 +3630,7 @@ def radarr_refresh_scan(movie_id):
     s = current_user.settings
     if not s.radarr_url or not s.radarr_api_key:
         return jsonify({'status': 'error', 'message': 'Radarr not configured'})
-    
+
     try:
         headers = {'X-Api-Key': s.radarr_api_key}
         base_url = s.radarr_url.rstrip('/')
@@ -3515,7 +3638,7 @@ def radarr_refresh_scan(movie_id):
             base_url = base_url[:-4]
         if base_url.endswith('/api/v3'):
             base_url = base_url[:-7]
-        
+
         # Command to refresh and scan
         command_url = f"{base_url}/api/v3/command"
         payload = {
@@ -3537,7 +3660,7 @@ def radarr_search_scan(movie_id):
     s = current_user.settings
     if not s.radarr_url or not s.radarr_api_key:
         return jsonify({'status': 'error', 'message': 'Radarr not configured'})
-    
+
     try:
         headers = {'X-Api-Key': s.radarr_api_key}
         base_url = s.radarr_url.rstrip('/')
@@ -3545,7 +3668,7 @@ def radarr_search_scan(movie_id):
             base_url = base_url[:-4]
         if base_url.endswith('/api/v3'):
             base_url = base_url[:-7]
-        
+
         # Command to search and scan
         command_url = f"{base_url}/api/v3/command"
         payload = {
@@ -3633,7 +3756,7 @@ def sonarr_refresh_scan(series_id):
     s = current_user.settings
     if not s.sonarr_url or not s.sonarr_api_key:
         return jsonify({'status': 'error', 'message': 'Sonarr not configured'})
-    
+
     try:
         headers = {'X-Api-Key': s.sonarr_api_key}
         base_url = s.sonarr_url.rstrip('/')
@@ -3641,7 +3764,7 @@ def sonarr_refresh_scan(series_id):
             base_url = base_url[:-4]
         if base_url.endswith('/api/v3'):
             base_url = base_url[:-7]
-        
+
         # Command to refresh and scan
         command_url = f"{base_url}/api/v3/command"
         payload = {
@@ -3663,7 +3786,7 @@ def sonarr_search_scan(series_id):
     s = current_user.settings
     if not s.sonarr_url or not s.sonarr_api_key:
         return jsonify({'status': 'error', 'message': 'Sonarr not configured'})
-    
+
     try:
         headers = {'X-Api-Key': s.sonarr_api_key}
         base_url = s.sonarr_url.rstrip('/')
@@ -3671,7 +3794,7 @@ def sonarr_search_scan(series_id):
             base_url = base_url[:-4]
         if base_url.endswith('/api/v3'):
             base_url = base_url[:-7]
-        
+
         # Command to search and scan
         command_url = f"{base_url}/api/v3/command"
         payload = {
@@ -3766,7 +3889,7 @@ def sonarr_search_episode(episode_id):
     s = current_user.settings
     if not s.sonarr_url or not s.sonarr_api_key:
         return jsonify({'status': 'error', 'message': 'Sonarr not configured'})
-    
+
     try:
         headers = {'X-Api-Key': s.sonarr_api_key}
         base_url = s.sonarr_url.rstrip('/')
@@ -3774,7 +3897,7 @@ def sonarr_search_episode(episode_id):
             base_url = base_url[:-4]
         if base_url.endswith('/api/v3'):
             base_url = base_url[:-7]
-        
+
         # Search for episode
         command_url = f"{base_url}/api/v3/command"
         payload = {
@@ -3796,7 +3919,7 @@ def radarr_download_release():
     s = current_user.settings
     if not s.radarr_url or not s.radarr_api_key:
         return jsonify({'status': 'error', 'message': 'Radarr not configured'})
-    
+
     data = request.json or {}
     guid = data.get('guid')
     indexer_id = data.get('indexer_id')
@@ -3807,7 +3930,7 @@ def radarr_download_release():
         return jsonify({'status': 'error', 'message': 'Release GUID required'})
     if not isinstance(guid, str) or len(guid) > 2000:  # Reasonable limit
         return jsonify({'status': 'error', 'message': 'Invalid GUID format'})
-    
+
     # Validate indexer_id
     if indexer_id is None:
         return jsonify({'status': 'error', 'message': 'Indexer ID required'})
@@ -3817,7 +3940,7 @@ def radarr_download_release():
             return jsonify({'status': 'error', 'message': 'Invalid indexer ID'})
     except (ValueError, TypeError):
         return jsonify({'status': 'error', 'message': 'Invalid indexer ID format'})
-    
+
     # Validate movie_id
     if not movie_id:
         return jsonify({'status': 'error', 'message': 'Movie ID required'})
@@ -3827,7 +3950,7 @@ def radarr_download_release():
             return jsonify({'status': 'error', 'message': 'Invalid movie ID'})
     except (ValueError, TypeError):
         return jsonify({'status': 'error', 'message': 'Invalid movie ID format'})
-    
+
     # Validate release_data structure if provided
     if release_data is not None:
         if not isinstance(release_data, dict):
@@ -3836,7 +3959,7 @@ def radarr_download_release():
         import json
         if len(json.dumps(release_data)) > 50000:  # 50KB limit
             return jsonify({'status': 'error', 'message': 'Release data too large'})
-    
+
     # Use mappedMovieId from release_data if available (Radarr sets this to match release to movie)
     # Otherwise use the movieId from the request
     if release_data and isinstance(release_data, dict) and release_data.get('mappedMovieId'):
@@ -3846,13 +3969,13 @@ def radarr_download_release():
                 movie_id = mapped_id
         except (ValueError, TypeError):
             pass  # Use original movie_id if mappedMovieId is invalid
-    
+
     try:
         headers = {'X-Api-Key': s.radarr_api_key}
         base_url = s.radarr_url.rstrip('/')
-        
+
         download_url = f"{base_url}/api/v3/release"
-        
+
         # Build payload - Radarr API expects specific fields
         # Based on Radarr API docs, the release endpoint needs: guid, indexerId, movieId
         # Optional: downloadClientId, downloadUrl, magnetUrl
@@ -3865,25 +3988,25 @@ def radarr_download_release():
                 'indexerId': indexer_id,
                 'movieId': movie_id
             }
-            
+
             # Include downloadUrl if available (Radarr needs this to download)
             if release_data.get('downloadUrl'):
                 payload['downloadUrl'] = release_data['downloadUrl']
-            
+
             # Include magnetUrl if downloadUrl is not available
             if not payload.get('downloadUrl') and release_data.get('magnetUrl'):
                 payload['magnetUrl'] = release_data['magnetUrl']
-            
+
             # Include downloadClientId if specified (Radarr can use this to route to specific client)
             if release_data.get('downloadClientId') is not None:
                 payload['downloadClientId'] = release_data['downloadClientId']
-            
+
             # Note: We intentionally do NOT send:
             # - quality (Radarr determines this from guid/indexerId)
             # - protocol (Radarr determines this from the release)
             # - approved (Radarr sets this internally)
             # - infoHash (not needed for download endpoint)
-            
+
             write_log("info", "Radarr", f"Download requested for movie (movieId: {movie_id})")
         else:
             # Fallback to minimal payload
@@ -3893,28 +4016,28 @@ def radarr_download_release():
                 'movieId': movie_id
             }
             write_log("info", "Radarr", f"Download requested for movie (movieId: {movie_id}, minimal payload)")
-        
+
         resp = requests.post(download_url, json=payload, headers=headers, timeout=10)
-        
+
         resp_text_raw = resp.text if resp.text else 'No response body'
         try:
             resp_data = resp.json() if resp.content else {}
         except Exception as parse_err:
             write_log("warning", "Radarr", "Could not parse download response")
             resp_data = {}
-        
+
         if resp.status_code in [200, 201]:
             # Radarr can return 200 OK but with error messages in the response body
             # Check for various error indicators
             error_msg = None
-            
+
             if isinstance(resp_data, dict):
                 # Check for error messages in various possible fields
-                error_msg = (resp_data.get('message') or 
-                           resp_data.get('errorMessage') or 
+                error_msg = (resp_data.get('message') or
+                           resp_data.get('errorMessage') or
                            resp_data.get('error') or
                            resp_data.get('errorMessage'))
-                
+
                 # Check for errors array
                 if not error_msg and resp_data.get('errors'):
                     errors = resp_data['errors']
@@ -3924,11 +4047,11 @@ def radarr_download_release():
                             error_msg = first_error.get('errorMessage') or first_error.get('message')
                     elif isinstance(errors, dict):
                         error_msg = errors.get('errorMessage') or errors.get('message')
-                
+
                 # Check if response indicates failure
                 if resp_data.get('success') is False:
                     error_msg = error_msg or resp_data.get('message') or 'Download failed'
-                
+
                 # Check for rejection reasons
                 if resp_data.get('rejected') is True:
                     rejections = resp_data.get('rejections', [])
@@ -3936,13 +4059,13 @@ def radarr_download_release():
                         error_msg = error_msg or '; '.join(rejections) if isinstance(rejections, list) else str(rejections)
                     else:
                         error_msg = error_msg or 'Release was rejected'
-            
+
             # Also check if it's an array with error objects
             elif isinstance(resp_data, list) and len(resp_data) > 0:
                 first_item = resp_data[0]
                 if isinstance(first_item, dict):
                     error_msg = first_item.get('message') or first_item.get('errorMessage')
-            
+
             if error_msg:
                 write_log("error", "Radarr", f"Download failed: {error_msg}")
                 # Provide more helpful error message
@@ -3950,17 +4073,17 @@ def radarr_download_release():
                     enhanced_msg = f"{error_msg}\n\nThis usually means:\n- Radarr's download client configuration is incorrect\n- Download client is offline or unreachable\n- Check Radarr Settings â†’ Download Clients"
                 else:
                     enhanced_msg = error_msg
-                
+
                 # Include the full response in the error message for debugging
                 return jsonify({
-                    'status': 'error', 
+                    'status': 'error',
                     'message': enhanced_msg,
                     'radarr_response': resp_data  # Include full response for debugging
                 })
-            
+
             if not resp_data or (isinstance(resp_data, dict) and len(resp_data) == 0):
                 write_log("warning", "Radarr", "Download returned empty response")
-            
+
             write_log("info", "Radarr", "Download started successfully")
             return jsonify({'status': 'success', 'message': 'Download started'})
         else:
@@ -3968,8 +4091,8 @@ def radarr_download_release():
             try:
                 error_data = resp.json()
                 # Radarr error responses can have different structures
-                error_msg = (error_data.get('message') or 
-                           error_data.get('errorMessage') or 
+                error_msg = (error_data.get('message') or
+                           error_data.get('errorMessage') or
                            error_data.get('error') or
                            (error_data.get('errors') and isinstance(error_data['errors'], list) and len(error_data['errors']) > 0 and error_data['errors'][0].get('errorMessage')) or
                            str(error_data) if error_data else 'Failed to start download')
@@ -3990,16 +4113,16 @@ def sonarr_search():
     s = current_user.settings
     if not s.sonarr_url or not s.sonarr_api_key:
         return jsonify({'status': 'error', 'message': 'Sonarr not configured'})
-    
+
     data = request.json
     if not data:
         return jsonify({'status': 'error', 'message': 'No data provided'})
-    
+
     series_id = data.get('series_id')
     episode_ids = data.get('episode_ids', [])  # For specific episodes
     season_number = data.get('season_number')   # Optional: when interactive search is from a season row
     search_type = data.get('type', 'auto')  # 'auto' or 'interactive'
-    
+
     # Validate series_id
     if not series_id:
         return jsonify({'status': 'error', 'message': 'Series ID required'})
@@ -4009,7 +4132,7 @@ def sonarr_search():
             return jsonify({'status': 'error', 'message': 'Invalid series ID'})
     except (ValueError, TypeError):
         return jsonify({'status': 'error', 'message': 'Invalid series ID format'})
-    
+
     # Validate episode_ids if provided
     if episode_ids:
         if not isinstance(episode_ids, list) or len(episode_ids) > 100:  # Reasonable limit
@@ -4018,11 +4141,11 @@ def sonarr_search():
             episode_ids = [int(eid) for eid in episode_ids if int(eid) > 0 and int(eid) <= 2147483647]
         except (ValueError, TypeError):
             return jsonify({'status': 'error', 'message': 'Invalid episode ID format'})
-    
+
     # Validate search_type
     if search_type not in ['auto', 'interactive']:
         return jsonify({'status': 'error', 'message': 'Invalid search type'})
-    
+
     try:
         headers = {'X-Api-Key': s.sonarr_api_key}
         base_url = s.sonarr_url.rstrip('/')
@@ -4030,7 +4153,7 @@ def sonarr_search():
             base_url = base_url[:-4]
         if base_url.endswith('/api/v3'):
             base_url = base_url[:-7]
-        
+
         if search_type == 'auto':
             # If no episode IDs provided, search for all missing episodes
             if not episode_ids:
@@ -4044,10 +4167,10 @@ def sonarr_search():
                         eid = ep.get('episodeFileId')
                         return eid is not None and int(eid) > 0
                     episode_ids = [ep.get('id') for ep in episodes if not _has_file(ep)]
-            
+
             if not episode_ids:
                 return jsonify({'status': 'success', 'message': 'No missing episodes to search'})
-            
+
             # Auto search using command
             command_url = f"{base_url}/api/v3/command"
             payload = {
@@ -4059,21 +4182,21 @@ def sonarr_search():
                 return jsonify({'status': 'success', 'message': f'Search started for {len(episode_ids)} episode(s)'})
             else:
                 return jsonify({'status': 'error', 'message': 'Failed to start search'})
-        
+
         elif search_type == 'interactive':
             # Same flow as main Sonarr page: get episode(s), then fetch releases for the target episode
             episodes_url = f"{base_url}/api/v3/episode?seriesId={series_id}"
             episodes_resp = requests.get(episodes_url, headers=headers, timeout=15)
             if episodes_resp.status_code != 200:
                 return jsonify({'status': 'error', 'message': 'Failed to fetch episodes'})
-            
+
             episodes = episodes_resp.json()
             def _ep_has_f(ep):
                 if ep.get('hasFile') or ep.get('episodeFile'): return True
                 eid = ep.get('episodeFileId')
                 return eid is not None and int(eid) > 0
             missing_episodes = [ep for ep in episodes if not _ep_has_f(ep)]
-            
+
             # Calendar sends episode_ids; season row sends season_number; main page sends only series_id (first missing)
             if episode_ids:
                 episode_id = episode_ids[0]
@@ -4111,7 +4234,7 @@ def sonarr_search():
                     return jsonify({'status': 'error', 'message': 'No missing episodes found'})
                 episode_id = missing_episodes[0].get('id')
                 ep_for_response = missing_episodes[0]
-            
+
             # Trigger search first (like Sonarr UI) so indexers are queried and releases populate
             command_url = f"{base_url}/api/v3/command"
             payload = {'name': 'EpisodeSearch', 'episodeIds': [episode_id]}
@@ -4121,7 +4244,7 @@ def sonarr_search():
                 pass
             # Brief wait so Sonarr can populate releases
             time.sleep(2)
-            
+
             # Releases can take a long time when Sonarr is querying many indexers (60s)
             releases_url = f"{base_url}/api/v3/release?episodeId={episode_id}"
             resp = requests.get(releases_url, headers=headers, timeout=60)
@@ -4163,7 +4286,7 @@ def sonarr_search():
             except Exception as e:
                 write_log("warning", "Sonarr", f"Could not fetch current file for downloaded icon: {e}")
             return jsonify({'status': 'success', 'releases': releases, 'episode': ep_for_response, 'current_file': current_file})
-        
+
         return jsonify({'status': 'error', 'message': 'Invalid search type'})
     except requests.exceptions.Timeout:
         _log_api_exception("sonarr_search")
@@ -4180,21 +4303,21 @@ def sonarr_download():
     s = current_user.settings
     if not s.sonarr_url or not s.sonarr_api_key:
         return jsonify({'status': 'error', 'message': 'Sonarr not configured'})
-    
+
     data = request.json
     if not data:
         return jsonify({'status': 'error', 'message': 'No data provided'})
-    
+
     guid = data.get('guid')
     indexer_id = data.get('indexerId')
     episode_id = data.get('episodeId')
-    
+
     # Validate guid
     if not guid:
         return jsonify({'status': 'error', 'message': 'Release GUID required'})
     if not isinstance(guid, str) or len(guid) > 2000:
         return jsonify({'status': 'error', 'message': 'Invalid GUID format'})
-    
+
     # Validate indexer_id
     if indexer_id is None:
         return jsonify({'status': 'error', 'message': 'Indexer ID required'})
@@ -4204,7 +4327,7 @@ def sonarr_download():
             return jsonify({'status': 'error', 'message': 'Invalid indexer ID'})
     except (ValueError, TypeError):
         return jsonify({'status': 'error', 'message': 'Invalid indexer ID format'})
-    
+
     # Validate episode_id
     if not episode_id:
         return jsonify({'status': 'error', 'message': 'Episode ID required'})
@@ -4214,11 +4337,11 @@ def sonarr_download():
             return jsonify({'status': 'error', 'message': 'Invalid episode ID'})
     except (ValueError, TypeError):
         return jsonify({'status': 'error', 'message': 'Invalid episode ID format'})
-    
+
     try:
         headers = {'X-Api-Key': s.sonarr_api_key}
         base_url = s.sonarr_url.rstrip('/')
-        
+
         download_url = f"{base_url}/api/v3/release"
         payload = {
             'guid': guid,
@@ -4226,7 +4349,7 @@ def sonarr_download():
             'episodeId': episode_id
         }
         resp = requests.post(download_url, json=payload, headers=headers, timeout=10)
-        
+
         if resp.status_code in [200, 201]:
             # Check response content for errors (Sonarr might return 200 with error in body)
             resp_data = None
@@ -4235,20 +4358,20 @@ def sonarr_download():
                     resp_data = resp.json()
                 except (ValueError, requests.RequestException):
                     pass
-            
+
             # Check for error messages in response
             error_msg = None
             if resp_data:
                 if isinstance(resp_data, dict):
-                    error_msg = (resp_data.get('message') or 
-                               resp_data.get('errorMessage') or 
+                    error_msg = (resp_data.get('message') or
+                               resp_data.get('errorMessage') or
                                resp_data.get('error'))
                 # Also check if it's an array with error objects
                 elif isinstance(resp_data, list) and len(resp_data) > 0:
                     first_item = resp_data[0]
                     if isinstance(first_item, dict):
                         error_msg = first_item.get('message') or first_item.get('errorMessage')
-            
+
             if error_msg:
                 write_log("error", "Sonarr", f"Download failed: {error_msg}")
                 # Provide more helpful error message
@@ -4256,23 +4379,23 @@ def sonarr_download():
                     enhanced_msg = f"{error_msg}\n\nThis usually means:\n- Sonarr's download client configuration is incorrect\n- Download client is offline or unreachable\n- Check Sonarr Settings â†’ Download Clients"
                 else:
                     enhanced_msg = error_msg
-                
+
                 # Include the full response in the error message for debugging
                 return jsonify({
-                    'status': 'error', 
+                    'status': 'error',
                     'message': enhanced_msg,
                     'sonarr_response': resp_data  # Include full response for debugging
                 })
-            
+
             if not resp_data or (isinstance(resp_data, dict) and len(resp_data) == 0):
                 write_log("warning", "Sonarr", "Download returned empty response")
-            
+
             return jsonify({'status': 'success', 'message': 'Download started'})
         else:
             try:
                 error_data = resp.json()
-                error_msg = (error_data.get('message') or 
-                           error_data.get('errorMessage') or 
+                error_msg = (error_data.get('message') or
+                           error_data.get('errorMessage') or
                            error_data.get('error') or
                            (error_data.get('errors') and isinstance(error_data['errors'], list) and len(error_data['errors']) > 0 and error_data['errors'][0].get('errorMessage')) or
                            str(error_data) if error_data else 'Failed to start download')
@@ -4629,29 +4752,29 @@ def run_test():
     """run a specific test file with security validation"""
     from utils.secure_test_runner import SecureTestRunner
     import os
-    
+
     data = request.json
     test_name = data.get('test_name', '')
-    
+
     if not test_name:
         return jsonify({'status': 'error', 'message': 'no test file specified'}), 400
-    
+
     # initialize secure test runner
     tests_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'tests')
     runner = SecureTestRunner(tests_dir)
-    
+
     # run test with validation
     result = runner.run_test(test_name, timeout=30)
-    
+
     if not result['success'] and 'error' in result:
         write_log("error", "TestRunner", f"test failed: {test_name} - {result.get('error')}")
         return jsonify({
             'status': 'error',
             'message': 'Test execution failed'
         }), 400
-    
+
     write_log("info", "TestRunner", f"test executed: {test_name} (passed: {result['success']})")
-    
+
     return jsonify({
         'status': 'success',
         'exit_code': result['returncode'],
@@ -4730,29 +4853,29 @@ def run_script():
     """run a maintenance script with security validation"""
     from utils.secure_test_runner import SecureTestRunner
     import os
-    
+
     data = request.json
     script_name = data.get('script_name', '')
-    
+
     if not script_name:
         return jsonify({'status': 'error', 'message': 'no script specified'}), 400
-    
+
     # use same security model as tests
     scripts_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'scripts')
     runner = SecureTestRunner(scripts_dir)
-    
+
     # run script with validation
     result = runner.run_test(script_name, timeout=60)
-    
+
     if not result['success'] and 'error' in result:
         write_log("error", "ScriptRunner", f"script failed: {script_name} - {result.get('error')}")
         return jsonify({
             'status': 'error',
             'message': 'Script execution failed'
         }), 400
-    
+
     write_log("info", "ScriptRunner", f"script executed: {script_name}")
-    
+
     return jsonify({
         'status': 'success',
         'exit_code': result['returncode'],

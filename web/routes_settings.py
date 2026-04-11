@@ -1,18 +1,25 @@
 """
 Blueprint for settings routes
-Handles settings page, logs, profile deletion, and webhook logs
+Handles settings page, logs, profile deletion, webhook logs, and compatibility helpers
 """
 
 import socket
 import datetime
 from datetime import timedelta
+import requests
 from flask import Blueprint, request, jsonify, redirect, url_for, render_template, flash
 from flask_login import login_required, current_user, logout_user
+from werkzeug.security import check_password_hash
 from auth_decorators import admin_required
 
 from models import db, User, Settings, SystemLog, TmdbKeywordCache, TmdbRuntimeCache, TmdbAlias, Blocklist, WebhookLog
 from utils.helpers import write_log
 from utils.db_helpers import commit_with_retry
+from utils.tmdb_http import is_tmdb_read_access_token, tmdb_get
+from utils import validate_service_url, should_verify_tls
+from services.IntegrationsService import IntegrationsService
+from services.CloudService import CloudService
+from plexapi.server import PlexServer
 
 # Create blueprint
 web_settings_bp = Blueprint('web_settings', __name__)
@@ -63,6 +70,13 @@ def settings():
             if 'plex_url' in request.form:
                 s.plex_url = request.form.get('plex_url')
             _apply_key('plex_token', 'plex_token_unchanged', 'plex_token')
+            if 'tmdb_key' in request.form:
+                tmdb_value = (request.form.get('tmdb_key') or '').strip()
+                if tmdb_value and not is_tmdb_read_access_token(tmdb_value):
+                    return jsonify({
+                        'status': 'error',
+                        'message': 'TMDB now requires the API Read Access Token, not the legacy API key.'
+                    }), 400
             _apply_key('tmdb_key', 'tmdb_key_unchanged', 'tmdb_key')
             if 'tmdb_region' in request.form:
                 s.tmdb_region = request.form.get('tmdb_region')
@@ -232,11 +246,239 @@ def webhook_logs_page():
 @web_settings_bp.route('/delete_profile', methods=['POST'])
 @login_required
 def delete_profile():
-    """Delete user profile and all associated data"""
+    """Legacy fallback route to delete the current account."""
+    data = request.get_json(silent=True) or request.form or {}
+    current_password = (data.get('current_password') or '').strip()
+    confirm_username = (data.get('confirm_username') or '').strip()
+
+    if not current_password or not confirm_username:
+        return jsonify({'status': 'error', 'message': 'Current password and username confirmation are required.'}), 400
+    if confirm_username != current_user.username:
+        return jsonify({'status': 'error', 'message': 'Username confirmation does not match your account.'}), 400
+    if not check_password_hash(current_user.password_hash, current_password):
+        return jsonify({'status': 'error', 'message': 'Current password is incorrect.'}), 400
+
     user = User.query.get(current_user.id)
-    Settings.query.filter_by(user_id=current_user.id).delete()
-    Blocklist.query.filter_by(user_id=current_user.id).delete()
+    if not user:
+        return jsonify({'status': 'error', 'message': 'User not found.'}), 404
+
+    total_users = User.query.count()
+    if user.is_admin:
+        other_admins = User.query.filter(User.is_admin.is_(True), User.id != user.id).count()
+        if total_users > 1 and other_admins == 0:
+            return jsonify({'status': 'error', 'message': 'Promote another admin before deleting this account.'}), 400
+
+    user_id = user.id
+    remaining_users_after_delete = max(total_users - 1, 0)
+
+    try:
+        Settings.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+        Blocklist.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+        from models import AppRequest, CloudRequest, KometaTemplate, RecoveryCode
+        AppRequest.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+        CloudRequest.query.filter_by(owner_user_id=user_id).delete(synchronize_session=False)
+        KometaTemplate.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+        RecoveryCode.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+
+        db.session.delete(user)
+        db.session.commit()
+
+        try:
+            logout_user()
+        except Exception:
+            pass
+
+        return jsonify({
+            'status': 'success',
+            'message': 'Your account has been deleted.',
+            'redirect_url': '/register' if remaining_users_after_delete == 0 else '/login'
+        })
+    except Exception as e:
+        db.session.rollback()
+        write_log("error", "Settings", f"Delete profile failed: {type(e).__name__}")
+        return jsonify({'status': 'error', 'message': f'Failed to delete account: {type(e).__name__}'}), 500
+
+@web_settings_bp.route('/settings/admin/users')
+@login_required
+@admin_required
+def get_all_users_fallback():
+    users = User.query.all()
+    return jsonify([{
+        'id': u.id,
+        'username': u.username,
+        'is_admin': u.is_admin,
+        'is_current': (u.id == current_user.id)
+    } for u in users])
+
+@web_settings_bp.route('/settings/admin/toggle_role', methods=['POST'])
+@login_required
+@admin_required
+def toggle_user_role_fallback():
+    data = request.get_json(silent=True) or {}
+    target_id = data.get('user_id')
+
+    if target_id == current_user.id:
+        return jsonify({'status': 'error', 'message': 'You cannot remove your own admin status.'})
+
+    user = User.query.get(target_id)
+    if not user:
+        return jsonify({'status': 'error', 'message': 'User not found'})
+
+    user.is_admin = not user.is_admin
+    db.session.commit()
+    status_str = "Admin" if user.is_admin else "User"
+    return jsonify({'status': 'success', 'message': f"User {user.username} is now: {status_str}"})
+
+@web_settings_bp.route('/settings/admin/delete_user', methods=['POST'])
+@login_required
+@admin_required
+def delete_user_fallback():
+    data = request.get_json(silent=True) or {}
+    target_id = data.get('user_id')
+
+    if target_id == current_user.id:
+        return jsonify({'status': 'error', 'message': 'Cannot delete yourself.'})
+
+    user = User.query.get(target_id)
+    if not user:
+        return jsonify({'status': 'error', 'message': 'User not found'})
+
+    Settings.query.filter_by(user_id=user.id).delete(synchronize_session=False)
+    Blocklist.query.filter_by(user_id=user.id).delete(synchronize_session=False)
     db.session.delete(user)
     db.session.commit()
-    logout_user()
-    return render_template('logout_redirect.html', login_url=url_for('web_auth.login'))
+    return jsonify({'status': 'success', 'message': 'User deleted.'})
+
+@web_settings_bp.route('/settings/test_connection', methods=['POST'])
+@login_required
+def test_connection_fallback():
+    data = request.get_json(silent=True) or {}
+    service = data.get('service')
+    use_stored = data.get('use_stored') is True
+    s = current_user.settings if use_stored else None
+
+    def _clean_url(url):
+        if not url:
+            return ""
+        u = url.rstrip('/')
+        if u.endswith('/api/v3'):
+            u = u.rsplit('/api/v3', 1)[0]
+        if u.endswith('/api'):
+            u = u.rsplit('/api', 1)[0]
+        return u
+
+    try:
+        if service == 'plex':
+            u = (s.plex_url or '').strip() if use_stored and s else (data.get('url') or '').strip()
+            t = (s.plex_token or '').strip() if use_stored and s else (data.get('token') or '').strip()
+            if not u or not t:
+                return jsonify({'status': 'error', 'message': 'Enter your Plex server URL and token to test the connection.'})
+            is_safe, msg = validate_service_url(u)
+            if not is_safe:
+                return jsonify({'status': 'error', 'message': f"Security Block: {msg}"})
+            p = PlexServer(u, t, timeout=5)
+            return jsonify({'status': 'success', 'message': f"Connected: {p.friendlyName}"})
+
+        if service == 'tmdb':
+            clean_key = (s.tmdb_key or '').strip() if use_stored and s else (data.get('api_key') or '').strip()
+            if not clean_key:
+                return jsonify({'status': 'error', 'message': 'TMDB read access token required'})
+            if not use_stored and not is_tmdb_read_access_token(clean_key):
+                return jsonify({'status': 'error', 'message': 'Use the TMDB API Read Access Token, not the legacy API key'})
+            r = tmdb_get('configuration', clean_key, timeout=10)
+            return jsonify({'status': 'success', 'message': 'TMDB Connected!'}) if r.status_code == 200 else jsonify({'status': 'error', 'message': 'Invalid Key'})
+
+        if service == 'omdb':
+            clean_key = (s.omdb_key or '').strip() if use_stored and s else (data.get('api_key') or '').strip()
+            if not clean_key:
+                return jsonify({'status': 'error', 'message': 'API key required'})
+            r = requests.get(f"https://www.omdbapi.com/?apikey={clean_key}&t=Inception", timeout=10)
+            return jsonify({'status': 'success', 'message': 'OMDB Connected!'}) if r.json().get('Response') == 'True' else jsonify({'status': 'error', 'message': 'Invalid Key'})
+
+        if service == 'tautulli':
+            u = (s.tautulli_url or '').strip() if use_stored and s else (data.get('url') or '').strip()
+            k = (s.tautulli_api_key or '').strip() if use_stored and s else (data.get('api_key') or '').strip()
+            if not u or not k:
+                return jsonify({'status': 'error', 'message': 'URL and API key required'})
+            u = _clean_url(u)
+            is_safe, msg = validate_service_url(u)
+            if not is_safe:
+                return jsonify({'status': 'error', 'message': f"Security Block: {msg}"})
+            r = requests.get(f"{u}/api/v2?apikey={k}&cmd=get_server_info", timeout=5)
+            return jsonify({'status': 'success', 'message': 'Tautulli Connected!'}) if r.status_code == 200 else jsonify({'status': 'error', 'message': 'Connection Failed'})
+
+        if service == 'radarr':
+            u = (s.radarr_url or '').strip() if use_stored and s else (data.get('url') or '').strip()
+            k = (s.radarr_api_key or '').strip() if use_stored and s else (data.get('api_key') or '').strip()
+            if not u or not k:
+                return jsonify({'status': 'error', 'message': 'URL and API key required'})
+            u = _clean_url(u)
+            is_safe, msg = validate_service_url(u)
+            if not is_safe:
+                return jsonify({'status': 'error', 'message': f"Security Block: {msg}"})
+            r = requests.get(f"{u}/api/v3/system/status", headers={'X-Api-Key': k}, timeout=5, verify=should_verify_tls(f"{u}/api/v3/system/status"))
+            return jsonify({'status': 'success', 'message': 'Radarr Connected!'}) if r.status_code == 200 else jsonify({'status': 'error', 'message': f'Radarr returned HTTP {r.status_code}'})
+
+        if service == 'sonarr':
+            u = (s.sonarr_url or '').strip() if use_stored and s else (data.get('url') or '').strip()
+            k = (s.sonarr_api_key or '').strip() if use_stored and s else (data.get('api_key') or '').strip()
+            if not u or not k:
+                return jsonify({'status': 'error', 'message': 'URL and API key required'})
+            u = _clean_url(u)
+            is_safe, msg = validate_service_url(u)
+            if not is_safe:
+                return jsonify({'status': 'error', 'message': f"Security Block: {msg}"})
+            r = requests.get(f"{u}/api/v3/system/status", headers={'X-Api-Key': k}, timeout=5, verify=should_verify_tls(f"{u}/api/v3/system/status"))
+            return jsonify({'status': 'success', 'message': 'Sonarr Connected!'}) if r.status_code == 200 else jsonify({'status': 'error', 'message': f'Sonarr returned HTTP {r.status_code}'})
+
+        return jsonify({'status': 'error', 'message': 'Unknown service'})
+    except Exception as e:
+        write_log("error", "Settings", f"Test connection failed: {type(e).__name__}")
+        return jsonify({'status': 'error', 'message': 'Connection failed'}), 500
+
+@web_settings_bp.route('/dashboard/health')
+@login_required
+def dashboard_health_fallback():
+    s = current_user.settings
+    results = {
+        'plex': {'status': 'unknown', 'message': 'Not configured'},
+        'radarr': {'status': 'unknown', 'message': 'Not configured'},
+        'sonarr': {'status': 'unknown', 'message': 'Not configured'},
+        'cloud': {'status': 'unknown', 'message': 'Not configured'}
+    }
+
+    try:
+        if s and s.plex_url and s.plex_token:
+            url = f"{s.plex_url}/identity?X-Plex-Token={s.plex_token}"
+            r = requests.get(url, timeout=3, verify=should_verify_tls(url))
+            results['plex'] = {'status': 'online', 'message': 'Connected'} if r.status_code == 200 else {'status': 'offline', 'message': f'HTTP {r.status_code}'}
+    except Exception:
+        results['plex'] = {'status': 'offline', 'message': 'Offline'}
+
+    try:
+        if s and s.radarr_url and s.radarr_api_key:
+            base = IntegrationsService._get_clean_base_url(s.radarr_url)
+            status_url = f"{base}/api/v3/system/status"
+            r = requests.get(status_url, headers={'X-Api-Key': s.radarr_api_key}, timeout=3, verify=should_verify_tls(status_url))
+            results['radarr'] = {'status': 'online', 'message': 'Connected'} if r.status_code == 200 else {'status': 'offline', 'message': f'HTTP {r.status_code}'}
+    except Exception:
+        results['radarr'] = {'status': 'offline', 'message': 'Offline'}
+
+    try:
+        if s and s.sonarr_url and s.sonarr_api_key:
+            base = IntegrationsService._get_clean_base_url(s.sonarr_url)
+            status_url = f"{base}/api/v3/system/status"
+            r = requests.get(status_url, headers={'X-Api-Key': s.sonarr_api_key}, timeout=3, verify=should_verify_tls(status_url))
+            results['sonarr'] = {'status': 'online', 'message': 'Connected'} if r.status_code == 200 else {'status': 'offline', 'message': f'HTTP {r.status_code}'}
+    except Exception:
+        results['sonarr'] = {'status': 'offline', 'message': 'Offline'}
+
+    try:
+        if s and s.cloud_enabled and s.cloud_api_key:
+            base = CloudService.get_cloud_base_url(s)
+            r = requests.get(f"{base}/api/poll.php", headers={'X-Server-Key': s.cloud_api_key}, timeout=3)
+            results['cloud'] = {'status': 'online', 'message': 'Connected'} if r.status_code == 200 else {'status': 'offline', 'message': f'Cloud Error {r.status_code}'}
+    except Exception:
+        results['cloud'] = {'status': 'offline', 'message': 'Offline'}
+
+    return jsonify(results)
